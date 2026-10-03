@@ -1,5 +1,5 @@
-// remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first and leaves the hub and the weft origin untouched.
-// Then the weft tip is archived,
+// remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first, through the read-only probe RemoveRefusal, and leaves the hub and the weft origin untouched.
+// Then the sibling's pending records are committed (commitPendingRecords) and the weft tip is archived,
 // and only then are the portal and launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
 // The weft branch it removes is WeftBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
@@ -20,10 +20,12 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree carries uncommitted changes.
+// ErrPairSiblingDirty is the sentinel Remove's no-force refusal wraps when the pair's other worktree carries uncommitted changes outside the record pathspec.
+// Changes inside the pathspec never raise it: Remove commits them before the archive.
 // It is worded without naming either side of the pair so callers outside the fabric vocabulary owner set can match it with errors.Is and offer their own remedy.
 var ErrPairSiblingDirty = errors.New("the pair's sibling worktree has uncommitted changes")
 
@@ -73,7 +75,8 @@ type RemoveResult struct {
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
 // licence to delete the clone.
 // Its no-force dirtiness checks, status probes included, are refusals like the rest: a refusal leaves the hub and the weft origin untouched, with no tag pushed and nothing torn down.
-// After every refusal and before its first mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
+// The sibling's dirtiness inside the record pathspec is no refusal: Remove commits it first, with or without force, so the archive covers it.
+// After every refusal and before its first teardown mutation, Remove archives the pair's weft tip — an archive/<slug>/<tip> tag pushed to the weft origin (archiveWeftTip) — so the run records on the branch outlive its deletion.
 // A failed archive returns its error with everything still in place, so a plain re-run retries it.
 // A failure after the archive leaves the tag in place for the re-run to reuse.
 // The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
@@ -94,18 +97,12 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
 
-	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
-		return RemoveResult{}, err
-	}
-
-	if err := refusePrimeSlug(l, slug); err != nil {
+	// Every refusal runs here, through the same probe a caller can ask without removing anything, so the two can never drift.
+	if err := t.RemoveRefusal(l, slug, force); err != nil {
 		return RemoveResult{}, err
 	}
 
 	target := WorktreePath(l, slug)
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
-	}
 
 	// Read the recorded parent now: the record lives in the weft worktree the teardown deletes. A
 	// missing or unreadable record leaves parentBranch empty, which asks the gate for the stricter
@@ -115,46 +112,12 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		parentBranch = origin.ParentBranch
 	}
 
-	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
-	// force answers dirtiness only, never a live merge record.
-	blocked, err := mergeBlocksMutation(target, WeftWorktreePath(l, slug))
-	if err != nil {
+	// Commit the sibling's pending records so the archive tag covers them; force answers dirtiness only, so it never skips this step either.
+	if err := commitPendingRecords(rec, l, slug); err != nil {
 		return RemoveResult{}, err
 	}
-	if blocked {
-		return RemoveResult{}, &ErrMergeInProgress{}
-	}
 
-	// Refuse for the other direction too: this pair may be idle itself while some OTHER pair in the
-	// hub is mid-merge ON its branches. Removing it there deletes the weft branch that merge is
-	// resolving against, so an abort would leave the source work reachable only from the remote.
-	inFlight, err := mergeSourceInFlight(l, warpBranch)
-	if err != nil {
-		return RemoveResult{}, err
-	}
-	if inFlight {
-		return RemoveResult{}, &ErrMergeInProgress{}
-	}
-
-	// The dirtiness checks are refusals too, so they precede the archive: a refused call pushes no tag and tears nothing down.
-	// force answers these two checks only.
-	if !force {
-		dirty, _, err := worktreeDirty(scopeAll, target)
-		if err != nil {
-			return RemoveResult{}, fmt.Errorf("check warp worktree status: %w", err)
-		}
-		if dirty {
-			return RemoveResult{}, fmt.Errorf("worktree has uncommitted changes; use --force")
-		}
-	}
-
-	if !force {
-		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
-			return RemoveResult{}, err
-		}
-	}
-
-	// Archive the weft tip after every refusal and before the first mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
+	// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, portal, launchers and both branches untouched, so a plain re-run retries it.
 	// force answers dirtiness only, so it never skips this step.
 	archiveTag, archiveSkippedReason, err := archiveWeftTip(rec, l, slug, weftBranch)
 	if err != nil {
@@ -256,27 +219,133 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 	return false, fmt.Sprintf("delete warp branch %s: %v", warpBranch, err)
 }
 
+// RemoveRefusal reports the refusal Remove would raise for slug before its first mutation, or nil when none applies.
+// It covers slug validation, the prime refusal, a missing task worktree, both merge-in-progress directions, task-side dirtiness without force, and sibling-side dirtiness outside the record pathspec without force.
+// It mutates nothing, takes no lock and pushes nothing, and Remove calls it first, so the two can never drift.
+// Its name carries no fabric side, because callers outside the owner set call it.
+func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) error {
+	warpBranch := t.cfg.BranchPrefix + slug
+
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return err
+	}
+
+	if err := refusePrimeSlug(l, slug); err != nil {
+		return err
+	}
+
+	target := WorktreePath(l, slug)
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		return fmt.Errorf("worktree %q not found", target)
+	}
+
+	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
+	// force answers dirtiness only, never a live merge record.
+	blocked, err := mergeBlocksMutation(target, WeftWorktreePath(l, slug))
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return &ErrMergeInProgress{}
+	}
+
+	// Refuse for the other direction too: this pair may be idle itself while some OTHER pair in the
+	// hub is mid-merge ON its branches. Removing it there deletes the weft branch that merge is
+	// resolving against, so an abort would leave the source work reachable only from the remote.
+	inFlight, err := mergeSourceInFlight(l, warpBranch)
+	if err != nil {
+		return err
+	}
+	if inFlight {
+		return &ErrMergeInProgress{}
+	}
+
+	// force answers the two dirtiness checks only.
+	if force {
+		return nil
+	}
+	dirty, _, err := worktreeDirty(scopeAll, target)
+	if err != nil {
+		return fmt.Errorf("check warp worktree status: %w", err)
+	}
+	if dirty {
+		return fmt.Errorf("worktree has uncommitted changes; use --force")
+	}
+
+	names, err := PathspecNames(BoardDir(l.HubPath))
+	if err != nil {
+		return fmt.Errorf("load the record pathspec: %w", err)
+	}
+	return refuseDirtyWeftWorktree(WeftWorktreePath(l, slug), l.AnchorRel, names)
+}
+
+// commitPendingRecords commits the pair's sibling worktree's uncommitted changes inside the record pathspec, so the archive tag that follows covers them.
+// It stages exactly the scoped pathspec `lyx fabric sync` uses, through CommitWeftPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
+// An absent sibling or an empty pathspec commits nothing; KindCommitCreated is recorded only when a commit landed.
+func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug string) error {
+	weftTarget := WeftWorktreePath(l, slug)
+	if _, err := os.Stat(weftTarget); os.IsNotExist(err) {
+		return nil
+	}
+
+	names, err := PathspecNames(BoardDir(l.HubPath))
+	if err != nil {
+		return fmt.Errorf("load the record pathspec: %w", err)
+	}
+	// git add refuses a pathspec that matches nothing, and a configured optional directory may not exist in this pair.
+	present := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, err := os.Lstat(filepath.Join(weftTarget, l.AnchorRel, name)); err == nil {
+			present = append(present, name)
+		}
+	}
+
+	warpSHA, err := gitrepo.New(WorktreePath(l, slug)).CurrentSHA()
+	if err != nil {
+		return fmt.Errorf("read the task worktree's HEAD: %w", err)
+	}
+	msg := appendWarpSHATrailer(DefaultCommitMessage, warpSHA)
+	if _, _, err := CommitWeftPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{}); err != nil {
+		return fmt.Errorf("commit the pair's pending records: %w", err)
+	}
+	return nil
+}
+
 // refuseDirtyWeftWorktree returns an error when the weft worktree at weftTarget carries
-// uncommitted changes, or when its status could not be read at all.
+// uncommitted changes outside the record pathspec (recordNames scoped under anchorRel), or when its status could not be read at all.
+// Changes inside the pathspec are not a refusal: Remove commits them (commitPendingRecords).
 //
 // An ABSENT weft worktree is not a refusal: there is no uncommitted work to lose, and tearing down
 // a half-present pair is exactly what Remove is for.
 // An unreadable one IS a refusal, and that is the whole point of this helper: the probe used to
 // swallow its own spawn error in an empty if-branch, so a git that failed to run silently reported
 // the weft side clean and the no-force gate simply disappeared.
-func refuseDirtyWeftWorktree(weftTarget string) error {
+func refuseDirtyWeftWorktree(weftTarget, anchorRel string, recordNames []string) error {
 	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
 		return nil
 	}
 
-	dirty, _, err := worktreeDirty(scopeAll, weftTarget)
+	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	for _, p := range ScopedPathspec(anchorRel, recordNames) {
+		args = append(args, ":(exclude)"+filepath.ToSlash(p))
+	}
+	stdout, err := gitexec.Run(args, weftTarget)
 	if err != nil {
 		return fmt.Errorf("check weft worktree status: %w", err)
 	}
-	if dirty {
-		return siblingDirtyRefusal{"weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force"}
+
+	var paths []string
+	// stdout is not trimmed: the first porcelain line may begin with the status column's space.
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if len(line) > 3 {
+			paths = append(paths, line[3:])
+		}
 	}
-	return nil
+	if len(paths) == 0 {
+		return nil
+	}
+	return siblingDirtyRefusal{fmt.Sprintf("weft worktree has uncommitted changes outside the record pathspec (%s); commit or remove them, or use --force", strings.Join(paths, ", "))}
 }
 
 // refusePrimeSlug returns an error when slug names the hub's prime (main) warp worktree.
