@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -73,12 +74,13 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 	}
 }
 
-// TestStepCmd_BusyRefusal_BeforeBootstrap drives stepCmd()'s RunE against a hand-populated receiver
-// whose shedPaths.LockPath points into a t.TempDir() and whose lock this test acquires first,
-// mirroring the in-process capture idiom TestVerbRefusals (cli_test.go) already uses for run/
-// pause. It confirms the busy refusal reaches the envelope with its remedy text, and that the
-// refusal happened before the bootstrap: seedAndCommitBootstrap would have seeded a status file, so
-// its absence afterwards proves the early probe fired first.
+// TestStepCmd_BusyRefusal_BeforeBootstrap drives stepCmd()'s RunE against a hand-populated receiver whose shedPaths.LockPath points into a t.TempDir() and whose lock this test acquires first,
+// mirroring the in-process capture idiom TestVerbRefusals (cli_test.go) already uses for run/pause.
+// It confirms the busy refusal reaches the envelope with its remedy text,
+// and that the refusal happened before the bootstrap and the entry observation.
+// seedAndCommitBootstrap would have written the loom seed, so its absence afterwards proves the early probe fired first.
+// The status file is seeded to match the step clean-handoff marker,
+// so an observation taken before the probe would consume that marker and set entryObservation.
 func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "run.lock")
@@ -103,6 +105,11 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(handoffPath), err)
 	}
 	recordStepHandoff(handoffPath, loomengine.LoomStepHandoffLock(c.location), 1, shedengine.StateRunning)
+	writeSelfreportStatus(t, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{
+		CurrentProducer: loomshed.NameWebster,
+		State:           shedengine.StateRunning,
+		History:         make([]shedengine.HistoryEntry, 1),
+	})
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(loomVerbCommand(c, "step"), &out, nil)
@@ -123,8 +130,8 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 		t.Errorf("stepCmd() output missing the lyx loom pause remedy; got: %q", out.String())
 	}
 
-	if _, err := os.Stat(c.shedPaths.StatusPath); err == nil {
-		t.Errorf("status file exists at %q after a busy refusal; the bootstrap must not have run", c.shedPaths.StatusPath)
+	if _, found, err := shedrun.ReadSeed(c.location, shedrun.SelfRunID); err != nil || found {
+		t.Errorf("shedrun.ReadSeed after a busy refusal = found %v, %v; want no seed (the bootstrap must not have run)", found, err)
 	}
 	if _, err := os.Stat(handoffPath); err != nil {
 		t.Errorf("step clean-handoff marker %q = %v after a busy refusal; want it left in place", handoffPath, err)
