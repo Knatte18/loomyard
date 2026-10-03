@@ -62,6 +62,12 @@ func factsPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-facts.md", round))
 }
 
+// circlingDecisionPath returns the path of the circling decision file for round inside runDir.
+// The file lives in the run directory so it is committed with the run like the ledger.
+func circlingDecisionPath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-circling-decision.md", round))
+}
+
 // judgeOutputs returns the three files one judge pass for round declares as its shuttle run's
 // OutputFiles, in the fixed order the judge prompt's own markers are filled from: the verdict, the
 // ledger, and the NEXT round's focus file.
