@@ -247,8 +247,6 @@ func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
 	if _, err := h.Topology.Remove(l, slug, false, true); err != nil {
 		t.Fatalf("first Remove error = %v", err)
 	}
-	// Remove deletes the sibling branch on origin but leaves the task branch Add pushed there.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "push", "origin", "--delete", slug)
 
 	_, err := h.Topology.Remove(l, slug, false, true)
 	if !errors.Is(err, fabricengine.ErrPairNotFound) {

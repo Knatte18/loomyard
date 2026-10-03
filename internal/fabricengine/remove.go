@@ -60,6 +60,8 @@ const (
 	RemoveStepTaskBranch = "task_branch"
 	// RemoveStepSiblingBranchOnOrigin is the deletion of the sibling's branch on origin.
 	RemoveStepSiblingBranchOnOrigin = "sibling_branch_on_origin"
+	// RemoveStepTaskBranchOnOrigin is the deletion of the task's branch on origin.
+	RemoveStepTaskBranchOnOrigin = "task_branch_on_origin"
 )
 
 // RemoveResult contains the result of successfully removing a worktree pair.
@@ -90,6 +92,12 @@ type RemoveResult struct {
 	// WarpBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
 	// destructive gate's refusal, or a failure to delete it. A kept branch is not a failure of Remove.
 	WarpBranchKeptReason string `json:"warp_branch_kept_reason,omitempty"`
+	// RemoteWarpBranchDeleted reports whether the pair's task branch was observably removed from the warp repo's origin.
+	// It is true only with remote, when the branch's work was landed.
+	RemoteWarpBranchDeleted bool `json:"remote_warp_branch_deleted"`
+	// RemoteWarpBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
+	// A kept branch is not a failure of Remove.
+	RemoteWarpBranchKeptReason string `json:"remote_warp_branch_kept_reason,omitempty"`
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the teardown;
 	// empty when none was pushed.
 	ArchiveTag string `json:"archive_tag,omitempty"`
@@ -119,7 +127,9 @@ type RemoveResult struct {
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
 // the destructive gate, which refuses unless the branch's work is on another ref or landed on the
 // parent recorded in the pair's origin record; a refusal fills WarpBranchKeptReason and Remove still
-// succeeds. force never answers that check, and remote adds no warp-branch deletion of either kind.
+// succeeds. force never answers that check.
+// With remote, Remove then deletes the task branch on the warp repository's origin, through the same gate and a lease on the observed remote tip, when the tip's work is landed;
+// a refusal, a lost lease or a failed push fills RemoteWarpBranchKeptReason and Remove still succeeds.
 // The recorded parent is read before any teardown, since the record lives in the weft worktree the
 // teardown deletes.
 // A pair whose task worktree is already gone is finished rather than refused: Remove performs whatever teardown remains, in the same order and through the same gates, and reports it in Steps with Finished set.
@@ -228,6 +238,14 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		steps = append(steps, RemoveStepTaskBranch)
 	}
 
+	remoteWarpDeleted, remoteWarpKeptReason := false, ""
+	if remote {
+		remoteWarpDeleted, remoteWarpKeptReason = deleteTaskBranchOnOrigin(rec, l, warpBranch, parentBranch)
+		if remoteWarpDeleted {
+			steps = append(steps, RemoveStepTaskBranchOnOrigin)
+		}
+	}
+
 	strayPath := ""
 	if pair.strayPath {
 		strayPath = target
@@ -241,11 +259,14 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		RemoteSkippedReason:  teardown.remoteSkippedReason,
 		WarpBranchDeleted:    warpDeleted,
 		WarpBranchKeptReason: warpKeptReason,
-		ArchiveTag:           archiveTag,
-		ArchiveSkippedReason: archiveSkippedReason,
-		Steps:                steps,
-		Finished:             !pair.taskWorktree,
-		StrayPath:            strayPath,
+
+		RemoteWarpBranchDeleted:    remoteWarpDeleted,
+		RemoteWarpBranchKeptReason: remoteWarpKeptReason,
+		ArchiveTag:                 archiveTag,
+		ArchiveSkippedReason:       archiveSkippedReason,
+		Steps:                      steps,
+		Finished:                   !pair.taskWorktree,
+		StrayPath:                  strayPath,
 	}, nil
 }
 
@@ -427,6 +448,49 @@ func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBran
 		return false, refusal.Reason
 	}
 	return false, fmt.Sprintf("delete warp branch %s: %v", warpBranch, err)
+}
+
+// deleteTaskBranchOnOrigin deletes the pair's task branch from the warp repository's origin when its remote tip's work is landed.
+// It observes the tip (ls-remote), fetches it so its objects are local, then deletes through deleteTaskBranchAtTip, leased to the observed tip.
+// An absent remote branch, or a warp repo with no origin, is neither deleted nor a reason.
+// Every refusal and failure is a kept reason rather than an error, as in deleteWarpBranch.
+func deleteTaskBranchOnOrigin(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
+	repoDir := l.WorktreePath()
+	if _, err := gitrepo.New(repoDir).RemoteURL(originRemoteName); err != nil {
+		return false, ""
+	}
+	tip, err := remoteHeadTip(repoDir, warpBranch)
+	if err != nil {
+		return false, err.Error()
+	}
+	if tip == "" {
+		return false, ""
+	}
+	if _, err := gitexec.Run([]string{"fetch", originRemoteName, "refs/heads/" + warpBranch}, repoDir); err != nil {
+		return false, fmt.Sprintf("fetch task branch %s from %s: %v", warpBranch, originRemoteName, err)
+	}
+	return deleteTaskBranchAtTip(rec, l, warpBranch, parentBranch, tip)
+}
+
+// deleteTaskBranchAtTip is deleteTaskBranchOnOrigin's gated deletion, leased to tip: a remote tip that moved since tip was observed fails the lease and nothing is deleted.
+func deleteTaskBranchAtTip(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
+	deleted, err := deleteRemoteBranch(rec, remoteBranchRequest{
+		what:      "delete task branch on remote",
+		repoDir:   l.WorktreePath(),
+		remote:    originRemoteName,
+		branch:    warpBranch,
+		ownership: ownedPairWarpBranch(warpBranch, parentBranch),
+		dirtiness: dirtyUnlandedRemoteTip(parentBranch),
+		leaseSHA:  tip,
+		force:     false,
+	})
+	if err == nil {
+		return deleted, ""
+	}
+	if refusal, ok := RefusalOf(err); ok {
+		return false, refusal.Reason
+	}
+	return false, fmt.Sprintf("delete task branch %s on %s: %v", warpBranch, originRemoteName, err)
 }
 
 // RemoveRefusal reports the refusal Remove would raise for slug before its first mutation, or nil when none applies.
