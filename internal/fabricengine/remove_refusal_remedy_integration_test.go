@@ -132,15 +132,15 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 }
 
 // TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove against a hub-contained directory
-// that is not a git checkout, and asserts the composed error names the probed path once and the git
-// command once.
+// at the sibling worktree's location that is not a git checkout, and asserts the composed error
+// names the probed path once and the git command once.
+// The task side no longer reaches its status probe for such a directory: a plain directory at the
+// task worktree's location is a stray path, reported and left alone.
 //
-// Both wrappers in this chain — Remove's own "check warp worktree status" and worktreeDirty's
-// "check for uncommitted changes in <dir>" — used to name the path, and, before the gitexec split,
-// the inner one also named the git command that *gitexec.GitError now renders itself. The result put
-// the same path twice and the same command twice ahead of git's own stderr, which is the only part
-// of the message an operator can act on. Each layer now contributes exactly one new fact: what
-// fabric was doing, where it probed, and what git said.
+// Both wrappers in this chain — refuseDirtyWeftWorktree's "check weft worktree status in <dir>" and
+// the *gitexec.GitError it wraps — used to repeat the path and the git command ahead of git's own
+// stderr, which is the only part of the message an operator can act on. Each layer now contributes
+// exactly one new fact: what fabric was doing, where it probed, and what git said.
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	t.Parallel()
 
@@ -148,10 +148,10 @@ func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	// A plain directory inside the hub: it passes the slug and target-exists checks, then fails at
-	// the dirtiness probe because it is not a git repository at all.
+	// A plain directory inside the hub: the pair has something left, so Remove proceeds to its
+	// dirtiness probe, which fails because the directory is not a git repository at all.
 	const slug = "not-a-checkout"
-	notACheckout := fabricengine.WorktreePath(l, slug)
+	notACheckout := fabricengine.WeftWorktreePath(l, slug)
 	if err := os.MkdirAll(notACheckout, 0o755); err != nil {
 		t.Fatalf("create %s: %v", notACheckout, err)
 	}
