@@ -371,7 +371,8 @@ Every registered lyx module is exercised by the sandbox suite or explicitly excl
 
 Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 
-- No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, `hubforge.NewHub` outside `integration`/`smoke`-tagged files.
+- No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `hubforge.NewHub` or gitkit spawn outside `integration`/`smoke`-tagged files.
+- Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - `time.Sleep(...)` ≥ 1s in an untagged file is flagged unless allowlisted.
 
 ## Hermetic Git Test Environment Invariant
@@ -379,6 +380,7 @@ Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 Every test package whose tests spawn git runs under the hermetic git test environment.
 
 - `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or is allowlisted (`internal/proc`).
+- A package is git-spawning when a test file references a gitkit spawn, by the same definition Test Tier Purity uses.
 
 ## Dev/Prod Binary Separation
 

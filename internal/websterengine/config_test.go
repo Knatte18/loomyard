@@ -21,7 +21,7 @@ import (
 
 // seedConfig writes module's content to <baseDir>/_lyx/config/<module>.yaml,
 // creating the config directory (and its _lyx parent) as needed. It is a
-// plain-filesystem stand-in for gitkit.SeedConfig, deliberately avoiding
+// plain-filesystem stand-in for gitkit's config seeding, deliberately avoiding
 // that helper's git spawn since configengine.Load never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()

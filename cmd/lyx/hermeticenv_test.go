@@ -41,21 +41,15 @@ var allowedNonHermetic = map[string]string{
 }
 
 // gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning
-// for the Hermetic Git Test Environment Invariant. This set is broader than
-// tierpurity_test.go's bannedTokens: it adds gitkit.MustRun and gitkit.SeedConfig,
-// which spawn git internally inside gitkit itself — without them, a package whose
-// only git spawn goes through those helpers would carry no matching token and
-// silently skip the hermetic requirement.
-// hubforge.NewHub joins the set for the identical reason: it drives a real
-// fabriccli.CloneAndWire clone internally, and hubforge.SeedConfig/SeedFabricConfig both take a
-// *Hub only NewHub can produce, so this one token already covers every package that can reach any
-// of the three.
+// for the Hermetic Git Test Environment Invariant. A gitkit spawn is not a token here:
+// gitkitSpawnReference (cmd/lyx/gitkitspawn_test.go) defines it once, shared with
+// tierpurity_test.go, and firstSpawnToken consults it after these tokens.
+// hubforge.NewHub joins the set because it drives a real fabriccli.CloneAndWire clone
+// internally, and hubforge.SeedConfig/SeedFabricConfig both take a *Hub only NewHub can produce,
+// so this one token already covers every package that can reach any of the three.
 var gitSpawnTokens = []string{
 	"gitexec.Run",
 	"exec.Command",
-	"gitkit.Copy",
-	"gitkit.MustRun",
-	"gitkit.SeedConfig",
 	"hubforge.NewHub",
 }
 
@@ -198,14 +192,15 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 }
 
 // firstSpawnToken returns the first entry of gitSpawnTokens (in declared order)
-// that appears as a raw substring of content, and whether any was found.
+// that appears as a raw substring of content, else the first gitkit spawn reference,
+// and whether any was found.
 func firstSpawnToken(content string) (string, bool) {
 	for _, token := range gitSpawnTokens {
 		if strings.Contains(content, token) {
 			return token, true
 		}
 	}
-	return "", false
+	return gitkitSpawnReference(content)
 }
 
 // fileLevelExcluded reports whether relPath is an exact-match file-level allowedNonHermetic entry.
