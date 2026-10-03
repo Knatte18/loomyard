@@ -358,7 +358,7 @@ type Config struct {
 	Review                string `yaml:"review"`
 	Judge                 string `yaml:"judge"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
-	Selfreport           bool   `yaml:"selfreport"`
+	Selfreport            bool   `yaml:"selfreport"`
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 	Driver                string `yaml:"driver"`

@@ -663,7 +663,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Slug:           seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath),
 
-		ReviewModel:  reviewSettings.Model,
+		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,
 		ReviewVersion: reviewSettings.Version,
 		ReviewTimeout: reviewSettings.Timeout,
