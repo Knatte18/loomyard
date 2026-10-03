@@ -17,13 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
-// nil, the seam calls Commit exactly once and Push exactly once, in that order, and returns nil.
 // selfStatusRel is the status file's relative path for the self run.
 func selfStatusRel(location *lyxcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
+// TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
+// nil, the seam calls Commit exactly once and Push exactly once, in that order, and returns nil.
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 

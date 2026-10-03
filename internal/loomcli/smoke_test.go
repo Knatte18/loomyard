@@ -200,6 +200,11 @@ func fastDeadlineLoomConfig() string {
 	return cfg
 }
 
+// smokeStatusRel is the status file's relative path for the self run.
+func smokeStatusRel(loc *lyxcwd.Location) string {
+	return shedrun.StatusRel(loc, shedrun.SelfRunID)
+}
+
 // registerBootstrapTeardown registers a cleanup that kills any surviving driver process for worktree
 // and the per-hub watchdog daemon card 12 now spawns for it, then tears the reed substrate down, so
 // a failed assertion never leaves a live tmux server, a detached driver, or a watchdog daemon running
@@ -209,11 +214,6 @@ func fastDeadlineLoomConfig() string {
 // and runs a real binary, so testing.Testing() is false there and the spawn genuinely fires against
 // this fixture's own hub, which this test then tears down. LYX_REED_WATCHDOG does not suppress it
 // either -- that key reaches the worktree-level watch goroutine, never the process start.
-// smokeStatusRel is the status file's relative path for the self run.
-func smokeStatusRel(loc *lyxcwd.Location) string {
-	return shedrun.StatusRel(loc, shedrun.SelfRunID)
-}
-
 func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
 	t.Helper()
 	t.Cleanup(func() {

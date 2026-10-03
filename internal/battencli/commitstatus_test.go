@@ -14,15 +14,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestNewCommitStatusSeam_RepeatedPairCommitsOnce is the disproportionate-weight assertion named in
-// the batch: a repeated (producer, state) pair commits and pushes exactly once, not twice, across
-// two calls to the SAME seam instance. It also pins batten's own commit-message prefix, which the
-// shared core's tests cannot, since they render whatever prefix they are given.
 // runStatusRel is the status file's relative path for runID.
 func runStatusRel(loc *lyxcwd.Location, runID string) string {
 	return shedrun.StatusRel(loc, runID)
 }
 
+// TestNewCommitStatusSeam_RepeatedPairCommitsOnce is the disproportionate-weight assertion named in
+// the batch: a repeated (producer, state) pair commits and pushes exactly once, not twice, across
+// two calls to the SAME seam instance. It also pins batten's own commit-message prefix, which the
+// shared core's tests cannot, since they render whatever prefix they are given.
 func TestNewCommitStatusSeam_RepeatedPairCommitsOnce(t *testing.T) {
 	t.Parallel()
 

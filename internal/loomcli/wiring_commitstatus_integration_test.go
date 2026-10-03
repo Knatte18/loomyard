@@ -43,14 +43,14 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 	return newCommitStatusSeam(loomCommitStatusDeps(location, shedrun.SelfRunID)), location, hub.PairWeftSibling(slug)
 }
 
-// writeStatusFile writes content at loom's own status path for location, creating the directory the
-// first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
-// commits exactly the path the seam's own pathspec names.
 // realSeamStatusRel is the status file's relative path for the self run.
 func realSeamStatusRel(location *lyxcwd.Location) string {
 	return shedrun.StatusRel(location, shedrun.SelfRunID)
 }
 
+// writeStatusFile writes content at loom's own status path for location, creating the directory the
+// first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
+// commits exactly the path the seam's own pathspec names.
 func writeStatusFile(t *testing.T, location *lyxcwd.Location, content string) {
 	t.Helper()
 	path := shedrun.StatusFile(location, shedrun.SelfRunID)
