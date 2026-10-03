@@ -9,6 +9,7 @@
 package reedengine
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -16,6 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
+
+// ErrUnknownStrand is the sentinel an unknown-guid refusal wraps, so a caller can tell a strand that is already gone from a failure.
+var ErrUnknownStrand = errors.New("unknown strand")
 
 // AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
 type AddSpec struct {
@@ -384,7 +388,7 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 // It also deletes the launch script of every removed strand, so surviving strands keep theirs.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
-		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)
+		return Removed{}, nil, fmt.Errorf("%w %q", ErrUnknownStrand, guid)
 	}
 	if len(directChildren(st.Strands, guid)) > 0 && !recursive {
 		return Removed{}, nil, fmt.Errorf("strand has children, use --recursive")
@@ -744,6 +748,27 @@ func (e *Engine) killStrandPanes(paneIDs []string) []int {
 		_ = e.tmux.run("kill-pane", "-t", id)
 	}
 	return reapPIDs
+}
+
+// MarkRetiring sets or clears guid's Retiring flag under the op lock and persists the state.
+// It touches only the strand table, so it needs no live session.
+// An unknown guid wraps ErrUnknownStrand.
+func (e *Engine) MarkRetiring(guid string, retiring bool) error {
+	return e.withOpLock(func() error {
+		st, err := LoadState(e.stateDir())
+		if err != nil {
+			return err
+		}
+		if st == nil {
+			return fmt.Errorf("%w %q", ErrUnknownStrand, guid)
+		}
+		idx := strandIndex(st.Strands, guid)
+		if idx == -1 {
+			return fmt.Errorf("%w %q", ErrUnknownStrand, guid)
+		}
+		st.Strands[idx].Retiring = retiring
+		return SaveState(e.stateDir(), st)
+	})
 }
 
 // RemoveStrand removes guid and, when it has descendants, cascades the removal through its whole

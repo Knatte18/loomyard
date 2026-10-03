@@ -226,6 +226,7 @@ github.com/Knatte18/loomyard/
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
+├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
 ├── internal/reedengine/render/   pure display-vocabulary leaf (layout = Rules(strands))
