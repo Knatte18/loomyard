@@ -545,3 +545,9 @@ func SetAddBeforeWeftReplaceHookForTest(t testing.TB, fn func()) {
 func DeleteTaskBranchAtTipForTest(l *lyxcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
 	return deleteTaskBranchAtTip(NewMutations(""), l, warpBranch, parentBranch, tip)
 }
+
+// CleanupRemoteWarpWithHookForTest runs CleanupRemoteWarp with afterEnumerate called between enumeration and the first deletion,
+// so an integration test can move a branch tip after it was observed and prove the lease holds.
+func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
+	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
+}
