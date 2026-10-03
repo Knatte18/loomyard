@@ -16,11 +16,12 @@ Every verb prints JSON, except where `--text` asks for the compact listing.
 
 Every entry carries a numeric `tier`:
 
-- `1` Planned: concretized and claimable.
-- `2` Next Up: planned next, not yet concretized.
-- `3` Someday: a loose idea.
+- `1` Tasks: concrete and claimable; only a tier-1 entry can run.
+- `2` Next Up: unused; an entry is promoted straight from Notes to Tasks.
+- `3` Notes: not tasks, but ideas and observations, one note per entry, its brief opening with bracketed labels (`[ide][orch] …`).
 
 A new entry without `tier` lands at 3, so claimable work must pass `tier: 1`.
+A note stays as written until the operator decides to build it; then suitable notes are merged into one task, promoted to tier 1, and removed.
 
 ## Types
 

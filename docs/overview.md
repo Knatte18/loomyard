@@ -297,7 +297,7 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 User-facing modules each get one `lyx <module>` namespace:
 
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
-  One `board.json` store holds every entry, and each entry carries a tier (Planned, Next Up or Someday) and a type.
+  One `board.json` store holds every entry, and each entry carries a tier (Tasks, Next Up or Notes; only Tasks run, and Next Up is unused) and a type.
   The README renders one section per tier, split into dependency layers whose entries can run in parallel, and links each slug to its design doc.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
