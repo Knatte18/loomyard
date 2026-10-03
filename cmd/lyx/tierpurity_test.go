@@ -10,34 +10,27 @@ package main
 import (
 	"fmt"
 	"go/token"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // allowedSpawners is the Test Tier Purity Invariant allowlist: module-relative,
-// slash-separated file paths or directory-path prefixes that are permitted to contain
+// slash-separated file paths, or directory paths ending in "/", that are permitted to contain
 // a banned spawn token in an untagged test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
-var allowedSpawners = map[string]string{
-	"internal/proc":                           "process control is the package's subject — its tests must spawn",
-	"cmd/lyx/tierpurity_test.go":              "contains the banned token strings as its own test data",
-	"cmd/lyx/hermeticenv_test.go":             "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
-	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
-	"cmd/lyx/ghguard_test.go":                 "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
-	"cmd/lyx/gitrepoboundary_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
-	"cmd/lyx/boardguard_test.go":              "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Fabric Git Invariant board-guard",
-	"cmd/lyx/rawgitmutation_test.go":          "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)",
-	"cmd/lyx/destructiveguard_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned destructive tokens as scan data (Fabric Destruction Chokepoint Invariant guard)",
-	"cmd/lyx/uncontainedwrite_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned raw-write tokens as scan data (Fabric Write-Side Containment Invariant guard)",
-	"cmd/lyx/checkedcall_test.go":             "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data and resolves its scan root via `go env GOMOD` (gitexec Checked-Call Invariant guard)",
-	"cmd/lyx/cwdmutation_test.go":             "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned t.Chdir(/os.Chdir( tokens as scan data (Cwd Resolution Invariant chdir-mutation guard)",
-	"cmd/lyx/configstrictness_test.go":        "resolves its scan root via `go env GOMOD` (contains `exec.Command`) (Config Strictness Invariant guard)",
-	"cmd/lyx/spawnobservability_test.go":      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data and resolves its scan root via `go env GOMOD` (Live-Substrate Spawn Observability guard)",
-	"cmd/lyx/prerunlogging_test.go":           "resolves its scan root via `go env GOMOD` (contains `exec.Command`) to parse main.go's root PersistentPreRunE ordering (root pre-run logging-order guard)",
+var allowedSpawners = []scankit.Entry{
+	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
+	{Key: "cmd/lyx/tierpurity_test.go", Why: "contains the banned token strings as its own test data"},
+	{Key: "cmd/lyx/hermeticenv_test.go", Why: "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)"},
+	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
+	{Key: "cmd/lyx/ghguard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)"},
+	{Key: "cmd/lyx/gitrepoboundary_test.go", Why: "names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)"},
+	{Key: "cmd/lyx/boardguard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Fabric Git Invariant board-guard)"},
+	{Key: "cmd/lyx/rawgitmutation_test.go", Why: "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)"},
+	{Key: "cmd/lyx/checkedcall_test.go", Why: "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data (gitexec Checked-Call Invariant guard)"},
+	{Key: "cmd/lyx/spawnobservability_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Live-Substrate Spawn Observability guard)"},
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
@@ -72,18 +65,6 @@ var bannedTokens = []string{
 	"lyxbin.",
 }
 
-// tierPuritySkipDirs names directories the walk never descends into: version control
-// and the mill/wiki/scratch overlay trees, none of which are part of the Go module's
-// test surface.
-var tierPuritySkipDirs = map[string]bool{
-	".git":     true,
-	"_lyx":     true,
-	"_mill":    true,
-	".scratch": true,
-	".wiki":    true,
-	"_raddle":  true,
-}
-
 // TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module root and
 // fails if any untagged file — one whose first non-empty line is not a `//go:build` constraint
 // mentioning any of knownTierTags — contains a banned spawn token as a raw substring, unless the
@@ -91,87 +72,39 @@ var tierPuritySkipDirs = map[string]bool{
 // Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in Tier 1
 // on that platform.
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
-	// crosscompile_test.go so this gate never blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
-	var scanned int
+	spawners := scankit.NewAllowlist(allowedSpawners)
+	sleepers := scankit.NewAllowlist(allowedLongSleepers)
 	var failures []string
 
-	walkErr := filepath.WalkDir(moduleRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if tierPuritySkipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
+	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
+		if isTierTagged(f.Data) {
+			return
 		}
 
-		relPath, relErr := filepath.Rel(moduleRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		// Normalize to slash-separated form before any comparison.
-		relPath = filepath.ToSlash(relPath)
-		scanned++
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		if isTierTagged(data) {
-			return nil
-		}
-
-		bannedTok, bad := firstBannedToken(data)
+		bannedTok, bad := firstBannedToken(f.Data)
 		if !bad {
-			bannedTok, bad = gitkitSpawnReference(string(data))
+			bannedTok, bad = gitkitSpawnReference(string(f.Data))
 		}
-		if bad && !pathAllowlisted(relPath, allowedSpawners) {
+		if bad && !spawners.Allowed(f.Rel) {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
-				relPath, bannedTok,
+				f.Rel, bannedTok,
 			))
 		}
 
 		// Sleep guard is an independent check and must still run for every untagged file.
-		if !pathAllowlisted(relPath, allowedLongSleepers) {
-			if evidence, found := findLongLiteralSleep(token.NewFileSet(), path, data); found {
+		if !sleepers.Allowed(f.Rel) {
+			if evidence, found := findLongLiteralSleep(token.NewFileSet(), f.Abs, f.Data); found {
 				failures = append(failures, fmt.Sprintf(
 					"%s: contains a literal time.Sleep(...) of >= 1s in an untagged test file (%s) — move it behind a build tag, shrink the duration, or add an allowedLongSleepers entry in cmd/lyx/tiersleep_test.go with a reason",
-					relPath, evidence,
+					f.Rel, evidence,
 				))
 			}
 		}
-
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk module tree: %v", walkErr)
-	}
-
-	// Vacuous-scan protection: fewer than 20 found means misconfiguration.
-	if scanned < 20 {
-		t.Fatalf("tier purity guard: only scanned %d *_test.go file(s) under %s; expected at least 20 — the walk may be misconfigured", scanned, moduleRoot)
-	}
+	scankit.RequireFloor(t, scanned, 20, "tier purity guard")
+	spawners.RequireNoStale(t)
+	sleepers.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Test Tier Purity Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
@@ -252,14 +185,4 @@ func firstBannedToken(data []byte) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// pathAllowlisted reports whether relPath is covered by an entry in allowlist.
-func pathAllowlisted(relPath string, allowlist map[string]string) bool {
-	for prefix := range allowlist {
-		if relPath == prefix || strings.HasPrefix(relPath, prefix+"/") {
-			return true
-		}
-	}
-	return false
 }
