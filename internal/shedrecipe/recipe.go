@@ -81,6 +81,12 @@ type Env struct {
 	ReviewVersion string
 	ReviewTimeout time.Duration
 
+	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls back to when its own model/effort/version key is absent.
+	// BurlerRound rows keep reading the Review* fields above.
+	JudgeModel   string
+	JudgeEffort  string
+	JudgeVersion string
+
 	// Shuttle is the injected shedadapters.Shuttle seam, an already-constructed engine (or a
 	// factory over one).
 	Shuttle shedadapters.Shuttle
@@ -155,11 +161,16 @@ type Env struct {
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 
-	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,
-	// WorktreeTeardown) for producer identity and stuck-reason text. It is legal on Env because Env
-	// carries roots and run-wide values, and a value that differs per row belongs in Config instead
-	// -- Slug does not differ between the three batten rows a single caller wires.
+	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun, WorktreeTeardown) for producer identity and stuck-reason text,
+	// and by the Bouncer entry for the `lyx loom circling` verbs its CIRCLING Awaiting Reason names.
+	// It is legal on Env because Env carries roots and run-wide values,
+	// and a value that differs per row belongs in Config instead -- Slug does not differ between the three batten rows a single caller wires.
 	Slug string
+	// SegmentBounces answers a row's segment bounce count and budget from the run's persisted history,
+	// read by the Bouncer entry for the budget sentence of its CIRCLING Awaiting Reason.
+	// It is run-wide and takes the row's name, so one closure serves every Bouncer row; inSegment is false for a row outside any segment.
+	// Nil is the absent value and leaves the Reason without the budget sentence.
+	SegmentBounces func(row string) (count, budget int, inSegment bool, err error)
 	// ScratchDir is the told absolute directory the three batten producers write their
 	// stuck-reason file into, read by all three.
 	ScratchDir string

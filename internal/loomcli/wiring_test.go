@@ -19,10 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -684,5 +687,65 @@ func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
 	}
 	if c.armedVerb != "start" {
 		t.Errorf("c.armedVerb = %q; want %q", c.armedVerb, "start")
+	}
+}
+
+// TestWire_BouncerSlugAndSegmentBounces asserts the wired Env carries the worktree's slug, and that its SegmentBounces reads the status file on each call:
+// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
+func TestWire_BouncerSlugAndSegmentBounces(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if want := seedSlug(loc.WorktreeName); c.env.Slug != want {
+		t.Errorf("c.env.Slug = %q; want %q", c.env.Slug, want)
+	}
+	if c.env.SegmentBounces == nil {
+		t.Fatal("c.env.SegmentBounces = nil; want a wired seam")
+	}
+
+	const row = "Plan-Bouncer"
+	if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
+		t.Errorf("SegmentBounces(%q) over an absent status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
+	}
+
+	for _, p := range []string{c.env.StatusPath, c.env.StatusLockPath} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(p), err)
+		}
+	}
+	if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
+		t.Errorf("SegmentBounces(%q) over a run directory with no status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
+	}
+
+	history := []shedengine.HistoryEntry{
+		{Producer: row, Outcome: shedengine.Stuck},
+		{Producer: row, Outcome: shedengine.Stuck},
+	}
+	status := shedengine.Status{CurrentProducer: row, State: shedengine.StateRunning, History: history}
+	if err := state.WriteJSON(c.env.StatusPath, c.env.StatusLockPath, status); err != nil {
+		t.Fatalf("WriteJSON(status) = %v; want nil", err)
+	}
+
+	routing, err := loomrecipe.Routing()
+	if err != nil {
+		t.Fatalf("loomrecipe.Routing() = %v; want nil", err)
+	}
+	wantCount, wantBudget, wantIn := routing.Bounces(row, history)
+	if !wantIn || wantCount == 0 {
+		t.Fatalf("Routing.Bounces(%q, history) = (%d, %d, %v); want a segment row with a non-zero count", row, wantCount, wantBudget, wantIn)
+	}
+
+	count, budget, inSegment, err := c.env.SegmentBounces(row)
+	if err != nil {
+		t.Fatalf("SegmentBounces(%q) error = %v; want nil", row, err)
+	}
+	if count != wantCount || budget != wantBudget || !inSegment {
+		t.Errorf("SegmentBounces(%q) = (%d, %d, %v); want (%d, %d, true)", row, count, budget, inSegment, wantCount, wantBudget)
 	}
 }

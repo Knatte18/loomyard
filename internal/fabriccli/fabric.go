@@ -25,8 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
@@ -201,8 +203,21 @@ use "lyx fabric pairs".`,
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
 (_lyx, .lyx), portal junctions, and launchers.
 
+Before anything is removed, the command waits up to two minutes for the pair's
+loom driver to go quiet and refuses, naming the driver and how to attach, if it
+is still busy. It then ends the pair's reed session, so no strand outlives its
+worktree; abandoned_session names a foreign session reed did not kill.
+
 By default the command refuses to remove a worktree with uncommitted changes
-on either the warp or weft side. Use --force to remove anyway.
+on either the warp or weft side. Use --force to remove anyway. Pending run
+records in the weft worktree are committed before the archive tag is pushed,
+so only sibling changes outside the record paths still need --force.
+
+A pair whose task worktree was already removed by hand is finished: the command
+does the teardown that remains and reports finished: true and the steps it
+performed in steps. A path at the task worktree's location that is not a
+registered linked worktree is reported in stray_path and never deleted. A slug
+of which nothing remains is an error: pair not found.
 
 <slug> must name a worktree pair, never hub geometry. The hub's prime
 worktree (the warp repository itself), the reserved hub entries (_board,
@@ -220,6 +235,9 @@ additionally delete its copy on the weft remote — an irreversible action,
 visible to every other clone. A weft repo with no origin remote configured
 reports the reason in remote_skipped_reason and still exits 0. A failed
 remote deletion exits non-zero, with the reason in remote_branch_error.
+--remote also deletes the task branch on the warp repo's origin once its work
+is landed; otherwise the branch is kept, with the reason in
+remote_warp_branch_kept_reason, and the command still exits 0.
 
 Example:
   lyx fabric remove my-task
@@ -396,6 +414,20 @@ irreversible action visible to every other clone. A weft repo with no origin
 remote configured reports the reason once in remote_skipped_reason and still
 exits 0. A remote deletion that fails exits non-zero, with the per-branch
 reason in entries[].remote_error.
+
+--remote also sweeps leftover task branches on the warp origin, after the weft
+sweep. A branch is a candidate when it is fabric-managed (the weft origin holds
+its weft branch or an archive/<slug>/* tag), is not origin's default branch, is
+not checked out in a hub worktree, has no open pull request, and carries no work
+the default branch lacks. Every other branch is reported with the reason it was
+kept. The sweep's envelope keys are warp_entries (branch, candidate, deleted,
+reason, error) and warp_skipped_reason; --apply deletes only candidates, leased
+to the tip observed, and a failed deletion exits non-zero with its reason in
+warp_entries[].error. If GitHub cannot be reached (a non-GitHub origin, no token,
+a network error) the task-branch sweep is skipped, every task branch is kept and
+warp_skipped_reason names the cause, while the weft sweep still runs and the exit
+code is unaffected. --force answers no task-branch gate. A --remote dry run makes
+read-only network calls: ls-remote and the open pull request listing.
 
 This is also the one existing-path change this command makes: --apply now
 exits non-zero when a local branch deletion fails, where it previously
@@ -851,6 +883,29 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 		"remote_skipped_reason": r.RemoteSkippedReason,
 	}
 
+	// The origin task-branch sweep runs after the weft sweep and folds its record into the one envelope record.
+	// Cleanup's signature is untouched and fabricengine imports no GitHub client, so the open-PR set is fetched here.
+	rec := r.Mutations
+	var warpFailedBranches []string
+	var warpAttempted int
+	if remote {
+		warp, warpErr := sweepRemoteTaskBranches(ctx, top, l, apply)
+		rec.Extend(warp.Mutations)
+		if warpErr != nil {
+			return errWithRecordFields(out, rec, warpErr, fields)
+		}
+		fields["warp_entries"] = warp.Entries
+		fields["warp_skipped_reason"] = warp.SkippedReason
+		for _, entry := range warp.Entries {
+			if entry.Error != "" {
+				warpFailedBranches = append(warpFailedBranches, entry.Branch)
+			}
+			if entry.Error != "" || entry.Deleted {
+				warpAttempted++
+			}
+		}
+	}
+
 	// Error is always a genuine failure here, never a designed refusal — Cleanup sets no Error on a
 	// protected or unmanaged entry — unlike prune's Error, which stays in doc.go's carve-out.
 	var localFailedBranches, remoteFailedBranches []string
@@ -890,10 +945,43 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 			len(remoteFailedBranches), attempted, strings.Join(remoteFailedBranches, ", "))
 	}
 
-	if synthesised != nil {
-		return errWithRecordFields(out, r.Mutated(), synthesised, fields)
+	if len(warpFailedBranches) > 0 {
+		warpErr := fmt.Errorf(
+			"task branch deletion on origin failed for %d of %d task branches (%s); each branch's reason is in warp_entries[].error",
+			len(warpFailedBranches), warpAttempted, strings.Join(warpFailedBranches, ", "))
+		if synthesised != nil {
+			synthesised = fmt.Errorf("%v; additionally, %v", synthesised, warpErr)
+		} else {
+			synthesised = warpErr
+		}
 	}
-	return okWithRecord(out, r.Mutated(), fields)
+
+	if synthesised != nil {
+		return errWithRecordFields(out, rec, synthesised, fields)
+	}
+	return okWithRecord(out, rec, fields)
+}
+
+// sweepRemoteTaskBranches runs the origin task-branch sweep with the open pull request set fetched from GitHub.
+// When the set cannot be established it skips the sweep entirely and names the cause in SkippedReason, failing toward keeping every task branch;
+// the returned entries are then an empty array, never nil.
+func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lyxcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
+	skipped := func(reason string) fabricengine.RemoteWarpCleanupResult {
+		return fabricengine.RemoteWarpCleanupResult{
+			Entries:       []fabricengine.RemoteWarpBranchEntry{},
+			SkippedReason: reason,
+		}
+	}
+
+	remoteURL, err := gitrepo.New(l.WorktreePath()).RemoteURL("origin")
+	if err != nil {
+		return skipped(fmt.Sprintf("task branches on origin were kept: the warp repo has no origin remote: %v", err)), nil
+	}
+	heads, err := listOpenPRHeads(ctx, remoteURL)
+	if err != nil {
+		return skipped(fmt.Sprintf("task branches on origin were kept: the open pull requests could not be listed: %v", err)), nil
+	}
+	return top.CleanupRemoteWarp(l, apply, heads)
 }
 
 // runRemoveWithFlag executes the remove logic with the resolved force and remote flags.
@@ -909,20 +997,29 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return output.Err(out, err.Error())
 	}
 
-	top := fabricengine.NewTopology(cfg)
-
 	// args[0] is the slug; cobra has already consumed "remove" from the argument list.
 	if len(args) < 1 {
 		return output.Err(out, "usage: lyx fabric remove [--force] [--remote] <slug>")
 	}
 	slug := args[0]
 
-	r, err := top.Remove(l, slug, force, remote)
+	td, err := pairteardown.New(l)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	res, err := td.Run(ctx, pairteardown.Request{
+		Slug:           slug,
+		Force:          force,
+		Remote:         remote,
+		QuietWait:      pairteardown.RemoveQuietWait,
+		RefuseWhenBusy: true,
+	})
+	r := res.Removal
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	fields := removeFields(r)
+	fields := removeFields(r, res.Session)
 
 	// Keyed on RemoteBranchError alone — never on RemoteSkippedReason — so that a missing origin
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
@@ -942,19 +1039,36 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// warp_branch_kept_reason appears only when the warp branch was kept for a stated reason.
-func removeFields(r fabricengine.RemoveResult) map[string]any {
+// warp_branch_kept_reason, remote_warp_branch_kept_reason, stray_path and abandoned_session appear only when set.
+func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult) map[string]any {
+	steps := r.Steps
+	if steps == nil {
+		steps = []string{}
+	}
 	fields := map[string]any{
-		"slug":                  r.Slug,
-		"path":                  r.Path,
-		"links_removed":         r.LinksRemoved,
-		"remote_branch_deleted": r.RemoteBranchDeleted,
-		"remote_branch_error":   r.RemoteBranchError,
-		"remote_skipped_reason": r.RemoteSkippedReason,
-		"warp_branch_deleted":   r.WarpBranchDeleted,
+		"slug":                       r.Slug,
+		"path":                       r.Path,
+		"links_removed":              r.LinksRemoved,
+		"remote_branch_deleted":      r.RemoteBranchDeleted,
+		"remote_branch_error":        r.RemoteBranchError,
+		"remote_skipped_reason":      r.RemoteSkippedReason,
+		"warp_branch_deleted":        r.WarpBranchDeleted,
+		"steps":                      steps,
+		"finished":                   r.Finished,
+		"remote_warp_branch_deleted": r.RemoteWarpBranchDeleted,
+		"session_ended":              session.Ended,
 	}
 	if r.WarpBranchKeptReason != "" {
 		fields["warp_branch_kept_reason"] = r.WarpBranchKeptReason
+	}
+	if r.RemoteWarpBranchKeptReason != "" {
+		fields["remote_warp_branch_kept_reason"] = r.RemoteWarpBranchKeptReason
+	}
+	if r.StrayPath != "" {
+		fields["stray_path"] = r.StrayPath
+	}
+	if session.AbandonedSession != "" {
+		fields["abandoned_session"] = session.AbandonedSession
 	}
 	return fields
 }

@@ -47,15 +47,12 @@ func writeRoundPair(t *testing.T, runDir string, n int) {
 	writeRoundFile(t, roundFixerReportPath(runDir, n))
 }
 
-// writeJudgedRound writes round n's own two files plus the BLOCKING verdict and ledger the
-// segment's Bouncer writes when it rejects that round -- the complete on-disk state of a round the
-// producer may advance past.
-// The verdict is BLOCKING rather than APPROVED because an APPROVED round is one the segment left on
-// a Done, never one the round producer is called after.
+// writeJudgedRound writes round n's own two files plus the CONTINUE verdict and ledger the segment's Bouncer writes when it rejects that round -- the complete on-disk state of a round the producer may advance past.
+// The verdict is CONTINUE rather than CONVERGED because a CONVERGED round is one the segment left on a Done, never one the round producer is called after.
 func writeJudgedRound(t *testing.T, runDir string, n int) {
 	t.Helper()
 	writeRoundPair(t, runDir, n)
-	if err := os.WriteFile(verdictPath(runDir, n), []byte(bouncerVerdictContent("BLOCKING")), 0o644); err != nil {
+	if err := os.WriteFile(verdictPath(runDir, n), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
 		t.Fatalf("WriteFile(verdict round %d): %v", n, err)
 	}
 	if err := os.WriteFile(ledgerPath(runDir, n), []byte(bouncerLedgerContent(n)), 0o644); err != nil {
@@ -798,10 +795,10 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 	}
 
 	// The surviving round is judged before the resumed call, exactly as the real sequence judges it:
-	// this row's Stuck routes to the segment's Bouncer, whose BLOCKING verdict routes back here.
+	// this row's Stuck routes to the segment's Bouncer, whose CONTINUE verdict routes back here.
 	// Without that verdict the resumed call would hand back rather than advance, which is a different
 	// property (covered in the round-scan cases) than the artifact survival this test is about.
-	if err := os.WriteFile(verdictPath(runDir, 1), []byte(bouncerVerdictContent("BLOCKING")), 0o644); err != nil {
+	if err := os.WriteFile(verdictPath(runDir, 1), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
 		t.Fatalf("WriteFile(verdict round 1): %v", err)
 	}
 	if err := os.WriteFile(ledgerPath(runDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {

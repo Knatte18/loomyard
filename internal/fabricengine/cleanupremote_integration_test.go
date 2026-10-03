@@ -4,7 +4,7 @@
 // opt-in deletion of an orphan weft branch's copy on the remote, its default-off regression guard,
 // the dry-run no-op, the idempotent never-pushed path, the protected-entry carve-out, the non-fatal
 // remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
-// remote -- plus RemovePairBranch, which deletes through the same gated helpers.
+// remote.
 //
 // Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
 // so a test can push an orphan branch to it and then assert the ref is gone.
@@ -349,45 +349,5 @@ func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
 
 	if res.RemoteSkippedReason != "" {
 		t.Errorf("RemoteSkippedReason = %q; want empty — remote is false, so the pre-check must not run at all", res.RemoteSkippedReason)
-	}
-}
-
-// TestRemovePairBranch_DeletesLocalAndRemoteAndRefusesALivePair covers RemovePairBranch: it refuses
-// while the pair's other-side worktree is still on disk, and once the pair is gone deletes the
-// branch locally and on the remote, then answers an already-clean repeat with no error.
-func TestRemovePairBranch_DeletesLocalAndRemoteAndRefusesALivePair(t *testing.T) {
-	t.Parallel()
-
-	const slug = "remove-pair-branch"
-	branch := fabricengine.WeftBranchName(slug)
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustPushBranch(t, weftRoot, branch)
-	topology := h.Topology
-
-	sibling, _, err := fabricengine.PairSiblingRemnant(l, slug)
-	if err != nil {
-		t.Fatalf("PairSiblingRemnant: %v", err)
-	}
-	gitkit.MustRun(t, weftRoot, "git", "worktree", "add", sibling, branch)
-	if _, err := topology.RemovePairBranch(l, slug); err == nil {
-		t.Fatal("RemovePairBranch() with the other-side worktree on disk = nil error; want a refusal")
-	}
-	gitkit.MustRun(t, weftRoot, "git", "worktree", "remove", "--force", sibling)
-
-	res, err := topology.RemovePairBranch(l, slug)
-	if err != nil {
-		t.Fatalf("RemovePairBranch() error = %v", err)
-	}
-	if !res.LocalDeleted || !res.RemoteDeleted {
-		t.Errorf("RemovePairBranch() = %+v; want LocalDeleted and RemoteDeleted", res)
-	}
-	if gitkit.BranchExists(t, weftRoot, branch) || gitkit.BranchExists(t, h.WeftBare, branch) {
-		t.Errorf("branch %q still present locally or on the remote", branch)
-	}
-	if _, err := topology.RemovePairBranch(l, slug); err != nil {
-		t.Errorf("RemovePairBranch() repeated = %v; want nil for an already-deleted branch", err)
 	}
 }

@@ -201,8 +201,8 @@ type weftTeardownResult struct {
 	remoteBranchDeleted bool
 	// remoteBranchError is non-empty when the remote deletion was attempted and did not succeed.
 	remoteBranchError string
-	// remoteSkippedReason carries the once-per-call reason no remote deletion was attempted at all
-	// — today only a weft repo with no origin remote configured.
+	// remoteSkippedReason carries the once-per-call reason no remote deletion was attempted at all;
+	// RemoveResult.RemoteSkippedReason names its causes.
 	remoteSkippedReason string
 }
 

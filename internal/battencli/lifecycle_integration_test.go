@@ -1021,3 +1021,57 @@ func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
 		t.Errorf("a run directory was seeded under the weft prime; the refusal must land before the auto-seed")
 	}
 }
+
+// TestBattenIntegration_Teardown_ReEntryAfterCompletedRemovalIsDone tears a created pair down through both halves, then runs both again, and asserts the second pass returns nil from each.
+// That second pass is the state a process killed right after the removal leaves, since shedengine persists the row's transition only after the producer returns.
+func TestBattenIntegration_Teardown_ReEntryAfterCompletedRemovalIsDone(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-reentry"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+
+	for _, pass := range []string{"first", "re-entered"} {
+		if _, err := c.env.Teardown.Shutdown(context.Background()); err != nil {
+			t.Fatalf("%s Teardown.Shutdown() = %v; want nil", pass, err)
+		}
+		if err := c.env.Teardown.Remove(context.Background()); err != nil {
+			t.Fatalf("%s Teardown.Remove() = %v; want nil", pass, err)
+		}
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Error("task worktree still present after the teardown; want it removed")
+	}
+}
+
+// TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown dirties a created pair's sibling worktree outside the record pathspec and asserts the shutdown half refuses with fabric's sibling-dirty error, never names --force, and leaves the pair in place.
+func TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-sibling-dirt"
+	hubforge.AddPair(t, h, slug)
+	stray := filepath.Join(fabricengine.WeftWorktreePath(h.Location, slug), "stray.txt")
+	if err := os.WriteFile(stray, []byte("not a record\n"), 0o644); err != nil {
+		t.Fatalf("write the out-of-pathspec file: %v", err)
+	}
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+
+	_, err := c.env.Teardown.Shutdown(context.Background())
+	if err == nil {
+		t.Fatal("Teardown.Shutdown() = nil; want the sibling-dirt refusal")
+	}
+	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
+		t.Errorf("Teardown.Shutdown() error = %v; want it to wrap ErrPairSiblingDirty", err)
+	}
+	if strings.Contains(err.Error(), "--force") {
+		t.Errorf("Teardown.Shutdown() error = %q; want it to never name --force", err.Error())
+	}
+	if !pathExists(h.PairWarpWorktree(slug)) {
+		t.Error("task worktree is gone after the refused shutdown; want the pair left in place")
+	}
+	if !pathExists(stray) {
+		t.Error("the sibling's stray file is gone after the refused shutdown; want the sibling untouched")
+	}
+}

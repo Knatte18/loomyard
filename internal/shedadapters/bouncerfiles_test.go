@@ -23,12 +23,12 @@ func TestParseVerdictCommonRules(t *testing.T) {
 	}{
 		{
 			name:    "missing opening delimiter",
-			content: "verdict: APPROVED\nrationale: fine\n---\n",
+			content: "verdict: CONVERGED\nrationale: fine\n---\n",
 			wantErr: "must open with a \"---\" frontmatter delimiter line",
 		},
 		{
 			name:    "missing closing delimiter",
-			content: "---\nverdict: APPROVED\nrationale: fine\n",
+			content: "---\nverdict: CONVERGED\nrationale: fine\n",
 			wantErr: "missing its closing \"---\" delimiter line",
 		},
 		{
@@ -59,13 +59,13 @@ func TestParseVerdictCommonRules(t *testing.T) {
 }
 
 func TestParseVerdictProseAndUnknownKey(t *testing.T) {
-	content := "---\nverdict: APPROVED\nrationale: fine\nunknown_key: noise\n---\r\nline one\r\nline two\r\n"
+	content := "---\nverdict: CONVERGED\nrationale: fine\nunknown_key: noise\n---\r\nline one\r\nline two\r\n"
 	verdict, rationale, err := parseVerdict([]byte(content))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if verdict != verdictApproved {
-		t.Fatalf("verdict = %q, want %q", verdict, verdictApproved)
+	if verdict != verdictConverged {
+		t.Fatalf("verdict = %q, want %q", verdict, verdictConverged)
 	}
 	if rationale != "fine" {
 		t.Fatalf("rationale = %q, want %q", rationale, "fine")
@@ -85,20 +85,31 @@ func TestParseVerdictSpecific(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "APPROVED accepted",
+			name:    "CONVERGED accepted",
+			content: "---\nverdict: CONVERGED\nrationale: looks good\n---\n",
+			wantOK:  true,
+			wantV:   verdictConverged,
+		},
+		{
+			name:    "CONTINUE accepted",
+			content: "---\nverdict: CONTINUE\nrationale: needs work\n---\n",
+			wantOK:  true,
+			wantV:   verdictContinue,
+		},
+		{
+			name:    "CIRCLING accepted",
+			content: "---\nverdict: CIRCLING\nrationale: no progress\n---\n",
+			wantOK:  true,
+			wantV:   verdictCircling,
+		},
+		{
+			name:    "legacy APPROVED rejected",
 			content: "---\nverdict: APPROVED\nrationale: looks good\n---\n",
-			wantOK:  true,
-			wantV:   verdictApproved,
+			wantErr: "verdict must be exactly",
 		},
 		{
-			name:    "BLOCKING accepted",
-			content: "---\nverdict: BLOCKING\nrationale: needs work\n---\n",
-			wantOK:  true,
-			wantV:   verdictBlocking,
-		},
-		{
-			name:    "lowercase approved rejected",
-			content: "---\nverdict: approved\nrationale: looks good\n---\n",
+			name:    "lowercase converged rejected",
+			content: "---\nverdict: converged\nrationale: looks good\n---\n",
 			wantErr: "verdict must be exactly",
 		},
 		{
@@ -108,12 +119,12 @@ func TestParseVerdictSpecific(t *testing.T) {
 		},
 		{
 			name:    "empty rationale rejected",
-			content: "---\nverdict: APPROVED\nrationale: \"\"\n---\n",
+			content: "---\nverdict: CONVERGED\nrationale: \"\"\n---\n",
 			wantErr: "missing a non-empty rationale",
 		},
 		{
 			name:    "whitespace-only rationale rejected",
-			content: "---\nverdict: APPROVED\nrationale: \"   \"\n---\n",
+			content: "---\nverdict: CONVERGED\nrationale: \"   \"\n---\n",
 			wantErr: "missing a non-empty rationale",
 		},
 	}
@@ -486,7 +497,7 @@ func TestWriteFocus_WritesReadableFile(t *testing.T) {
 // own verdictPath/ledgerPath, for recordedVerdict's own tests.
 func writeVerdictAndLedger(t *testing.T, runDir string, round, ledgerRound int) {
 	t.Helper()
-	verdict := "---\nverdict: APPROVED\nrationale: \"looks good\"\n---\n"
+	verdict := "---\nverdict: CONVERGED\nrationale: \"looks good\"\n---\n"
 	if err := os.WriteFile(verdictPath(runDir, round), []byte(verdict), 0o644); err != nil {
 		t.Fatalf("WriteFile(verdict): %v", err)
 	}
@@ -509,8 +520,8 @@ func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
 		if !judged {
 			t.Fatalf("recordedVerdict(round 3) judged = false; want true (a ledger whose own round agrees with its filename)")
 		}
-		if verdict != verdictApproved {
-			t.Errorf("recordedVerdict(round 3) verdict = %q; want %q", verdict, verdictApproved)
+		if verdict != verdictConverged {
+			t.Errorf("recordedVerdict(round 3) verdict = %q; want %q", verdict, verdictConverged)
 		}
 	})
 

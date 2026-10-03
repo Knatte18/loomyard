@@ -45,6 +45,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.Now":                true,
 	"InnerRun.OpenIDE":            true,
 	"PrimeLock.Sleep":             true,
+	"SegmentBounces":              true,
 }
 
 // nilFabricOpener is a typed-nil fabric handle with a nil error.
