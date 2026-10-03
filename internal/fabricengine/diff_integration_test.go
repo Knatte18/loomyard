@@ -15,6 +15,7 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,16 +35,6 @@ func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.Chan
 		}
 	}
 	return paths
-}
-
-// containsPath reports whether want is present in paths.
-func containsPath(paths []string, want string) bool {
-	for _, p := range paths {
-		if p == want {
-			return true
-		}
-	}
-	return false
 }
 
 // TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path: two Commit rounds record
@@ -79,11 +70,11 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	}
 
 	warpPaths := changeEntryPaths(got.Entries, fabricengine.SideWarp)
-	if !containsPath(warpPaths, "README") {
+	if !slices.Contains(warpPaths, "README") {
 		t.Errorf("Diff(%q) warp-side paths = %v; want it to contain README", warpSHA1, warpPaths)
 	}
 	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
-	if !containsPath(weftPaths, filepath.Join("_lyx", "config.yaml")) {
+	if !slices.Contains(weftPaths, filepath.Join("_lyx", "config.yaml")) {
 		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain _lyx/config.yaml", warpSHA1, weftPaths)
 	}
 }
@@ -129,7 +120,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	}
 
 	weftPaths := changeEntryPaths(got.Entries, fabricengine.SideWeft)
-	if !containsPath(weftPaths, "manual-ahead.txt") {
+	if !slices.Contains(weftPaths, "manual-ahead.txt") {
 		t.Errorf("Diff(%q) weft-side paths = %v; want it to contain manual-ahead.txt (the nearest-older baseline resolved, not empty)", warpSHA2, weftPaths)
 	}
 }
@@ -165,7 +156,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 		t.Errorf("Diff(%q) weft-side entries = %v; want empty", initialWarpSHA, changeEntryPaths(got.Entries, fabricengine.SideWeft))
 	}
 	warpPaths := changeEntryPaths(got.Entries, fabricengine.SideWarp)
-	if !containsPath(warpPaths, "README") {
+	if !slices.Contains(warpPaths, "README") {
 		t.Errorf("Diff(%q) warp-side paths = %v; want it to contain README", initialWarpSHA, warpPaths)
 	}
 }
@@ -214,10 +205,10 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	warpPaths := changeEntryPaths(entries, fabricengine.SideWarp)
 	weftPaths := changeEntryPaths(entries, fabricengine.SideWeft)
 
-	if !containsPath(warpPaths, "uncommitted.txt") {
+	if !slices.Contains(warpPaths, "uncommitted.txt") {
 		t.Errorf("Status() warp-side paths = %v; want it to contain uncommitted.txt", warpPaths)
 	}
-	if !containsPath(weftPaths, filepath.Join("_lyx", "config.yaml")) {
+	if !slices.Contains(weftPaths, filepath.Join("_lyx", "config.yaml")) {
 		t.Errorf("Status() weft-side paths = %v; want it to contain _lyx/config.yaml", weftPaths)
 	}
 

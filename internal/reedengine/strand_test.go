@@ -1061,7 +1061,7 @@ func TestPaneIDsInSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := paneIDsInSession(tt.paneIDs, live)
-			if !equalStringSlices(got, tt.want) {
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("paneIDsInSession(%v, live) = %v; want %v", tt.paneIDs, got, tt.want)
 			}
 		})

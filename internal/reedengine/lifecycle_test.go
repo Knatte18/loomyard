@@ -10,6 +10,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -321,7 +322,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := guids(planResumeLaunches(tt.strands, tt.liveIDs))
-			if !equalStringSlices(got, tt.want) {
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("planResumeLaunches() guids = %v, want %v", got, tt.want)
 			}
 		})

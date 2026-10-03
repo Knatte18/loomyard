@@ -14,6 +14,7 @@ package gitrepo_test
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -283,7 +284,7 @@ func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 	if oracleErr != nil {
 		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
 	}
-	if !containsPath(oracleFiles, filename) {
+	if !slices.Contains(oracleFiles, filename) {
 		t.Fatalf("oracleChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
 	}
 
@@ -291,7 +292,7 @@ func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 	if implErr != nil {
 		t.Fatalf("ChangedFilesSince() error = %v", implErr)
 	}
-	if !containsPath(implFiles, filename) {
+	if !slices.Contains(implFiles, filename) {
 		t.Fatalf("ChangedFilesSince() = %v, want it to contain verbatim %q", implFiles, filename)
 	}
 
@@ -315,10 +316,10 @@ func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 	}
 
 	for _, files := range [][]string{oracleFiles, implFiles} {
-		if !containsPath(files, oldName) {
+		if !slices.Contains(files, oldName) {
 			t.Errorf("ChangedFilesSince() = %v, want it to contain the deleted old path %q", files, oldName)
 		}
-		if !containsPath(files, newName) {
+		if !slices.Contains(files, newName) {
 			t.Errorf("ChangedFilesSince() = %v, want it to contain the added new path %q", files, newName)
 		}
 	}
@@ -337,18 +338,6 @@ func TestChangedFilesSince_Parity_NonHexSHA(t *testing.T) {
 	if !errors.Is(implErr, gitrepo.ErrInvalidSHA) {
 		t.Errorf("ChangedFilesSince(non-hex) error = %v, want gitrepo.ErrInvalidSHA", implErr)
 	}
-}
-
-// containsPath reports whether haystack contains needle, used to assert a
-// specific path is present in a ChangedFilesSince result without depending on
-// list order.
-func containsPath(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states the method can

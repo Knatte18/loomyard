@@ -8,23 +8,12 @@ package reedengine
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
 
 func TestPlanReconcile(t *testing.T) {
 	tests := []struct {
@@ -244,13 +233,13 @@ func TestPlanReconcile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := newReapPolicy(&ReedState{SelvagePaneID: tt.selvagePaneID}, tt.live)
 			gotPlan := planReconcile(tt.strands, tt.live, policy)
-			if !equalStringSlices(gotPlan.clearedGUIDs, tt.wantCleared) {
+			if !slices.Equal(gotPlan.clearedGUIDs, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotPlan.clearedGUIDs, tt.wantCleared)
 			}
-			if !equalStringSlices(gotPlan.deadPanesToKill, tt.wantDeadPanesToKill) {
+			if !slices.Equal(gotPlan.deadPanesToKill, tt.wantDeadPanesToKill) {
 				t.Errorf("planReconcile() deadPanesToKill = %v, want %v", gotPlan.deadPanesToKill, tt.wantDeadPanesToKill)
 			}
-			if !equalStringSlices(gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill) {
+			if !slices.Equal(gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill) {
 				t.Errorf("planReconcile() untrackedPanesToKill = %v, want %v", gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill)
 			}
 			if gotPlan.keptDeadPane != tt.wantSolePane {
@@ -315,7 +304,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reconcileLocked: %v", err)
 		}
-		if !equalStringSlices(killed, []string{"%orphan1", "%orphan2"}) {
+		if !slices.Equal(killed, []string{"%orphan1", "%orphan2"}) {
 			t.Fatalf("killed = %v, want [%%orphan1 %%orphan2]", killed)
 		}
 		out := buf.String()
@@ -365,7 +354,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		if !errors.Is(err, killPaneErr) {
 			t.Errorf("reconcileLocked() err = %v, want it to wrap %v", err, killPaneErr)
 		}
-		if !equalStringSlices(killed, []string{"%orphan1"}) {
+		if !slices.Equal(killed, []string{"%orphan1"}) {
 			t.Fatalf("killed = %v, want [%%orphan1] (only the pane destroyed before the failure)", killed)
 		}
 
@@ -456,7 +445,7 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 			st := tt.state
 			st.Strands = append([]Strand(nil), tt.state.Strands...)
 			got := clearConflictingPaneBindings(&st)
-			if !equalStringSlices(got, tt.wantCleared) {
+			if !slices.Equal(got, tt.wantCleared) {
 				t.Errorf("clearConflictingPaneBindings() cleared = %v; want %v", got, tt.wantCleared)
 			}
 			for guid, want := range tt.wantPaneByID {
