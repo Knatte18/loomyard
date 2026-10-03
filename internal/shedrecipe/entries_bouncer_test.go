@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -776,5 +777,95 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, `unrecognized config key "cluster_exclude"`)
+	})
+}
+
+// circlingSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's CIRCLING verdict and ledger to the spec's declared OutputFiles, so a bouncerEntry-built producer settles on an undecided circling round within one Call.
+func circlingSeamShuttle() *shedfake.Shuttle {
+	return &shedfake.Shuttle{
+		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+			if len(spec.OutputFiles) == 3 {
+				verdict := "---\nverdict: CIRCLING\nrationale: \"no progress\"\n---\n"
+				_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
+				ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
+				_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+			}
+			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		},
+	}
+}
+
+// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's circling Awaiting Reason, and the row built with neither.
+func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
+	callReason := func(t *testing.T, env Env) string {
+		t.Helper()
+		env.Shuttle = circlingSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		cfg := minimalBouncerConfig(t, env)
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		outcome, ptr, err := producer.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Awaiting {
+			t.Fatalf("Call() outcome = %v; want %v", outcome, shedengine.Awaiting)
+		}
+		return ptr.Reason
+	}
+
+	t.Run("SlugAndSpentBudget", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = "my-task"
+		var asked []string
+		env.SegmentBounces = func(row string) (int, int, bool, error) {
+			asked = append(asked, row)
+			return 5, 5, true, nil
+		}
+
+		reason := callReason(t, env)
+		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "5 of 5 spent"} {
+			if !strings.Contains(reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", reason, want)
+			}
+		}
+		if len(asked) == 0 || asked[0] != "review-bounce" {
+			t.Errorf("SegmentBounces asked about rows %v; want the Bouncer's own row name first", asked)
+		}
+	})
+
+	t.Run("BudgetLeftOmitsTheSentence", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = "my-task"
+		env.SegmentBounces = func(string) (int, int, bool, error) { return 2, 5, true, nil }
+
+		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence while budget remains", reason)
+		}
+	})
+
+	t.Run("RowOutsideASegmentOmitsTheSentence", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SegmentBounces = func(string) (int, int, bool, error) { return 5, 5, false, nil }
+
+		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence for a row outside a segment", reason)
+		}
+	})
+
+	t.Run("NeitherStillConstructs", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = ""
+		reason := callReason(t, env)
+		if !strings.Contains(reason, "`lyx loom circling accept`") {
+			t.Errorf("Reason = %q; want the verbs without a slug argument", reason)
+		}
+		if strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence without the seam", reason)
+		}
 	})
 }
