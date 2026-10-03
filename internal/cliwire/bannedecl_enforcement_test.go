@@ -11,11 +11,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // policedCliDirs are the repository-relative package directories checked for a re-declared wiring
@@ -64,54 +63,20 @@ var bannedWiringDeclarations = map[string]bool{
 // internal/burlercli declares a function, method, package-level var, or package-level const named
 // in bannedWiringDeclarations.
 // It spawns no process, so it carries no build tag.
-// It resolves the repository root from runtime.Caller(0) exactly as
-// TestDeriveCallerSet_CliwireOnly does, then for each policed directory parses every non-_test.go .go
-// file and inspects every top-level declaration via bannedDeclNamesIn, flagging any whose declared
-// name is banned.
+// It parses every non-_test.go .go file under each policed directory and inspects every top-level
+// declaration via bannedDeclNamesIn, flagging any whose declared name is banned.
 // The match is on the AST, never on raw text, so a doc comment naming a function cannot trip it.
 // _test.go files are skipped: the invariant is about production wiring, and a test helper is not a
 // second copy of it.
 func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine cliwire source directory location")
-	}
-	cliwireDir := filepath.Dir(thisFile)
-	repoRoot := filepath.Dir(filepath.Dir(cliwireDir)) // internal/cliwire -> internal -> repo root
-
 	var failures []string
 
-	for _, policedDir := range policedCliDirs {
-		dir := filepath.Join(repoRoot, filepath.FromSlash(policedDir))
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
-
-			fset := token.NewFileSet()
-			astFile, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-			if err != nil {
-				t.Logf("warning: failed to parse %s: %v", path, err)
-				return nil
-			}
-
-			relPath, _ := filepath.Rel(repoRoot, path)
-			for _, name := range bannedDeclNamesIn(astFile) {
-				failures = append(failures, filepath.ToSlash(relPath)+": "+name)
-			}
-
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("failed to walk %s: %v", dir, err)
+	scanned := scankit.Walk(t, scankit.Options{Roots: policedCliDirs}, func(f *scankit.File) {
+		for _, name := range bannedDeclNamesIn(f.AST(t, parser.ParseComments)) {
+			failures = append(failures, f.Rel+": "+name)
 		}
-	}
+	})
+	scankit.RequireFloor(t, scanned, len(policedCliDirs), "banned wiring declaration scan")
 
 	if len(failures) > 0 {
 		t.Errorf("Cliwire Sole-Wiring Invariant violated: %s re-declares a wiring helper cliwire "+

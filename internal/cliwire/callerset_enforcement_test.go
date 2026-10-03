@@ -20,24 +20,25 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // allowedDeriveCallerDir is the only package directory (relative to the repository root) whose
 // production code may call standalonestate.Derive.
 const allowedDeriveCallerDir = "internal/cliwire"
 
+// minDeriveScanFiles is the vacuous-scan floor for the caller-set walk.
+const minDeriveScanFiles = 100
+
 // TestDeriveCallerSet_CliwireOnly verifies that no production file outside internal/cliwire calls
 // internal/standalonestate's Derive.
 // It spawns no process, so it carries no build tag.
-// It resolves the repository root from runtime.Caller(0) by walking up from this file's directory,
-// then parses every non-_test.go .go file under the WHOLE repository — not just internal/ and cmd/,
+// It parses every non-_test.go .go file under the WHOLE repository — not just internal/ and cmd/,
 // since a caller under tools/ or a future top-level directory is exactly as much a production caller
-// (crucible round fable-high-r7, F3) — skipping .git and testdata directories, excluding
+// (crucible round fable-high-r7, F3) — under scankit's shared skip set, excluding
 // internal/standalonestate itself (whose own definition and doc comments name Derive) and excluding
 // allowedDeriveCallerDir, looking for a selector call expression whose receiver identifier is this
 // file's standalonestate import and whose selected name is Derive.
@@ -47,68 +48,29 @@ const allowedDeriveCallerDir = "internal/cliwire"
 // The match is on the AST, never on raw text, so a doc comment naming the qualified call cannot trip
 // it.
 func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine cliwire source directory location")
-	}
-	cliwireDir := filepath.Dir(thisFile)
-	repoRoot := filepath.Dir(filepath.Dir(cliwireDir)) // internal/cliwire -> internal -> repo root
-
 	var failures []string
 
-	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+		if strings.HasPrefix(f.Rel, "internal/standalonestate/") || strings.HasPrefix(f.Rel, allowedDeriveCallerDir+"/") {
+			return
 		}
-		if d.IsDir() {
-			if path == repoRoot {
-				return nil
-			}
-			if d.Name() == ".git" || d.Name() == "testdata" {
-				return filepath.SkipDir
-			}
-			relDir, relErr := filepath.Rel(repoRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			relDir = filepath.ToSlash(relDir)
-			if relDir == "internal/standalonestate" || relDir == allowedDeriveCallerDir {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
+		astFile := f.AST(t, parser.ParseComments)
 
 		standalonestateAlias, imported := standalonestateImportAlias(astFile)
 		if !imported {
-			return nil
+			return
 		}
 
 		if standalonestateAlias == "." {
-			relPath, _ := filepath.Rel(repoRoot, path)
-			failures = append(failures, filepath.ToSlash(relPath)+" (dot-imports standalonestate, hiding every Derive call from this pin)")
-			return nil
+			failures = append(failures, f.Rel+" (dot-imports standalonestate, hiding every Derive call from this pin)")
+			return
 		}
 
 		if callsDerive(astFile, standalonestateAlias) {
-			relPath, _ := filepath.Rel(repoRoot, path)
-			failures = append(failures, filepath.ToSlash(relPath))
+			failures = append(failures, f.Rel)
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk %s: %v", repoRoot, err)
-	}
+	scankit.RequireFloor(t, scanned, minDeriveScanFiles, "standalonestate.Derive caller-set scan")
 
 	if len(failures) > 0 {
 		t.Errorf("Cliwire Sole-Wiring Invariant violated: standalonestate.Derive is pinned to %s alone "+

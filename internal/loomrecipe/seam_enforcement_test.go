@@ -8,28 +8,26 @@
 // maintenance beyond a genuine new dependency.
 //
 // github.com/Knatte18/loomyard/contracts/recipes sits outside internal/ and so must be
-// allowlisted explicitly, since the stdlib test below is "the first path segment contains no dot",
+// allowlisted explicitly, since the stdlib test is "the first path segment contains no dot",
 // which a full module path never satisfies.
 
 package loomrecipe
 
 import (
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // loomrecipeAllowedImports are the only non-stdlib import paths production code in this package may
 // use.
-var loomrecipeAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/contracts/recipes":   true,
-	"github.com/Knatte18/loomyard/internal/shedbuild":  true,
-	"github.com/Knatte18/loomyard/internal/shedrecipe": true,
-	"github.com/Knatte18/loomyard/internal/shedengine": true,
+var loomrecipeAllowedImports = []string{
+	"github.com/Knatte18/loomyard/contracts/recipes",
+	"github.com/Knatte18/loomyard/internal/shedbuild",
+	"github.com/Knatte18/loomyard/internal/shedrecipe",
+	"github.com/Knatte18/loomyard/internal/shedengine",
 }
 
 // loomrecipeDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes from
@@ -37,67 +35,20 @@ var loomrecipeAllowedImports = map[string]bool{
 // name rather than only implied by its absence from the allowlist above.
 const loomrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in loomrecipeAllowedImports, and separately asserts that no
-// production import path is loomrecipeDeniedLyxcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
+// that no production import path is loomrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine loomrecipe source directory location")
-	}
-	pkgDir := filepath.Dir(file)
+	scankit.AssertImportAllowlist(t, "internal/loomrecipe", loomrecipeAllowedImports...)
 
-	var failures []string
 	var deniedFound []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-
-			relPath, _ := filepath.Rel(pkgDir, path)
-			if importPath == loomrecipeDeniedLyxcwdImport {
-				deniedFound = append(deniedFound, relPath)
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/loomrecipe"}, Shallow: true}, func(f *scankit.File) {
+		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
+			if strings.Trim(imp.Path.Value, `"`) == loomrecipeDeniedLyxcwdImport {
+				deniedFound = append(deniedFound, f.Rel)
 			}
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || loomrecipeAllowedImports[importPath] {
-				continue
-			}
-
-			failures = append(failures, relPath+": "+importPath)
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk loomrecipe directory: %v", err)
-	}
-
-	if len(failures) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
-	}
+	scankit.RequireFloor(t, scanned, 1, "loomrecipe denied-import scan")
 	if len(deniedFound) > 0 {
 		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", loomrecipeDeniedLyxcwdImport, deniedFound)
 	}
