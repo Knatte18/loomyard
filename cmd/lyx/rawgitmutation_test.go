@@ -7,8 +7,8 @@
 //
 // The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.Run() — not per-verb
 // method names: a verb-name ban would both flag the correctly-migrated consumer code (which
-// legitimately calls .CheckoutDetached(/.ResetHard( on the new FabricBisector/FabricResetter
-// interfaces) and miss the raw gitexec.Run( bypass that carries no method token at all.
+// legitimately calls a mutating verb such as .ResetHard( on an engine-declared interface)
+// and miss the raw gitexec.Run( bypass that carries no method token at all.
 
 package main
 
@@ -41,7 +41,7 @@ var rawGitMutationBannedTokens = []string{
 // out when the mutating paths in this package migrated onto
 // internal/fabricengine's warp-only methods.
 var rawGitMutationAllowlist = []scankit.Entry{
-	{Key: "internal/websterengine/gitwrap.go", Why: "grandfathered read-only exemptions — via gitrepo.New the read-only queries CurrentSHA, MergeHeadPresent, the reconcile walk's CommitParents, ResolveSHA, IsAncestor, MergeTree and CommitTree, SHAExists (shaExists) and IsAncestor (isAncestor), and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty), `status --porcelain --ignored` (ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob), `rev-parse --verify --quiet` (commitBlob) and `ls-tree -r` (treePathsWithBlob)"},
+	{Key: "internal/websterengine/gitwrap.go", Why: "grandfathered read-only exemptions — via gitrepo.New the read-only queries CurrentSHA, MergeHeadPresent, CommitParents (the reconcile walk and the fix-commit walk, `fixCommitRejection`), ResolveSHA, IsAncestor, MergeTree and CommitTree, SHAExists (shaExists) and IsAncestor (isAncestor), and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty), `status --porcelain --ignored` (ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob), `rev-parse --verify --quiet` (commitBlob) and `ls-tree -r` (treePathsWithBlob)"},
 }
 
 // rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's

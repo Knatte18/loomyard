@@ -468,37 +468,52 @@ func TestBuildSettings_AllowAgentTool(t *testing.T) {
 	})
 }
 
-// TestPrepare_PromptLaunchLimit pins the maxLaunchPromptBytes guard: a prompt over the limit is
-// rejected up front with a self-describing error (before any run artifact is written), because past
-// the Windows command-line ceiling the pane launch is guaranteed to fail and would otherwise
-// surface only as an opaque `died` a full startup window later.
-// A prompt exactly at the limit still prepares normally.
+// TestPrepare_PromptLaunchLimit pins that the launch line carries a pointer to prompt.md, never the prompt text,
+// so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
+// Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	cfg := shuttleengine.Config{}
 	c := New()
 
-	t.Run("OverLimit_RejectedBeforeArtifacts", func(t *testing.T) {
+	t.Run("LargePrompt_LaunchesWithPointer", func(t *testing.T) {
 		runDir := t.TempDir()
-		spec := shuttleengine.Spec{Prompt: strings.Repeat("p", maxLaunchPromptBytes+1)}
-		_, err := c.Prepare(runDir, spec, cfg)
+		prompt := strings.Repeat("p", maxLaunchPromptBytes+1)
+		launch, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: prompt}, cfg)
+		if err != nil {
+			t.Fatalf("Prepare() with an over-30000-byte prompt error: %v; want nil", err)
+		}
+		promptPath, err := filepath.Abs(filepath.Join(runDir, "prompt.md"))
+		if err != nil {
+			t.Fatalf("Abs: %v", err)
+		}
+		if !strings.Contains(launch.Cmd, launchPointer(promptPath)) {
+			t.Errorf("launch cmd = %q; want it to carry the pointer to %s", launch.Cmd, promptPath)
+		}
+		if strings.Contains(launch.Cmd, prompt) {
+			t.Error("launch cmd carries the prompt text; want only the pointer")
+		}
+		got, err := os.ReadFile(promptPath)
+		if err != nil {
+			t.Fatalf("read prompt.md: %v", err)
+		}
+		if string(got) != prompt {
+			t.Errorf("prompt.md holds %d bytes; want the full %d-byte prompt", len(got), len(prompt))
+		}
+	})
+
+	t.Run("PathologicalRunDir_RejectedBeforeArtifacts", func(t *testing.T) {
+		base := t.TempDir()
+		runDir := filepath.Join(base, strings.Repeat("d", maxLaunchPromptBytes))
+		_, err := c.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, cfg)
 		if err == nil {
-			t.Fatal("Prepare() with an over-limit prompt = nil error; want the launch-limit rejection")
+			t.Fatal("Prepare() with an over-limit pointer = nil error; want the launch-limit rejection")
 		}
 		if !strings.Contains(err.Error(), "launch limit") {
 			t.Errorf("Prepare() error = %q; want it to name the launch limit", err)
 		}
-		// The rejection must precede artifact writes — a half-prepared run
-		// dir would look resumable to a later diagnosis pass.
-		if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); !os.IsNotExist(statErr) {
-			t.Errorf("prompt.md exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
-		}
-	})
-
-	t.Run("AtLimit_Accepted", func(t *testing.T) {
-		runDir := t.TempDir()
-		spec := shuttleengine.Spec{Prompt: strings.Repeat("p", maxLaunchPromptBytes)}
-		if _, err := c.Prepare(runDir, spec, cfg); err != nil {
-			t.Fatalf("Prepare() with an at-limit prompt error: %v; want nil", err)
+		// The run directory itself is too long to stat, so assert nothing was created beside it.
+		if entries, readErr := os.ReadDir(base); readErr != nil || len(entries) != 0 {
+			t.Errorf("ReadDir(%s) = %v entries, err=%v; want no artifacts written after a rejected Prepare", base, len(entries), readErr)
 		}
 	})
 }

@@ -1,5 +1,5 @@
 // landingdeps_verify_test.go covers the three verify fields landingDeps tells landingshed:
-// the VerifyCommand closure reads the plan at call time, and the two scratch paths match loomengine's accessors.
+// the VerifyCommand closure reads the plan at call time, and VerifyDir is the shared verify directory.
 // It only writes files under t.TempDir(), so it stays Tier 1.
 
 package loomcli
@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -63,10 +63,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("VerifyCommand with no verify section = (%q, %v), want (\"\", nil)", got, err)
 	}
 
-	if want := loomengine.LoomVerifyPendingPath(loc); deps.VerifyPendingPath != want {
-		t.Errorf("VerifyPendingPath = %q, want %q", deps.VerifyPendingPath, want)
-	}
-	if want := loomengine.LoomVerifyOutputPath(loc); deps.VerifyOutputPath != want {
-		t.Errorf("VerifyOutputPath = %q, want %q", deps.VerifyOutputPath, want)
+	if want := verifytree.Dir(loc.AnchorPath()); deps.VerifyDir != want {
+		t.Errorf("VerifyDir = %q, want %q", deps.VerifyDir, want)
 	}
 }

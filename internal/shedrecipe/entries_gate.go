@@ -25,14 +25,15 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// Each element carries a required "name", resolved against a closed five-value vocabulary:
+// Each element carries a required "name", resolved against a closed six-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
 // "plan" requires env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
+// "verify" requires the absolute env.AnchorPath, env.WorktreeRoot and env.VerifyDir and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and its "pass_on_cap" tells the gate to let the rewrite after the cap's reject through rather than halt the run;
-// any other value is an error naming the key and all five legal values.
+// any other value is an error naming the key and all six legal values.
 // A name may appear once per list.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
@@ -43,6 +44,12 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 //
 // resolveGateSpec reads only the "gates" key and rejects unknown keys only inside each element -- each caller keeps owning its own configRejectUnknown call for the row's own keys, which is where the Config Strictness Invariant's strictness lives.
 func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
+	return resolveRowGateSpec(entry, entry, cfg, env)
+}
+
+// resolveRowGateSpec is resolveGateSpec for a caller that also knows its row's name, which the "verify" gate renders into its site label as "<row> gate".
+// Errors stay qualified with entry, so a row rename never changes what an author is told.
+func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.GateSpec, error) {
 	elems, present, err := configMapList(cfg, "gates")
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: %s: %w", entry, err)
@@ -57,7 +64,7 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 	spec := make(shuttleengine.GateSpec, 0, len(elems))
 	seen := make(map[string]bool, len(elems))
 	for i, elem := range elems {
-		ge, err := resolveGateEntry(entry, i, elem, env)
+		ge, err := resolveGateEntry(entry, row, i, elem, env)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +78,7 @@ func resolveGateSpec(entry string, cfg Config, env Env) (shuttleengine.GateSpec,
 }
 
 // resolveGateEntry resolves one element of a row's "gates" list, wrapping every config-accessor error with the entry and the element's index because those accessors name neither.
-func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleengine.GateEntry, error) {
+func resolveGateEntry(entry, row string, index int, elem Config, env Env) (shuttleengine.GateEntry, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("shedrecipe: %s: config key %q element %d: %w", entry, "gates", index, err)
 	}
@@ -103,7 +110,7 @@ func resolveGateEntry(entry string, index int, elem Config, env Env) (shuttleeng
 		return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Attempts: attempts, MayHold: true}, nil
 	}
 
-	closure, err := resolvePlainGateClosure(entry, index, name, env)
+	closure, err := resolvePlainGateClosure(entry, row, index, name, env)
 	if err != nil {
 		return shuttleengine.GateEntry{}, err
 	}
@@ -150,8 +157,8 @@ func resolveParentReviewClosure(entry string, attempts int, passOnCap bool, env 
 	return gate, final, nil
 }
 
-// resolvePlainGateClosure resolves the four validator names that carry no Final closure.
-func resolvePlainGateClosure(entry string, index int, name string, env Env) (shuttleengine.Gate, error) {
+// resolvePlainGateClosure resolves the five validator names that carry no Final closure.
+func resolvePlainGateClosure(entry, row string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
 	case "discussion":
 		if err := requireAbsRoot(entry, "DecisionRecordPath", env.DecisionRecordPath); err != nil {
@@ -185,7 +192,18 @@ func resolvePlainGateClosure(entry string, index int, name string, env Env) (shu
 			return nil, err
 		}
 		return landingshed.NewDescriptionGate(env.DescriptionPath), nil
+	case "verify":
+		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
+			return nil, err
+		}
+		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
+			return nil, err
+		}
+		if err := requireAbsRoot(entry, "VerifyDir", env.VerifyDir); err != nil {
+			return nil, err
+		}
+		return loomshed.NewVerifyGate(env.AnchorPath, env.WorktreeRoot, env.VerifyDir, row+" gate"), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "parent-review", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "verify", "parent-review", name)
 	}
 }

@@ -47,14 +47,6 @@ const loomReworkCoverageFileName = "rework-coverage.md"
 // loomengine is this segment's sole declarer.
 const reworkDirName = "rework"
 
-// loomVerifyPendingFileName is the filename of the pending-verify marker within LoomScratchDir.
-// loomengine is this segment's sole declarer.
-const loomVerifyPendingFileName = "verify-pending"
-
-// loomVerifyOutputFileName is the filename of the post-merge verify command's combined output within LoomScratchDir.
-// loomengine is this segment's sole declarer.
-const loomVerifyOutputFileName = "verify-output.log"
-
 // loomDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName or
 // lyxdirs.DotLyxDirName to scope every loom-owned path that is not part of the shed run directory
 // under its own subdirectory, distinct from the other products (e.g. Someday Hardener) that also
@@ -246,24 +238,6 @@ func LoomReworkDirRel() string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReworkDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReworkDirRel())
-}
-
-// LoomVerifyPendingPath returns the path to the pending-verify marker for this worktree.
-// The landing producers write it after a parent merge-in and clear it once the post-merge verify passes.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal,
-// and is ephemeral: the marker is never tracked, per the Durable-vs-Ephemeral State Invariant.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomVerifyPendingPath(l *lyxcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), loomVerifyPendingFileName)
-}
-
-// LoomVerifyOutputPath returns the path the post-merge verify command's combined output is written to.
-// The landing producers are its consumer.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal,
-// and is ephemeral: the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomVerifyOutputPath(l *lyxcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), loomVerifyOutputFileName)
 }
 
 // LoomReviewsDirRel returns the worktree-anchor-relative form of LoomReviewsDir's path: the join of lyxdirs.LyxDirName and reviewsDirName.

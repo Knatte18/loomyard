@@ -66,6 +66,8 @@ Each card is the smallest change that:
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Bundles its own test when it introduces new behavior** — implementation plus test file in the same card, structuring the change so it is testable (extract a helper rather than leaving logic inline in `main`, for example). `verify:` commands are not a substitute for a bundled test;
    only pure refactors/renames may rely on existing tests instead.
+4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
+   A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
 
 ### On-disk layout
 

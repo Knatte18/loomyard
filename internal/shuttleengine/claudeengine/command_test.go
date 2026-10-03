@@ -58,7 +58,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "interactive_no_model",
@@ -68,7 +68,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  true,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`,
 		},
 		{
 			name:         "autonomous_with_model",
@@ -78,7 +78,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "interactive_with_model",
@@ -88,7 +88,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "claude-opus-4",
 			interactive:  true,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4'`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4'`,
 		},
 		{
 			// A model value with a space or embedded quote must not corrupt
@@ -101,7 +101,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "my model's name",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'my model''s name' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'my model''s name' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "paths_with_spaces_and_quotes",
@@ -111,7 +111,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			model:        "",
 			interactive:  false,
-			want:         `& 'C:\tools\it''s claude.exe' (Get-Content -Raw 'C:\run dir\prompt.md') --session-id 'abc-123' --settings 'C:\run dir\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:         `& 'C:\tools\it''s claude.exe' 'Read C:\run dir\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run dir\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "no_effort",
@@ -121,7 +121,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			name:         "effort_low",
@@ -131,7 +131,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "low",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'low' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'low' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "effort_medium",
@@ -141,7 +141,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "medium",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'medium' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'medium' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "effort_high",
@@ -151,7 +151,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "high",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'high' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'high' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "effort_xhigh",
@@ -161,7 +161,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "xhigh",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'xhigh' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'xhigh' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "effort_max",
@@ -171,7 +171,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "max",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'max' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'max' --dangerously-skip-permissions`,
 		},
 		{
 			// --model and --effort must both appear, in that order, when
@@ -184,7 +184,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			model:        "claude-opus-4",
 			effort:       "high",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4' --effort 'high' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'claude-opus-4' --effort 'high' --dangerously-skip-permissions`,
 		},
 		{
 			// An effort value with a space or embedded quote must not
@@ -198,7 +198,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			effort:       "my effort's name",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'my effort''s name' --dangerously-skip-permissions`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --effort 'my effort''s name' --dangerously-skip-permissions`,
 		},
 		{
 			name:         "notice_pwsh",
@@ -208,7 +208,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			notice:       "Agent is denied. It's final.",
 			interactive:  false,
-			want:         `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied. It''s final.'`,
+			want:         `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied. It''s final.'`,
 		},
 		{
 			name:         "notice_posix",
@@ -219,7 +219,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:    "abc-123",
 			notice:       "Agent is denied.",
 			interactive:  true,
-			want:         `'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --append-system-prompt 'Agent is denied.'`,
+			want:         `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --append-system-prompt 'Agent is denied.'`,
 		},
 		{
 			// Proves the seam is shell-agnostic: the same builder produces the
@@ -232,7 +232,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			settingsPath: "/run/settings.json",
 			sessionID:    "abc-123",
 			interactive:  false,
-			want:         `'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions`,
+			want:         `'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions`,
 		},
 		{
 			// Fork mode on (pwsh): the fully composed line is wrapped in the
@@ -246,7 +246,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:     "abc-123",
 			interactive:   false,
 			forkSubagents: true,
-			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 		{
 			// Fork mode on (posix): the fully composed line is wrapped in the
@@ -259,7 +259,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:     "abc-123",
 			interactive:   false,
 			forkSubagents: true,
-			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions`,
+			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions`,
 		},
 		{
 			// A real assembled notice, whose ':' and ';' must stay inside the one quoted argument, riding inside the fork-mode env wrap rather than after it.
@@ -271,7 +271,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
 			interactive:   false,
 			forkSubagents: true,
-			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+			want:          `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
 		},
 		{
 			name:          "fork_mode_real_notice_posix",
@@ -283,7 +283,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			notice:        noticeAgentForkDeny + " " + noticeAskUserQuestionDeny,
 			interactive:   false,
 			forkSubagents: true,
-			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' "$(cat '/run/prompt.md')" --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
+			want:          `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' 'Read /run/prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + noticeAgentForkDeny + " " + noticeAskUserQuestionDeny + `'`,
 		},
 		{
 			// Fork mode off: the line is unchanged from today's shape — no
@@ -295,7 +295,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			sessionID:     "abc-123",
 			interactive:   false,
 			forkSubagents: false,
-			want:          `& 'claude' (Get-Content -Raw 'C:\run\prompt.md') --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+			want:          `& 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
 		},
 	}
 	for _, tt := range tests {

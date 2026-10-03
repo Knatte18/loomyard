@@ -86,8 +86,8 @@ func (w *websterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return outcome, pointer, err
 	}
 
-	// Master writes its contract files (outcome.yaml, summary.md) and the integration report into
-	// the durable webster directory, and nothing on webster's own side commits them: per the Fabric
+	// Master writes its contract files (outcome.yaml, summary.md), and the verify gate its report,
+	// into the durable webster directory, and nothing on webster's own side commits them: per the Fabric
 	// Git Invariant an agent writes into _lyx and Go commits. Left uncommitted they ride through
 	// Publish and Finalize as untracked dirt, which refuses the task worktree's later removal.
 	// A commit failure is a returned error, not Stuck, for the reason the Discussion-Write commit

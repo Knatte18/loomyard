@@ -1,5 +1,5 @@
 // verifyparse.go parses a verify command's combined output into failure identities.
-// It lives in websterengine because webster's triage is its only consumer.
+// It lives in websterengine because the verify gate is its only consumer.
 
 package websterengine
 
@@ -7,10 +7,29 @@ import (
 	"strings"
 )
 
+// The three legal VerifyFailure.Kind values.
+const (
+	FailureKindTest    = "test"
+	FailureKindPackage = "package"
+	FailureKindOpaque  = "opaque"
+)
+
+// VerifyFailure names one failing identity from a verify run and the tail of its output.
+type VerifyFailure struct {
+	// ID is the failure identity: a test name, a package path, or an opaque token.
+	ID string `yaml:"id"`
+	// Kind is one of FailureKindTest, FailureKindPackage, FailureKindOpaque.
+	Kind string `yaml:"kind"`
+	// Package is the import path the identity belongs to: the test's package or the failing package itself, and empty for an opaque identity.
+	Package string `yaml:"package,omitempty"`
+	// Tail is the last lines of the identity's output.
+	Tail string `yaml:"tail"`
+}
+
 // opaqueFailureID is the id of the single identity reported when a red verify run yields nothing parseable: a failing go vet, go build, or non-Go command.
 const opaqueFailureID = "verify-command"
 
-// failureTailMaxLines caps every IntegrationFailure.Tail.
+// failureTailMaxLines caps every VerifyFailure.Tail.
 const failureTailMaxLines = 40
 
 // Line shapes of go test output.
@@ -26,13 +45,21 @@ const (
 // subtestIndent is the number of spaces go test indents each subtest level's "--- FAIL:" header by.
 const subtestIndent = 4
 
+// ParseVerifyFailures returns the failure identities of a failed verify run's output, as the verify gate names them.
+// `lyx webster verify` calls it so the verb reports the identities the gate does.
+func ParseVerifyFailures(output string) []VerifyFailure {
+	return parseVerifyFailures(output, false)
+}
+
 // parseVerifyFailures returns the failure identities in output, in first-seen order and deduplicated by id.
 // It returns nil when passed is true.
 // A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it, so a failing TestX/a and a failing TestX/b are distinct identities.
 // A package identity is "<package>" and marks a failure no named test explains:
 // a build or setup failure, a failing package with no failing test, or a test binary that crashed (a panic, a fatal error, a timeout) or exited before reporting its result, which also hides every test it never ran.
+// Each test and package identity carries its import path in Package.
+// The opaque identity has none.
 // When neither is found, one opaque identity (opaqueFailureID) carries the output tail.
-func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
+func parseVerifyFailures(output string, passed bool) []VerifyFailure {
 	if passed {
 		return nil
 	}
@@ -40,9 +67,9 @@ func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 	output = strings.ReplaceAll(output, "\r\n", "\n")
 	lines := strings.Split(output, "\n")
 
-	var failures []IntegrationFailure
+	var failures []VerifyFailure
 	seen := map[string]bool{}
-	add := func(f IntegrationFailure) {
+	add := func(f VerifyFailure) {
 		if seen[f.ID] {
 			return
 		}
@@ -70,10 +97,10 @@ func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 			}
 			pkg := fields[0]
 			for _, t := range block.leaves() {
-				add(IntegrationFailure{ID: pkg + "." + t.name, Kind: FailureKindTest, Tail: capTail(t.tail)})
+				add(VerifyFailure{ID: pkg + "." + t.name, Kind: FailureKindTest, Package: pkg, Tail: capTail(t.tail)})
 			}
 			if len(block.tests) == 0 || block.crashed || !block.summarized {
-				add(IntegrationFailure{ID: pkg, Kind: FailureKindPackage, Tail: outputTail(lines[blockStart : i+1])})
+				add(VerifyFailure{ID: pkg, Kind: FailureKindPackage, Package: pkg, Tail: outputTail(lines[blockStart : i+1])})
 			}
 			block = packageBlock{}
 			blockStart = i + 1
@@ -84,7 +111,7 @@ func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 	}
 
 	if len(failures) == 0 {
-		return []IntegrationFailure{{ID: opaqueFailureID, Kind: FailureKindOpaque, Tail: outputTail(lines)}}
+		return []VerifyFailure{{ID: opaqueFailureID, Kind: FailureKindOpaque, Tail: outputTail(lines)}}
 	}
 	return failures
 }

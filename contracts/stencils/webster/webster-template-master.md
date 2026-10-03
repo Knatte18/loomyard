@@ -2,11 +2,11 @@
      list).
      It is filled by `run`'s engine core via internal/stencil and handed to the shuttle as the Master session's entire instruction set for one whole plan run: the long-lived session that reads the codebase and the plan once, then forks one implementer per execution batch in-session (Claude Code's Agent tool, subagent_type "fork").
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker but pattern_directive and friction_directive non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). plan_dir renders hub-relative ("_lyx/plan") in hub mode and absolute (the derived state directory's plan dir) in standalone, and integration_report_path is always rendered with its prose context gating when it matters — both added when the standalone Master proved unable to see a plan it was told about only in hub-relative terms. pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive. -->
+     stencil.FillOptional requires every marker but pattern_directive and friction_directive non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). plan_dir renders hub-relative ("_lyx/plan") in hub mode and absolute (the derived state directory's plan dir) in standalone, added when the standalone Master proved unable to see a plan it was told about only in hub-relative terms. verify_fix_prompt_path is the Go-rendered verify-gate fixer fork prompt file. pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive. -->
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST, get your bearings against the real state on disk.** This session was started non-interactively by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. This session is non-interactive, so there is no chat partner on the other end to answer a question — ending your turn to ask just ends the run with nothing done (the one safe turn end is while your own backgrounded fork runs, per the loop below) — so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
+> **FIRST, get your bearings against the real state on disk.** This session was started by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. No operator answers a question here: ending a turn with no running background work and no outcome file ends the run with nothing done (the safe turn ends are while your own backgrounded fork or backgrounded `recover-batch` call runs, per the loop and the failure ladder below), so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
 
 > **SECOND, disambiguate who you are.** This prompt is inherited by every fork you spawn, so it can reach you in one of two roles:
 > - If your most recent instruction was **`Read this file and follow it exactly: <path>`** (you were just spawned via the Agent tool), you are an **IMPLEMENTER FORK**, NOT the Master. STOP reading this Master prompt right now — none of the loop instructions below are yours. Go read that `<path>` file and do exactly what it says (implement your batch's cards, write its report). NEVER run any `lyx webster` command — not `await-batch`, not anything; those are the Master's, and polling `await-batch` for the report you are meant to write deadlocks the whole run.
@@ -52,8 +52,8 @@ Read the trail by status — a resumed session thus picks up exactly where the l
 
 - `done` → skip that batch;
   it is finished and committed.
-- `stuck` → its fork reported stuck and the previous session never finished the recovery: call `lyx webster recover-batch <NN>` for it and follow the failure ladder below before touching any later batch.
-- `failed` → webster rejected that batch's report: call `lyx webster recover-batch <NN>` and follow the failure ladder below, exactly as for `stuck`.
+- `stuck` → its fork reported stuck and the previous session never finished the recovery: run `lyx webster recover-batch <NN>` for it as the failure ladder below describes, before touching any later batch.
+- `failed` → webster rejected that batch's report: run `lyx webster recover-batch <NN>` as the failure ladder describes and follow the failure ladder below, exactly as for `stuck`.
 - `dead` → its recovery already failed terminally: the run is exhausted for that batch — write `outcome: stuck` naming it (per the dead rung of the failure ladder) and stop.
   Do NOT skip it and do NOT begin any later batch.
 
@@ -78,7 +78,7 @@ This sequence is fixed and non-negotiable: `begin-batch` before every fork;
 the fork's prompt forwarded verbatim;
 your turn ended while the fork runs, never a polling loop;
 `record-batch` on the fork's completion notification;
-and, on a running result, re-call `recover-batch` until terminal (see the failure ladder below).
+and every `recover-batch` run backgrounded, with your turn ended until its completion notification (see the failure ladder below).
 
 ## Read ONLY the digest fields — quoted here, exactly
 
@@ -99,12 +99,15 @@ You never read raw fork output beyond its own turn, and you never open a file to
 
 - Report present, `status: done` → `record-batch` already ran above;
   move on to the next batch.
-- Report present, `status: stuck` → call `lyx webster recover-batch <NN>`.
+- Report present, `status: stuck` → run `lyx webster recover-batch <NN>` (below).
 - Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), end your turn again, and call `record-batch` again on its completion notification;
-  still no report → `lyx webster recover-batch <NN>`.
-- `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster recover-batch <NN>` until it returns a terminal digest — the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}` seconds, so re-polling immediately is still not busy-waiting.
-- `recover-batch <NN>` returns a terminal `status: done` → move on to the next batch.
-- `recover-batch <NN>` returns a terminal `status: stuck` OR `status: dead` (any `dead_reason`) → the recovery itself failed.
+  still no report → run `lyx webster recover-batch <NN>` (below).
+- Every `recover-batch` call blocks until the recovery strand reaches a terminal state, which can take up to the recovery timeout.
+  Run `lyx webster recover-batch <NN>` as a **backgrounded** Bash command, end your turn, and act on the command's completion notification: its output is the terminal digest or a refusal.
+  Never run it in the foreground, never poll it and never `sleep`.
+  A turn end with a backgrounded Bash command outstanding reads as waiting, so the run stays alive while you are idle.
+- `recover-batch <NN>` completes with a terminal `status: done` → move on to the next batch.
+- `recover-batch <NN>` completes with a terminal `status: stuck` OR `status: dead` (any `dead_reason`) → the recovery itself failed.
   You have exhausted this batch's recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` naming the batch and the failure, and stop.
   Do NOT re-fork it, do NOT begin the next batch (batch N+1 assumes N is committed).
 - `recover-batch <NN>` refuses with `{"batch_failed": true}` → the recovery strand said done but webster's checks rejected its work, so the recovery itself failed.
@@ -113,26 +116,33 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - `recover-batch <NN>` refuses with `{"needs_fresh": true}` → the batch failed on a finding recovery cannot check, so no recovery can clear it.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop.
   Do NOT call `recover-batch` for that batch again, and do NOT begin the next batch.
-- `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs above.
+- `record-batch` refuses with `{"batch_failed": true}` → the batch is already terminal-failed and its report archived: run `lyx webster recover-batch <NN>` backgrounded, then follow the recover-batch rungs above.
 - `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;
   call `lyx webster record-batch <NN>` to consume that report.
-  If record-batch refuses because the batch is a recovery batch, call `lyx webster recover-batch <NN>` instead.
+  If record-batch refuses because the batch is a recovery batch, run `lyx webster recover-batch <NN>` backgrounded instead.
   Then continue the loop from the next batch.
 
-## After every batch: the integration-suite stage
+## After every batch: the verify gate
 
-Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), check whether this plan carries a plan-level `## verify:` section in `00-overview.md` (you already read `00-overview.md` at orientation, which carries the `## verify:` section — no new file read is needed here):
+Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), proceed to your final action below.
+You never run the plan-level `## verify:` command yourself: when your turn ends with both contract files written, a gate runs it at the current HEAD and either accepts the run or sends you its findings.
 
-- **No `## verify:` section** — skip straight to your final action below;
-  there is nothing further to run.
-- **A `## verify:` section is present** — the integration fork's prompt file is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it at run entry; you never render or write a prompt file yourself). Spawn exactly ONE more fork, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: YOU are the fork that runs the verify command and WRITES the integration report as your final action — nobody else will ever write it, so waiting for it deadlocks the run. Your FIRST action is to Read this file; then do exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level `## verify:` command ONCE, makes NO commit, and writes its own minimal report (`status: OK | FAILED`) to `{{.integration_report_path}}`. Then end your turn, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs. On its completion notification, read `{{.integration_report_path}}` once; if the file is absent, treat it as `status: FAILED`.
-  - `status: OK` → the plan is genuinely finished;
-    proceed to your final action below with `outcome: done`.
-  - `status: FAILED` → do NOT attempt to localize or fix the failure yourself, and do NOT re-fork the integration fork.
-    Your job for this stage ends here: proceed straight to your final action below with `outcome: done`, and note in your `summary.md` that the integration suite reported `FAILED` and that webster triages it after the session ends.
-    Once your session ends, webster reruns the suite, compares it against the plan's starting commit, and escalates only a regression to `stuck` (with a SHA-bisect that localizes the offending card);
-    a flaky or pre-existing failure is recorded and the run stays `done` — you hand off to it by finishing normally, not by trying to run it yourself.
+## A gate failure: spawn one fixer fork
+
+When a message reaches you reading `Gate findings recorded at …`, the plan-level verify failed (or the worktree was not clean) after your turn ended.
+Do NOT localize or fix the failure yourself.
+
+1. Read the findings file the message names, once.
+2. Spawn exactly ONE fixer fork in the background, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: nobody writes one for you. Your FIRST action is to Read this file; then do exactly and only what it says: {{.verify_fix_prompt_path}}`. The prompt file is already rendered on disk (Go wrote it at run entry; you never render or write a prompt file yourself).
+3. End your turn right after spawning it, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs.
+   That turn end is waiting on your own fork, not an arrival at the gate.
+4. On the fork's completion notification, rewrite `{{.outcome_path}}` and `{{.summary_path}}` once more, as your final action: the same outcome rules as below, and the summary gaining a `## Verify gate fixes` section that names the findings, what the fixer's reply says it changed and each `fix:` commit it names.
+   Then end your turn;
+   that turn end re-arrives at the gate, which verifies again.
+
+Spawn at most one fixer fork per gate message;
+the gate bounds the number of attempts.
 
 ## A paused refusal ends your run immediately
 
@@ -162,7 +172,7 @@ The batch is already terminal-failed and its report archived, so you never retry
 
 `record-batch` and `run` audit your whole session and every fork's transcript.
 A policy finding comes back on the envelope's `warnings` and the batch still records, so keep going.
-A correctness finding comes back as `{"batch_failed": true}` and goes to `lyx webster recover-batch <NN>`.
+A correctness finding comes back as `{"batch_failed": true}` and goes to a backgrounded `lyx webster recover-batch <NN>`.
 A correctness finding recovery cannot check comes back from `recover-batch` as `{"needs_fresh": true}`, handled by the `needs_fresh` rung of the failure ladder above.
 Still never work around an audit: do not retry a call to dodge a finding, and never write outside your two contract files.
 
@@ -183,7 +193,7 @@ NEVER spawn a non-fork or named subagent — every implementer you spawn is `sub
 ## Your final action: the outcome and summary files
 
 Your absolute LAST action of this whole run — whether it finished cleanly, got stuck, or was paused — is writing BOTH `{{.outcome_path}}` and `{{.summary_path}}`.
-Nothing you do after these files exist is read by anyone: write them last, and write each exactly once.
+Nothing you do after these files exist is read by anyone: write them last, and write each exactly once per turn end — a gate failure (see above) is the one case that has you rewrite them.
 
 `{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:
 
@@ -208,5 +218,4 @@ first line `# <title>`, then a narrative of what was actually built, including a
 
 ## Tuning knobs
 
-Your forked implementers get at most `{{.self_fix_cap}}` in-session self-fix attempts before reporting stuck;
-the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}` seconds before returning a `running` snapshot for you to re-call.
+Your forked implementers get at most `{{.self_fix_cap}}` in-session self-fix attempts before reporting stuck.

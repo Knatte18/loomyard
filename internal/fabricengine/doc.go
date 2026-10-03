@@ -1106,9 +1106,7 @@
 // landed on a detached HEAD is reachable from no ref and disappears at the next checkout, and the
 // verb has already deleted its own record on the way out by the time that is discovered, so
 // `MergeAbort` cannot put it back — refusing before the attempt starts is the only point at which
-// that is still recoverable. This matters in practice because `Fabric.CheckoutDetached`/
-// `RestoreBranch` exist and webster's integration bisect drives them
-// (`internal/websterengine/integration.go`). The weft's own detachment no longer refuses anything: it
+// that is still recoverable. The weft's own detachment no longer refuses anything: it
 // is not a merge participant, so a detached weft HEAD cannot produce the unreachable-commit shape
 // this precondition exists to prevent, and the guard set that used to evaluate both sides
 // unconditionally — pairDirtyReason, detachedHeadReason, syncedToUpstreamReason, and
@@ -1271,17 +1269,7 @@
 // what the foreign arm covers); and
 // `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
 // which is dirty by definition.
-// `CheckoutDetached`/`RestoreBranch` are the one knowing exception — raw primitives driven only by
-// webster's integration bisect, and left unguarded because a merge-record probe does not belong in a
-// primitive this doc classes as raw. The attached-HEAD precondition above is *not* what closes them:
-// that precondition stops a merge from starting while a checkout is detached, and says nothing about
-// detaching a checkout that is already mid-merge, which is the order these two primitives can
-// produce. What actually closes the dangerous part is git: `checkout --detach` refuses outright
-// while unmerged index entries exist, so the long window — an operator sitting on conflict markers —
-// is unreachable. The narrow window that stays open is the resolved-but-not-concluded one (index
-// clean, `MERGE_HEAD` live, record live), where the detach succeeds and drops `MERGE_HEAD`, stranding
-// the record. That is a known, accepted hazard belonging to the caller that drives the bisect, not to
-// the merge primitive. The combined `.weft/weft.write.lock`
+// The combined `.weft/weft.write.lock`
 // covers only the mutating steps of a merge call — `Merge`'s pre-merge sync step, starting the
 // attempt, and concluding it — never
 // the resolution window itself: an operator may take arbitrarily long editing conflict markers

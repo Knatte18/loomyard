@@ -91,7 +91,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 
 	numbers := make([]int, 0, len(deps.State.Batches))
 	for n, bs := range deps.State.Batches {
-		if n == integrationBatchKey || bs == nil {
+		if bs == nil {
 			continue
 		}
 		numbers = append(numbers, n)

@@ -146,24 +146,6 @@ type RunDeps struct {
 	// this value needs no geometry derivation.
 	FrictionDir string
 
-	// Clock is the integration stage's bounded-wait clock seam: nil selects
-	// the production realClock, and a test injects a fake so the
-	// missing-integration-report wait replays instantly instead of blocking
-	// a real DefaultAwaitWaitS window.
-	Clock Clock
-
-	// OpenBisector is the integration stage's bisect-repo opener: a caller-supplied closure,
-	// never a defaulted construction. It stays lazy so a run that never reaches a failing
-	// integration suite never opens a fabric handle; a test injects a fake by supplying an
-	// opener that returns it. A nil OpenBisector means "no fabric in this mode" — the
-	// integration-failure bypass at the runIntegrationStage call site, not "construct the
-	// production default".
-	OpenBisector func() (FabricBisector, error)
-
-	// FixStarter spawns the integration stage's one fix strand on a regression.
-	// A nil FixStarter over a regression is a wiring-guard error that records nothing.
-	FixStarter FixStarter
-
 	// ParentBranch names the branch the run merges its parent in from, for the fix commit check's clean-parent-merge rule.
 	// It is nil in standalone mode, so no merge commit is accepted there.
 	ParentBranch ParentBranchFunc
@@ -182,10 +164,10 @@ type RunOptions struct {
 // (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
 type RunResult struct {
 	// Outcome is one of webster's own outcomeDone, outcomeStuck, or outcomePaused values (outcome.go),
-	// taken verbatim from the parsed outcome.yaml — except that the integration stage demotes a done to outcomeStuck when its triage finds a regression.
+	// taken verbatim from the parsed outcome.yaml — except that a done whose verify gate did not pass is demoted to outcomeStuck.
 	Outcome string
-	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the integration stage,
-	// whose reason names the regressing identities and the localized card.
+	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim — except for a done demoted by the verify gate,
+	// whose reason names the failing identities and the attempts spent.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
@@ -196,8 +178,8 @@ type RunResult struct {
 	// itself missing or malformed, which is not an error on those two
 	// outcomes).
 	SummaryTitle string
-	// Warnings carries every non-fatal observation the integration stage accumulated this run — never a failure.
-	// Mirrors RecordResult.Warnings' shape and contract: the integration stage's triage notices (flaky and pre-existing failures, an unavailable baseline) and a nil OpenBisector's unlocalized-failure notice.
+	// Warnings carries every non-fatal observation accumulated this run — never a failure.
+	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the sequencing and audit warnings.
 	Warnings []string
 	// Cycles carries every non-trivial strongly-connected component
 	// SequenceBatches condensed for this run — always informational, never
@@ -309,8 +291,7 @@ func clearRenderedPrompts(promptsDir string) error {
 }
 
 // reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
-// Master's own recorded strand, any recorded, non-terminal recovery-batch strand, and the integration-fix strand when one is recorded,
-// so a run that crashed during the fix never leaves a strand committing behind a fresh Master.
+// Master's own recorded strand and any recorded, non-terminal recovery-batch strand.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
@@ -332,12 +313,6 @@ func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
 			if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return err
 			}
-		}
-	}
-
-	if st.IntegrationFix != nil && st.IntegrationFix.StrandGUID != "" {
-		if err := removeStrandIfLive(reed, st.IntegrationFix.StrandGUID); err != nil {
-			return err
 		}
 	}
 
@@ -373,8 +348,9 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
 // non-done shuttle outcomes return *Master*Error types.
 // A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
-// and an undispositioned correctness finding demotes the outcome to stuck, the same way a regression in the integration stage does.
-// Once the integration stage has run, every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
+// and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
+// Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
+// Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
@@ -407,6 +383,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if deps.Batcher == nil {
 		return RunResult{}, ErrNilBatcher
 	}
+	// Run adds the `verify` entry itself, so a caller's gate naming one would run beside it.
+	for _, e := range deps.Gate {
+		if e.Name == verifyGateName {
+			return RunResult{}, fmt.Errorf("webster: RunDeps.Gate already names an entry %q; Run adds the plan-level verify gate itself; way forward: drop the %q entry from the Webster row's gates", verifyGateName, verifyGateName)
+		}
+	}
 	batches := deps.Batcher.Batch(plan.Cards)
 
 	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
@@ -420,7 +402,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	// Re-bind batches through the sequencer: every later use in this
-	// function (the Master prompt, mapMasterDone, runIntegrationStage) then
+	// function (the Master prompt, mapMasterDone) then
 	// sees the derived execution order rather than the batchifier's own
 	// declared order.
 	var cycles []Cycle
@@ -608,83 +590,45 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
 
-	// The integration fork's prompt is Go-rendered and Go-written, up front,
-	// exactly like a batch's own fork prompt: Master may write nothing but its
-	// two contract files (a hand-synthesized prompt file would be a
-	// parent-write audit violation), so a plan with a "## verify:" section
-	// must find its integration prompt already on disk — found live in
-	// crucible round fable-r1, where a Master correctly refused to improvise
-	// one and the stage was unreachable.
-	// The integration-report path is resolved unconditionally: the Master prompt renders it as its
-	// own {{.integration_report_path}} marker regardless of whether the plan carries a "## verify:"
-	// section, with the surrounding prose gating when it matters.
-	integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
+	// A verify-gate report left by an earlier run describes an earlier attempt and would be read as this run's.
+	verifyGateReportPath, err := filepath.Abs(VerifyGateReportPath(deps.Geom.ReportsDir))
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
+		return RunResult{}, fmt.Errorf("webster: resolve verify-gate report path: %w", err)
 	}
-	// A report left by an earlier run describes an earlier head: Master would read it as this run's
-	// verdict and end stuck again without respawning the integration fork, so a run resumed after a
-	// fix could never re-verify. Every run starts without one.
-	if err := os.Remove(integrationReportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return RunResult{}, fmt.Errorf("webster: remove stale integration report %s: %w", integrationReportPath, err)
+	if err := os.Remove(verifyGateReportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return RunResult{}, fmt.Errorf("webster: remove stale verify-gate report: %w", err)
 	}
 
-	integrationPromptPath := ""
-	if ShouldRunIntegration(plan) {
-		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
-		integrationLogPath, err := filepath.Abs(IntegrationLogPath(deps.Geom.ScratchDir))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration log path: %w", err)
-		}
-		// Remove any prior log so a log present at triage time was written by this run's fork.
-		if err := os.Remove(integrationLogPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return RunResult{}, fmt.Errorf("webster: remove stale integration log %s: %w", integrationLogPath, err)
-		}
-		// The fork's shell redirect cannot create the log's parent directory.
-		if err := os.MkdirAll(filepath.Dir(integrationLogPath), 0o755); err != nil {
-			return RunResult{}, fmt.Errorf("webster: create verify log dir: %w", err)
-		}
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, integrationLogPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
-		if err != nil {
-			return RunResult{}, err
-		}
-		if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
-			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
-		}
-		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.Geom.PromptsDir, integrationPromptFileName))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration prompt path: %w", err)
-		}
-		if err := os.WriteFile(integrationPromptPath, integrationPrompt, 0o644); err != nil {
-			return RunResult{}, fmt.Errorf("webster: write integration prompt %s: %w", integrationPromptPath, err)
-		}
-	}
-
-	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
+	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
+	// Merriam may write nothing but its two contract files.
+	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, verifyFixNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}
-	// The prompt goes to Master as a file: rendered in full it grows with the plan's batch index
-	// and progress, and a long plan outgrows the provider's command-line launch limit.
 	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 	}
-	masterPromptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, masterPromptFileName))
+	verifyFixPromptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, verifyFixPromptFileName))
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: resolve master prompt path: %w", err)
+		return RunResult{}, fmt.Errorf("webster: resolve verify-fix prompt path: %w", err)
 	}
-	if err := os.WriteFile(masterPromptPath, prompt, 0o644); err != nil {
-		return RunResult{}, fmt.Errorf("webster: write master prompt %s: %w", masterPromptPath, err)
+	if err := os.WriteFile(verifyFixPromptPath, verifyFixPrompt, 0o644); err != nil {
+		return RunResult{}, fmt.Errorf("webster: write verify-fix prompt %s: %w", verifyFixPromptPath, err)
 	}
 
+	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
+	if err != nil {
+		return RunResult{}, err
+	}
 	resolved, ok := deps.Roles[RoleMaster]
 	if !ok {
 		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt: MasterPromptPointer(masterPromptPath),
+		Prompt: string(prompt),
 		// Both output files: shuttle classifies this run done only once
 		// BOTH land, so a Master that writes outcome.yaml but never
 		// reaches its summary.md final action never falsely reads as
@@ -694,7 +638,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Effort:        resolved.Params["effort"],
 		Version:       resolved.Params["version"],
 		ForkSubagents: true,
-		Role:          string(RoleMaster),
+		Role:          MerriamStrandRole,
 		Interactive:   false,
 		Timeout:       time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}
@@ -702,7 +646,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// The state-mutation lease acquired above is held across this call, which now includes the
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
-	handle, err := deps.Starter.StartMaster(spec, deps.Gate)
+	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir)
+	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts})
+	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
 	}
@@ -753,7 +699,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, mapErr
 		}
 		// Cycles are always informational: prepend one warning per cycle
-		// ahead of the integration stage's own per-failure warnings below,
+		// ahead of the verify gate's own warnings below,
 		// so the sequencing observations, which describe the whole run,
 		// read first. Non-done outcomes (asking/died/timeout) return an
 		// error rather than a RunResult, so a cycle observed on a run that
@@ -769,30 +715,18 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			}
 			runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
 		}
-		// The integration-suite stage is a minimal call-site addition at the
-		// end of the run, not a rewrite of the batch loop above: it re-derives
-		// everything it needs from disk (the plan's own ShouldRunIntegration,
-		// every batch's own persisted terminal record) rather than trusting
-		// whatever Master's own outcome.yaml/summary.md already said, so it
-		// runs the same way regardless of whether Master itself reported done
-		// or stuck for this plan.
-		warnings, stuckReason, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
+		// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
+		flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
 		if err != nil {
-			// The error paths that remain are a done outcome with no integration report and an infrastructure failure in triage, localization, or recording.
-			// runIntegrationStage can return warnings ALONGSIDE the latter,
-			// and every error return here reports the zero RunResult, so those warnings reach no envelope.
-			// They are logged instead rather than dropped: the triage and "could not be localized" notices explain the state the failed stage left behind.
-			for _, w := range warnings {
-				logger.Warn("websterengine: integration stage warning", "warning", w)
-			}
 			return RunResult{}, err
 		}
-		runResult.Warnings = append(runResult.Warnings, warnings...)
-		// A regression demotes Master's done to stuck; Master's own stuck keeps its own reason.
+		runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
+		// A done whose verify gate did not pass ends stuck;
+		// Master's own stuck keeps its own reason.
 		// outcome.yaml is never rewritten.
-		if stuckReason != "" && runResult.Outcome == outcomeDone {
+		if result.Gate != nil && !result.Gate.Passed && runResult.Outcome == outcomeDone {
 			runResult.Outcome = outcomeStuck
-			runResult.StuckReason = stuckReason
+			runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate)
 		}
 		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
 		// a missing summary on a non-done outcome skips the section.
@@ -1068,15 +1002,15 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 }
 
 // forkOwnReport returns the report the fork behind transcript may write:
-// the report of the batch whose ForkTranscripts holds it, or the integration report when no batch does,
-// since only the integration fork runs outside a batch bracket.
+// the report of the batch whose ForkTranscripts holds it, or the verify-gate report when no batch does,
+// since only the verify-gate fixer fork runs outside a batch bracket.
 func forkOwnReport(st *State, geom Geometry, transcript string) string {
 	for number, bs := range st.Batches {
 		if bs != nil && slices.Contains(bs.ForkTranscripts, transcript) {
 			return filepath.Join(geom.ReportsDir, ReportFileName(number, bs.Slug))
 		}
 	}
-	return IntegrationReportPath(geom.ReportsDir)
+	return VerifyGateReportPath(geom.ReportsDir)
 }
 
 // hasPendingFinding reports whether st already carries a pending finding with identity id.
@@ -1338,309 +1272,10 @@ func appendRecordedAuditWarnings(deps RunDeps, batches []batcher.Batch, summaryP
 	return AppendAuditWarnings(deps.Geom.WebsterDir, recorded)
 }
 
-// runIntegrationStage drives the plan-level integration-suite stage after
-// every batch has reached a terminal-done state, wired at the very end of
-// Run per the integration-suite-fork-with-bisect decision: a no-op when the
-// plan carries no plan-level "## verify:" section (ShouldRunIntegration) or
-// when the whole-plan batch set is not (yet) all terminal-done — a run that
-// ended stuck for an ordinary batch reason never reaches the integration
-// stage at all. Otherwise it confirms the one dedicated integration fork's
-// report has landed (RunIntegration — Master itself spawned that fork and
-// waited for its report per webster-template-master.md's own integration-fork
-// bracket instruction, so the report is normally already on disk by the
-// time Run reaches this call; the bounded await here is a defensive
-// re-confirmation, mirroring the run-exit audit's own backstop posture).
-// On a FAILED report it triages the failure regardless of Master's own outcome: it reruns the verify once at head, compares the remaining failures against the earliest batch start commit,
-// and records the classification (flaky, pre-existing, or regression) and the failing identities in the integration report.
-// Only a regression is escalated: the in-process SHA-bisect runs over the regressing identities across every batch's own accumulated BatchState.CardSHAs, the reserved -1 record and the summary.md section are written,
-// and the returned stuck reason is non-empty so Run demotes a Master done to stuck.
-// A flaky or pre-existing verdict leaves Master's outcome untouched and is recorded as warnings, a summary.md triage section, and a friction note.
-// The returned error is reserved for infrastructure failures and the missing-report-under-done inconsistency.
-// When deps.OpenBisector is nil, this mode has no fabric repo to bisect against: the localization path (BisectAndEscalate/bisect) is bypassed entirely — never pushed down into those functions —
-// and a regression records an unlocalized "unknown"/"unknown" failure instead, with the returned warning explaining why;
-// triage itself then has no baseline to compare against either.
-// This bypass is deliberate: bisect's own empty-SHA fallback is unreachable here because card SHAs accumulate normally, a single accumulated SHA would make it record a real SHA under a "cannot localize" claim,
-// and two or more reach repo.CurrentBranch(), which nil-pointer panics on a nil bisector.
-func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) (warnings []string, stuckReason string, err error) {
-	if !ShouldRunIntegration(plan) {
-		return nil, "", nil
-	}
-	// A run whose batches are not all terminal-done never reached the
-	// integration stage in the first place (Master's own bracket
-	// instruction only spawns the integration fork after every batch is
-	// done) — this is expected, not a failure, so the error here is
-	// swallowed rather than propagated.
-	if err := verifyEveryBatchDone(deps.Geom.WebsterDir, deps.Geom.ScratchDir, batches); err != nil {
-		return nil, "", nil
-	}
-
-	clk := deps.Clock
-	if clk == nil {
-		clk = realClock{}
-	}
-	await, err := AwaitIntegration(deps.Geom.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, clk)
-	if err != nil {
-		return nil, "", err
-	}
-	if !await.ReportPresent {
-		// A done outcome CLAIMS a passing integration suite, so a missing
-		// report is a real inconsistency — fail loud. A non-done outcome with
-		// no report is instead consistent (the integration fork died, or
-		// Master stuck out before the stage) — Master's own graceful judgment
-		// is the run's result, and erroring here would overwrite it.
-		if masterOutcome == outcomeDone {
-			return nil, "", fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported%s", runExitWayForward)
-		}
-		return nil, "", nil
-	}
-
-	reportPath := IntegrationReportPath(deps.Geom.ReportsDir)
-	report, err := ParseIntegrationReport(reportPath)
-	if err != nil {
-		return nil, "", err
-	}
-	// An attempt the run's end interrupted left commits checkFixCommits never saw, so it ends stuck whatever the report says.
-	if reason, err := settleInterruptedFix(deps, reportPath, report); err != nil || reason != "" {
-		return nil, reason, err
-	}
-	if report.Status == ReportStatusOK {
-		// Master's own "done" outcome already reflects a passing integration
-		// suite correctly; nothing further to escalate.
-		return nil, "", nil
-	}
-
-	// This stage runs in three phases, split exactly the way recover-batch splits its own, and for the same reason:
-	// the triage rerun, the baseline run and the localization in the middle run the plan's whole "## verify:" command several times — minutes to tens of minutes —
-	// and AcquireStateMutation's contract forbids holding the lease across a long block.
-	// Holding it there stalled every concurrent bracket verb behind an unbounded blocking acquire, with no timeout and no diagnostic.
-	//
-	// Phase 1, unleased: read the card SHAs the search runs over and the baseline commit.
-	// LoadState is a plain read, and a fresh one is required — begin-batch/record-batch mutated and persisted state repeatedly across Master's whole run,
-	// so the copy captured before Master ever spawned is long stale.
-	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
-	if err != nil {
-		return nil, "", err
-	}
-	if st == nil {
-		return nil, "", fmt.Errorf("webster: integration stage: no state.json to escalate against")
-	}
-	shas, labels := accumulatedCardSHAs(batches, st)
-	// Triage's baseline is the earliest of every batch's start commit, not the first batch's:
-	// begin-batch does not enforce execution order, so a later batch may have begun, and landed, first.
-	// recover-batch inherits StartSHA and a begin-batch re-begin keeps it, so each survives every retry.
-	startSHAs := batchStartSHAs(batches, st)
-
-	// Phase 2, unleased: triage, then localize the offending card of a regression.
-	// "unknown" for both is the honest answer when there is no fabric repo to bisect against,
-	// and the bypass lives at this call site rather than inside LocalizeIntegrationFailure so a nil bisector is never handed to it — see RunDeps.OpenBisector's own doc comment.
-	var bisector FabricBisector
-	if deps.OpenBisector != nil {
-		bisector, err = deps.OpenBisector()
-		if err != nil {
-			return nil, "", err
-		}
-	}
-	outcome, err := triageIntegrationFailure(runVerifyCapture, bisector, startSHAs, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.ScratchDir, IntegrationLogPath(deps.Geom.ScratchDir))
-	if err != nil {
-		return nil, "", err
-	}
-	warnings = append(warnings, outcome.Warnings...)
-	warnings = append(warnings, triageWarnings(outcome.Triage)...)
-
-	regression := outcome.Triage.Verdict == TriageVerdictRegression
-	offendingCard, offendingSHA := "unknown", "unknown"
-	if regression {
-		if bisector == nil {
-			warnings = append(warnings, "the integration suite failed and the offending card could not be localized because this mode has no fabric repo to bisect against")
-		} else {
-			offendingCard, offendingSHA, err = LocalizeIntegrationFailure(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot, outcome.Triage.Regressions)
-			if err != nil {
-				return warnings, "", err
-			}
-		}
-	}
-
-	regressing := failuresByID(outcome.Failures, outcome.Triage.Regressions)
-
-	// A regression under a done Master gets one automated fix attempt before it escalates.
-	// A non-done Master outcome stays as it is, since a fix cannot change it.
-	// The attempt runs its own leased and unleased steps, so no lease is held here.
-	var fix *fixAttempt
-	if regression && masterOutcome == outcomeDone {
-		fix, err = attemptIntegrationFix(deps, fixInputs{plan: plan, regressing: regressing, offendingCard: offendingCard, startSHAs: startSHAs, bisector: bisector})
-		if err != nil {
-			return warnings, "", err
-		}
-		warnings = append(warnings, fix.Warnings...)
-		if fix.Post != nil {
-			warnings = append(warnings, fix.Post.Warnings...)
-			warnings = append(warnings, triageWarnings(fix.Post.Triage)...)
-		}
-	}
-
-	// Phase 3, leased: record the result against a state reloaded fresh under the lease,
-	// since the unleased work above gave every concurrent verb room to persist its own mutations.
-	if err := recordTriageResult(deps, reportPath, outcome, regressing, offendingCard, offendingSHA, fix); err != nil {
-		return warnings, "", err
-	}
-
-	if fix.fixed() {
-		return warnings, "", nil
-	}
-	if !regression {
-		logger.Warn("websterengine: integration verify failed without a regression", "verdict", outcome.Triage.Verdict, "flaky", outcome.Triage.Flaky, "preExisting", outcome.Triage.PreExisting)
-		return warnings, "", nil
-	}
-	reason := triageStuckReason(regressing, offendingCard)
-	if fix != nil {
-		reason = fixStuckReason(reason, fix.Record)
-	}
-	return warnings, reason, nil
-}
-
-// settleInterruptedFix ends an integration-fix attempt the run's end interrupted: state records it with an empty Result.
-// It records the attempt as failed, with the commits after its PreFixHead, in the report and summary.md, sets Result in the same leased save, and returns the stuck reason.
-// It returns an empty reason when no attempt was in flight.
-func settleInterruptedFix(deps RunDeps, reportPath string, report *IntegrationReport) (string, error) {
-	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = mutateLock.Release() }()
-
-	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
-	if err != nil {
-		return "", err
-	}
-	if st == nil || st.IntegrationFix == nil || st.IntegrationFix.Result != "" {
-		return "", nil
-	}
-
-	commits, err := fixCommitsSince(deps.Geom.WorktreeRoot, st.IntegrationFix.PreFixHead)
-	if err != nil {
-		return "", err
-	}
-	fix := IntegrationFixRecord{
-		Result:     FixResultFailed,
-		Detail:     "the run ended while the fix attempt was in flight, so its commits were never checked",
-		PreFixHead: st.IntegrationFix.PreFixHead,
-		Commits:    commits,
-	}
-	report.Fix = &fix
-	if err := WriteIntegrationReport(reportPath, report); err != nil {
-		return "", err
-	}
-	if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix); err != nil {
-		return "", err
-	}
-	st.IntegrationFix.Result = fix.Result
-	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
-		return "", err
-	}
-	return fixStuckReason("integration verify regressed and its fix attempt was interrupted", fix), nil
-}
-
-// recordTriageResult is runIntegrationStage's leased phase: it reloads the integration report and writes the triage's failures and classification into it,
-// then either escalates a regression (the reserved -1 record and the summary.md section) or records a non-regression (the summary.md triage section and the friction note, with no state record).
-// A non-nil fix is the attempt made on that regression:
-// its record goes into the report and a summary.md section, its Result is set on state in the same save,
-// and a fix that cleared the regression records no -1 record, while its post-fix triage, if any, is recorded the way a non-regression is.
-// The lease is released on return, so the caller's logging runs outside it.
-func recordTriageResult(deps RunDeps, reportPath string, outcome triageOutcome, regressing []IntegrationFailure, offendingCard, offendingSHA string, fix *fixAttempt) error {
-	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = mutateLock.Release() }()
-
-	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
-	if err != nil {
-		return err
-	}
-	if st == nil {
-		return fmt.Errorf("webster: integration stage: no state.json to escalate against")
-	}
-
-	report, err := ParseIntegrationReport(reportPath)
-	if err != nil {
-		return err
-	}
-	report.Failures = outcome.Failures
-	report.Triage = &outcome.Triage
-	if fix != nil {
-		record := fix.Record
-		report.Fix = &record
-	}
-	if err := WriteIntegrationReport(reportPath, report); err != nil {
-		return err
-	}
-
-	recordNonRegression := func(triage IntegrationTriage) error {
-		if err := AppendIntegrationTriage(deps.Geom.WebsterDir, triage.Flaky, triage.PreExisting); err != nil {
-			return err
-		}
-		// The friction note is best-effort, like the rest of the friction plumbing:
-		// the report and summary section already carry the verdict, so a failed note must not fail the run.
-		if err := writeTriageFrictionNote(deps.FrictionDir, triage); err != nil {
-			logger.Warn("websterengine: triage friction note not written", "cause", err)
-		}
-		return nil
-	}
-
-	switch {
-	case fix.fixed():
-		if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix.Record); err != nil {
-			return err
-		}
-		if fix.Post != nil {
-			if err := recordNonRegression(fix.Post.Triage); err != nil {
-				return err
-			}
-		}
-	case outcome.Triage.Verdict == TriageVerdictRegression:
-		RecordIntegrationFailure(st, offendingCard, offendingSHA)
-		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, offendingCard, offendingSHA, regressing); err != nil {
-			return err
-		}
-		if fix != nil {
-			if err := AppendIntegrationFix(deps.Geom.WebsterDir, fix.Record); err != nil {
-				return err
-			}
-		}
-	default:
-		if err := recordNonRegression(outcome.Triage); err != nil {
-			return err
-		}
-	}
-
-	// The attempt's result lands in the same save as everything else this phase records.
-	// A spent attempt keeps the result it already carries.
-	if fix != nil && fix.Record.Result != FixResultSpent && st.IntegrationFix != nil {
-		st.IntegrationFix.Result = fix.Record.Result
-	}
-
-	return SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st)
-}
-
-// failuresByID returns the members of fs whose ID is in ids, in fs order.
-func failuresByID(fs []IntegrationFailure, ids []string) []IntegrationFailure {
-	want := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		want[id] = true
-	}
-	var out []IntegrationFailure
-	for _, f := range fs {
-		if want[f.ID] {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
 // accumulatedCardSHAs walks batches in execution order and collects every
 // terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
-// ordered per-card SHA trail and parallel label set bisect and its
-// escalation search over. A batch with no persisted record (should never
+// ordered per-card SHA trail and parallel label set cardHint reads to name
+// the cards that touched a failing package. A batch with no persisted record (should never
 // happen once verifyEveryBatchDone has already confirmed every batch is
 // terminal-done, but handled defensively rather than assumed) contributes
 // nothing.
@@ -1657,17 +1292,4 @@ func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []str
 		}
 	}
 	return shas, labels
-}
-
-// batchStartSHAs returns every batch's recorded non-empty StartSHA, in batches order.
-// A batch with no record or no StartSHA contributes nothing.
-func batchStartSHAs(batches []batcher.Batch, st *State) []string {
-	var starts []string
-	for _, b := range batches {
-		number, _ := batchIdentity(b)
-		if bs := st.Batches[number]; bs != nil && bs.StartSHA != "" {
-			starts = append(starts, bs.StartSHA)
-		}
-	}
-	return starts
 }

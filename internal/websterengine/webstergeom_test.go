@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // TestWebsterGeometryHelpers pins every webster path constructor for an unanchored Location
@@ -178,4 +179,16 @@ func TestWebsterGeometryHelpers_ToldDirectory(t *testing.T) {
 			t.Errorf("PromptsDir(anchorRoot) = %q; want %q", got, want)
 		}
 	})
+}
+
+// TestWebsterGeometry_VerifyDirBesideScratch pins that the verify directory both tellers fill sits under lyxdirs.DotLyxDirName, beside webster's scratch directory, for a plain told anchor.
+func TestWebsterGeometry_VerifyDirBesideScratch(t *testing.T) {
+	t.Parallel()
+
+	anchorRoot := "/var/lib/lyx-standalone/state"
+	g := Geometry{ScratchDir: ScratchDir(anchorRoot), VerifyDir: verifytree.Dir(anchorRoot)}
+
+	if got, want := filepath.Dir(g.VerifyDir), filepath.Dir(g.ScratchDir); got != want {
+		t.Errorf("filepath.Dir(VerifyDir) = %q; want %q (the directory holding ScratchDir)", got, want)
+	}
 }

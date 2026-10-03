@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -103,11 +104,10 @@ func landingDeps(
 			}
 			return plan.Verify, nil
 		},
-		VerifyPendingPath: loomengine.LoomVerifyPendingPath(l),
-		VerifyOutputPath:  loomengine.LoomVerifyOutputPath(l),
-		Shuttle:           runner,
-		Registry:          registry,
-		Config:            cfg,
+		VerifyDir: verifytree.Dir(l.AnchorPath()),
+		Shuttle:   runner,
+		Registry:  registry,
+		Config:    cfg,
 	}
 }
 

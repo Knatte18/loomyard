@@ -1,5 +1,5 @@
 // shell_test.go table-tests both pane-shell implementations: argument quoting across plain,
-// space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/WithEnv/ExportEnv/
+// space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/
 // PrependPathEntry/Chain/Source/ScriptExt output each impl composes.
 // The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so
 // the coverage moves with the logic it tests.
@@ -59,23 +59,17 @@ func TestPosixShell_Quote(t *testing.T) {
 	}
 }
 
-func TestPwshShell_InvokeAndReadFile(t *testing.T) {
+func TestPwshShell_Invoke(t *testing.T) {
 	sh := Pwsh()
 	if got, want := sh.Invoke("claude"), "& 'claude'"; got != want {
 		t.Errorf("Pwsh().Invoke(%q) = %q; want %q", "claude", got, want)
 	}
-	if got, want := sh.ReadFile(`C:\run\prompt.md`), `(Get-Content -Raw 'C:\run\prompt.md')`; got != want {
-		t.Errorf("Pwsh().ReadFile(%q) = %q; want %q", `C:\run\prompt.md`, got, want)
-	}
 }
 
-func TestPosixShell_InvokeAndReadFile(t *testing.T) {
+func TestPosixShell_Invoke(t *testing.T) {
 	sh := Posix()
 	if got, want := sh.Invoke("claude"), "'claude'"; got != want {
 		t.Errorf("Posix().Invoke(%q) = %q; want %q", "claude", got, want)
-	}
-	if got, want := sh.ReadFile("/run/prompt.md"), `"$(cat '/run/prompt.md')"`; got != want {
-		t.Errorf("Posix().ReadFile(%q) = %q; want %q", "/run/prompt.md", got, want)
 	}
 }
 
@@ -357,9 +351,6 @@ func TestPwshShell_Source(t *testing.T) {
 			got := Pwsh().Source(tt.in)
 			if got != tt.want {
 				t.Errorf("Pwsh().Source(%q) = %q; want %q", tt.in, got, tt.want)
-			}
-			if viaReadFile := ". ([scriptblock]::Create(" + Pwsh().ReadFile(tt.in) + "))"; got != viaReadFile {
-				t.Errorf("Pwsh().Source(%q) = %q; want the script-block form over ReadFile %q", tt.in, got, viaReadFile)
 			}
 			if strings.HasPrefix(got, ". '") {
 				t.Errorf("Pwsh().Source(%q) = %q; must not dot-source the file path", tt.in, got)

@@ -62,7 +62,7 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
-		PollWaitS:          480,
+		VerifyGateAttempts: 3,
 	}
 	if cfg != want {
 		t.Errorf("LoadConfig(template) = %+v; want %+v", cfg, want)
@@ -106,7 +106,7 @@ recovery: opus[effort=max]
 self_fix_cap: 5
 master_timeout_min: 120
 recovery_timeout_min: 30
-poll_wait_s: 60
+verify_gate_attempts: 4
 `
 	seedConfig(t, baseDir, "webster", override)
 
@@ -124,6 +124,23 @@ poll_wait_s: 60
 	if cfg.SelfFixCap != 5 {
 		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 5)
 	}
+	if cfg.VerifyGateAttempts != 4 {
+		t.Errorf("VerifyGateAttempts = %d, want %d", cfg.VerifyGateAttempts, 4)
+	}
+}
+
+// TestLoadConfig_RetiredPollWaitKeyStillLoads pins that a hub webster.yaml still carrying the retired poll_wait_s key keeps loading, since the unmarshal ignores an unknown key.
+func TestLoadConfig_RetiredPollWaitKeyStillLoads(t *testing.T) {
+	baseDir := t.TempDir()
+	seedConfig(t, baseDir, "webster", "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\npoll_wait_s: 480\n")
+
+	cfg, err := websterengine.LoadConfig(baseDir, "webster")
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v; want nil for a file still carrying poll_wait_s", err)
+	}
+	if cfg.SelfFixCap != 2 || cfg.VerifyGateAttempts != 3 {
+		t.Errorf("LoadConfig() = %+v; want the knobs the file carries", cfg)
+	}
 }
 
 func TestLoadConfig_BadRoleGrammarNamesTheKey(t *testing.T) {
@@ -135,7 +152,7 @@ recovery: "opus "
 self_fix_cap: 2
 master_timeout_min: 480
 recovery_timeout_min: 60
-poll_wait_s: 480
+verify_gate_attempts: 3
 `
 	seedConfig(t, baseDir, "webster", badRole)
 
@@ -183,7 +200,11 @@ func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
 		},
 		{
 			name: "recovery_timeout_min absent",
-			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\npoll_wait_s: 480\n",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nverify_gate_attempts: 3\n",
+		},
+		{
+			name: "verify_gate_attempts absent",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -194,7 +215,7 @@ func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig() error = %v; want nil with the absent knobs at their template defaults", err)
 			}
-			if cfg.SelfFixCap != 2 || cfg.MasterTimeoutMin != 480 || cfg.RecoveryTimeoutMin != 60 || cfg.PollWaitS != 480 {
+			if cfg.SelfFixCap != 2 || cfg.MasterTimeoutMin != 480 || cfg.RecoveryTimeoutMin != 60 || cfg.VerifyGateAttempts != 3 {
 				t.Errorf("LoadConfig() = %+v; want the numeric knobs at their template defaults", cfg)
 			}
 		})
@@ -209,9 +230,14 @@ func TestLoadConfig_ExplicitZeroKnobNamesTheKey(t *testing.T) {
 		wantKey string
 	}{
 		{
-			name:    "poll_wait_s explicitly zero",
-			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\npoll_wait_s: 0\n",
-			wantKey: "poll_wait_s",
+			name:    "verify_gate_attempts explicitly zero",
+			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 0\n",
+			wantKey: "verify_gate_attempts",
+		},
+		{
+			name:    "verify_gate_attempts negative",
+			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: -1\n",
+			wantKey: "verify_gate_attempts",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

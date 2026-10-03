@@ -167,7 +167,6 @@ func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 	fx, c0, _, c2 := reversedOrderFixture(t)
 	root := fx.geom.WorktreeRoot
-	fx.st.Batches[integrationBatchKey] = &BatchState{Terminal: true, Digest: &Digest{HeadSHA: "integration"}}
 	fx.st.Batches[3] = &BatchState{Slug: "three"}
 
 	got, err := runEvidenceBases(root, fx.st)

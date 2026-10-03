@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -53,6 +54,44 @@ func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 	}
 	return files, nil
 
+}
+
+// UntrackedFiles returns the repo-relative paths of every untracked, non-ignored file, sorted.
+// It reads go-git's worktree status the way WorktreeChangedFiles does, with .git/info/exclude honoured, so a junctioned `_lyx` or `.lyx` listed there never appears.
+// It returns an empty, never nil, slice when there are none.
+func (r *Repo) UntrackedFiles() ([]string, error) {
+	repo, err := r.goGit()
+	if err != nil {
+		return nil, err
+	}
+
+	r.goGitMu.Lock()
+	defer r.goGitMu.Unlock()
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: resolve worktree: %w", err)
+	}
+
+	excludes, err := readGitDirExcludePatterns(repo)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read git-dir exclude patterns: %w", err)
+	}
+	wt.Excludes = excludes
+
+	status, err := wt.Status()
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: worktree status: %w", err)
+	}
+
+	files := []string{}
+	for path, fileStatus := range status {
+		if fileStatus.Worktree == git.Untracked {
+			files = append(files, path)
+		}
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // readGitDirExcludePatterns reads repo's info/exclude file through the git-dir

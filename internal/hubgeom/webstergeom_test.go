@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -74,6 +75,9 @@ func TestWebsterGeometry(t *testing.T) {
 			}
 			if want := planparser.PlanDir(anchorPath); got.PlanDir != want {
 				t.Errorf("WebsterGeometry(l).PlanDir = %q; want %q", got.PlanDir, want)
+			}
+			if want := verifytree.Dir(anchorPath); got.VerifyDir != want {
+				t.Errorf("WebsterGeometry(l).VerifyDir = %q; want %q", got.VerifyDir, want)
 			}
 		})
 	}

@@ -1,10 +1,8 @@
-// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage, AppendIntegrationFix and AppendAuditWarnings append further sections beside the two below):
+// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the one below):
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
 // outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
-// re-implementing the same-second collision loop; AppendIntegrationFailure extends an
-// already-written summary artifact with the integration-suite bisect's own localized finding
-// (integration.go's BisectAndEscalate), the summary-document half of that escalation path. The
-// artifact's read contract -- its path and its parse -- lives in internal/summaryparser, the sole
+// re-implementing the same-second collision loop.
+// The artifact's read contract -- its path and its parse -- lives in internal/summaryparser, the sole
 // owner of that shape.
 
 package websterengine
@@ -47,56 +45,16 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 	return target, nil
 }
 
-// AppendIntegrationFailure appends a section naming the integration bisect's localized finding to
-// the final-summary artifact.
-// Master's final-action rule guarantees the artifact exists before this runs.
-// A non-empty regressions list adds each regressing identity with its output tail in a fenced block;
-// nil regressions leave the section as the localized-card sentence alone.
-func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string, regressions []IntegrationFailure) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
-	if len(regressions) > 0 {
-		b.WriteString("\nRegressing failures:\n")
-		for _, r := range regressions {
-			fmt.Fprintf(&b, "\n### `%s`\n\n```\n%s\n```\n", r.ID, strings.TrimRight(r.Tail, "\n"))
-		}
-	}
-	return appendToSummary(websterDir, "integration failure", b.String())
-}
-
-// AppendIntegrationTriage appends a section listing the failures webster's triage did not attribute to this run, by identity only;
-// the tails stay in the integration report.
-// It is a no-op when both lists are empty.
-func AppendIntegrationTriage(websterDir string, flaky, preExisting []string) error {
-	if len(flaky) == 0 && len(preExisting) == 0 {
+// AppendIntegrationTriage appends a section listing the flaky identities the verify gate passed on rerun, by identity only.
+// It is a no-op when flaky is empty.
+func AppendIntegrationTriage(websterDir string, flaky []string) error {
+	if len(flaky) == 0 {
 		return nil
 	}
 	var b strings.Builder
 	b.WriteString("\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n")
 	writeTriageList(&b, "Flaky (passed on rerun)", flaky)
-	writeTriageList(&b, "Pre-existing (already failing at the plan's starting commit)", preExisting)
 	return appendToSummary(websterDir, "integration triage", b.String())
-}
-
-// AppendIntegrationFix appends a section recording the integration-fix attempt: the result, the pre-fix head, each fix commit and the cleared identities.
-// A result other than FixResultFixed adds the remaining identities, the detail and a way-forward sentence naming the pre-fix head and the fix commits, so the operator decides whether to keep them.
-func AppendIntegrationFix(websterDir string, fix IntegrationFixRecord) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n\n## Integration suite fix\n\nA fix strand attempted the integration regression; result: `%s`.\nPre-fix head: `%s`.\n", fix.Result, fix.PreFixHead)
-	writeTriageList(&b, "Fix commits", fix.Commits)
-	writeTriageList(&b, "Cleared regressions", fix.Cleared)
-	if fix.Result != FixResultFixed {
-		writeTriageList(&b, "Remaining regressions", fix.Remaining)
-		if fix.Detail != "" {
-			fmt.Fprintf(&b, "\nDetail: %s\n", fix.Detail)
-		}
-		commits := "none"
-		if len(fix.Commits) > 0 {
-			commits = "`" + strings.Join(fix.Commits, "`, `") + "`"
-		}
-		fmt.Fprintf(&b, "\nThe fix commits (%s) stay on the branch; decide whether to keep them. `git reset --hard %s` drops them.\n", commits, fix.PreFixHead)
-	}
-	return appendToSummary(websterDir, "integration fix", b.String())
 }
 
 // AppendAuditWarnings appends an "Audit warnings" section listing findings recorded as warnings, one bullet each in the order given.

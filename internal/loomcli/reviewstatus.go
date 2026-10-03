@@ -6,6 +6,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // reviewWaitPrefix leads the note so a status reader sees which wait it is.
@@ -24,10 +25,28 @@ func reviewWaiting(root, lockDir string) func() (string, error) {
 	}
 }
 
+// verifyWaiting returns the Waiting hook that reports a running verify from the marker at markerPath, and falls through to next otherwise.
+// A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
+func verifyWaiting(markerPath string, next func() (string, error)) func() (string, error) {
+	return func() (string, error) {
+		m, live, err := verifytree.ReadMarker(markerPath)
+		if err != nil {
+			return "", err
+		}
+		if live {
+			return m.Note(), nil
+		}
+		return next()
+	}
+}
+
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
+// A running verify is reported ahead of the parent-review note.
 func reviewWaitingFor(loc *lyxcwd.Location) func() (string, error) {
 	if loc == nil {
 		return nil
 	}
-	return reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
+	review := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
+	markerPath := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
+	return verifyWaiting(markerPath, review)
 }

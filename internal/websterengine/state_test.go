@@ -237,6 +237,36 @@ func TestState_CorruptFileErrors(t *testing.T) {
 	}
 }
 
+// TestState_LegacyIntegrationRecordsStillLoad pins that a state.json written before the integration stage was retired loads:
+// the retired integrationFix field is ignored and the reserved -1 batch record is kept as an ordinary entry.
+func TestState_LegacyIntegrationRecordsStillLoad(t *testing.T) {
+	t.Parallel()
+
+	websterDir, scratchDir := scratchSibling(t)
+	if err := os.MkdirAll(websterDir, 0o755); err != nil {
+		t.Fatalf("mkdir websterDir: %v", err)
+	}
+	legacy := `{
+  "runGuid": "g",
+  "batches": {
+    "1": {"slug": "alpha", "kind": "fork", "terminal": true, "status": "done"},
+    "-1": {"terminal": true, "status": "stuck"}
+  },
+  "integrationFix": {"preFixHead": "abc", "strandGuid": "fix-strand", "spawnedAt": "2026-01-01T00:00:00Z", "result": "failed"}
+}`
+	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte(legacy), 0o644); err != nil {
+		t.Fatalf("write legacy state.json: %v", err)
+	}
+
+	got, err := websterengine.LoadState(websterDir, scratchDir)
+	if err != nil {
+		t.Fatalf("LoadState(legacy) error = %v; want nil", err)
+	}
+	if got == nil || got.Batches[1] == nil || got.Batches[-1] == nil {
+		t.Fatalf("LoadState(legacy) = %+v; want batches 1 and -1 loaded", got)
+	}
+}
+
 // TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation lease is a real
 // cross-holder exclusive lock: while held, a second non-blocking acquire of the same lease file
 // fails, and after Release it succeeds — the property every verb's load-mutate-save section relies

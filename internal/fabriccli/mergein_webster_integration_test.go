@@ -70,7 +70,7 @@ func assertOneWebsterWarning(t *testing.T, env envelope.Envelope) {
 		t.Fatalf("warnings = %v; want exactly one entry", raw)
 	}
 	s, _ := warnings[0].(string)
-	for _, want := range []string{"Webster is mid-run in this worktree", "lyx webster record-batch", "pre-merge trees"} {
+	for _, want := range []string{"Webster is mid-run in this worktree", "lyx webster record-batch"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("warnings[0] = %q; want it to contain %q", s, want)
 		}

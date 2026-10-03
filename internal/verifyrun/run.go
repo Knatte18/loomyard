@@ -1,6 +1,6 @@
 // Package verifyrun runs one shell command in-process and reports its exit code.
 //
-// It is the single shell runner shared by webster's integration bisect and landing's post-merge verify gate,
+// It is the single shell runner shared by plan-verify (through internal/verifytree) and the per-card `**Verify:**` rerun,
 // so shell selection lives in one place.
 // It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam, and this one logs through internal/logger.
 // It imports only the standard library and internal/logger.

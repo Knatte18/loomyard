@@ -68,8 +68,7 @@ func ParseReport(path string) (*Report, error) {
 	return &r, nil
 }
 
-// validateReportFields enforces the status and head_sha shape shared by ParseReport and ParseIntegrationReport,
-// so the two parsers cannot drift.
+// validateReportFields enforces ParseReport's status and head_sha shape.
 func validateReportFields(path, status, headSHA string) error {
 	switch status {
 	case ReportStatusOK, ReportStatusFailed:

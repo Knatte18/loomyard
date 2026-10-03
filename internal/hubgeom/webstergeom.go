@@ -7,6 +7,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -30,5 +31,6 @@ func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 		StencilsDir:  fabricengine.StencilsDir(l.HubPath),
 		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 		PlanDir:      planparser.PlanDir(anchorPath),
+		VerifyDir:    verifytree.Dir(anchorPath),
 	}
 }

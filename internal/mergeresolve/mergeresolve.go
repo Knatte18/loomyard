@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -42,6 +45,11 @@ func (r *Resolver) Resolve(ctx context.Context, source string) (Result, error) {
 		if _, err := r.deps.Fabric.MergeAbort(); err != nil {
 			return Result{}, fmt.Errorf("mergeresolve: abort in-progress merge before a clean attempt: %w", err)
 		}
+	}
+
+	// A report is one call's ephemeral diagnostics: one left by an earlier call would trip the spec validator's existing-output refusal on this call's first attempt.
+	if err := r.clearStaleReports(); err != nil {
+		return Result{}, err
 	}
 
 	mergeRes, err := r.deps.Fabric.MergeIn(source)
@@ -111,10 +119,22 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		}
 
 		if len(unresolved) == 0 {
-			// Clean scan: stage exactly the conflicted paths, then conclude, in that order — the
-			// ordering is the entire reason the staging verb exists.
+			// A new file is never part of a merge commit,
+			// so the session's untracked files halt the merge before anything is staged.
+			untracked, err := r.deps.Fabric.MergeUntrackedFiles()
+			if err != nil {
+				return Result{}, fmt.Errorf("mergeresolve: list untracked files (attempt %d): %w", attempt, err)
+			}
+			if len(untracked) > 0 {
+				return r.abortAndStuck(ctx, fmt.Sprintf("conflict session left untracked file(s) (attempt %d): %s", attempt, strings.Join(untracked, ", ")))
+			}
+
+			// Clean scan: stage the conflicted paths, then every tracked edit the session made beyond them, then conclude, in that order — the ordering is the entire reason the staging verbs exist.
 			if _, err := r.deps.Fabric.MergeStageResolved(conflicts); err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: stage resolved conflict paths (attempt %d): %w", attempt, err)
+			}
+			if _, err := r.deps.Fabric.MergeStageTracked(); err != nil {
+				return Result{}, fmt.Errorf("mergeresolve: stage tracked edits (attempt %d): %w", attempt, err)
 			}
 			if _, err := r.deps.Fabric.MergeContinue(""); err != nil {
 				return Result{}, fmt.Errorf("mergeresolve: conclude resolved merge (attempt %d): %w", attempt, err)
@@ -132,6 +152,28 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 
 	// Unreachable: the loop above always returns by its second iteration at the latest.
 	return Result{}, fmt.Errorf("mergeresolve: resolveConflicts: exhausted attempts without a terminal result")
+}
+
+// clearStaleReports removes every resolution report an earlier Resolve call left in the scratch directory.
+// An absent scratch directory has nothing to clear.
+func (r *Resolver) clearStaleReports() error {
+	entries, err := os.ReadDir(r.deps.ScratchDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("mergeresolve: list scratch directory %s: %w", r.deps.ScratchDir, err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, reportNamePrefix) || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(r.deps.ScratchDir, name)); err != nil {
+			return fmt.Errorf("mergeresolve: remove stale report %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // stuck consults cancelErr and returns either the context-cancellation error (when ctx was

@@ -33,7 +33,7 @@
 //
 // Role selects one of four directive-text variants, one per agent shape, because each shape needs
 // its own wording for what it actually does: RoleImplementer for any agent editing code (the webster
-// fork, the webster recovery strand, the webster integration fork, loom's Plan-Write), RoleReviewFix
+// fork, the webster recovery strand, the webster verify-gate fixer fork, loom's Plan-Write), RoleReviewFix
 // for the Burler round's combined review-then-fix agent, RoleOrchestrator for webster's Master
 // session, which forks rather than edits, and RoleInterview for the Discussion-Write interview
 // agent, whose job is neither editing nor reviewing — a shape internal/pattern has no equivalent

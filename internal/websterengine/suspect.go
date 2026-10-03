@@ -41,8 +41,8 @@ type evidenceBases struct {
 // The error is an IsAncestor failure.
 func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	var starts, heads []string
-	for n, bs := range st.Batches {
-		if n == integrationBatchKey || bs == nil {
+	for _, bs := range st.Batches {
+		if bs == nil {
 			continue
 		}
 		if bs.StartSHA != "" && !slices.Contains(starts, bs.StartSHA) {

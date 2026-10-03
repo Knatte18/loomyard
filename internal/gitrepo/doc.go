@@ -24,7 +24,7 @@
 // no-`fatal:`-leak surface forbids folding git's stderr into their
 // messages, which is what run's raw form lets them keep working around.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push,
-// PushCoalesced, ResetHard, CheckoutDetached, RestoreBranch, IsAncestor, and
+// PushCoalesced, ResetHard, IsAncestor, and
 // HasUnpushed (measured and reverted from a go-git ancestry walk; see
 // HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
 // runChecked. See CONSTRAINTS.md's gitrepo Client Boundary Invariant for the
@@ -66,8 +66,7 @@
 //     tri-state exit code directly rather than folding any non-zero exit
 //     into failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
-//   - CurrentBranch, CheckoutDetached, and RestoreBranch are the in-place
-//     bisect exception (see Scope boundaries below).
+//   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //
 // Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard) are
 // validated as plain hex object names before ever reaching git, so an
@@ -131,8 +130,7 @@
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
 // diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
-// reset, and the CurrentBranch/CheckoutDetached/RestoreBranch
-// trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
+// reset, and CurrentBranch. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric and
 // raddle keep using explicit-list StageAndCommit (called via fabricengine's own
 // board-facing commit wrapper on board's behalf, not boardengine calling
@@ -155,16 +153,7 @@
 // the working tree, since it's an ordinary git repo underneath. fabric
 // layers a further, separate set of topology operations — clone, worktree
 // add/remove, general checkout, branch naming — on top of gitrepo; those
-// remain fabric-specific, not part of gitrepo itself. The one admitted
-// exception is CurrentBranch/CheckoutDetached/RestoreBranch, used solely by
-// webster's integration bisect to check a candidate SHA out in place in its
-// single worktree, run the plan's verify step, and restore HEAD to the
-// branch it started on. That is a sequential, post-run, read-only-ish
-// inspection cycle over the one worktree gitrepo already has a handle
-// on — not a topology operation (no clone, no worktree add/remove, no new
-// branch), and never run concurrently with fabric's parallel topology work —
-// so it stays inside gitrepo rather than becoming a second, overlapping
-// checkout surface in fabric.
+// remain fabric-specific, not part of gitrepo itself.
 //
 // # Push surface
 //
@@ -251,10 +240,8 @@
 //     modified state — the CLI aborts having moved nothing. Pull additionally
 //     failed 25 of 40 trials with a spurious unstaged-changes rejection on a
 //     stock Windows checkout with core.autocrlf=true (0 of 40 with
-//     autocrlf=false), HEAD already moved in all 25 failures. Pull and
-//     CheckoutDetached stay CLI-bound; RestoreBranch stays paired with
-//     CheckoutDetached for the same reason even though it was not itself the
-//     failing half.
+//     autocrlf=false), HEAD already moved in all 25 failures.
+//     Pull stays CLI-bound.
 //   - go-git never invokes a git credential helper. Its only "credential"
 //     occurrences are doc comments on an Auth option field; it accepts an
 //     explicit transport.AuthMethod but has no mechanism to discover one from

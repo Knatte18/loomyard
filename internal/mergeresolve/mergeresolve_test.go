@@ -24,11 +24,24 @@ type fakeMergeSurface struct {
 	mergeInProgress    bool
 	mergeInProgressErr error
 	stageResolvedErr   error
+	stageTrackedErr    error
+	untrackedFiles     []string
+	untrackedErr       error
 	continueErr        error
 	abortErr           error
 
 	calls       []string
 	stagedPaths []string
+}
+
+func (f *fakeMergeSurface) MergeStageTracked() (fabricengine.StageResult, error) {
+	f.calls = append(f.calls, "MergeStageTracked")
+	return fabricengine.StageResult{}, f.stageTrackedErr
+}
+
+func (f *fakeMergeSurface) MergeUntrackedFiles() ([]string, error) {
+	f.calls = append(f.calls, "MergeUntrackedFiles")
+	return f.untrackedFiles, f.untrackedErr
 }
 
 func (f *fakeMergeSurface) MergeIn(source string) (fabricengine.MergeResult, error) {
@@ -496,5 +509,125 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 	}
 	if info, err := os.Stat(deps.ScratchDir); err != nil || !info.IsDir() {
 		t.Errorf("ScratchDir was not created by the first spec build: %v", err)
+	}
+}
+
+func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.T) {
+	paths := []string{"a.txt"}
+	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	deps := newTestDeps(t, fake, nil)
+	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
+	writeConflictedFixture(t, deps, "other.txt", "before\n")
+
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		DuringRun: func(callNumber int, spec shuttleengine.Spec) {
+			writeConflictedFixture(t, deps, "a.txt", resolvedContent)
+			writeConflictedFixture(t, deps, "other.txt", "after\n")
+		},
+	}
+	deps.Shuttle = shuttle
+	r, err := New(deps)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	res, err := r.Resolve(context.Background(), "source")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v; want nil", err)
+	}
+	if res.Outcome != OutcomeResolved {
+		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeResolved)
+	}
+
+	resolvedIdx := fake.indexOf("MergeStageResolved")
+	trackedIdx := fake.indexOf("MergeStageTracked")
+	continueIdx := fake.indexOf("MergeContinue")
+	if resolvedIdx == -1 || trackedIdx < resolvedIdx || continueIdx < trackedIdx {
+		t.Errorf("call order = %v; want MergeStageResolved, MergeStageTracked, MergeContinue in that order", fake.calls)
+	}
+}
+
+func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t *testing.T) {
+	paths := []string{"a.txt"}
+	fake := &fakeMergeSurface{
+		mergeInResult:  fabricengine.MergeResult{Conflicts: paths},
+		untrackedFiles: []string{"new/one.go", "two.go"},
+	}
+	deps := newTestDeps(t, fake, nil)
+	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
+
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		DuringRun: func(callNumber int, spec shuttleengine.Spec) {
+			writeConflictedFixture(t, deps, "a.txt", resolvedContent)
+		},
+	}
+	deps.Shuttle = shuttle
+	r, err := New(deps)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	res, err := r.Resolve(context.Background(), "source")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v; want nil", err)
+	}
+	if res.Outcome != OutcomeStuck {
+		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
+	}
+	for _, name := range fake.untrackedFiles {
+		if !strings.Contains(res.Reason, name) {
+			t.Errorf("Reason = %q; want it to name %q", res.Reason, name)
+		}
+	}
+	if !fake.calledAny("MergeAbort") {
+		t.Error("MergeAbort was never called")
+	}
+	for _, verb := range []string{"MergeStageResolved", "MergeStageTracked", "MergeContinue"} {
+		if fake.calledAny(verb) {
+			t.Errorf("%s was called; want it never reached once an untracked file halts the merge", verb)
+		}
+	}
+}
+
+func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
+	paths := []string{"a.txt"}
+	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
+	deps := newTestDeps(t, fake, nil)
+	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
+
+	stale := filepath.Join(deps.ScratchDir, reportNamePrefix+"1.md")
+	if err := os.MkdirAll(deps.ScratchDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(ScratchDir): %v", err)
+	}
+	if err := os.WriteFile(stale, []byte("an earlier call's report\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(stale report): %v", err)
+	}
+
+	var staleAtRun bool
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		DuringRun: func(callNumber int, spec shuttleengine.Spec) {
+			_, err := os.Stat(stale)
+			staleAtRun = err == nil
+			writeConflictedFixture(t, deps, "a.txt", resolvedContent)
+		},
+	}
+	deps.Shuttle = shuttle
+	r, err := New(deps)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	res, err := r.Resolve(context.Background(), "source")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v; want nil", err)
+	}
+	if res.Outcome != OutcomeResolved {
+		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeResolved)
+	}
+	if staleAtRun {
+		t.Error("the earlier call's report still existed when the session ran; want it cleared at entry")
 	}
 }

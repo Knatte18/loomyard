@@ -4,7 +4,7 @@
 // Both are single-line strings typed verbatim into a pane via tmux send-keys (see
 // reedengine/spawn.go's launchStrandLocked) — no newline may appear in either, since send-keys
 // submits a line at a time.
-// Argument quoting, the call operator, and the prompt-file read idiom are pane-shell mechanics
+// Argument quoting and the call operator are pane-shell mechanics
 // owned entirely by internal/shell (the Shell Mechanics Seam invariant);
 // this file only ever calls into that seam and never emits raw pwsh/posix syntax of its own.
 
@@ -19,10 +19,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// maxLaunchPromptBytes is the largest prompt Prepare accepts without failing.
-// The Windows command-line limit is 32,767 UTF-16 characters; the launch line
-// expands the entire prompt into one argument, so this bounds it safely.
+// maxLaunchPromptBytes is the largest launch argument Prepare accepts without failing.
+// The Windows command-line limit is 32,767 UTF-16 characters;
+// the argument is the fixed pointer to prompt.md, never the prompt itself, so only a pathological run-directory path reaches this bound.
 const maxLaunchPromptBytes = 30000
+
+// launchPointer returns the one argument a fresh session starts with: a pointer to the prompt file at promptPath.
+func launchPointer(promptPath string) string {
+	return "Read " + promptPath + " in full first; it is your complete, authoritative instructions."
+}
 
 // validEfforts is the set of lowercase --effort values claude accepts.
 var validEfforts = map[string]bool{
@@ -103,7 +108,7 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // A fresh session is named with --session-id;
 // when resume is true the line takes over the existing session sessionID names with --resume instead,
 // and everything else on the line is identical, so the run's own settings file routes the adopted session's hooks.
-// It reads the prompt via sh.ReadFile, quotes all interpolated values, and appends --effort/--model only when non-empty.
+// It passes the launchPointer to promptPath as the first message, quotes all interpolated values, and appends --effort/--model only when non-empty.
 // When notice is non-empty it rides the line as --append-system-prompt,
 // so the session is told which tools are denied;
 // an empty notice leaves the line unchanged.
@@ -117,7 +122,7 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 	if resume {
 		sessionFlag = " --resume "
 	}
-	cmd := sh.Invoke(bin) + " " + sh.ReadFile(promptPath) +
+	cmd := sh.Invoke(bin) + " " + sh.Quote(launchPointer(promptPath)) +
 		sessionFlag + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
