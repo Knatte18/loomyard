@@ -11,9 +11,9 @@
 //
 // # Outcome mapping
 //
-// Each adapter maps its own verdict onto Done or Stuck -- the two of shedengine's three outcomes
-// these adapters produce, since none of them hands off to a person with Awaiting -- and reports the
-// output pointer differently because the four adapters report success differently:
+// Each adapter maps its own verdict onto Done or Stuck, and the Bouncer alone also onto Awaiting,
+// the hand-off to a person when its judge finds the review circling; the adapters report the
+// output pointer differently because they report success differently:
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
 //     evaluated Spec's OutputFiles as the pointer's path.
@@ -50,16 +50,24 @@
 //   - Bouncer: Call clears an already-approved round ahead of its own four-mode branch -- seed,
 //     re-bounce, judge, or replay -- and its harvest step acts on a judgment that provably happened
 //     (a verdict and ledger that both exist and parse) regardless of what the shuttle run itself
-//     reported. A parsed APPROVED verdict maps to Done only on the harvest that earns it, within the
-//     same Call that produced it; at Call entry, an already-APPROVED verdict maps to the clear
+//     reported. The judge's verdict is exactly CONVERGED, CONTINUE or CIRCLING.
+//     A parsed CONVERGED verdict maps to Done only on the harvest that earns it, within the
+//     same Call that produced it; at Call entry, an already-CONVERGED verdict maps to the clear
 //     instead -- unless the entry-time probe finds the judge that wrote it still alive, in which
 //     case waiting on that judge is itself the harvest that earns the Done (see "Every spawning
-//     adapter probes for a live agent first" below). A parsed BLOCKING verdict maps to Stuck on
-//     harvest or on a BLOCKING replay, both reporting the round's ledger path as the pointer; every
+//     adapter probes for a live agent first" below). A parsed CONTINUE verdict maps to Stuck on
+//     harvest or on a CONTINUE replay, and a parsed CIRCLING verdict maps to Awaiting on harvest
+//     or on a replay without spawning anything, all three reporting the round's ledger path as the
+//     pointer; every
 //     other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports
 //     an empty Path, with the re-bounce and degraded paths carrying their cause on Reason. The
+//     legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict
+//     already on disk at Call entry (the clear, the replay and BurlerProducer's may-advance check).
+//     A legacy word never settles a harvest: a judge this Call spawned or attached that writes one
+//     has its three outputs archived and the round re-judged, through the round producer's
+//     unjudged-round hand-back, at one bounce unit on each row. The
 //     ledger is reported rather than withheld because the Bouncer's ledger is a real cross-round
-//     artifact a human reads, and hiding it on a BLOCKING Stuck would hide it exactly when an
+//     artifact a human reads, and hiding it on a CONTINUE Stuck would hide it exactly when an
 //     operator most needs it. The exists-or-empty rule matters because Shed never stats a pointer,
 //     so a pointer naming an unwritten file is caught nowhere and is simply persisted into the
 //     history for a human to read as though the artifact were there.

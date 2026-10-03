@@ -36,10 +36,10 @@ You are a review-gate judge: a reviewer of the target artifacts against the rubr
 
 ## Output files (write EXACTLY THREE files this call: `{{.verdict_path}}`, `{{.ledger_path}}`, AND `{{.focus_path}}`)
 
-BLOCKING — this call is classified complete only when every one of the three declared output files
+REQUIRED — this call is classified complete only when every one of the three declared output files
 exists.
 A judge that writes two of three files has its approval discarded, so write all three every call,
-including an `APPROVED` call.
+including a `CONVERGED` call.
 
 ### Verdict file (`{{.verdict_path}}`)
 
@@ -47,14 +47,14 @@ Write `{{.verdict_path}}` as `---`-delimited YAML frontmatter over unconstrained
 
 ```
 ---
-verdict: APPROVED
+verdict: CONVERGED
 rationale: "one-line summary of why, citing concrete evidence"
 ---
 ```
 
 Frontmatter rules, all strict:
 
-- `verdict` is exactly `APPROVED` or `BLOCKING` -- no other spelling, case-sensitive.
+- `verdict` is exactly `CONVERGED`, `CONTINUE` or `CIRCLING` -- no other spelling, case-sensitive.
 - `rationale` MUST be a double-quoted, single-line YAML string, exactly as in the example above.
   This is load-bearing: an unquoted rationale containing a colon (`: `) is invalid YAML, the whole
   verdict file is rejected, and your verdict is DISCARDED as if you never answered.
@@ -85,7 +85,7 @@ Frontmatter rules, all strict:
 - `round` is a positive integer, here {{.round}}.
 - `ledger` is a list of entries, each with a non-empty `key`, a non-empty `rounds` list of positive
   integers, and a `status` of exactly `open` or `resolved`.
-- BLOCKING — lossless carry-forward rule: every entry present in the previous ledger reappears in
+- REQUIRED — lossless carry-forward rule: every entry present in the previous ledger reappears in
   this ledger, as either `status: open` (still applies) or `status: resolved` (no longer applies),
   never silently dropped.
   Losing a recurring finding breaks the cross-round record for every later call.
@@ -123,7 +123,7 @@ What a `focus` entry may say:
 - Promote a concrete instance into an entry only after checking it against the rubric's `Do not flag` list and its symmetry rule.
 - An entry restates every site, commit and claim it depends on, and never refers the reviewer to a prior round's review, fixer report, or finding ID.
 
-An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
+A `CONVERGED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
 a judge that writes two of three files has its approval discarded.
 
 Write EXACTLY THREE files this call: `{{.verdict_path}}`, `{{.ledger_path}}`, and `{{.focus_path}}`.

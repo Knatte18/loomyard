@@ -28,7 +28,7 @@ type wantSequenceEntry struct {
 // anything on its first call), NameXBurler with Stuck (one completed review round --
 // BurlerProducer reports every successful round as Stuck by contract, never Done, since its Stuck
 // is a routine hand-off to the Bouncer rather than a real stuck condition), and NameXBouncer again
-// with Done (the judge call, whose fixture-scripted APPROVED verdict is what advances the run past
+// with Done (the judge call, whose fixture-scripted CONVERGED verdict is what advances the run past
 // the segment). With the standalone validate rows gone, the Plan-Review segment no longer carries
 // the trailing post-segment mechanical re-check the other two segments never had a counterpart
 // for either -- all three segments now share the identical three-entry shape.
@@ -164,7 +164,7 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	// The scenario checks that all three review segments genuinely ran rather than being silently
 	// short-circuited: the fake burler ran exactly three rounds (one per segment), and the fake
 	// shuttle recorded exactly three bouncer-judge spawns -- the judge calls whose fixture-scripted
-	// APPROVED verdicts are what advanced the run past each segment.
+	// CONVERGED verdicts are what advanced the run past each segment.
 	loomBurler := env.Burler.(*shedfake.BurlerRunner)
 	if loomBurler.Calls != 3 {
 		t.Errorf("burler Calls = %d; want exactly 3 after a clean run", loomBurler.Calls)

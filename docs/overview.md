@@ -548,7 +548,7 @@ loom wants a plan-reviewer for worktree `feature-x`:
 3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
 4. `shuttle` → `reed.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
 5. `reed` records the strand in `.lyx/reed.json`, runs the command via `proc` in a pane, re-renders the layout (`layout = rules(strands)`), and applies it.
-6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → burler writes review/fixer-report + verdict → the segment's `Bouncer` reads it, decides another round or exit → on an APPROVED verdict returns `Done` → loom advances.
+6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → burler writes review/fixer-report + verdict → the segment's `Bouncer` reads it, decides another round or exit → on a `CONVERGED` verdict returns `Done` → loom advances.
 
 ### The disambiguating test
 

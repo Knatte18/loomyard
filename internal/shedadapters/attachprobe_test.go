@@ -162,12 +162,12 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 	}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	// Only round 1's report exists at Call entry -- a verdict already on disk would settle (or, if
-	// APPROVED, clear) before judgeCall is ever reached, so the judge branch would go unexercised.
+	// CONVERGED, clear) before judgeCall is ever reached, so the judge branch would go unexercised.
 	// The attached judge writes its verdict and ledger while Call waits on it, which duringAttach
 	// stands in for.
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 	attach.DuringAttach = func() {
-		_ = os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("APPROVED")), 0o644)
+		_ = os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONVERGED")), 0o644)
 		_ = os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644)
 	}
 	// The round's report is the file the archive step would NOT touch; the focus file for round 2
@@ -250,7 +250,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T)
 	}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
 	}})
 	// The live judge's real targeting for round 2, written while Call waits on it. The replay branch
 	// would have synthesized two empty lists over this path before it ever landed.
@@ -329,7 +329,7 @@ func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
 	}})
 
 	shedfake.CallOK(t, b)

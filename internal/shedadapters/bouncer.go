@@ -105,7 +105,7 @@ type Bouncer struct {
 // cfg.RubricStencil eagerly so a wiring typo fails at construction rather than mid-run.
 //
 // Budget rule: a Bouncer configured with a segment MaxBounces of N gets N judged rounds, and the
-// Nth blocks the run if it comes back BLOCKING. The seed call's unconditional Stuck permanently
+// Nth blocks the run if it comes back CONTINUE. The seed call's unconditional Stuck permanently
 // consumes one unit of that budget, and within one generation -- from seed through the Done that
 // settles it -- the episode never resets. It does reset at that Done, though: a segment re-entered
 // after settling clears and re-seeds rather than replaying (see Call), so the Bouncer's own budget
@@ -193,7 +193,8 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // judgment as this call's own (settle, never clear); finding nothing live leaves both branches
 // below acting on exactly the state they always did.
 //
-// Clear-and-re-seed: when the resolved round is judged and its verdict is APPROVED, this producer
+// Clear-and-re-seed: when the resolved round is judged and its verdict is CONVERGED (a legacy
+// APPROVED reads as CONVERGED here), this producer
 // has already settled the segment on some earlier call -- its own past Done. Re-entering means the
 // gated artifact was written again, so that old verdict must not gate the new one: the run
 // directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to
@@ -201,11 +202,11 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // false over the freshly recreated, empty directory.
 //
 // Pointer rule: OutputPointer.Path names a file this producer has verified exists, or it is
-// empty. shedengine.Done is reachable only through harvest, and a BLOCKING shedengine.Stuck is
-// reachable through harvest or a BLOCKING replay -- an APPROVED replay no longer exists, since the
-// clear above intercepts it before the branch. Every other outcome -- the seed call, the
-// re-bounce, the clear itself, every degraded path, every error return -- reports an empty
-// pointer.
+// empty. shedengine.Done is reachable only through harvest, and a CONTINUE shedengine.Stuck or a
+// CIRCLING shedengine.Awaiting is reachable through harvest or a replay -- a CONVERGED replay no
+// longer exists, since the clear above intercepts it before the branch. Every other outcome -- the
+// seed call, the re-bounce, the clear itself, every degraded path, every error return -- reports an
+// empty pointer.
 func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, b.cfg.Name, bouncerEngineLabel); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -250,13 +251,18 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		if err != nil {
 			return b.degrade(ctx, "shedadapters: bouncer entry-time judge attach probe failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 		}
-		if attached && b.judged(n) {
+		if attached {
 			// Re-evaluated after the wait, against what the attached judge has now finished
 			// writing. Reaching here means the judgment landed inside THIS call, so this call is
 			// its harvest and settles it -- exactly as judgeCall's own harvest step does, and never
 			// as the clear below, whose whole premise is a verdict some EARLIER call already
 			// settled the segment on.
-			return b.settle(ctx, n, true)
+			if _, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
+				return b.settle(ctx, n, true)
+			}
+			if b.judged(n) {
+				return b.retireLegacyVerdict(ctx, n)
+			}
 		}
 		// Falling through covers both remaining cases with no special-casing: nothing was live (the
 		// clear and replay branches below act on unchanged state, exactly as before), or the
@@ -265,8 +271,8 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	if n > 0 {
-		if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok && verdict == verdictApproved {
-			// The trigger is state this producer already wrote: an APPROVED verdict sitting on
+		if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok && verdict == verdictConverged {
+			// The trigger is state this producer already wrote: a CONVERGED verdict sitting on
 			// disk at Call entry is the durable record that some earlier Call settled this
 			// segment. Continuing instead of clearing would replay that stale verdict, which is
 			// the defect this step removes.
@@ -455,18 +461,38 @@ func (b *Bouncer) ensureFocus(round int) {
 	logger.Warn("shedadapters: bouncer synthesized an empty focus file", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "path", path)
 }
 
+// retireLegacyVerdict handles a judge this Call spawned or attached that left a verdict and ledger
+// only the legacy reading accepts: a retired APPROVED or BLOCKING word never settles a harvest.
+// It archives the three judge outputs, so judged(round) reads false and the round is re-judged under
+// the current prompt, and degrades with a Reason naming the retired word.
+// Archiving is safe here because the run returned or the attach waited, so no live judge owns the paths.
+// The degraded Stuck goes to the round producer, whose unjudged-round check hands straight back, and
+// the Bouncer's next Call re-judges; the route spends one bounce unit on each row.
+func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if err := archiveStaleOutputs(judgeOutputs(b.cfg.RunDir, round), b.cfg.Now); err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer failed to archive a judge's retired-verdict outputs", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+	}
+	return b.degrade(ctx, "shedadapters: bouncer judge wrote a retired verdict word (APPROVED or BLOCKING); re-judging the round", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+}
+
 // settle reads and parses round's verdict file, which judged(round) has already proved parses,
-// and maps it onto shedengine's contract. On verdictApproved it calls b.cfg.Approve when non-nil,
+// and maps it onto shedengine's contract. Both harvest sites have already applied the strict
+// harvestedVerdict check before calling it, so settle reads through parseRecordedVerdict: a replay
+// over a legacy word settles as its alias instead of degrading.
+// On verdictConverged it calls b.cfg.Approve when non-nil,
 // then b.cfg.Commit when non-nil, and returns shedengine.Done with the round's ledger as the
 // pointer; a non-nil error from either seam is returned as settle's own error, never routed
 // through degrade, because degrade only ever returns shedengine.Stuck and none of its callers
 // ever return shedengine.Done -- sending a seam failure through it would silently convert an
 // approval into a rejection. Approve runs before Commit, and a failing Approve skips Commit
-// entirely. On verdictBlocking it calls
+// entirely. On verdictContinue it calls
 // ensureFocus(round + 1) and returns
 // shedengine.Stuck with the same ledger pointer, deliberately committing nothing: an unapproved
 // artifact must not be committed, and a blocked run has already escalated to a human who is the
-// right party to judge the partial fixes. Both returns survive cancellation: a genuinely parsed
+// right party to judge the partial fixes. On verdictCircling it calls ensureFocus(round + 1) and
+// returns shedengine.Awaiting with the same ledger pointer and a Reason naming the segment, the
+// round and that the judge found no progress; it spawns nothing, and a re-call over the same
+// on-disk verdict returns the same Awaiting. All three returns survive cancellation: a genuinely parsed
 // verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer treats a
 // shuttle OutcomeDone -- that rule says a parsed verdict is never retracted because the context
 // was cancelled, not that the branch performs no side effects, so the approved branch's approve
@@ -479,7 +505,7 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 		// time contract never triggers on its own.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file vanished between judged and settle", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
-	verdict, _, err := parseVerdict(content)
+	verdict, _, _, err := parseRecordedVerdict(content)
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer verdict file failed to parse in settle despite judged", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
@@ -487,7 +513,7 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 	ptr := shedengine.OutputPointer{Path: ledgerPath(b.cfg.RunDir, round)}
 
 	switch verdict {
-	case verdictApproved:
+	case verdictConverged:
 		if b.cfg.Approve != nil {
 			if err := b.cfg.Approve(); err != nil {
 				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
@@ -499,16 +525,20 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 			}
 		}
 		return shedengine.Done, ptr, nil
-	case verdictBlocking:
+	case verdictContinue:
 		b.ensureFocus(round + 1)
 		if !spawned {
-			// A BLOCKING replay means the round producer handed control back without producing a
+			// A CONTINUE replay means the round producer handed control back without producing a
 			// new report.
-			logger.Warn("shedadapters: bouncer replayed a BLOCKING verdict with no new spawn", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+			logger.Warn("shedadapters: bouncer replayed a CONTINUE verdict with no new spawn", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 		}
 		return shedengine.Stuck, ptr, nil
+	case verdictCircling:
+		b.ensureFocus(round + 1)
+		reason := fmt.Sprintf("bouncer %s: the judge found no progress at round %d (CIRCLING)", b.cfg.Name, round)
+		return shedengine.Awaiting, shedengine.OutputPointer{Path: ptr.Path, Reason: reason}, nil
 	default:
-		// Unreachable: parseVerdict only ever returns verdictApproved or verdictBlocking.
+		// Unreachable: parseRecordedVerdict only ever returns one of the three verdict constants.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file carries an unrecognized verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
 	}
 }
@@ -659,7 +689,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// The output list is never conditional on the verdict: shuttleengine classifies a run
 	// complete only when every declared output file exists, so a third entry written only on
-	// BLOCKING would make every approval classify non-complete, degrade, and render
+	// CONTINUE would make every approval classify non-complete, degrade, and render
 	// shedengine.Done unreachable.
 	outputs := judgeOutputs(b.cfg.RunDir, n)
 
@@ -716,8 +746,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// Harvest: evaluate judged(n) against what is now on disk before classifying the run's own
 	// outcome. When it holds, act on a judgment that provably happened regardless of what the run
 	// reported.
-	if b.judged(n) {
+	if _, ok := harvestedVerdict(b.cfg.RunDir, n); ok {
 		return b.settle(ctx, n, true)
+	}
+	if b.judged(n) {
+		return b.retireLegacyVerdict(ctx, n)
 	}
 
 	if runErr != nil {

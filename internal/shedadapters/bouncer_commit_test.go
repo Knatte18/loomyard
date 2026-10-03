@@ -15,12 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// TestBouncer_Commit_ApprovedCallsExactlyOnce pins that an APPROVED verdict calls Commit exactly
+// TestBouncer_Commit_ApprovedCallsExactlyOnce pins that a CONVERGED verdict calls Commit exactly
 // once, before Done is returned.
 func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	calls := 0
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error {
 		calls++
 		return nil
@@ -41,7 +41,7 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestBouncer_Commit_BlockingNeverCalls pins that a BLOCKING verdict never calls Commit: an
+// TestBouncer_Commit_BlockingNeverCalls pins that a CONTINUE verdict never calls Commit: an
 // unapproved artifact must not be committed.
 func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 	calls := 0
@@ -58,7 +58,7 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("BLOCKING"),
+		verdict: bouncerVerdictContent("CONTINUE"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 
@@ -74,7 +74,7 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 // sets Commit for this row.
 func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
@@ -97,7 +97,7 @@ func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 func TestBouncer_Commit_FailingCommitIsAnError(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error { return sentinel }
 	b, err := NewBouncer(cfg)
 	if err != nil {
@@ -149,7 +149,7 @@ func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
+		verdict: bouncerVerdictContent("CONVERGED"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 
@@ -172,14 +172,14 @@ func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_CalledBeforeCommit pins that an APPROVED settle with a non-nil Approve calls
+// TestBouncer_Approve_CalledBeforeCommit pins that a CONVERGED settle with a non-nil Approve calls
 // it exactly once, strictly before Commit. The ordering is asserted with one shared call-log slice
 // both closures append a marker string to, never with two independent booleans, since two booleans
 // cannot distinguish the two orderings.
 func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 	var callLog []string
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Approve = func() error {
 		callLog = append(callLog, "approve")
 		return nil
@@ -207,13 +207,13 @@ func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_NilStillCommits pins that a nil Approve on an APPROVED settle still commits
+// TestBouncer_Approve_NilStillCommits pins that a nil Approve on a CONVERGED settle still commits
 // normally, returns shedengine.Done, and is not an error -- the default behaviour every existing
 // Bouncer construction relies on staying unchanged.
 func TestBouncer_Approve_NilStillCommits(t *testing.T) {
 	commitCalls := 0
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error {
 		commitCalls++
 		return nil
@@ -241,7 +241,7 @@ func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 	sentinel := errors.New("approve failed")
 	commitCalls := 0
 	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Approve = func() error { return sentinel }
 	cfg.Commit = func() error {
 		commitCalls++
@@ -274,7 +274,7 @@ func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_BlockingNeverCalls pins that a BLOCKING verdict never calls Approve,
+// TestBouncer_Approve_BlockingNeverCalls pins that a CONTINUE verdict never calls Approve,
 // mirroring TestBouncer_Commit_BlockingNeverCalls's shape.
 func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 	calls := 0
@@ -291,7 +291,7 @@ func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("BLOCKING"),
+		verdict: bouncerVerdictContent("CONTINUE"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 

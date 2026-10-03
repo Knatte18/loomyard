@@ -19,10 +19,18 @@ import (
 // bouncerVerdict is the Bouncer's own verdict, recorded in a bouncer verdict file's frontmatter.
 type bouncerVerdict string
 
-// The two legal bouncerVerdict spellings.
+// The three legal bouncerVerdict spellings.
 const (
-	verdictApproved bouncerVerdict = "APPROVED"
-	verdictBlocking bouncerVerdict = "BLOCKING"
+	verdictConverged bouncerVerdict = "CONVERGED"
+	verdictContinue  bouncerVerdict = "CONTINUE"
+	verdictCircling  bouncerVerdict = "CIRCLING"
+)
+
+// Retired spellings an older binary's judge wrote.
+// They are read only through parseRecordedVerdict, as the aliases named beside them.
+const (
+	legacyVerdictApproved = "APPROVED"
+	legacyVerdictBlocking = "BLOCKING"
 )
 
 // verdictHeader mirrors a bouncer verdict file's YAML frontmatter shape.
@@ -35,8 +43,8 @@ type verdictHeader struct {
 
 // parseVerdict parses a bouncer verdict file into a bouncerVerdict and its rationale.
 // Fails loud: the frontmatter must be present, closed, and valid YAML; verdict must be exactly
-// verdictApproved or verdictBlocking (case-sensitive); rationale must be non-empty after
-// strings.TrimSpace.
+// verdictConverged, verdictContinue or verdictCircling (case-sensitive), so a retired word is
+// rejected; rationale must be non-empty after strings.TrimSpace.
 func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
@@ -49,10 +57,10 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	}
 
 	switch bouncerVerdict(parsed.Verdict) {
-	case verdictApproved, verdictBlocking:
+	case verdictConverged, verdictContinue, verdictCircling:
 		// within vocabulary
 	default:
-		return "", "", fmt.Errorf("bouncer: verdict file verdict must be exactly %q or %q, got %q", verdictApproved, verdictBlocking, parsed.Verdict)
+		return "", "", fmt.Errorf("bouncer: verdict file verdict must be exactly %q, %q or %q, got %q", verdictConverged, verdictContinue, verdictCircling, parsed.Verdict)
 	}
 
 	if strings.TrimSpace(parsed.Rationale) == "" {
@@ -60,6 +68,36 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	}
 
 	return bouncerVerdict(parsed.Verdict), parsed.Rationale, nil
+}
+
+// parseRecordedVerdict parses a verdict that was already on disk at Call entry.
+// It tries parseVerdict first, and otherwise reads a legacy APPROVED as verdictConverged and a
+// legacy BLOCKING as verdictContinue, reporting legacy true for either alias.
+// The rest of the file is held to parseVerdict's rules: the frontmatter and a non-empty rationale.
+func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale string, legacy bool, err error) {
+	verdict, rationale, strictErr := parseVerdict(content)
+	if strictErr == nil {
+		return verdict, rationale, false, nil
+	}
+
+	header, err := splitFrontmatter(content, "verdict")
+	if err != nil {
+		return "", "", false, err
+	}
+	var parsed verdictHeader
+	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
+		return "", "", false, fmt.Errorf("bouncer: verdict file frontmatter is not valid YAML: %w", err)
+	}
+	if strings.TrimSpace(parsed.Rationale) == "" {
+		return "", "", false, strictErr
+	}
+	switch parsed.Verdict {
+	case legacyVerdictApproved:
+		return verdictConverged, parsed.Rationale, true, nil
+	case legacyVerdictBlocking:
+		return verdictContinue, parsed.Rationale, true, nil
+	}
+	return "", "", false, strictErr
 }
 
 // recordedVerdict reads and parses round's verdict file inside runDir, then reads and parses that
@@ -78,12 +116,33 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 // The focus file is deliberately excluded, because it is an input to the next round rather than
 // evidence about this one, and is synthesizable -- including it would let a missing focus file
 // invalidate a judgment that provably happened.
+//
+// The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still
+// reads as judged: the clear, the replay and BurlerProducer's may-advance check all go through here.
 func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
+	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
+		verdict, _, _, err := parseRecordedVerdict(content)
+		return verdict, err
+	})
+}
+
+// harvestedVerdict is recordedVerdict for a judge this Call spawned or attached: it reads the strict
+// vocabulary only, so a legacy word never counts as a harvest and the caller re-judges the round.
+func harvestedVerdict(runDir string, round int) (bouncerVerdict, bool) {
+	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
+		verdict, _, err := parseVerdict(content)
+		return verdict, err
+	})
+}
+
+// readJudgment is the shared body of recordedVerdict and harvestedVerdict: it reads round's verdict
+// through parse, then requires round's ledger to parse and to name the same round.
+func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, error)) (bouncerVerdict, bool) {
 	verdictRaw, err := os.ReadFile(verdictPath(runDir, round))
 	if err != nil {
 		return "", false
 	}
-	verdict, _, err := parseVerdict(verdictRaw)
+	verdict, err := parse(verdictRaw)
 	if err != nil {
 		return "", false
 	}

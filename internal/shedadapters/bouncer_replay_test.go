@@ -27,7 +27,7 @@ func TestBouncer_Replay_Approved(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
+		verdict: bouncerVerdictContent("CONVERGED"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 
@@ -50,7 +50,7 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("BLOCKING"),
+		verdict: bouncerVerdictContent("CONTINUE"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 	verdictBefore, err := os.ReadFile(verdictPath(cfg.RunDir, 1))
@@ -71,7 +71,7 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 		t.Error("Call() invoked the shuttle seam on a replay; want it never called")
 	}
 	if logBuf.String() == "" {
-		t.Error("Call() did not log a warning on a BLOCKING replay")
+		t.Error("Call() did not log a warning on a CONTINUE replay")
 	}
 
 	if _, err := os.Stat(focusPath(cfg.RunDir, 2)); err != nil {
@@ -95,16 +95,16 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 }
 
 // TestBouncer_Judged_IgnoresFocusFile proves judged(N) does not treat an absent round-2-focus.md as
-// debris: its fixture deliberately carries a BLOCKING verdict, not an APPROVED one, so this test's
+// debris: its fixture deliberately carries a CONTINUE verdict, not a CONVERGED one, so this test's
 // subject (judged's focus-file exclusion) is isolated from the clear trigger card 10 adds, which
-// fires only on an APPROVED verdict and would otherwise collide with what this test proves.
+// fires only on a CONVERGED verdict and would otherwise collide with what this test proves.
 func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("BLOCKING"),
+		verdict: bouncerVerdictContent("CONTINUE"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 	// round-2-focus.md is deliberately absent: judged(N) must not treat that as debris.
@@ -126,7 +126,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round:   1,
 			report:  bouncerReport(1),
-			verdict: bouncerVerdictContent("BLOCKING"),
+			verdict: bouncerVerdictContent("CONTINUE"),
 			ledger:  bouncerLedgerContent(1),
 		}})
 		malformed := "garbage, not frontmatter (malformed round-2 focus)"
@@ -205,7 +205,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 
 func TestBouncer_PointerDiscipline(t *testing.T) {
 	t.Run("JudgeCall_Approved", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -216,7 +216,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 	})
 
 	t.Run("JudgeCall_Blocking", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("BLOCKING"), bouncerLedgerContent(1), true)
+		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -227,7 +227,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 	})
 
 	t.Run("Harvest_Approved", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -241,7 +241,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
 		}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -333,7 +333,7 @@ func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		shuttle.DuringRun = func() {
 			outputs := shuttle.GotSpec.OutputFiles
-			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("APPROVED")), 0o644)
+			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("CONVERGED")), 0o644)
 			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 			_ = os.WriteFile(outputs[2], []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
 			cancel()
@@ -360,7 +360,7 @@ func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		shuttle.DuringRun = func() {
 			outputs := shuttle.GotSpec.OutputFiles
-			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("BLOCKING")), 0o644)
+			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("CONTINUE")), 0o644)
 			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 			_ = os.WriteFile(outputs[2], []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
 			cancel()

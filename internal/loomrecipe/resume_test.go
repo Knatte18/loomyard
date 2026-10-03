@@ -292,7 +292,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 }
 
 // TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Bouncer (a real producer) genuinely
-// and repeatedly Stuck by scripting its judge round's verdict as BLOCKING every time, and asserts
+// and repeatedly Stuck by scripting its judge round's verdict as CONTINUE every time, and asserts
 // Discussion-Bouncer's own bounce budget is consumed and exhausting it blocks -- MaxBounces+1 Stuck
 // entries authored by Discussion-Bouncer, then shedengine.RunBlocked.
 //
