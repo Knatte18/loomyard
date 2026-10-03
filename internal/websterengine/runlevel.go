@@ -681,7 +681,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Effort:        resolved.Params["effort"],
 		Version:       resolved.Params["version"],
 		ForkSubagents: true,
-		Role:          string(RoleMaster),
+		Role:          MerriamStrandRole,
 		Interactive:   false,
 		Timeout:       time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}

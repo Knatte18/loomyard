@@ -736,6 +736,30 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 	}
 }
 
+// TestRun_MasterSpecCarriesWebsterStrandRole proves Merriam spawns under the strand role `webster`
+// while the model still resolves from RoleMaster.
+func TestRun_MasterSpecCarriesWebsterStrandRole(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-role", waitErr: fmt.Errorf("stop after spawn")}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-role", "master-session-role")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted wait error")
+	}
+
+	if len(fx.Starter.startCalls) != 1 {
+		t.Fatalf("StartMaster calls = %d; want 1", len(fx.Starter.startCalls))
+	}
+	spec := fx.Starter.startCalls[0]
+	if spec.Role != websterengine.MerriamStrandRole || spec.Role == string(websterengine.RoleMaster) {
+		t.Errorf("Spec.Role = %q; want %q, distinct from RoleMaster", spec.Role, websterengine.MerriamStrandRole)
+	}
+	if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
+		t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)
+	}
+}
+
 // TestRun_MasterStrandPersistedBeforeFindRun proves F14's orphan-window narrowing: when FindRun
 // fails AFTER Master's pane is live (no shuttle run state seeded, so the session-ID resolve
 // errors), Run still errors — but state.json has already recorded MasterStrand, so the next run's
