@@ -42,7 +42,8 @@ It is required and fail-loud only when `outcome: done`, and follows the same arc
 A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
 
 A `summary.md` may additionally carry two sections the verify gate produces.
-When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them; the run keeps its outcome.
+When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them;
+the run keeps its outcome.
 When the gate sends a failure back to Merriam, Merriam spawns one fixer fork and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what the fixer says it changed and each `fix: <summary>` commit it made.
 Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
 
@@ -50,10 +51,12 @@ Either section reaches the PR reviewer because the `Describe` stencil carries it
 
 Merriam's strand carries the plan's `## verify:` command as one must-pass gate named `verify`, so the command runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
-A failing run is rerun once; a pass on the rerun passes the gate and records the failing identities as flaky.
+A failing run is rerun once;
+a pass on the rerun passes the gate and records the failing identities as flaky.
 A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
 Merriam answers each failure with one fixer fork, whose commits are `fix: <summary>` and are checked at the next attempt.
-`verify_gate_attempts` in `webster.yaml` bounds the attempts; an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
+`verify_gate_attempts` in `webster.yaml` bounds the attempts;
+an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 `verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.
 
 `lyx webster verify` runs the same plan-level verify through the same function, `internal/verifytree`, and boots no reed session.

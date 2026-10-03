@@ -26,7 +26,8 @@ You also never run the plan-level verify: the gate runs it again when Merriam's 
 The gate recorded its latest failed evaluation at `{{.report_path}}`.
 Read it in full before you edit anything.
 It names the failing identities with their output tails, the full verify log, and a hint listing the cards whose commits touched a failing package.
-The hint is a pointer only; the cause may lie elsewhere.
+The hint is a pointer only;
+the cause may lie elsewhere.
 A report that lists dirty paths instead of failures means the worktree held uncommitted changes: commit or remove exactly those paths.
 
 ## The rules

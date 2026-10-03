@@ -262,7 +262,8 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 ## verify model
 
-Tiers 1 and 2 below are implemented; tier 3 stays explicit-only.
+Tiers 1 and 2 below are implemented;
+tier 3 stays explicit-only.
 The per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
 The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the integration suite run once per attempt as a must-pass gate on Merriam's strand, and again by `lyx webster verify`.
 The section holds one shell command per line;

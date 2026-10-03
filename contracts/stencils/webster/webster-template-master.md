@@ -138,9 +138,11 @@ Do NOT localize or fix the failure yourself.
 3. End your turn right after spawning it, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs.
    That turn end is waiting on your own fork, not an arrival at the gate.
 4. On the fork's completion notification, rewrite `{{.outcome_path}}` and `{{.summary_path}}` once more, as your final action: the same outcome rules as below, and the summary gaining a `## Verify gate fixes` section that names the findings, what the fixer's reply says it changed and each `fix:` commit it names.
-   Then end your turn; that turn end re-arrives at the gate, which verifies again.
+   Then end your turn;
+   that turn end re-arrives at the gate, which verifies again.
 
-Spawn at most one fixer fork per gate message; the gate bounds the number of attempts.
+Spawn at most one fixer fork per gate message;
+the gate bounds the number of attempts.
 
 ## A paused refusal ends your run immediately
 
