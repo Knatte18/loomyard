@@ -14,6 +14,7 @@ import (
 	"go/parser"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -32,43 +33,76 @@ var isolationTags = []string{"integration", "smoke"}
 // isolationTagSets are the tag sets a package's test files are compiled under: untagged, then each isolation tag.
 var isolationTagSets = [][]string{nil, {"integration"}, {"smoke"}}
 
-// isolationPlatforms are the platform-tag profiles a constraint is tried under; a file compiles under a tag set when any profile satisfies it.
-var isolationPlatforms = []map[string]bool{
-	{"linux": true, "unix": true, "amd64": true, "cgo": true, "gc": true},
-	{"windows": true, "amd64": true, "cgo": true, "gc": true},
-	{"darwin": true, "unix": true, "arm64": true, "cgo": true, "gc": true},
+// isolationPlatform is one platform a package's test files are compiled for, with the build tags it satisfies.
+type isolationPlatform struct {
+	name string
+	tags map[string]bool
+}
+
+// isolationPlatforms are the platforms each tag set is checked on.
+var isolationPlatforms = []isolationPlatform{
+	{"linux", map[string]bool{"linux": true, "unix": true, "amd64": true, "cgo": true, "gc": true}},
+	{"windows", map[string]bool{"windows": true, "amd64": true, "cgo": true, "gc": true}},
+	{"darwin", map[string]bool{"darwin": true, "unix": true, "arm64": true, "cgo": true, "gc": true}},
+}
+
+// knownOS and knownArch are the GOOS and GOARCH values a file-name suffix can carry.
+var (
+	knownOS = map[string]bool{
+		"aix": true, "android": true, "darwin": true, "dragonfly": true, "freebsd": true, "hurd": true, "illumos": true, "ios": true,
+		"js": true, "linux": true, "nacl": true, "netbsd": true, "openbsd": true, "plan9": true, "solaris": true, "wasip1": true, "windows": true, "zos": true,
+	}
+	knownArch = map[string]bool{
+		"386": true, "amd64": true, "arm": true, "arm64": true, "loong64": true, "mips": true, "mipsle": true, "mips64": true, "mips64le": true,
+		"ppc64": true, "ppc64le": true, "riscv64": true, "s390x": true, "sparc64": true, "wasm": true,
+	}
+)
+
+// fileNamePlatform returns the GOOS and GOARCH a file name's `_GOOS`, `_GOARCH` or `_GOOS_GOARCH` suffix confines it to, following go/build's rule.
+func fileNamePlatform(name string) (goos, goarch string) {
+	name, _, _ = strings.Cut(name, ".")
+	i := strings.Index(name, "_")
+	if i < 0 {
+		return "", ""
+	}
+	parts := strings.Split(name[i:], "_")
+	if n := len(parts); n > 0 && parts[n-1] == "test" {
+		parts = parts[:n-1]
+	}
+	n := len(parts)
+	if n >= 2 && knownOS[parts[n-2]] && knownArch[parts[n-1]] {
+		return parts[n-2], parts[n-1]
+	}
+	if n >= 1 && knownOS[parts[n-1]] {
+		return parts[n-1], ""
+	}
+	if n >= 1 && knownArch[parts[n-1]] {
+		return "", parts[n-1]
+	}
+	return "", ""
 }
 
 // isolationFile is the evidence collected for one test file.
 type isolationFile struct {
 	rel          string
 	expr         constraint.Expr
+	goos, goarch string
 	tagged       bool
 	testMain     bool
 	callsKitMain bool
 }
 
-// compilesUnder reports whether the file compiles under the tag set on at least one platform profile.
-func (f isolationFile) compilesUnder(tags []string) bool {
+// compilesUnder reports whether the file compiles under the tag set on the platform.
+func (f isolationFile) compilesUnder(tags []string, platform isolationPlatform) bool {
+	if (f.goos != "" && !platform.tags[f.goos]) || (f.goarch != "" && !platform.tags[f.goarch]) {
+		return false
+	}
 	if f.expr == nil {
 		return true
 	}
-	for _, platform := range isolationPlatforms {
-		if f.expr.Eval(func(tag string) bool {
-			if platform[tag] {
-				return true
-			}
-			for _, t := range tags {
-				if t == tag {
-					return true
-				}
-			}
-			return false
-		}) {
-			return true
-		}
-	}
-	return false
+	return f.expr.Eval(func(tag string) bool {
+		return platform.tags[tag] || slices.Contains(tags, tag)
+	})
 }
 
 // buildConstraint returns the `//go:build` expression in the file's header comments, or nil when it has none.
@@ -148,9 +182,12 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 		expr := buildConstraint(file)
 		declared, calls := declaresTestMain(file)
 		dir := filepath.ToSlash(filepath.Dir(f.Rel))
+		goos, goarch := fileNamePlatform(filepath.Base(f.Rel))
 		packages[dir] = append(packages[dir], isolationFile{
 			rel:          f.Rel,
 			expr:         expr,
+			goos:         goos,
+			goarch:       goarch,
 			tagged:       mentionsIsolationTag(expr),
 			testMain:     declared,
 			callsKitMain: calls,
@@ -175,15 +212,21 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 			}
 		}
 		for _, tags := range isolationTagSets {
-			compiled, hasTestMain := 0, false
-			for _, f := range files {
-				if f.compilesUnder(tags) {
-					compiled++
-					hasTestMain = hasTestMain || f.testMain
+			var missing []string
+			for _, platform := range isolationPlatforms {
+				compiled, hasTestMain := 0, false
+				for _, f := range files {
+					if f.compilesUnder(tags, platform) {
+						compiled++
+						hasTestMain = hasTestMain || f.testMain
+					}
+				}
+				if compiled > 0 && !hasTestMain {
+					missing = append(missing, platform.name)
 				}
 			}
-			if compiled > 0 && !hasTestMain {
-				failures = append(failures, fmt.Sprintf("%s: no TestMain compiles under tags [%s]", dir, strings.Join(tags, ",")))
+			if len(missing) > 0 {
+				failures = append(failures, fmt.Sprintf("%s: no TestMain compiles under tags [%s] on %s", dir, strings.Join(tags, ","), strings.Join(missing, ", ")))
 			}
 		}
 	}
@@ -191,8 +234,8 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration- or
-// smoke-tagged test file unless, under each tag set that compiles any of its test files, a TestMain compiles,
+// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration- or smoke-tagged test file,
+// unless a TestMain compiles under each tag set and on each platform that compile any of its test files,
 // and every TestMain in the package calls tmuxkit.Main.
 func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
@@ -202,6 +245,25 @@ func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
 		t.Errorf("Tmux Test Isolation Invariant violated (see CONSTRAINTS.md):\n%s\nadd a TestMain calling os.Exit(tmuxkit.Main(m)) that compiles under every tag set the package's tests compile under", strings.Join(failures, "\n"))
+	}
+}
+
+func TestFileNamePlatform(t *testing.T) {
+	tests := []struct {
+		name, goos, goarch string
+	}{
+		{"a_test.go", "", ""},
+		{"linux_test.go", "", ""},
+		{"proc_linux_test.go", "linux", ""},
+		{"x_windows_amd64_test.go", "windows", "amd64"},
+		{"x_arm64_test.go", "", "arm64"},
+		{"smoke_procalive_windows_test.go", "windows", ""},
+	}
+	for _, tt := range tests {
+		goos, goarch := fileNamePlatform(tt.name)
+		if goos != tt.goos || goarch != tt.goarch {
+			t.Errorf("fileNamePlatform(%q) = %q, %q; want %q, %q", tt.name, goos, goarch, tt.goos, tt.goarch)
+		}
 	}
 }
 
@@ -222,6 +284,9 @@ func TestTmuxIsolation_FixtureTrees(t *testing.T) {
 		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 3},
 		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 2},
 		{"untagged package", map[string]string{"p/a_test.go": untaggedTest}, 0, 0},
+		{"main confined by constraint to another platform", map[string]string{"p/main_test.go": "//go:build windows\n\n" + withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 1},
+		{"main confined by file name to another platform", map[string]string{"p/main_windows_test.go": withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 1},
+		{"main on every platform its tests compile on", map[string]string{"p/main_linux_test.go": withMain, "p/i_linux_test.go": taggedTest}, 1, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
