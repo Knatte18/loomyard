@@ -61,7 +61,8 @@ func WriteVerifyGateReport(path string, r VerifyGateReport) error {
 // changedPaths lists the repository-relative paths one commit changed.
 // A failing package maps to a worktree directory through modulePath, go.mod's module path.
 // An opaque identity, or a package outside the module, contributes no directory, so it contributes no hint.
-// The hint claims only that a card touched a failing package; Merriam judges it with the plan in hand.
+// The hint claims only that a card touched a failing package;
+// Merriam judges it with the plan in hand.
 func cardHint(modulePath string, failures []VerifyFailure, shas, labels []string, changedPaths func(sha string) ([]string, error)) ([]string, error) {
 	dirs := map[string]bool{}
 	for _, f := range failures {

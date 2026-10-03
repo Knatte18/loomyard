@@ -18,8 +18,8 @@ func (p pwshShell) Invoke(bin string) string {
 	return "& " + p.Quote(bin)
 }
 
-// readFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom, expanding path's contents
-// into a single argument; Source builds on it.
+// readFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom, expanding path's contents into a single argument.
+// Source builds on it.
 func (p pwshShell) readFile(path string) string {
 	return "(Get-Content -Raw " + p.Quote(path) + ")"
 }

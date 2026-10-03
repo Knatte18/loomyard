@@ -1,5 +1,6 @@
 // cardgate.go derives each card's gate command, which begin-batch and recover-batch render into the implementer prompt's card_gates marker.
-// Go derives the command and the fork runs it; Go never runs it, so a fork that skips it is caught by the plan-level verify gate.
+// Go derives the command and the fork runs it;
+// Go never runs it, so a fork that skips it is caught by the plan-level verify gate.
 
 package websterengine
 

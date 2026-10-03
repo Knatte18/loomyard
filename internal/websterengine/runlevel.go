@@ -721,7 +721,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
-		// A done whose verify gate did not pass ends stuck; Master's own stuck keeps its own reason.
+		// A done whose verify gate did not pass ends stuck;
+		// Master's own stuck keeps its own reason.
 		// outcome.yaml is never rewritten.
 		if result.Gate != nil && !result.Gate.Passed && runResult.Outcome == outcomeDone {
 			runResult.Outcome = outcomeStuck

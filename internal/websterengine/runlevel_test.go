@@ -109,8 +109,8 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 // new-file path (so path-missing never fires — a Create group's targets stay
 // exempt from on-disk existence checking exactly as Creates: entries were).
 // The overview carries NO plan-level "## verify:" section — deliberately,
-// so the verify gate passes without running anything for every fixture built
-// on this helper; a test that needs one calls appendIntegrationVerify against an already-seeded plan dir.
+// so the verify gate passes without running anything for every fixture built on this helper;
+// a test that needs one calls appendIntegrationVerify against an already-seeded plan dir.
 // numCards == 0 yields a "## Card Index" section with no entries at all,
 // which ParsePlan's own parseCardIndex refuses loud ("no card index entries
 // found") — the vehicle for the zero-batch refusal test, which under the

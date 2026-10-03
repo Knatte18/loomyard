@@ -79,9 +79,9 @@ const (
 	// that side's checkout path. It is recorded only after the staging call observably succeeded —
 	// never on the empty-paths no-op.
 	KindMergeResolvedStaged Kind = "merge_resolved_staged"
-	// KindMergeTrackedStaged records the warp side's staging of every tracked modification and deletion
-	// mid-merge; Target is the warp checkout path. It is recorded only after the staging call
-	// observably succeeded.
+	// KindMergeTrackedStaged records the warp side's staging of every tracked modification and deletion mid-merge;
+	// Target is the warp checkout path.
+	// It is recorded only after the staging call observably succeeded.
 	KindMergeTrackedStaged Kind = "merge_tracked_staged"
 	// KindMergeCommitted records a merge verb's conclude-commit landing on one side; Detail is the
 	// new SHA.

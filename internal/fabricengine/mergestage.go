@@ -128,7 +128,8 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 // MergeStageTracked stages every tracked modification and deletion in the warp checkout of an
 // in-progress fabric merge, so edits a conflict session made to already-tracked files land in the merge
 // commit MergeContinue writes.
-// Untracked files are never staged; MergeUntrackedFiles lists them so a caller can halt on them.
+// Untracked files are never staged;
+// MergeUntrackedFiles lists them so a caller can halt on them.
 // Only the warp side is staged: weft content is never a merge participant for a caller's own edits.
 //
 // It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns

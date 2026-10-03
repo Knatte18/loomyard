@@ -398,7 +398,8 @@
 // Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
 // The report carries the attempt and the cap, the failing identities or the dirty paths, the verify log's path, the commits the fixer made since the pre-fix head, and a hint:
 // the cards, in trail order, whose commits changed a file directly in a failing package's directory (cardHint over accumulatedCardSHAs).
-// The hint claims only that a card touched a failing package; Merriam judges it with the plan in hand.
+// The hint claims only that a card touched a failing package;
+// Merriam judges it with the plan in hand.
 // The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
 // Run removes a stale report at entry.
 //
