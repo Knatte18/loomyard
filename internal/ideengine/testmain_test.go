@@ -2,6 +2,7 @@
 // gitkit.HermeticGitEnv() runs once before any test, so ideengine's git-spawning fixtures never
 // inherit the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment
 // Invariant).
+// The binary also runs under tmux isolation through tmuxkit.Main.
 
 package ideengine
 
@@ -10,10 +11,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs HermeticGitEnv before spawning git tests.
+// TestMain runs HermeticGitEnv before spawning git tests, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }
