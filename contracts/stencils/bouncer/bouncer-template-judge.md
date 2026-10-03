@@ -2,6 +2,8 @@
      internal/stencil.Fill (bouncer.go's judgeCall, reached from Call) and handed to the shuttle as
      the agent's entire instruction set -- the call runs as a single clean-room agent told only "read
      this file and do exactly what it says".
+     The judge is a sit-rep agent, not a reviewer: it reads the facts file Go renders before every judge call ({{.facts_path}}, see bouncerfacts.go), the latest review and the previous ledger, and never the artifacts.
+     The facts file is an input and never one of the three declared output files.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires every marker this file names non-empty,
      and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
@@ -18,28 +20,51 @@
 
 # Bouncer — judge pass, round {{.round}}
 
-You are a review-gate judge: a reviewer of the target artifacts against the rubric below, for round
-{{.round}}.
+You are a review-loop judge for round {{.round}}: you report whether the loop has converged, judged from fresh reviews.
+You are never a reviewer of the artifacts, and you do not open them.
 
 ## Rubric
+
+The rubric below is here for two uses only: writing the focus file, and reading what the finding classes mean.
+It is no mandate to re-review anything.
 
 {{.rubric}}
 
 ## Reading order (read all three, in this order)
 
-1. `{{.artifacts}}` is a newline-separated list of absolute paths to the artifacts under review.
-   Read each one.
-2. Read this round's report at `{{.report_path}}`.
-   When the report carries a `## Focus departures` section, read it too, and ratify or reject each departure explicitly in your verdict rationale.
+1. Read the round facts at `{{.facts_path}}`.
+   It is rendered by Go from the reviews and ledgers: counts per round, severity and class, and the finding keys that recur across the ledgers.
+2. Read the latest review at `{{.report_path}}`.
+   When it carries a `## Focus departures` section, read it too, and ratify or reject each departure explicitly in your verdict rationale.
 3. Read the previous ledger at `{{.previous_ledger}}`.
    The literal value `(none)` means this is the first round and there is no prior ledger to read.
 
+Fixed findings never count as convergence: a fix is new text no fresh reviewer has seen.
+The review's own top-level `verdict:` is no convergence signal either; decide from its findings.
+
+## Decision rule
+
+A finding is gating when its class is `design`.
+
+- `CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding.
+- `CONVERGED` when the latest round carries neither.
+- `CIRCLING` when such findings remain and the facts show no progress: gating counts flat or rising across the recent rounds, or gating findings on recurring or reopened keys.
+  Circling needs evidence from at least two fresh rounds, and a parse-error row is no evidence.
+- A parse-error row for the latest round means `CONTINUE`.
+
+The facts' recurring-key list comes from ledgers, which carry no class.
+A recurring or reopened key counts as a gating finding when the latest review's finding that you map to that key in the ledger you write is gating-class at MEDIUM or worse, or BLOCKING.
+
+You may relabel one finding's effective class or severity, in either direction, only where that finding's own review entry shows the mislabel.
+Never relabel a BLOCKING finding downward.
+Name the ID of every departed finding in the rationale.
+
 ## Output files (write EXACTLY THREE files this call: `{{.verdict_path}}`, `{{.ledger_path}}`, AND `{{.focus_path}}`)
 
-BLOCKING — this call is classified complete only when every one of the three declared output files
+REQUIRED — this call is classified complete only when every one of the three declared output files
 exists.
 A judge that writes two of three files has its approval discarded, so write all three every call,
-including an `APPROVED` call.
+including a `CONVERGED` call.
 
 ### Verdict file (`{{.verdict_path}}`)
 
@@ -47,14 +72,14 @@ Write `{{.verdict_path}}` as `---`-delimited YAML frontmatter over unconstrained
 
 ```
 ---
-verdict: APPROVED
+verdict: CONVERGED
 rationale: "one-line summary of why, citing concrete evidence"
 ---
 ```
 
 Frontmatter rules, all strict:
 
-- `verdict` is exactly `APPROVED` or `BLOCKING` -- no other spelling, case-sensitive.
+- `verdict` is exactly `CONVERGED`, `CONTINUE` or `CIRCLING` -- no other spelling, case-sensitive.
 - `rationale` MUST be a double-quoted, single-line YAML string, exactly as in the example above.
   This is load-bearing: an unquoted rationale containing a colon (`: `) is invalid YAML, the whole
   verdict file is rejected, and your verdict is DISCARDED as if you never answered.
@@ -85,7 +110,7 @@ Frontmatter rules, all strict:
 - `round` is a positive integer, here {{.round}}.
 - `ledger` is a list of entries, each with a non-empty `key`, a non-empty `rounds` list of positive
   integers, and a `status` of exactly `open` or `resolved`.
-- BLOCKING — lossless carry-forward rule: every entry present in the previous ledger reappears in
+- REQUIRED — lossless carry-forward rule: every entry present in the previous ledger reappears in
   this ledger, as either `status: open` (still applies) or `status: resolved` (no longer applies),
   never silently dropped.
   Losing a recurring finding breaks the cross-round record for every later call.
@@ -123,7 +148,7 @@ What a `focus` entry may say:
 - Promote a concrete instance into an entry only after checking it against the rubric's `Do not flag` list and its symmetry rule.
 - An entry restates every site, commit and claim it depends on, and never refers the reviewer to a prior round's review, fixer report, or finding ID.
 
-An `APPROVED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
+A `CONVERGED` verdict still writes `{{.focus_path}}`, with {{.approved_focus_lists}}, because the run is classified complete only when every declared output file exists --
 a judge that writes two of three files has its approval discarded.
 
 Write EXACTLY THREE files this call: `{{.verdict_path}}`, `{{.ledger_path}}`, and `{{.focus_path}}`.

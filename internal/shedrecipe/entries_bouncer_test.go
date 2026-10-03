@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -195,14 +196,15 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 	}
 }
 
-// TestBouncerEntry_EnvReviewFallback covers the three fallback outcomes for bouncerEntry's
-// model/effort/version resolution: a row omitting the keys takes env.ReviewModel/ReviewEffort/
-// ReviewVersion; a row setting all three overrides the Env values; both absent leaves all three
-// empty (the provider default). shedadapters.BouncerConfig's cfg field is unexported and this is a
+// TestBouncerEntry_EnvJudgeFallback covers the three fallback outcomes for bouncerEntry's model/effort/version resolution:
+// a row omitting the keys takes env.JudgeModel/JudgeEffort/JudgeVersion, never the Review* values;
+// a row setting all three overrides the Env values;
+// both absent leaves all three empty (the provider default).
+// shedadapters.BouncerConfig's cfg field is unexported and this is a
 // different package, so the resolved triple is asserted through behaviour instead: one Call is
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
-func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
+func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 	// callAndCaptureSpec constructs a Bouncer entry from cfg and env, drives the seed-pass Call --
 	// the first Call on a fresh run directory spawns unconditionally -- and returns the recorded
 	// shuttleengine.Spec.
@@ -227,9 +229,12 @@ func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
-		env.ReviewVersion = "env-version"
+		env.JudgeModel = "env-model"
+		env.JudgeEffort = "env-effort"
+		env.JudgeVersion = "env-version"
+		env.ReviewModel = "review-model"
+		env.ReviewEffort = "review-effort"
+		env.ReviewVersion = "review-version"
 		cfg := minimalBouncerConfig(t, env)
 
 		spec := callAndCaptureSpec(t, cfg, env)
@@ -246,9 +251,9 @@ func TestBouncerEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
-		env.ReviewVersion = "env-version"
+		env.JudgeModel = "env-model"
+		env.JudgeEffort = "env-effort"
+		env.JudgeVersion = "env-version"
 		cfg := minimalBouncerConfig(t, env)
 		cfg["model"] = "row-model"
 		cfg["effort"] = "row-effort"
@@ -424,13 +429,13 @@ func layoutBouncerRound1Report(t *testing.T, env Env) {
 	}
 }
 
-// judgeSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's APPROVED verdict and ledger to the spec's declared OutputFiles and reports shuttleengine.OutcomeDone,
-// so a bouncerEntry-built producer's judge call harvests and settles within the same Call that produced them -- the harvest vehicle this file's commit-seam subtests drive, following shedadapters/bouncer_commit_test.go's own treatment of the same removed APPROVED-replay vehicle.
+// judgeSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's CONVERGED verdict and ledger to the spec's declared OutputFiles and reports shuttleengine.OutcomeDone,
+// so a bouncerEntry-built producer's judge call harvests and settles within the same Call that produced them -- the harvest vehicle this file's commit-seam subtests drive, following shedadapters/bouncer_commit_test.go's own treatment of the same removed CONVERGED-replay vehicle.
 func judgeSeamShuttle() *shedfake.Shuttle {
 	return &shedfake.Shuttle{
 		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 			if len(spec.OutputFiles) == 3 {
-				verdict := "---\nverdict: APPROVED\nrationale: \"because reasons\"\n---\n"
+				verdict := "---\nverdict: CONVERGED\nrationale: \"because reasons\"\n---\n"
 				_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
 				ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
 				_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
@@ -773,5 +778,95 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, `unrecognized config key "cluster_exclude"`)
+	})
+}
+
+// circlingSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's CIRCLING verdict and ledger to the spec's declared OutputFiles, so a bouncerEntry-built producer settles on an undecided circling round within one Call.
+func circlingSeamShuttle() *shedfake.Shuttle {
+	return &shedfake.Shuttle{
+		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
+			if len(spec.OutputFiles) == 3 {
+				verdict := "---\nverdict: CIRCLING\nrationale: \"no progress\"\n---\n"
+				_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
+				ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
+				_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+			}
+			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		},
+	}
+}
+
+// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's circling Awaiting Reason, and the row built with neither.
+func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
+	callReason := func(t *testing.T, env Env) string {
+		t.Helper()
+		env.Shuttle = circlingSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		cfg := minimalBouncerConfig(t, env)
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		outcome, ptr, err := producer.Call(context.Background())
+		if err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if outcome != shedengine.Awaiting {
+			t.Fatalf("Call() outcome = %v; want %v", outcome, shedengine.Awaiting)
+		}
+		return ptr.Reason
+	}
+
+	t.Run("SlugAndSpentBudget", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = "my-task"
+		var asked []string
+		env.SegmentBounces = func(row string) (int, int, bool, error) {
+			asked = append(asked, row)
+			return 5, 5, true, nil
+		}
+
+		reason := callReason(t, env)
+		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "5 of 5 spent"} {
+			if !strings.Contains(reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", reason, want)
+			}
+		}
+		if len(asked) == 0 || asked[0] != "review-bounce" {
+			t.Errorf("SegmentBounces asked about rows %v; want the Bouncer's own row name first", asked)
+		}
+	})
+
+	t.Run("BudgetLeftOmitsTheSentence", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = "my-task"
+		env.SegmentBounces = func(string) (int, int, bool, error) { return 2, 5, true, nil }
+
+		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence while budget remains", reason)
+		}
+	})
+
+	t.Run("RowOutsideASegmentOmitsTheSentence", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.SegmentBounces = func(string) (int, int, bool, error) { return 5, 5, false, nil }
+
+		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence for a row outside a segment", reason)
+		}
+	})
+
+	t.Run("NeitherStillConstructs", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Slug = ""
+		reason := callReason(t, env)
+		if !strings.Contains(reason, "`lyx loom circling accept`") {
+			t.Errorf("Reason = %q; want the verbs without a slug argument", reason)
+		}
+		if strings.Contains(reason, "bounce budget") {
+			t.Errorf("Reason = %q; want no budget sentence without the seam", reason)
+		}
 	})
 }

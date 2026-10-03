@@ -69,3 +69,11 @@ Do not flag any of the following as a finding:
 - **The writer/reviewer symmetry note.**
   The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`.
   Whatever it says not to write, this rubric must not flag as missing.
+
+## Finding class
+
+Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
+Their generic meanings are in burler's review step; this section does not restate them.
+In this segment, `design` means the plan's structure is wrong: batching, sequencing, sizing or `verify:` correctness.
+A recurring enumeration gap is filed once as a `design` finding about the method, not once per missing item.
+Class never changes whether a finding is fixed.

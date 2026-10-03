@@ -59,13 +59,13 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	// the same thing here -- configString with required false returns "" for both -- and that is
 	// deliberate: there is no meaningful "explicitly empty" model.
 	if model == "" {
-		model = env.ReviewModel
+		model = env.JudgeModel
 	}
 	if effort == "" {
-		effort = env.ReviewEffort
+		effort = env.JudgeEffort
 	}
 	if version == "" {
-		version = env.ReviewVersion
+		version = env.JudgeVersion
 	}
 	// There is deliberately no "report_name" key: BouncerConfig.ReportName is pinned below, not
 	// recipe-authorable, so a "report_name" entry in cfg is rejected here as unrecognised rather
@@ -171,6 +171,13 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		resolvedArtifactPaths[i] = resolved
 	}
 
+	// Slug and SegmentBounces are both optional:
+	// a caller filling neither keeps a working Bouncer whose CIRCLING Reason omits the slug and the budget sentence.
+	var bounces func() (count, budget int, ok bool, err error)
+	if env.SegmentBounces != nil {
+		bounces = func() (int, int, bool, error) { return env.SegmentBounces(name) }
+	}
+
 	bouncerCfg := shedadapters.BouncerConfig{
 		Name:          name,
 		RunDir:        runDir,
@@ -193,6 +200,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Commit:          commit,
 		Skip:            skip,
 		Now:             env.Now,
+		Slug:            env.Slug,
+		Bounces:         bounces,
 	}
 
 	// NewBouncer's own eager rubric-stencil probe is what makes a mistyped rubric_stencil fail here,

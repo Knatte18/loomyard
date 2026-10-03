@@ -443,7 +443,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 	t.Run("Judge_FirstRound", func(t *testing.T) {
 		values := map[string]string{
 			"rubric":          strippedRubric,
-			"artifacts":       "/abs/artifact.md",
+			"facts_path":      "/abs/round-1-facts.md",
 			"round":           "1",
 			"next_round":      "2",
 			"report_path":     "/abs/round-1-report.md",
@@ -502,7 +502,7 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 	t.Run("Judge", func(t *testing.T) {
 		values := map[string]string{
 			"rubric":          strippedRubric,
-			"artifacts":       "/abs/artifact.md",
+			"facts_path":      "/abs/round-1-facts.md",
 			"round":           "1",
 			"next_round":      "2",
 			"report_path":     "/abs/round-1-report.md",

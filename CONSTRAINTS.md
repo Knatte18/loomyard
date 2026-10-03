@@ -340,6 +340,9 @@ Every inline markdown link in a `.md` file under `manifest/` or `docs/` resolves
 
 One review+fix round: review written to disk before any target file is touched; every finding fixed, all severities; no self-grading; commit-per-fix on warp source, never push.
 
+- A review segment converges only on a judge verdict over a fresh review, and fixed findings never converge on their own.
+- A finding's class decides who decides and when the loop stops, never whether it is fixed.
+
 ## Comment Line-Break Convention
 
 Go comments, doc and inline alike, use semantic line breaks.
