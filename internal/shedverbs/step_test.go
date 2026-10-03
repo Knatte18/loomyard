@@ -21,8 +21,6 @@ func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
 }
 
-// TestStepEnvelope_KeySetIsExactlySixteen asserts the envelope's key set is exactly the sixteen
-// documented keys and no larger.
 func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "P",
@@ -71,8 +69,6 @@ func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
 	}
 }
 
-// TestStepEnvelope_FieldMapping tables the routing shapes, asserting each field's mapping onto the
-// envelope.
 func TestStepEnvelope_FieldMapping(t *testing.T) {
 	tests := []struct {
 		name         string
