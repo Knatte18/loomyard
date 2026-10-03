@@ -167,9 +167,9 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, stepHan
 // Past the three skips, the ordinary filing pass re-reads the final status from the status file --
 // never from the value shed.Run returned, which is documented meaningless whenever the returned
 // error is non-nil, and this step runs on that path too.
-// Every path past the skips reaches the filing pass, a status file that is missing, unreadable or
-// carries an undecodable product with no new anomalies, so the anomalies an earlier pass failed to
-// file and kept pending in the marker are retried on every pass the skips let through.
+// Every path past the skips reaches the filing pass;
+// a status file that is missing, unreadable or carries an undecodable product reaches it with no new anomalies.
+// So the anomalies an earlier pass failed to file and kept pending in the marker are retried on every pass the skips let through.
 func detectAndFileAnomalies(deps selfreportDeps) {
 	if !deps.Selfreport {
 		return
