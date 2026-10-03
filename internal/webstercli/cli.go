@@ -283,19 +283,31 @@ Example (standalone, outside any lyx hub):
 	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
 		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the worktree is already the target")
 
-	parent.AddCommand(c.validateCmd())
-	parent.AddCommand(c.runCmd())
-	parent.AddCommand(c.statusCmd())
-	parent.AddCommand(c.pauseCmd())
-	parent.AddCommand(c.beginBatchCmd())
-	parent.AddCommand(c.awaitBatchCmd())
-	parent.AddCommand(c.recordBatchCmd())
-	parent.AddCommand(c.recoverBatchCmd())
-	parent.AddCommand(c.rebaselineCmd())
-	parent.AddCommand(c.acceptAuditCmd())
-	parent.AddCommand(c.restorePlanCmd())
+	c.addVerbs(parent)
 
 	return parent
+}
+
+// addVerbs registers every webster verb under parent.
+// Every verb but `validate` goes through noteRefusals, so a refusal it prints leaves a friction note.
+// `validate` is a lint an agent iterates against, so its findings are expected rather than friction.
+// A refusal raised in resolvePersistentPreRun stays unnoted, since it fires before the friction directory is resolved.
+func (c *websterCLI) addVerbs(parent *cobra.Command) {
+	parent.AddCommand(c.validateCmd())
+	for _, verb := range []*cobra.Command{
+		c.runCmd(),
+		c.statusCmd(),
+		c.pauseCmd(),
+		c.beginBatchCmd(),
+		c.awaitBatchCmd(),
+		c.recordBatchCmd(),
+		c.recoverBatchCmd(),
+		c.rebaselineCmd(),
+		c.acceptAuditCmd(),
+		c.restorePlanCmd(),
+	} {
+		parent.AddCommand(c.noteRefusals(verb))
+	}
 }
 
 // persistPlanFingerprintRebaseline saves st when the bracket verb that just failed had already
