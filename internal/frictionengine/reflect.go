@@ -197,7 +197,7 @@ func withTimeout(deps Deps, timeout time.Duration) Deps {
 
 // validateDeps rejects a malformed Deps with a distinct error per field, in order: a nil
 // Deps.Shuttle, an empty or non-absolute Deps.FrictionDir, an empty Deps.ArchivePrefix, and an empty
-// Deps.StencilsDir.
+// Deps.StencilsDir, and an empty Deps.TaskSlug.
 func validateDeps(deps Deps) error {
 	if deps.Shuttle == nil {
 		return fmt.Errorf("frictionengine: Reflect: Deps.Shuttle must not be nil")
@@ -210,6 +210,9 @@ func validateDeps(deps Deps) error {
 	}
 	if deps.StencilsDir == "" {
 		return fmt.Errorf("frictionengine: Reflect: Deps.StencilsDir must not be empty")
+	}
+	if deps.TaskSlug == "" {
+		return fmt.Errorf("frictionengine: Reflect: Deps.TaskSlug must not be empty")
 	}
 	return nil
 }

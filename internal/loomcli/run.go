@@ -70,6 +70,7 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 		StencilsDir:   c.runDeps.Geom.StencilsDir,
 		FrictionSpec:  c.cfg.Friction,
 		Registry:      c.registry,
+		TaskSlug:      seedSlug(c.location.WorktreeName),
 		Timeout:       time.Duration(c.cfg.FrictionTimeoutMin) * time.Minute,
 	})
 	if err != nil {

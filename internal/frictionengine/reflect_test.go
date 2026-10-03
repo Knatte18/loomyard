@@ -15,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the three markers
+// reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the markers
 // buildReflectionSpec fills.
-const reflectionStencilFixture = "# Reflection\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nNotes:\n{{.note_list}}\n"
+const reflectionStencilFixture = "# Reflection\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nTask: {{.task_slug}}\n\nNotes:\n{{.note_list}}\n"
 
 // fakeClock is the Clock seam a test injects to assert an exact archive directory name rather than a
 // pattern, and to advance time mid-run.
@@ -119,6 +119,7 @@ func newTestDeps(t *testing.T, shuttle Shuttle, clock Clock) Deps {
 		StencilsDir:   stencilsDir,
 		FrictionSpec:  "claude:sonnet[effort=high]",
 		Registry:      modelspec.Registry{},
+		TaskSlug:      "test-task",
 		Timeout:       time.Minute,
 		Clock:         clock,
 	}
@@ -735,6 +736,14 @@ func TestReflect_DepsValidation(t *testing.T) {
 		deps.StencilsDir = ""
 		if _, err := Reflect(deps); err == nil {
 			t.Error("Reflect() error = nil; want non-nil for an empty StencilsDir")
+		}
+	})
+
+	t.Run("EmptyTaskSlug", func(t *testing.T) {
+		deps := validDeps(t)
+		deps.TaskSlug = ""
+		if _, err := Reflect(deps); err == nil {
+			t.Error("Reflect() error = nil; want non-nil for an empty TaskSlug")
 		}
 	})
 }

@@ -54,6 +54,9 @@ type Deps struct {
 	// Registry resolves FrictionSpec's alias, when it is one, to a concrete model. Told by the
 	// caller.
 	Registry modelspec.Registry
+	// TaskSlug names the task the notes came from; the reflection agent writes it into each issue's
+	// provenance line. Told by the caller.
+	TaskSlug string
 	// Timeout bounds the reflection session's wall-clock deadline. Told by the caller.
 	Timeout time.Duration
 	// Clock is the archive timestamp's seam. A nil Clock selects a package-local realClock wrapping
