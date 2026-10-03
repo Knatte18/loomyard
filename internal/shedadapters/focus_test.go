@@ -78,7 +78,7 @@ func TestReadRoundFocus_ReadsTheFileTheBouncerWrites(t *testing.T) {
 	assertFocus(t, got, []string{"lensA", "lensB"}, path)
 }
 
-// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that an APPROVED judge's mandatory but empty focus file carries no directive path:
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that a CONVERGED judge's mandatory but empty focus file carries no directive path:
 // handing the next round a document that asserts nothing is noise, not targeting.
 func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
 	tests := []struct {

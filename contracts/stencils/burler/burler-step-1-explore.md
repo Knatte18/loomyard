@@ -33,6 +33,7 @@ A review that ignores the fasit degenerates into a pure internal-consistency che
 The rubric tells you what counts as BLOCKING, MEDIUM, LOW, or NIT for THIS target.
 It maps its own criteria onto that fixed four-value severity vocabulary;
 it never introduces a new severity name, and neither do you.
+Each finding also carries one of the four classes — `design`, `scope`, `decision`, `consistency` — and the rubric says what `design` means for this target.
 
 ## Tool-use rules — how you gather evidence in job A
 
