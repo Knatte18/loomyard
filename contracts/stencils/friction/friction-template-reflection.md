@@ -37,6 +37,9 @@ Read the notes as a whole, then:
 Do not drop a note because it looks vague, minor or already resolved;
 intake filters later.
 
+When a halt note says `Tier 1 anomaly filing files the halt event itself; file only the lyx problems behind it.`, do not file the halt event; file only the lyx problems behind it.
+A halt note without that line is grouped like any other note.
+
 ## Step 3 — File each issue
 
 For each issue, invoke `lyx selfreport create` yourself, following its own guidance for the fields it expects.

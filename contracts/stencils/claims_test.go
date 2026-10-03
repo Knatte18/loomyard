@@ -397,6 +397,7 @@ var wordingClaims = []stencilClaims{
 	{"friction-template-reflection.md", FrictionTemplateReflection, []claim{
 		{must: "Merge notes that describe the same problem into one issue", why: "duplicates are merged, not filed per note"},
 		{must: "Drop only a note that is about the task's own code, or that describes nothing wrong", why: "filtering is grouping; intake filters later"},
+		{must: "do not file the halt event; file only the lyx problems behind it", why: "Tier 1 anomaly filing files the halt event, the reflection files the lyx problems behind it"},
 		{must: "ends with a provenance line naming the task slug", why: "each issue carries the task slug and its source notes"},
 		{must: "never quotes the task repository's source, diffs or plan text", why: "the issue repository is public, so the content rule is a hard rule"},
 		{must: "File only through `lyx selfreport create`, never through `gh`", why: "filing goes through lyx selfreport create alone"},

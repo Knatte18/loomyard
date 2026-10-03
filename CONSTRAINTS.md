@@ -218,7 +218,9 @@ With Tier 2 on, a loom halt and every webster refusal leave a Go-authored fricti
 - No code path archives or deletes a friction note before a reflection has covered it:
   `frictionengine.Reflect` archives only the notes its covered-notes record names, and only after a clean return or on a finished report.
 - The reflection files through `lyx selfreport create` only.
-- Enforced by the `loomcli`, `webstercli`, `websterengine` and `frictionengine` tests, and by review for the rest.
+- With the `selfreport` knob on, Tier 1 anomaly filing files a halt event under `run` and `step` alike, retrying a failed filing on every later pass, and the halt note says so;
+  the reflection files only the lyx problems behind the halt.
+- Enforced by the `loomcli`, `webstercli`, `websterengine` and `frictionengine` tests, including the `selfreport_test.go` and `halt_test.go` cases for the pending retry and the `step` hook, and by review for the rest.
 
 ## Stencil Ownership Invariant
 
