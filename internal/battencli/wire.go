@@ -380,15 +380,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
 			return createRefusal(err)
 		},
-		// Both teardown halves go through the pair-teardown composite and are idempotent against
-		// their shared post-condition, "the pair is gone": shedengine persists the row's transition
-		// only after the producer returns, so a process killed right after Remove succeeded
-		// re-enters this row with no pair on disk, and RemovePair reports that as ErrPairNotFound,
-		// which is done.
-		// The composite finishes a half-removed pair itself -- sibling worktree, portal and launcher
-		// entries, both branches -- so no such state is refused by name here.
-		// EndSession ends the session by name when the task worktree is gone, and runs the refusal
-		// probe, so a refusal reaches the row before Remove and leaves the pair in place.
+		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
+		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
+		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down, and RemovePair reports it again as done.
+		// The composite finishes a half-removed pair itself -- sibling worktree, portal and launcher entries, both branches -- so no such state is refused by name here.
+		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe, so a refusal reaches the row before Remove and leaves the pair in place.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
 				td, err := pairteardown.New(location)
@@ -396,6 +392,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return "", err
 				}
 				res, err := td.EndSession(ctx, teardownRequest(slug))
+				if errors.Is(err, fabricengine.ErrPairNotFound) {
+					logger.Info("battencli: session shutdown found nothing of the pair left", "slug", slug)
+					return "", nil
+				}
 				if err != nil {
 					return "", teardownRefusal(err, slug)
 				}

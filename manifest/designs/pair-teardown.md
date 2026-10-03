@@ -38,7 +38,8 @@ The wait never kills a working driver on the operator path, and an unbounded wai
 
 Batten passes a zero wait without `RefuseWhenBusy`, since it already waited its `driver_exit_grace_s`.
 It keeps its two-closure `TeardownDeps` and calls the two phases, so its producer still reports which half failed and still surfaces an abandoned session.
-A removal that returns `ErrPairNotFound` is the done post-condition.
+`ErrPairNotFound` is the done post-condition for both phases: `EndSession`'s refusal probe raises it once nothing of the pair remains, and so does `RemovePair`.
+A teardown re-entered after a completed removal therefore reports done instead of halting at session shutdown.
 
 ## The finish path it relies on
 

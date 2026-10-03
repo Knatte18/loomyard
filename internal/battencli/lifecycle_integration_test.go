@@ -1022,6 +1022,29 @@ func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
 	}
 }
 
+// TestBattenIntegration_Teardown_ReEntryAfterCompletedRemovalIsDone tears a created pair down through both halves, then runs both again, and asserts the second pass returns nil from each.
+// That second pass is the state a process killed right after the removal leaves, since shedengine persists the row's transition only after the producer returns.
+func TestBattenIntegration_Teardown_ReEntryAfterCompletedRemovalIsDone(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-reentry"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+		return shedengine.Status{State: shedengine.StateDone}, true, nil
+	})
+
+	for _, pass := range []string{"first", "re-entered"} {
+		if _, err := c.env.Teardown.Shutdown(context.Background()); err != nil {
+			t.Fatalf("%s Teardown.Shutdown() = %v; want nil", pass, err)
+		}
+		if err := c.env.Teardown.Remove(context.Background()); err != nil {
+			t.Fatalf("%s Teardown.Remove() = %v; want nil", pass, err)
+		}
+	}
+	if pathExists(h.PairWarpWorktree(slug)) {
+		t.Error("task worktree still present after the teardown; want it removed")
+	}
+}
+
 // TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown dirties a created pair's sibling worktree outside the record pathspec and asserts the shutdown half refuses with fabric's sibling-dirty error, never names --force, and leaves the pair in place.
 func TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
