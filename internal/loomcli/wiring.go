@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -496,6 +497,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Cwd:                cwd,
 		AnchorPath:         anchorPath,
 		WorktreeRoot:       location.WorktreePath(),
+		VerifyDir:          verifytree.Dir(anchorPath),
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

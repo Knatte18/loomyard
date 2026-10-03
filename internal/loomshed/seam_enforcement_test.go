@@ -47,6 +47,8 @@ var loomshedAllowedImports = []string{
 	// through the package. internal/shedadapters, already on this list, imports it transitively
 	// anyway, so this does not widen the package's own geometry footprint.
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	// internal/verifytree is the shared plan-verify function; it is told its worktree and verify directory and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/verifytree",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

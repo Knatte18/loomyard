@@ -112,6 +112,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Cwd:                mustMkdir(t, filepath.Join(dir, "cwd")),
 		AnchorPath:         mustMkdir(t, filepath.Join(dir, "anchor")),
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
+		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),
