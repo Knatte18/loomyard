@@ -273,9 +273,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"Entries grouped by tier, then by dependency layer.\n" +
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
-		"## Planned\n" +
+		"## Tasks\n" +
 		"\n" +
-		"Concretized and claimable.\n" +
+		"Concrete and claimable; only an entry here can run.\n" +
 		"\n" +
 		"### Layer A\n" +
 		"\n" +
@@ -303,9 +303,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"\n" +
 		"Planned next, but not yet concretized.\n" +
 		"\n" +
-		"## Someday\n" +
+		"## Notes\n" +
 		"\n" +
-		"Loose ideas.\n" +
+		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 		"\n" +
 		"### Layer A\n" +
 		"\n" +
@@ -338,9 +338,9 @@ func TestRenderReadmeNoDoneSection(t *testing.T) {
 		"Entries grouped by tier, then by dependency layer.\n" +
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
-		"## Planned\n" +
+		"## Tasks\n" +
 		"\n" +
-		"Concretized and claimable.\n" +
+		"Concrete and claimable; only an entry here can run.\n" +
 		"\n" +
 		"## Next Up\n" +
 		"\n" +
@@ -352,9 +352,9 @@ func TestRenderReadmeNoDoneSection(t *testing.T) {
 		"\n" +
 		"1. **A** — `a` · chore\n" +
 		"\n" +
-		"## Someday\n" +
+		"## Notes\n" +
 		"\n" +
-		"Loose ideas.\n"
+		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
 	got := result["README.md"]
 	if got != want {
 		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
@@ -390,7 +390,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 		},
 		{
 			file: "design-plain.md",
-			want: "# Plain\n\n`plain` · Someday · design\n\njust a body",
+			want: "# Plain\n\n`plain` · Notes · design\n\njust a body",
 		},
 	}
 	for _, tt := range tests {

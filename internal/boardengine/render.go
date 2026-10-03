@@ -1,7 +1,7 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like manifest/roadmap.md: one section per tier (Planned, Next Up, Someday), each split into dependency layers, then Done, each entry one numbered item.
+// The README reads like manifest/roadmap.md: one section per tier (Tasks, Next Up, Notes), each split into dependency layers, then Done, each entry one numbered item.
 // The tier names and their meaning lines are declared here alone;
 // the data holds only the tier number.
 // No I/O — the caller writes the files.
@@ -105,9 +105,9 @@ type readmeSection struct {
 
 // tierSections maps a tier number to its README section; this is the only place tier numbers become words.
 var tierSections = map[int]readmeSection{
-	1: {"Planned", "Concretized and claimable."},
+	1: {"Tasks", "Concrete and claimable; only an entry here can run."},
 	2: {"Next Up", "Planned next, but not yet concretized."},
-	3: {"Someday", "Loose ideas."},
+	3: {"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."},
 }
 
 // doneSection is the README section holding every done entry, whatever its tier.
