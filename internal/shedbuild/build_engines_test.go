@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
@@ -23,7 +24,7 @@ import (
 // DiscussionWrite and PlanWrite are two of them: each wraps a single-LLM producer behind
 // its own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
 // PlanSpec) rather than as recipe Config, so it has no config keys of its own and its seams are
-// filled by newTestEnv instead.
+// filled by envkit.FullEnv instead.
 func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"SingleLLM": {
@@ -47,7 +48,7 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 // shedrecipe.Names() rather than a local list so a newly registered engine fails this test
 // until this fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
-	env := newTestEnv(t)
+	env := envkit.FullEnv(t)
 
 	const singleLLMStencil = "singlellm-coverage"
 	const bouncerRubricStencil = "bouncer-coverage"

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
 // TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers
@@ -37,7 +38,7 @@ producers:
 		t.Fatalf("Parse(recipeYAML) = _, %v; want nil", err)
 	}
 
-	env := newTestEnv(t)
+	env := envkit.FullEnv(t)
 	dir := t.TempDir()
 
 	var committed []string
@@ -107,7 +108,7 @@ producers: []
 		t.Fatal("Parse(recipeYAML) = _, nil; want a non-nil error for an empty-producer recipe, so this fixture actually exercises the case under test")
 	}
 
-	_, err := NewShed([]byte(recipeYAML), newTestEnv(t), ShedPaths{})
+	_, err := NewShed([]byte(recipeYAML), envkit.FullEnv(t), ShedPaths{})
 	if err == nil {
 		t.Fatal("NewShed(recipeYAML) = _, nil; want a non-nil error for an empty-producer recipe")
 	}
@@ -129,7 +130,7 @@ producers:
   - name: row1
     engine: Stub
 `
-	shed, err := NewShed([]byte(recipeYAML), newTestEnv(t), ShedPaths{})
+	shed, err := NewShed([]byte(recipeYAML), envkit.FullEnv(t), ShedPaths{})
 	if err != nil {
 		t.Fatalf("NewShed() = _, %v; want nil", err)
 	}
@@ -155,7 +156,7 @@ producers:
     engine: Stub
 `
 	paths := ShedPaths{RunID: "some-slug", MissingStatusWayForward: "way forward: told clause"}
-	shed, err := NewShed([]byte(recipeYAML), newTestEnv(t), paths)
+	shed, err := NewShed([]byte(recipeYAML), envkit.FullEnv(t), paths)
 	if err != nil {
 		t.Fatalf("NewShed() = _, %v; want nil", err)
 	}
