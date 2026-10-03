@@ -1,5 +1,4 @@
-// Package gitkit is the below-fabric leaf holding git primitives only: MustRun, SeedConfig,
-// HermeticGitEnv, and CopyRepo.
+// Package gitkit is the below-fabric leaf holding test git plumbing: the spawn, query and commit helpers, config seeding, the hermetic git environment and the primitive repo fixture CopyRepo.
 // It never imports fabric.
 // 23 packages call HermeticGitEnv from TestMain, and eleven of them sit inside
 // internal/fabriccli's dependency set, so a fabric import in this package would stop those
@@ -8,15 +7,12 @@
 // CopyRepo is pinned to internal/lyxcwd alone, enforced by
 // internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LyxcwdOnly) — every other
 // package takes a real hub from internal/hubforge instead.
-// MustRun, SeedConfig, and HermeticGitEnv are unpinned; any package may call them.
-// gitkit hands out MustRun, SeedConfig, GitStatusPorcelain, HermeticGitEnv and the single primitive
-// fixture CopyRepo, which is callable from internal/lyxcwd alone.
+// Every other export is unpinned;
+// any package may call it.
 //
-// Test git plumbing lives here.
-// Git is the one spawning primitive for queries, and query.go builds the rev, branch, ancestry,
-// ls-files and exclude queries and the commit helpers on it.
-// Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists,
-// because this package cannot import internal/logger.
+// Git is the one spawning primitive for queries,
+// and query.go builds the rev, branch, ancestry, ls-files and exclude queries and the commit helpers on it.
+// Every new spawn stays in gitkit.go, the file the spawn-observability guard allowlists, because this package cannot import internal/logger.
 //
 // Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
