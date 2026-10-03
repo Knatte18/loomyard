@@ -1,6 +1,6 @@
 <!-- This is the RoleImplementer friction directive: the variant internal/friction.Directive renders
      for any agent that edits code. Its consuming call sites are the webster fork prompt, the webster
-     recovery-strand prompt, the webster integration fork prompt (internal/websterengine/render.go),
+     recovery-strand prompt, the webster verify-gate fixer fork prompt (internal/websterengine/render.go),
      and loom's Plan-Write (internal/loomengine/plan.go).
      internal/friction.Directive reads this file through stencilstore.Read, strips this banner with
      stencil.StripLeadingComment, and substitutes the literal "{{.note_path}}" token below with the

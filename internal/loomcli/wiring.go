@@ -517,7 +517,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// defaulted when left nil.
 		WebsterRun: websterengine.Run,
 		// CommitWebster mirrors CommitPlan below: the pathspec is webster's whole durable
-		// directory, so Master's outcome.yaml and summary.md and the integration report land in
+		// directory, so Master's outcome.yaml and summary.md and the verify gate's report land in
 		// git rather than as untracked dirt that refuses the task worktree's removal.
 		// The plan directory rides along because webster rewrites card files during the run
 		// (handle binding, handle canonicalization);

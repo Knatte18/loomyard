@@ -1034,7 +1034,7 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 }
 
 // TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a repeated record-batch on a done batch never attributes another fork's unseen transcript to it:
-// while a later fork batch of the same session is open, or once the integration report exists, the call refuses as already terminal and consumes nothing.
+// while a later fork batch of the same session is open, or once the verify-gate report exists, the call refuses as already terminal and consumes nothing.
 func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 	tests := []struct {
 		name  string

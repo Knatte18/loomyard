@@ -32,7 +32,7 @@ type Role int
 // The four directive variants Directive knows how to render, one per agent shape.
 const (
 	// RoleImplementer selects the directive for any agent that edits code: the webster fork, the
-	// webster recovery strand, the webster integration fork, and loom's Plan-Write.
+	// webster recovery strand, the webster verify-gate fixer fork, and loom's Plan-Write.
 	RoleImplementer Role = iota + 1
 	// RoleReviewFix selects the directive for the Burler round's combined review-then-fix agent.
 	RoleReviewFix
