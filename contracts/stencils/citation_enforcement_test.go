@@ -41,31 +41,32 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // citationPrefixes are the four repository-relative prefixes a bare cross-repository citation
 // token must sit under to be in scope for TestStencils_NoBareCrossRepoCitations.
 var citationPrefixes = []string{"contracts/", "manifest/", "docs/", "internal/"}
 
-// citationAllowKey identifies one (stencil name, token) pair TestStencils_NoBareCrossRepoCitations
-// is told to pass despite matching the bare-citation token rule.
-type citationAllowKey struct {
-	Stencil string
-	Token   string
+// citationAllowKey is the allowlist key identifying one (stencil name, token) pair TestStencils_NoBareCrossRepoCitations is told to pass despite matching the bare-citation token rule.
+func citationAllowKey(stencilName, token string) string {
+	return stencilName + ":" + token
 }
 
 // citationAllowlist is the justification-carrying allowlist for tokens the bare-citation rule would
-// otherwise flag but that are not citations at all. Each value is the entry's own justification,
-// carried as data rather than as a comment beside the entry, so the justification cannot drift away
-// from what it justifies -- the same (file, target)-keyed, owner-naming shape
-// internal/lyxcwd's Markdown Link Integrity allowlist already uses.
+// otherwise flag but that are not citations at all.
+// Each entry's Why is its own justification, carried as data rather than as a comment beside the entry,
+// so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lyxcwd's Markdown Link Integrity allowlist already uses.
 //
 // One entry, deliberately: a small allowlist is the design here, not a workaround. The entry names
 // loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
 // the plain-file-path spelling rule for a reader of the stencil, it is not a pointer the agent is
 // meant to open.
-var citationAllowlist = map[citationAllowKey]string{
-	{Stencil: "loom-template-plan", Token: "internal/boardcli/list.go"}: "glyph-grammar worked example, not a citation",
+var citationAllowlist = []scankit.Entry{
+	{
+		Key: "loom-template-plan:internal/boardcli/list.go",
+		Why: "glyph-grammar worked example, not a citation",
+	},
 }
 
 // citationCandidateTokens returns every maximal non-whitespace, non-backtick run in body that
@@ -108,8 +109,36 @@ func citationIsBare(token string) bool {
 // TestStencils_NoBareCrossRepoCitations fails on every bare cross-repository citation left in any
 // stencil's agent-facing body -- see the file comment for the full token rule and its rationale.
 func TestStencils_NoBareCrossRepoCitations(t *testing.T) {
+	violations, _ := scanBareCitations(t)
+	for _, v := range violations {
+		t.Errorf("stencil %q carries the bare cross-repository citation %q; rewrite it to point at the deployed {{.specs_dir}} copy, or add a justified citationAllowlist entry if it is not actually a citation", v.stencil, v.token)
+	}
+}
+
+// TestStencils_AllowlistHasNoStaleEntries fails when a citationAllowlist entry matches no bare citation in its named stencil's stripped body --
+// without this check the allowlist would silently accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
+func TestStencils_AllowlistHasNoStaleEntries(t *testing.T) {
+	_, allow := scanBareCitations(t)
+	allow.RequireNoStale(t)
+}
+
+// bareCitation is one (stencil name, token) pair the bare-citation rule flags.
+type bareCitation struct {
+	stencil string
+	token   string
+}
+
+// scanBareCitations applies the token rule to every stencil's stripped body and returns the violations the allowlist does not cover, together with the allowlist recording which entries matched.
+func scanBareCitations(t *testing.T) ([]bareCitation, *scankit.Allowlist) {
+	t.Helper()
+
+	allow := scankit.NewAllowlist(citationAllowlist)
 	reg := Registry()
-	for _, name := range reg.Names() {
+	names := reg.Names()
+	scankit.RequireFloor(t, len(names), 1, "stencil citation scan")
+
+	var violations []bareCitation
+	for _, name := range names {
 		def, ok := reg.Default(name)
 		if !ok {
 			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
@@ -123,30 +152,13 @@ func TestStencils_NoBareCrossRepoCitations(t *testing.T) {
 			if strings.HasPrefix(token, "{{.specs_dir}}") {
 				continue
 			}
-			if _, allowed := citationAllowlist[citationAllowKey{Stencil: name, Token: token}]; allowed {
+			if allow.Allowed(citationAllowKey(name, token)) {
 				continue
 			}
-			t.Errorf("stencil %q carries the bare cross-repository citation %q; rewrite it to point at the deployed {{.specs_dir}} copy, or add a justified citationAllowlist entry if it is not actually a citation", name, token)
+			violations = append(violations, bareCitation{stencil: name, token: token})
 		}
 	}
-}
-
-// TestStencils_AllowlistHasNoStaleEntries fails when a citationAllowlist entry's token no longer
-// appears in its named stencil's stripped body -- without this check the allowlist would silently
-// accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
-func TestStencils_AllowlistHasNoStaleEntries(t *testing.T) {
-	reg := Registry()
-	for key := range citationAllowlist {
-		def, ok := reg.Default(key.Stencil)
-		if !ok {
-			t.Errorf("citationAllowlist entry names unknown stencil %q", key.Stencil)
-			continue
-		}
-		body := stencil.StripLeadingComment(string(def))
-		if !strings.Contains(body, key.Token) {
-			t.Errorf("citationAllowlist entry (%q, %q) is stale: the token no longer appears in the stencil's stripped body; delete the entry", key.Stencil, key.Token)
-		}
-	}
+	return violations, allow
 }
 
 // TestStencils_ConstraintsCitationsAreGuarded fails when a stencil's stripped body mentions

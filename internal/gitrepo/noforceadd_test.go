@@ -8,10 +8,10 @@
 package gitrepo
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // noForceAddBannedTokens are the raw substrings gitrepo's own non-test .go
@@ -35,44 +35,20 @@ const noForceAddMinScannedFiles = 5
 // `git add -f` (or the hasPathspecMagic helper that used to gate it) ever reappearing.
 // See CONSTRAINTS.md's Never Force-Add Invariant.
 func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("os.Getwd(): %v", err)
-	}
-
-	entries, readErr := os.ReadDir(dir)
-	if readErr != nil {
-		t.Fatalf("read internal/gitrepo dir %s: %v", dir, readErr)
-	}
-
-	var scanned int
 	var failures []string
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		scanned++
-
-		path := filepath.Join(dir, entry.Name())
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			t.Fatalf("read %s: %v", path, readErr)
-		}
-		content := string(data)
-
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/gitrepo"}, Shallow: true}, func(f *scankit.File) {
+		content := string(f.Data)
 		for _, tok := range noForceAddBannedTokens {
 			if strings.Contains(content, tok) {
-				failures = append(failures, entry.Name()+": contains banned force-add token "+tok)
+				failures = append(failures, f.Rel+": contains banned force-add token "+tok)
 			}
 		}
-	}
+	})
 
 	// Vacuous-scan protection: a mis-resolved directory that still finds a
 	// handful of files must not pass.
-	if scanned < noForceAddMinScannedFiles {
-		t.Fatalf("no-force-add guard: only scanned %d non-test .go file(s) in %s; expected at least %d — the directory resolution may be misconfigured", scanned, dir, noForceAddMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, noForceAddMinScannedFiles, "no-force-add guard")
 
 	if len(failures) > 0 {
 		t.Errorf("Never Force-Add Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))

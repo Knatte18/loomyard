@@ -27,18 +27,16 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // uncontainedWriteScanPackages is the module-relative package subtree this guard walks: the one package
 // the write-side containment audit covers, internal/fabricengine.
 var uncontainedWriteScanPackages = []string{
-	filepath.Join("internal", "fabricengine"),
+	"internal/fabricengine",
 }
 
 // uncontainedWriteBannedTokens are the raw substrings a non-test .go file in
@@ -62,29 +60,29 @@ var uncontainedWriteBannedTokens = []string{
 // race — the documented residual class, same as the gate's dirtiness window — could redirect it, never a
 // static pre-plant. The two hub-level structural-container writers (launchers.go, portals.go) are
 // deliberately ABSENT: they now route through an os.Root at the hub, so they carry no banned token at all.
-var uncontainedWriteAllowlist = map[string]string{
-	"internal/fabricengine/hook.go": "InstallPostCheckoutHook/chainUserHook/writeHookFile write into the git-resolved hooks " +
+var uncontainedWriteAllowlist = []scankit.Entry{
+	{Key: "internal/fabricengine/hook.go", Why: "InstallPostCheckoutHook/chainUserHook/writeHookFile write into the git-resolved hooks " +
 		"directory (git rev-parse --git-path hooks), a git-owned path never derived from an operator slug; redirecting it " +
-		"would require compromising the repo's own .git, outside the hub-symlink threat model",
-	"internal/fabricengine/gitexclude.go": "mutateGitExclude's os.MkdirAll(excludeDir) creates the git-owned .git/info directory " +
+		"would require compromising the repo's own .git, outside the hub-symlink threat model"},
+	{Key: "internal/fabricengine/gitexclude.go", Why: "mutateGitExclude's os.MkdirAll(excludeDir) creates the git-owned .git/info directory " +
 		"resolved by git rev-parse --git-path info/exclude; the file replacement itself is a same-directory CreateTemp+Rename under " +
-		"a repo-wide flock, never a caller-derived path",
-	"internal/fabricengine/clone.go": "the hub scratch directory (<hub>/_board/.lyx) and the .lyx-anchor marker are written into " +
+		"a repo-wide flock, never a caller-derived path"},
+	{Key: "internal/fabricengine/clone.go", Why: "the hub scratch directory (<hub>/_board/.lyx) and the .lyx-anchor marker are written into " +
 		"the _board worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, both in this " +
-		"same CloneHub call — race-only, not statically pre-plantable",
-	"internal/fabricengine/warpbinding.go": "writeWarpBinding writes .lyx-warp into the _board weft worktree fabric created via " +
+		"same CloneHub call — race-only, not statically pre-plantable"},
+	{Key: "internal/fabricengine/warpbinding.go", Why: "writeWarpBinding writes .lyx-warp into the _board weft worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
-		"caller-derived slug path",
-	"internal/fabricengine/shortnamebinding.go": "WriteShortname writes .lyx-shortname into the _board weft worktree fabric created via " +
+		"caller-derived slug path"},
+	{Key: "internal/fabricengine/shortnamebinding.go", Why: "WriteShortname writes .lyx-shortname into the _board weft worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
-		"caller-derived slug path",
-	"internal/fabricengine/weftgit.go": "ensureWeftLockDirAt's os.MkdirAll(.weft) creates the lock directory inside the weft worktree " +
-		"root fabric created via containedWorktreeAdd; race-only, not statically pre-plantable",
-	"internal/fabricengine/junction.go": "seedLyxJunction's os.MkdirAll(target) materialises a junction's weft-side target inside the " +
+		"caller-derived slug path"},
+	{Key: "internal/fabricengine/weftgit.go", Why: "ensureWeftLockDirAt's os.MkdirAll(.weft) creates the lock directory inside the weft worktree " +
+		"root fabric created via containedWorktreeAdd; race-only, not statically pre-plantable"},
+	{Key: "internal/fabricengine/junction.go", Why: "seedLyxJunction's os.MkdirAll(target) materialises a junction's weft-side target inside the " +
 		"weft worktree fabric created via containedWorktreeAdd, and the warp-side junction LINKS route through fslink; race-only " +
-		"(add.go refuses a pre-existing worktree path), not statically pre-plantable",
-	"internal/fabricengine/doc.go": "the package doc's prose names the raw write primitives when explaining the containment rationale; " +
-		"its only non-comment line is the package clause, so it can never carry a real call",
+		"(add.go refuses a pre-existing worktree path), not statically pre-plantable"},
+	{Key: "internal/fabricengine/doc.go", Why: "the package doc's prose names the raw write primitives when explaining the containment rationale; " +
+		"its only non-comment line is the package clause, so it can never carry a real call"},
 }
 
 // uncontainedWriteMinScannedFiles is the vacuous-scan floor for this guard's one-package walk: comfortably
@@ -98,75 +96,30 @@ const uncontainedWriteMinScannedFiles = 30
 // os.Root rooted at the hub (the write-side containment chokepoint) or be an allowlisted, reasoned
 // exemption. It is the write-side twin of TestNoDestructiveBypass_FabricengineProductionSource.
 func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring destructiveguard_test.go.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
+	allow := scankit.NewAllowlist(uncontainedWriteAllowlist)
 
 	var scanned int
 	var failures []string
 
 	for _, pkgRel := range uncontainedWriteScanPackages {
-		pkgDir := filepath.Join(moduleRoot, pkgRel)
-
-		walkErr := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+		scanned += scankit.Walk(t, scankit.Options{Roots: []string{pkgRel}}, func(f *scankit.File) {
+			if allow.Allowed(f.Rel) {
+				return
 			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
-
-			relPath, relErr := filepath.Rel(moduleRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			// Normalize to slash-separated form before any comparison, exactly as the delete-side guard
-			// does: filepath.WalkDir yields backslash paths on Windows (the primary dev OS).
-			relPath = filepath.ToSlash(relPath)
-			scanned++
-
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			content := string(data)
-
-			if _, allowlisted := uncontainedWriteAllowlist[relPath]; allowlisted {
-				return nil
-			}
-
+			content := string(f.Data)
 			for _, tok := range uncontainedWriteBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
 						"%s: contains raw filesystem-write primitive %q — a write to a hub-relative or caller-derived path must route through an os.Root rooted at the hub (see internal/fabricengine/launchers.go's writeLaunchers and portals.go's ensureContainedLinkParent), or add a uncontainedWriteAllowlist entry in cmd/lyx/uncontainedwrite_test.go with a reason if this is a new audited safe site",
-						relPath, tok,
+						f.Rel, tok,
 					))
 				}
 			}
-			return nil
 		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", pkgDir, walkErr)
-		}
 	}
 
-	if scanned < uncontainedWriteMinScannedFiles {
-		t.Fatalf("uncontained-write guard: only scanned %d production .go file(s) across %v; expected at least %d — the walk may be misconfigured", scanned, uncontainedWriteScanPackages, uncontainedWriteMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, uncontainedWriteMinScannedFiles, "uncontained-write guard")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("write-side containment guard violated — raw filesystem-write primitive outside the os.Root chokepoint:\n%s", strings.Join(failures, "\n"))

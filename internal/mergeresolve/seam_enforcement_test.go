@@ -11,13 +11,9 @@
 package mergeresolve
 
 import (
-	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // mergeresolveAllowedImports are the only non-stdlib import paths production code in this package
@@ -27,68 +23,15 @@ import (
 // internal/logger carries no geometry and opens no seam, so admitting it leaves the Told-Geometry
 // Invariant's actual property intact -- the same call CONSTRAINTS.md's Treadle Runner-Seam
 // Invariant allowlist already makes.
-var mergeresolveAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/fabricengine":  true,
-	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
-	"github.com/Knatte18/loomyard/internal/modelspec":     true,
-	"github.com/Knatte18/loomyard/internal/stencilstore":  true,
-	"github.com/Knatte18/loomyard/internal/stencil":       true,
-	"github.com/Knatte18/loomyard/internal/logger":        true,
+var mergeresolveAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/fabricengine",
+	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	"github.com/Knatte18/loomyard/internal/modelspec",
+	"github.com/Knatte18/loomyard/internal/stencilstore",
+	"github.com/Knatte18/loomyard/internal/stencil",
+	"github.com/Knatte18/loomyard/internal/logger",
 }
 
-// TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in mergeresolveAllowedImports.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine mergeresolve source directory location")
-	}
-	pkgDir := filepath.Dir(file)
-
-	var failures []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || mergeresolveAllowedImports[importPath] {
-				continue
-			}
-
-			relPath, _ := filepath.Rel(pkgDir, path)
-			failures = append(failures, relPath+": "+importPath)
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("failed to walk mergeresolve directory: %v", err)
-	}
-
-	if len(failures) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
-	}
+	scankit.AssertImportAllowlistNoStale(t, "internal/mergeresolve", mergeresolveAllowedImports...)
 }

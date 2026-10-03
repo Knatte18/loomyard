@@ -15,11 +15,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // pinnedMergeReasons is the single hand-pinned copy of the closed guard-reason set, constant name
@@ -73,38 +75,21 @@ type mergeReasonConstDecl struct {
 func mergeReasonConstsFromSource(t *testing.T) map[string]mergeReasonConstDecl {
 	t.Helper()
 
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatalf("read package directory: %v", err)
-	}
-
 	got := map[string]mergeReasonConstDecl{}
-	scanned := 0
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		scanned++
-		collectMergeReasonConsts(t, name, got)
-	}
-	if scanned == 0 {
-		t.Fatal("scanned no production .go files; the package-wide closed-set scan found nothing to parse")
-	}
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/fabricengine"}, Shallow: true}, func(f *scankit.File) {
+		collectMergeReasonConsts(t, path.Base(f.Rel), f.AST(t, parser.SkipObjectResolution), got)
+	})
+	scankit.RequireFloor(t, scanned, mergeVocabScanMinFiles, "merge-vocabulary closed-set scan")
 	return got
 }
 
-// collectMergeReasonConsts parses one package file and adds every package-level mergeReason*
-// constant it declares into got, failing the test on a duplicate declaration or on a member whose
-// value is not a plain string literal (the closed set must pin every member verbatim).
-func collectMergeReasonConsts(t *testing.T, fileName string, got map[string]mergeReasonConstDecl) {
-	t.Helper()
+// mergeVocabScanMinFiles is the plausible floor for how many production .go files internal/fabricengine holds;
+// below it the package-wide scan has read the wrong directory.
+const mergeVocabScanMinFiles = 20
 
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, fileName, nil, parser.SkipObjectResolution)
-	if err != nil {
-		t.Fatalf("parse %s: %v", fileName, err)
-	}
+// collectMergeReasonConsts adds every package-level mergeReason* constant file declares into got, failing the test on a duplicate declaration or on a member whose value is not a plain string literal (the closed set must pin every member verbatim).
+func collectMergeReasonConsts(t *testing.T, fileName string, file *ast.File, got map[string]mergeReasonConstDecl) {
+	t.Helper()
 
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)

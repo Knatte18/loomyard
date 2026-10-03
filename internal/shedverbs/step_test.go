@@ -21,8 +21,6 @@ func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
 }
 
-// TestStepEnvelope_KeySetIsExactlySixteen mirrors internal/loomcli/step_test.go's own closure test:
-// the envelope's key set is exactly the sixteen documented keys and no larger.
 func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "P",
@@ -71,8 +69,128 @@ func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
 	}
 }
 
+func TestStepEnvelope_FieldMapping(t *testing.T) {
+	tests := []struct {
+		name         string
+		res          shedengine.StepResult
+		wantProducer string
+		wantOutcome  string
+		wantNext     string
+		wantState    string
+		wantContinue bool
+		wantReason   string
+	}{
+		{
+			name: "DoneWithOnDone",
+			res: shedengine.StepResult{
+				Producer: "Discussion-Write",
+				Outcome:  shedengine.Done,
+				Next:     "Discussion-Bouncer",
+				State:    shedengine.StateRunning,
+				History:  []shedengine.HistoryEntry{{Producer: "Discussion-Write", Outcome: shedengine.Done}},
+			},
+			wantProducer: "Discussion-Write",
+			wantOutcome:  string(shedengine.Done),
+			wantNext:     "Discussion-Bouncer",
+			wantState:    string(shedengine.StateRunning),
+			wantContinue: true,
+		},
+		{
+			name: "DoneTerminal",
+			res: shedengine.StepResult{
+				Producer: "Finalize",
+				Outcome:  shedengine.Done,
+				Next:     "Finalize",
+				State:    shedengine.StateDone,
+				History:  []shedengine.HistoryEntry{{Producer: "Finalize", Outcome: shedengine.Done}},
+			},
+			wantProducer: "Finalize",
+			wantOutcome:  string(shedengine.Done),
+			wantNext:     "Finalize",
+			wantState:    string(shedengine.StateDone),
+			wantContinue: false,
+		},
+		{
+			name: "StuckWithinBudget",
+			res: shedengine.StepResult{
+				Producer: "Discussion-Bouncer",
+				Outcome:  shedengine.Stuck,
+				Next:     "Discussion-Burler",
+				State:    shedengine.StateRunning,
+				History:  []shedengine.HistoryEntry{{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck}},
+			},
+			wantProducer: "Discussion-Bouncer",
+			wantOutcome:  string(shedengine.Stuck),
+			wantNext:     "Discussion-Burler",
+			wantState:    string(shedengine.StateRunning),
+			wantContinue: true,
+		},
+		{
+			name: "Blocked",
+			res: shedengine.StepResult{
+				Producer: "Discussion-Bouncer",
+				Outcome:  shedengine.Stuck,
+				Next:     "Discussion-Bouncer",
+				State:    shedengine.StateBlocked,
+				Reason:   shedengine.ReasonBounceBudgetExhausted,
+				History:  []shedengine.HistoryEntry{{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck}},
+			},
+			wantProducer: "Discussion-Bouncer",
+			wantOutcome:  string(shedengine.Stuck),
+			wantNext:     "Discussion-Bouncer",
+			wantState:    string(shedengine.StateBlocked),
+			wantContinue: false,
+			wantReason:   shedengine.ReasonBounceBudgetExhausted,
+		},
+		{
+			name: "AlreadyDoneShortCircuit",
+			res: shedengine.StepResult{
+				Next:    "Finalize",
+				State:   shedengine.StateDone,
+				History: []shedengine.HistoryEntry{{Producer: "Finalize", Outcome: shedengine.Done}},
+			},
+			wantProducer: "",
+			wantOutcome:  "",
+			wantNext:     "Finalize",
+			wantState:    string(shedengine.StateDone),
+			wantContinue: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := StepEnvelope(tt.res, "", "/some/status.json", StepLocations{}, nil)
+
+			if got := env["producer"]; got != tt.wantProducer {
+				t.Errorf("envelope[\"producer\"] = %v; want %v", got, tt.wantProducer)
+			}
+			if got := env["outcome"]; got != tt.wantOutcome {
+				t.Errorf("envelope[\"outcome\"] = %v; want %v", got, tt.wantOutcome)
+			}
+			if got := env["next"]; got != tt.wantNext {
+				t.Errorf("envelope[\"next\"] = %v; want %v", got, tt.wantNext)
+			}
+			if got := env["state"]; got != tt.wantState {
+				t.Errorf("envelope[\"state\"] = %v; want %v", got, tt.wantState)
+			}
+			if got := env["continue"]; got != tt.wantContinue {
+				t.Errorf("envelope[\"continue\"] = %v; want %v", got, tt.wantContinue)
+			}
+			if got := env["reason"]; got != tt.wantReason {
+				t.Errorf("envelope[\"reason\"] = %v; want %v", got, tt.wantReason)
+			}
+			if got := env["history_length"]; got != len(tt.res.History) {
+				t.Errorf("envelope[\"history_length\"] = %v; want %v", got, len(tt.res.History))
+			}
+			if got := env["status_file"]; got != "/some/status.json" {
+				t.Errorf("envelope[\"status_file\"] = %v; want %v", got, "/some/status.json")
+			}
+		})
+	}
+}
+
 // TestStepKinds_IsExactlyFive asserts the closed refusal-kind vocabulary is exactly the five
-// declared constants and no larger.
+// declared constants and no larger, each non-empty and distinct.
 func TestStepKinds_IsExactlyFive(t *testing.T) {
 	want := []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
 	if len(StepKinds) != len(want) {
@@ -80,6 +198,12 @@ func TestStepKinds_IsExactlyFive(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, k := range StepKinds {
+		if k == "" {
+			t.Error("StepKinds contains an empty entry")
+		}
+		if seen[k] {
+			t.Errorf("StepKinds contains a duplicate entry %q", k)
+		}
 		seen[k] = true
 	}
 	for _, w := range want {

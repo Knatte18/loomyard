@@ -248,6 +248,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table plus the three CLI seams that register it under the lyx root
+├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
 ├── internal/landingshed/         landing's three general ShedProducers, Publish, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs, and loom's run verb runs after a blocked halt
@@ -570,7 +571,11 @@ See `internal/fabricengine`'s own package doc for the state matrix, the verb tab
 
 `internal/gitkit` is the below-fabric leaf and the home of test git plumbing — spawn, query and commit helpers, the hermetic git environment, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
 `internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
-`internal/testkit` holds the shared test kits, one package per kit, for seams faked in more than one package; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
+`internal/testkit` holds the shared test kits, one package per kit, for test support (fakes, builders, fixtures and the scan harness) used by two or more packages; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
+`internal/testkit/scankit` is the harness every invariant scan runs on: module-root lookup, file walk, allowlists that report stale entries, a vacuity floor and an import-allowlist assertion.
+`internal/testkit/plankit` is the one test-side writer of valid plans, rendering through `planparser`'s format constant, with the file-tree fixture glyph resolution needs.
+`internal/testkit/tmuxkit` gives each test package one isolated tmux socket directory through `Main`, and each test a self-cleaning `-L` key through `Socket`.
+`internal/testkit/stencilkit` seeds stencil fixtures from the registry through `stencilstore`, so seeded files carry production's hash stamp.
 
 ## Sandbox Hub
 

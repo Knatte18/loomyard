@@ -33,31 +33,17 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils parses cmd/lyx/main.go, locates root's
 // PersistentPreRunE function literal inside newRoot's composite literal, and fails if any statement
 // preceding its seedStencils(cmd) call contains a logger.Info or logger.Warn call.
 func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) {
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-	mainGoPath := filepath.Join(moduleRoot, "cmd", "lyx", "main.go")
+	mainGoPath := filepath.Join(scankit.Root(t), "cmd", "lyx", "main.go")
 
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, mainGoPath, nil, 0)

@@ -22,32 +22,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// reworkPlanCard renders a minimal language: none card file.
-func reworkPlanCard(number int, slug, intent string) string {
-	return fmt.Sprintf("# Card %d — %s\n\n**Create:**\n- `internal/%s/new.go`\n\n**Intent:** %s\n", number, slug, strings.ReplaceAll(slug, "-", ""), intent)
-}
 
 // writeReworkPlan writes a plan generation whose cards are numbered from first, keyed by slug in index order.
 func writeReworkPlan(t *testing.T, planDir string, first int, cards [][2]string) {
 	t.Helper()
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	var index strings.Builder
+	plan := plankit.Plan{Approved: true, Language: "none", FirstCard: first, Framing: "Framing."}
 	for i, c := range cards {
-		fmt.Fprintf(&index, "%d — %s — card %d\n", first+i, c[0], first+i)
-		name := fmt.Sprintf("%02d-%s.md", first+i, c[0])
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(reworkPlanCard(first+i, c[0], c[1])), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		plan.Cards = append(plan.Cards, plankit.Card{
+			Number:  first + i,
+			Slug:    c[0],
+			Summary: fmt.Sprintf("card %d", first+i),
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{fmt.Sprintf("internal/%s/new.go", strings.ReplaceAll(c[0], "-", ""))}}},
+			Intent:  c[1],
+		})
 	}
-	overview := fmt.Sprintf("---\nformat: 5\napproved: true\nlanguage: none\nfirst_card: %d\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n%s", first, index.String())
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	plankit.Write(t, planDir, plan)
 }
 
 // generationSession is a fake rework session that writes the next plan generation and its coverage file.

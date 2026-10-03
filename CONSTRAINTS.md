@@ -86,16 +86,19 @@ Every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWir
 
 ## Testkit Invariant
 
-A seam faked in two or more packages is shared through one kit package under `internal/testkit/<kit>/`, never duplicated per package and never placed under the package it fakes.
+Shared test support — fakes, builders, fixtures and the scan harness — used by two or more packages is shared through one kit package under `internal/testkit/<kit>/`, never duplicated per package and never placed under the package it fakes.
 
 - No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
   Files under `internal/testkit/` are exempt, so a kit may build on another kit.
 - No non-test file under `internal/testkit/` imports an `internal/*cli` package.
 - No non-test file under `internal/testkit/` imports `os/exec`, `internal/gitexec`, `internal/gitkit`, `internal/hubforge` or `internal/testkit/lyxbin`.
   `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx`; banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
+  `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, and no other kit imports it, for the same reason.
 - A kit imports only the lowest packages defining the types it fakes; a package an import cycle bars from a kit keeps exactly one local copy; a fixture used by one package stays in that package's `_test.go` files.
+- `internal/testkit/scankit` imports the standard library only, so every package's tests can import it.
 - Enforced by `internal/testkit/enforcement_test.go` for the import rules.
-  Review discipline covers the rest: a kit starts no process, tmux server or agent beyond what its imports allow, and asserts nothing beyond `t.Fatalf` on its own setup, the `shedfake` `Call`/`RequireOutcome` outcome check and the `envelope` `RequireOK`/`RequireErr` shape check.
+  Review discipline covers the rest: a kit starts no process, tmux server or agent beyond what its imports allow, and asserts nothing beyond `t.Fatalf` on its own setup, the `shedfake` `Call`/`RequireOutcome` outcome check and the `envelope` `RequireOK`/`RequireErr` shape check;
+  `scankit` additionally asserts scan results, while `plankit` and `stencilkit` assert nothing beyond `t.Fatalf` on their own setup.
 
 ## Modelspec Leaf Invariant
 
@@ -222,6 +225,8 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`; every module but `internal/selfreportcli` also carries `RunCLIIn(cwd, out, args) int`.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Non-empty `Short` on every command.
+- One walk of `newRoot()` in `cmd/lyx/clitree_test.go` enforces `Short`, bare-group listing and unknown-subcommand refusal for every command, and `cmd/lyx/registration_test.go` is the oracle that every `Command()` package is mounted;
+  per-CLI copies are no longer an obligation.
 - Errors are JSON via `internal/output`, one object per line; every `RunE` checks `clihelp.ShouldAbort` first.
 - Interactive-handoff exception, narrow and per-command: `reedengine` `attach`/`watchdog`, `lyx loom status --watch`, `lyx loom start`/`lyx start`, `lyx orch start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
 - Package naming: `<module>cli` imports `<module>engine`; engine never imports cli/cobra. Deviations: `stencilcli` → `internal/stencilstore`; `quarrycli` → `internal/planglyph`; `battencli` → `internal/battenshed`, `internal/battenrecipe` (no engine package of its own); `shedcli` → `internal/shedverbs`, `internal/loomcli`, `internal/battencli` (no engine package of its own).
@@ -376,6 +381,7 @@ Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 - No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `hubforge.NewHub` or gitkit spawn outside `integration`/`smoke`-tagged files.
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside `integration`/`smoke`-tagged files.
+- Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside `integration`/`smoke`-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
 - `time.Sleep(...)` ≥ 1s in an untagged file is flagged unless allowlisted.
 
 ## Hermetic Git Test Environment Invariant
@@ -385,15 +391,28 @@ Every test package whose tests spawn git runs under the hermetic git test enviro
 - `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or is allowlisted (`internal/proc`).
 - A package is git-spawning when a test file references a gitkit spawn, by the same definition Test Tier Purity uses.
 
+## Tmux Test Isolation Invariant
+
+Every test package with an `integration`- or `smoke`-tagged test file runs its tests through `tmuxkit.Main`, so no test touches the operator's default tmux socket directory.
+
+- Under every tag set (untagged, `integration`, `smoke`) and on every platform that compile any of the package's test files, a file declaring `TestMain` compiles, and every `TestMain` in the package calls `tmuxkit.Main`.
+- The rule keys on "has a tagged test file", not "starts tmux": starting tmux has no static shape, so a tagged package that never starts tmux still carries the one call, which costs one temp directory.
+- In an untagged run the entry point spawns nothing.
+- A package whose `TestMain` cannot call the entry point is admitted by an allowlist entry whose reason names that obstacle; "does not start tmux" is not a reason.
+- Enforced by `cmd/lyx/tmuxisolation_test.go`.
+
 ## Dev/Prod Binary Separation
 
 Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then PATH) — never a bare-PATH `lyx` lookup.
 
 ## Planparser Sole-Parser Invariant
 
-`internal/planparser` is the SOLE parser and writer of the on-disk plan format (`_lyx/plan/`).
+`internal/planparser` is the SOLE production parser and writer of the on-disk plan format (`_lyx/plan/`).
 
 - Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
+- In tests, `internal/testkit/plankit` is the one writer of valid plans, and a test may write raw plan bytes only to test rejection of a malformed plan.
+  This admits a second, test-only writer of the plan format, reachable only from `_test.go` files by the Testkit importer rule.
+  It renders through `planparser.RecognizedFormat`, so a format bump fails at one site, and `TestValidate_GoldenFixture_ZeroFindings` stays the parser-side anchor.
 
 ## Plan Generation Invariant
 

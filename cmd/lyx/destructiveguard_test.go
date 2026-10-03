@@ -4,12 +4,8 @@
 // perform one.
 // See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant.
 //
-// This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative
-// scan-package list, the raw-substring banned-token slice, the per-file allowlist map keyed by
-// module-relative slash-separated path with a reason as its value, the minimum-scanned-files
-// floor, the exec.LookPath("go") clean skip, the go env GOMOD module-root resolution, the
-// filepath.WalkDir skipping of test files, and the filepath.ToSlash normalisation before any
-// comparison, which matters because Windows is the primary dev OS.
+// This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
+// scankit supplies the module root and the production-file walk.
 //
 // Two of the nine banned tokens were corrected against a naive first guess in opposite
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
@@ -58,18 +54,18 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // destructiveGuardScanPackages are the module-relative package subtrees this guard walks: exactly
 // the one package the discussion's bypass-guard decision names, internal/fabricengine.
 var destructiveGuardScanPackages = []string{
-	filepath.Join("internal", "fabricengine"),
+	"internal/fabricengine",
 }
 
 // destructiveGuardBannedTokens are the raw substrings a non-test .go file in
@@ -94,24 +90,24 @@ var destructiveGuardBannedTokens = []string{
 // slash-separated → reason). Every entry carries the reason its one audited destructive call
 // site is safe, per the Fabric Destruction Chokepoint Invariant's requirement that every
 // allowlist entry name one.
-var destructiveGuardAllowlist = map[string]string{
-	"internal/fabricengine/destroy.go": "the gate's own file — the one file the invariant permits to perform a destructive primitive",
-	"internal/fabricengine/gitexclude.go": "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
-		"under a repo-wide flock, never operator content",
-	"internal/fabricengine/warpprobe.go": "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
-		"same function created moments earlier",
-	"internal/fabricengine/index.go": "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
-		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch",
-	"internal/fabricengine/mergestate.go": "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
-		"weft gitdir, fabric-internal metadata, never operator content",
-	"internal/fabricengine/junction.go": "two audited sites, both removing a directory the same call just emptied by rename and " +
+var destructiveGuardAllowlist = []scankit.Entry{
+	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
+	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
+		"under a repo-wide flock, never operator content"},
+	{Key: "internal/fabricengine/warpprobe.go", Why: "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
+		"same function created moments earlier"},
+	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
+		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
+	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
+		"weft gitdir, fabric-internal metadata, never operator content"},
+	{Key: "internal/fabricengine/junction.go", Why: "two audited sites, both removing a directory the same call just emptied by rename and " +
 		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
 		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
-		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption",
-	"internal/fabricengine/hook.go": "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
-		"ten lines earlier, on its own rollback path after a failed chain write",
-	"internal/fabricengine/doc.go": "the package doc's prose explains this slice's destruction rationale and must be able to name " +
-		"the banned tokens; its only non-comment line is the package clause, so it can never carry a real call",
+		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption"},
+	{Key: "internal/fabricengine/hook.go", Why: "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
+		"ten lines earlier, on its own rollback path after a failed chain write"},
+	{Key: "internal/fabricengine/doc.go", Why: "the package doc's prose explains this slice's destruction rationale and must be able to name " +
+		"the banned tokens; its only non-comment line is the package clause, so it can never carry a real call"},
 }
 
 // destructiveGuardMinScannedFiles is the vacuous-scan floor for this guard's one-package walk:
@@ -197,87 +193,35 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 // destructiveGuardBannedTokens — the nine construction/call tokens a destructive primitive
 // reached outside the gate would carry.
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
-	// rawgitmutation_test.go and tierpurity_test.go so this gate never blocks a minimal
-	// environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
+	allow := scankit.NewAllowlist(destructiveGuardAllowlist)
 
 	var scanned int
 	var failures []string
 
 	for _, pkgRel := range destructiveGuardScanPackages {
-		pkgDir := filepath.Join(moduleRoot, pkgRel)
-
-		walkErr := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				relDir, relErr := filepath.Rel(moduleRoot, path)
-				if relErr != nil {
-					return relErr
+		scanned += scankit.Walk(t, scankit.Options{Roots: []string{pkgRel}}, func(f *scankit.File) {
+			for excluded := range destructiveGuardExcludedDirs {
+				if strings.HasPrefix(f.Rel, excluded+"/") {
+					return
 				}
-				if _, excluded := destructiveGuardExcludedDirs[filepath.ToSlash(relDir)]; excluded {
-					return fs.SkipDir
-				}
-				return nil
 			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
+			if allow.Allowed(f.Rel) {
+				return
 			}
-
-			relPath, relErr := filepath.Rel(moduleRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			// Normalize to slash-separated form before any comparison, exactly as
-			// tierpurity_test.go/rawgitmutation_test.go do: filepath.WalkDir yields backslash
-			// paths on Windows (the primary dev OS).
-			relPath = filepath.ToSlash(relPath)
-			scanned++
-
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			content := string(data)
-
-			if _, allowlisted := destructiveGuardAllowlist[relPath]; allowlisted {
-				return nil
-			}
-
+			content := string(f.Data)
 			for _, tok := range destructiveGuardBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
 						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant), or add a destructiveGuardAllowlist entry in cmd/lyx/destructiveguard_test.go with a reason if this is a new audited exemption",
-						relPath, tok,
+						f.Rel, tok,
 					))
 				}
 			}
-			return nil
 		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", pkgDir, walkErr)
-		}
 	}
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < destructiveGuardMinScannedFiles {
-		t.Fatalf("destructive bypass guard: only scanned %d production .go file(s) across %v; expected at least %d — the walk may be misconfigured", scanned, destructiveGuardScanPackages, destructiveGuardMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, destructiveGuardMinScannedFiles, "destructive bypass guard")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Fabric Destruction Chokepoint Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
@@ -285,10 +229,8 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 }
 
 // TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see
-// CONSTRAINTS.md's Mutation Record Invariant). It reuses this file's machinery wholesale — the
-// exec.LookPath("go") clean skip, the go env GOMOD module-root resolution, filepath.WalkDir, the
-// _test.go skip, and the filepath.ToSlash normalisation before any comparison — and asserts two
-// things by raw source inspection, never by inspecting an executor's body:
+// CONSTRAINTS.md's Mutation Record Invariant).
+// It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
 //
 //  1. Every executor named in destructiveGuardRecordingExecutors declares a leading
 //     `rec *Mutations` parameter in internal/fabricengine/destroy.go.
@@ -299,21 +241,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 // embed by declaration inspection only, never that an executor body actually appends, nor that
 // what it appends is correct.
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring this file's
-	// other guard.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
+	moduleRoot := scankit.Root(t)
 
 	destroyPath := filepath.Join(moduleRoot, "internal", "fabricengine", "destroy.go")
 	destroyData, readErr := os.ReadFile(destroyPath)

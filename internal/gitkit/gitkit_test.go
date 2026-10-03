@@ -10,12 +10,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain wires up the hermetic git environment before any test spawns git.
+// TestMain wires up the hermetic git environment before any test spawns git, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }
 
 // TestHermeticGitEnv_QuietAndPinned verifies Layer B: a bare git init reads fsmonitor and branch

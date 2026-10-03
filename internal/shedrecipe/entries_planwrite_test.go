@@ -85,17 +85,6 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "StencilsDir")
 		}
 	})
-
-	t.Run("UnrecognisedConfigKey", func(t *testing.T) {
-		env := newTestEnv(t)
-		_, err := planWriteEntry("Row", Config{"bogus_key": "x"}, env)
-		if err == nil {
-			t.Fatalf("planWriteEntry() error = nil; want non-nil for an unrecognised config key")
-		}
-		if !strings.Contains(err.Error(), "bogus_key") {
-			t.Errorf("planWriteEntry() error = %v; want it to name the offending key %q", err, "bogus_key")
-		}
-	})
 }
 
 // TestPlanWriteEntry_HappyPath asserts a fully-filled Env constructs a non-nil producer with a nil

@@ -11,13 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // fakeStarter records the specs it is asked to start and answers a fixed guid and warning.
@@ -31,24 +30,6 @@ type fakeStarter struct {
 func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (string, string, error) {
 	f.specs = append(f.specs, spec)
 	return f.guid, f.warning, f.err
-}
-
-// seedStartStencils writes every shipped stencil default into a temporary directory.
-func seedStartStencils(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	reg := stencils.Registry()
-	for _, name := range reg.Names() {
-		def, _ := reg.Default(name)
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, def, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dir
 }
 
 // startHarness bundles a receiver with its fakes.
@@ -66,7 +47,7 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.paths.StartLockPath = filepath.Join(c.paths.Dir, "start.lock")
 	c.paths.HandoffsDir = filepath.Join(c.paths.Dir, "handoffs")
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
-	c.stencilsDir = seedStartStencils(t)
+	c.stencilsDir = stencilkit.Seed(t)
 	h := &startHarness{cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid"}}
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }

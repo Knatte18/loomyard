@@ -1,27 +1,17 @@
 package loomengine
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newPriorPlanStencilsDir seeds only the embedded prior-plan stencil into a temp stencils directory.
+// newPriorPlanStencilsDir returns a seeded stencils directory.
 func newPriorPlanStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	loomDir := filepath.Join(dir, "loom")
-	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-prior-plan.md"), stencils.LoomTemplatePriorPlan, 0o644); err != nil {
-		t.Fatalf("WriteFile(loom-template-prior-plan.md) = %v; want nil", err)
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 func TestPriorPlanBlock_RendersHeadingArchiveAndBullets(t *testing.T) {

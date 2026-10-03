@@ -5,30 +5,17 @@
 package loomengine
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
-
-// newReworkStencilsDir seeds the standard test stencils directory plus the rework stencil.
-func newReworkStencilsDir(t *testing.T) string {
-	t.Helper()
-
-	dir := newTestStencilsDir(t)
-	path := filepath.Join(dir, "loom", "loom-template-rework.md")
-	if err := os.WriteFile(path, stencils.LoomTemplateRework, 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-	}
-	return dir
-}
 
 // TestReworkSpec verifies the field mapping, that every marker renders its told path or value, and that the plan role's model-spec and timeout are reused.
 func TestReworkSpec(t *testing.T) {
@@ -41,7 +28,7 @@ func TestReworkSpec(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	stencilsDir := newReworkStencilsDir(t)
+	stencilsDir := newTestStencilsDir(t)
 	specsDir := newTestSpecsDir(t)
 	priorPlan := filepath.Join("prior", "plan")
 	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg, 4, priorPlan)
@@ -109,7 +96,10 @@ func TestReworkSpec_MissingStencil(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), cfg, reg, 4, "prior"); err == nil {
+	stencilsDir := newTestStencilsDir(t)
+	stencilkit.Remove(t, stencilsDir, "loom-template-rework")
+
+	if _, err := ReworkSpec(layout, stencilsDir, newTestSpecsDir(t), cfg, reg, 4, "prior"); err == nil {
 		t.Error("ReworkSpec(...) with no rework stencil = nil error; want an error")
 	}
 }

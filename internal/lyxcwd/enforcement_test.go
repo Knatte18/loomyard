@@ -1,9 +1,8 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file
 // outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeps internal/lyxcwd
 // the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary
-// leak fabric-weft-visibility-cleanup closed. All three enforcement tests share one
-// filepath.WalkDir-based helper, walkEnforcementRoots, so the walk semantics (skip .git/testdata,
-// suffix-filter files, hand each match to a per-file callback) live in exactly one place.
+// leak fabric-weft-visibility-cleanup closed.
+// All three enforcement tests walk through scankit.
 
 package lyxcwd
 
@@ -12,13 +11,12 @@ import (
 	"go/parser"
 	"go/scanner"
 	"go/token"
-	"io/fs"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // stripGoComments blanks every comment in the Go source data, replacing the
@@ -89,64 +87,16 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
-// repoRootForEnforcement resolves the repository root relative to this test file's own location,
-// so every enforcement walk shares one runtime.Caller(0) resolution instead of repeating it.
-func repoRootForEnforcement(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location")
-	}
-	// Two levels up from internal/lyxcwd/enforcement_test.go -> repo root.
-	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
-}
-
-// walkEnforcementRoots walks every root in roots (each a repoRoot-relative path, "." for the
-// whole tree) and invokes fn once per file whose name ends with one of suffixes, passing the
-// file's repoRoot-relative, slash-normalized path and its raw bytes. Directories named ".git" or
-// containing "testdata" are skipped entirely; any further filtering (e.g. excluding *_test.go, or
-// applying an owner allowlist) is the caller's responsibility, since that rule differs across
-// TestEnforcement, TestEnforcement_GeometryLiterals, and TestEnforcement_FabricVocabulary.
-func walkEnforcementRoots(t *testing.T, repoRoot string, roots []string, suffixes []string, fn func(relPath string, data []byte)) {
-	t.Helper()
-
-	hasSuffix := func(name string) bool {
-		for _, suffix := range suffixes {
-			if strings.HasSuffix(name, suffix) {
-				return true
-			}
-		}
-		return false
-	}
-
-	for _, root := range roots {
-		walkRoot := filepath.Join(repoRoot, filepath.FromSlash(root))
-		err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() && (d.Name() == ".git" || strings.Contains(d.Name(), "testdata")) {
-				return filepath.SkipDir
-			}
-			if d.IsDir() || !hasSuffix(d.Name()) {
-				return nil
-			}
-
-			relPath, relErr := filepath.Rel(repoRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			fn(filepath.ToSlash(relPath), data)
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("failed to walk %s: %v", root, err)
-		}
-	}
+// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives: the whole of internal/lyxcwd and cmd/lyx/main.go.
+var enforcementAllowlist = []scankit.Entry{
+	{
+		Key: "internal/lyxcwd/",
+		Why: "the sole cwd owner",
+	},
+	{
+		Key: "cmd/lyx/main.go",
+		Why: "the CLI entry point resolves the process cwd once",
+	},
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file outside
@@ -154,8 +104,6 @@ func walkEnforcementRoots(t *testing.T, repoRoot string, roots []string, suffixe
 // --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
-		repoRoot := repoRootForEnforcement(t)
-
 		// Predicate: returns true if the bytes contain a banned token.
 		isBanned := func(data []byte) bool {
 			content := string(data)
@@ -164,21 +112,13 @@ func TestEnforcement(t *testing.T) {
 		}
 
 		var failures []string
+		allow := scankit.NewAllowlist(enforcementAllowlist)
 
-		walkEnforcementRoots(t, repoRoot, []string{"."}, []string{".go"}, func(relPath string, data []byte) {
-			// Skip _test.go files.
-			if strings.HasSuffix(relPath, "_test.go") {
-				return
-			}
-
-			pkgDir := filepath.ToSlash(filepath.Dir(relPath))
-
-			// Check allowlist: internal/lyxcwd, cmd/lyx/main.go
-			isAllowed := pkgDir == "internal/lyxcwd" ||
-				(pkgDir == "cmd/lyx" && filepath.Base(relPath) == "main.go")
+		scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+			relPath, data := f.Rel, f.Data
 
 			// Skip files in the allowlist (they are allowed to contain banned tokens).
-			if isAllowed {
+			if allow.Allowed(relPath) {
 				return
 			}
 
@@ -192,6 +132,8 @@ func TestEnforcement(t *testing.T) {
 			}
 		})
 
+		scankit.RequireFloor(t, scanned, 1, "raw cwd primitive scan")
+		allow.RequireNoStale(t)
 		if len(failures) > 0 {
 			t.Errorf("found banned tokens in files: %v", failures)
 		}
@@ -539,42 +481,25 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// any file constructs a geometry token in a path context outside that
 	// token's registered owner directory (or directories, per geometryTokenOwners).
 	t.Run("tree-scan", func(t *testing.T) {
-		repoRoot := repoRootForEnforcement(t)
-
-		var scanned int
 		var failures []string
 
-		walkEnforcementRoots(t, repoRoot, []string{"."}, []string{".go"}, func(relPath string, data []byte) {
-			// Only scan production Go files; test files (*_test.go) are excluded because
-			// test geometry is a review-only rule, not a machine-enforced invariant.
-			if strings.HasSuffix(relPath, "_test.go") {
-				return
-			}
+		// Only production Go files are scanned (scankit's default filter);
+		// test files are excluded because test geometry is a review-only rule, not a machine-enforced invariant.
+		scanned := scankit.Walk(t, scankit.Options{}, func(file *scankit.File) {
+			relDir := filepath.ToSlash(filepath.Dir(file.Rel))
 
-			relDir := filepath.ToSlash(filepath.Dir(relPath))
-
-			fset := token.NewFileSet()
-			f, parseErr := parser.ParseFile(fset, relPath, data, parser.SkipObjectResolution)
-			if parseErr != nil {
-				// Skip files that cannot be parsed (e.g. build-tag-guarded platform files).
-				return
-			}
-			scanned++
+			f := file.AST(t, parser.SkipObjectResolution)
 			for _, tok := range geometryLiteralTokensInConstructionContext(f) {
 				if !tokenOwnedByDir(tok, relDir) {
-					failures = append(failures, relPath)
+					failures = append(failures, file.Rel)
 					break
 				}
 			}
 		})
 
-		// Sanity check: at least one production file outside internal/lyxcwd must have
-		// been scanned so a misconfigured walk (wrong root, all files skipped) cannot
-		// silently produce a vacuous all-pass result.
+		// A misconfigured walk (wrong root, all files skipped) must not silently produce a vacuous all-pass result.
 		t.Run("scanned_non_empty", func(t *testing.T) {
-			if scanned == 0 {
-				t.Error("geometry-literal guard: no production Go files scanned outside internal/lyxcwd; the AST walk may be misconfigured")
-			}
+			scankit.RequireFloor(t, scanned, 1, "geometry-literal guard")
 		})
 
 		if len(failures) > 0 {
@@ -896,28 +821,17 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 	})
 
 	t.Run("tree-scan", func(t *testing.T) {
-		repoRoot := repoRootForEnforcement(t)
-
 		var failures []string
 		fail := func(relPath, reason string) {
 			failures = append(failures, relPath+": "+reason)
 		}
 
 		// Rules (1)-(3): production .go files under internal/ and cmd/.
-		walkEnforcementRoots(t, repoRoot, []string{"internal", "cmd"}, []string{".go"}, func(relPath string, data []byte) {
-			if strings.HasSuffix(relPath, "_test.go") {
-				return
-			}
-
+		goScanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(file *scankit.File) {
+			relPath := file.Rel
 			dir := filepath.ToSlash(filepath.Dir(relPath))
 
-			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, relPath, data, parser.ParseComments|parser.SkipObjectResolution)
-			if err != nil {
-				// Build-tag-guarded platform files may not fully parse; skip rather than
-				// falsely flag or crash, matching the sibling enforcement tests' stance.
-				return
-			}
+			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
 
 			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
 			if !shouldSkipBareVocabularyCheck(dir) && failsBareVocabularyCheck(dir, bareIdent, bareLiteralOrComment) {
@@ -936,11 +850,11 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 		// silently skipped. contracts/stencils/ is a walked root alongside internal/ so a prompt
 		// relocated out of internal/ (see contracts/stencils/stencils.go) does not silently leave
 		// Fabric Vocabulary coverage.
-		mdVisitCount := 0
-		walkEnforcementRoots(t, repoRoot, []string{"internal", "contracts/stencils"}, []string{".md"}, func(relPath string, data []byte) {
-			mdVisitCount++
+		mdOpts := scankit.Options{Roots: []string{"internal", "contracts/stencils"}, Exts: []string{".md"}, Filter: scankit.All}
+		mdVisitCount := scankit.Walk(t, mdOpts, func(file *scankit.File) {
+			relPath := file.Rel
 			dir := filepath.ToSlash(filepath.Dir(relPath))
-			text := string(data)
+			text := string(file.Data)
 
 			if !fabricVocabularyOwners[dir] && bareVocabularyToken(text) {
 				fail(relPath, "bare weft/warp token outside the owner set")
@@ -949,9 +863,8 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 				fail(relPath, "fabric-sense host phrase")
 			}
 		})
-		if mdVisitCount == 0 {
-			t.Fatal("the internal/stencils .md walk visited zero files; want a mistyped or missing root to fail loudly rather than pass vacuously")
-		}
+		scankit.RequireFloor(t, goScanned, 1, "fabric vocabulary Go walk")
+		scankit.RequireFloor(t, mdVisitCount, 1, "fabric vocabulary markdown walk")
 
 		if len(failures) > 0 {
 			t.Errorf("fabric-vocabulary leak found:\n%s", strings.Join(failures, "\n"))

@@ -1,10 +1,7 @@
 // constraintchokepoint_test.go enforces CONSTRAINTS.md's Glyph Conversion Chokepoint Invariant:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.
 // glyph.Self is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and
-// glyph.Parse plus Glyph.String are the only glyph grammar. This guard resolves its scan root via
-// runtime.Caller(0) rather than `go env GOMOD` (the pattern registration_test.go and
-// sandbox_coverage_test.go both already use), so it spawns nothing and needs no
-// tierpurity_test.go allowedSpawners entry of its own.
+// glyph.Parse plus Glyph.String are the only glyph grammar.
 // Like tierpurity_test.go's own bannedTokens, this is a same-line raw-substring heuristic over
 // production (non-test) source: it catches a direct textual call site, not a value threaded
 // through a local variable or a transitive helper, and it narrows the gap rather than closing it.
@@ -12,12 +9,11 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // glyphUnitPathContextTokens are the path-construction call substrings that, appearing on the same
@@ -81,58 +77,18 @@ func glyphChokepointViolation(data []byte) (line int, reason string) {
 }
 
 // TestGlyphConversionChokepoint_NoLocalConversion walks every non-test *.go file under internal/
-// and cmd/ (skipping tierPuritySkipDirs' own directories) and fails on the first file carrying a
+// and cmd/ and fails on the first file carrying a
 // chokepoint violation.
 func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
-	_, testFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location via runtime.Caller")
-	}
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(testFile)))
-
-	var scanned int
 	var failures []string
 
-	for _, sub := range []string{"internal", "cmd"} {
-		root := filepath.Join(repoRoot, sub)
-		walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if tierPuritySkipDirs[d.Name()] {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-				return nil
-			}
-
-			relPath, relErr := filepath.Rel(repoRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			relPath = filepath.ToSlash(relPath)
-			scanned++
-
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			if line, reason := glyphChokepointViolation(data); line != 0 {
-				failures = append(failures, relPath+": line "+strconv.Itoa(line)+": "+reason)
-			}
-			return nil
-		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", root, walkErr)
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
+		if line, reason := glyphChokepointViolation(f.Data); line != 0 {
+			failures = append(failures, f.Rel+": line "+strconv.Itoa(line)+": "+reason)
 		}
-	}
+	})
 
-	if scanned < 20 {
-		t.Fatalf("glyph conversion chokepoint guard: only scanned %d non-test .go file(s); expected at least 20 — the walk may be misconfigured", scanned)
-	}
+	scankit.RequireFloor(t, scanned, 20, "glyph conversion chokepoint guard")
 
 	if len(failures) > 0 {
 		t.Errorf("Glyph Conversion Chokepoint Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))

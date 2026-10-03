@@ -4,6 +4,7 @@
 // CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
 // This is what makes the no-daemon guarantee reach through the launched binary: HermeticGitEnv
 // mutates this test process's own environment, which launched child processes inherit by default.
+// The binary also runs under tmux isolation: tmuxkit.Main points the tests at a private tmux socket directory.
 
 package main
 
@@ -12,10 +13,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs HermeticGitEnv() before any test spawns git.
+// TestMain runs HermeticGitEnv() before any test spawns git, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }

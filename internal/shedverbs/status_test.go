@@ -283,6 +283,16 @@ func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
 	if line != want {
 		t.Errorf("RenderStatusLine (no tails) = %q; want %q", line, want)
 	}
+
+	stLastOnly := shedengine.Status{
+		State:    shedengine.StateRunning,
+		Activity: shedengine.Activity{Now: "Discussion-Write", Last: "Preflight → done"},
+	}
+	line = RenderStatusLine("loom", stLastOnly)
+	want = "loom running | now Discussion-Write | last Preflight → done"
+	if line != want {
+		t.Errorf("RenderStatusLine (last only) = %q; want %q", line, want)
+	}
 }
 
 // TestUnavailableLine_DedupesAcrossPolls asserts the composed unavailable line is byte-identical
@@ -326,6 +336,59 @@ func TestPrintStatusLinesOnChange_ChangeOnlyPrinting(t *testing.T) {
 	}
 	if sleeps != len(lines) {
 		t.Errorf("sleeps = %d; want %d", sleeps, len(lines))
+	}
+}
+
+// TestPrintStatusLinesOnChange_LineSequences covers the dedupe rule's edges: a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
+func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
+	tests := []struct {
+		name  string
+		polls []string
+		want  []string
+	}{
+		{
+			name:  "ReprintsAfterReturningToAnEarlierLine",
+			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
+			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
+		},
+		{
+			name:  "TransientUnavailableIsAlsoDeduped",
+			polls: []string{UnavailableLine("loom"), UnavailableLine("loom"), "loom running | now Plan-Write"},
+			want:  []string{UnavailableLine("loom"), "loom running | now Plan-Write"},
+		},
+		{
+			name:  "FirstLineIsAlwaysPrinted",
+			polls: []string{"loom running | now Preflight"},
+			want:  []string{"loom running | now Preflight"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			next := 0
+			poll := func() string {
+				line := tt.polls[next]
+				next++
+				return line
+			}
+			sleeps := 0
+
+			var out strings.Builder
+			PrintStatusLinesOnChange(&out, poll, func() { sleeps++ }, len(tt.polls))
+
+			got := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+			if len(got) != len(tt.want) {
+				t.Fatalf("printed %d line(s) %q; want %d line(s) %q", len(got), got, len(tt.want), tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("line %d = %q; want %q", i, got[i], tt.want[i])
+				}
+			}
+			if sleeps != len(tt.polls) {
+				t.Errorf("sleeps = %d; want %d", sleeps, len(tt.polls))
+			}
+		})
 	}
 }
 

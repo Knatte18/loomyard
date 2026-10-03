@@ -34,14 +34,11 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // gitrepoPinnedRunBoundMethods is the literal, pinned set of internal/gitrepo
@@ -63,29 +60,29 @@ import (
 // Only Pull and Fetch still call the raw r.run; every other entry here calls
 // r.runChecked instead -- the raw/checked split is invisible to this set-equality
 // check, which cares only that a pinned method calls one chokepoint or the other.
-var gitrepoPinnedRunBoundMethods = map[string]bool{
-	"StageAndCommit":           true,
-	"CommitEmpty":              true,
-	"StageAllAndCommit":        true,
-	"CheckoutDetached":         true,
-	"RestoreBranch":            true,
-	"Pull":                     true,
-	"Fetch":                    true,
-	"IsAncestor":               true,
-	"ResetHard":                true,
-	"pushWithRebaseRetry":      true,
-	"PushRebaseFree":           true,
-	"HasUnpushed":              true,
-	"DeleteRemoteBranch":       true,
-	"DeleteRemoteBranchLeased": true,
-	"MergeStart":               true,
-	"MergeConclude":            true,
-	"ConflictedFiles":          true,
-	"MergeHeadPresent":         true,
-	"MergeHeads":               true,
-	"MergeTree":                true,
-	"MergeFFOnly":              true,
-	"StageResolved":            true,
+var gitrepoPinnedRunBoundMethods = []string{
+	"StageAndCommit",
+	"CommitEmpty",
+	"StageAllAndCommit",
+	"CheckoutDetached",
+	"RestoreBranch",
+	"Pull",
+	"Fetch",
+	"IsAncestor",
+	"ResetHard",
+	"pushWithRebaseRetry",
+	"PushRebaseFree",
+	"HasUnpushed",
+	"DeleteRemoteBranch",
+	"DeleteRemoteBranchLeased",
+	"MergeStart",
+	"MergeConclude",
+	"ConflictedFiles",
+	"MergeHeadPresent",
+	"MergeHeads",
+	"MergeTree",
+	"MergeFFOnly",
+	"StageResolved",
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's
@@ -105,47 +102,15 @@ const gitrepoBoundaryMinScannedFiles = 5
 // keyed check while still violating the CLI/go-git boundary, since gitexec's entry points are the
 // CLI layer's own, one level below run and runChecked.
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH,
-	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate never
-	// blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
+	const dir = "internal/gitrepo"
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	dir := filepath.Join(filepath.Dir(goMod), "internal", "gitrepo")
-
-	entries, readErr := os.ReadDir(dir)
-	if readErr != nil {
-		t.Fatalf("read internal/gitrepo dir %s: %v", dir, readErr)
-	}
-
-	fset := token.NewFileSet()
 	runBoundMethods := map[string]bool{}
-	var scanned int
 	var gitexecTotal int
 	var runFound, runCheckedFound bool
 	var runGitexecCalls, runCheckedGitexecCalls int
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		scanned++
-
-		path := filepath.Join(dir, entry.Name())
-		file, parseErr := parser.ParseFile(fset, path, nil, 0)
-		if parseErr != nil {
-			t.Fatalf("parse %s: %v", entry.Name(), parseErr)
-		}
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{dir}, Shallow: true}, func(f *scankit.File) {
+		file := f.AST(t, 0)
 
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
@@ -170,14 +135,15 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		}
 
 		gitexecTotal += countGitexecCalls(file)
-	}
+	})
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < gitrepoBoundaryMinScannedFiles {
-		t.Fatalf("gitrepo boundary guard: only scanned %d non-test .go file(s) in %s; expected at least %d -- the directory resolution may be misconfigured", scanned, dir, gitrepoBoundaryMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, gitrepoBoundaryMinScannedFiles, "gitrepo boundary guard")
 
-	if diff := diffMethodSets(gitrepoPinnedRunBoundMethods, runBoundMethods); diff != "" {
+	pinned := map[string]bool{}
+	for _, name := range gitrepoPinnedRunBoundMethods {
+		pinned[name] = true
+	}
+	if diff := diffMethodSets(pinned, runBoundMethods); diff != "" {
 		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): r.run(/r.runChecked(-containing method set drifted from the pinned list:\n%s", diff)
 	}
 

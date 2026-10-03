@@ -2,30 +2,16 @@ package orchengine
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// seedStencils writes every shipped default into a temporary stencils directory.
 func seedStencils(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	reg := stencils.Registry()
-	for _, name := range reg.Names() {
-		def, _ := reg.Default(name)
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, def, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 func TestRenderStartPrompt(t *testing.T) {

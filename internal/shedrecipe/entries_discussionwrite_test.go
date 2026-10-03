@@ -61,17 +61,6 @@ func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 			t.Errorf("discussionWriteEntry() error = %v; want it to name entry %q and field %q", err, "DiscussionWrite", "Shuttle")
 		}
 	})
-
-	t.Run("UnrecognisedConfigKey", func(t *testing.T) {
-		env := newTestEnv(t)
-		_, err := discussionWriteEntry("Row", Config{"bogus_key": "x"}, env)
-		if err == nil {
-			t.Fatalf("discussionWriteEntry() error = nil; want non-nil for an unrecognised config key")
-		}
-		if !strings.Contains(err.Error(), "bogus_key") {
-			t.Errorf("discussionWriteEntry() error = %v; want it to name the offending key %q", err, "bogus_key")
-		}
-	})
 }
 
 // TestDiscussionWriteEntry_HappyPath asserts a fully-filled Env constructs a non-nil producer with

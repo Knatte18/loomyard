@@ -29,66 +29,45 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
+
+// selvageScanMinFiles is the plausible floor for how many non-test .go files internal/reedengine holds.
+const selvageScanMinFiles = 10
 
 // selvagePaneAllowlist names the files in this package permitted to carry a Selvage-naming
 // identifier outside a call position or composite-literal key.
-var selvagePaneAllowlist = map[string]bool{
-	"selvagepane.go": true,
-	"state.go":       true,
-	"config.go":      true,
+var selvagePaneAllowlist = []scankit.Entry{
+	{Key: "internal/reedengine/selvagepane.go", Why: "owns the whole Selvage seam"},
+	{Key: "internal/reedengine/state.go", Why: "carries the SelvagePaneID field declaration of ReedState"},
+	{Key: "internal/reedengine/config.go", Why: "carries SelvageConfig and Config.Selvage, the resolved-config plumbing"},
 }
 
 // TestSelvageIdentifiersConfinedToSelvagePane verifies that no file in internal/reedengine, other
 // than the three named in selvagePaneAllowlist, declares or references a Selvage-naming identifier
 // outside the two exemptions selvageIdentViolations knows about.
 // It spawns no process, so it carries no build tag.
-// It resolves the repository root from runtime.Caller(0) exactly as the two precedent enforcement
-// tests do, then parses every non-_test.go .go file directly inside internal/reedengine -- never
+// It parses every non-_test.go .go file directly inside internal/reedengine -- never
 // internal/reedengine/render/, and never any sibling package.
 func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine reedengine source directory location")
-	}
-	reedengineDir := filepath.Dir(thisFile)
-	repoRoot := filepath.Dir(filepath.Dir(reedengineDir)) // internal/reedengine -> internal -> repo root
-	scanDir := filepath.Join(repoRoot, "internal", "reedengine")
-
-	entries, err := os.ReadDir(scanDir)
-	if err != nil {
-		t.Fatalf("read %s: %v", scanDir, err)
-	}
+	allow := scankit.NewAllowlist(selvagePaneAllowlist)
 
 	var failures []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{reedengineScanDir}, Shallow: true}, func(f *scankit.File) {
+		if allow.Allowed(f.Rel) {
+			return
 		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
+		astFile := f.AST(t, 0)
+		for _, violation := range selvageIdentViolations(f.FileSet(), astFile) {
+			failures = append(failures, f.Rel+" "+violation)
 		}
-		if selvagePaneAllowlist[name] {
-			continue
-		}
+	})
 
-		path := filepath.Join(scanDir, name)
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-
-		for _, violation := range selvageIdentViolations(fset, astFile) {
-			failures = append(failures, name+" "+violation)
-		}
-	}
+	scankit.RequireFloor(t, scanned, selvageScanMinFiles, "selvage confinement")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Selvage-confinement check violated: %d identifier(s) outside selvagepane.go/state.go/config.go carry \"selvage\" (case-insensitive): %v -- move the code owning them into selvagepane.go", len(failures), failures)

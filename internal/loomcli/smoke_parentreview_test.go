@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -31,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // parentNoticeEngine is gateRepromptReadEngine with a Prepare that writes a valid discussion, blocks reading its next turn, and records that turn in noticePath.
@@ -88,19 +88,9 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	// The fixture's pair is created from the prime, so the resolver names the prime's orch as the parent.
 	const parent = hubforge.TestShortname + ":orch"
 
-	// stencilstore.Read hard-errors on a missing file, so the two stencils the closure renders are deployed by hand.
+	// stencilstore.Read hard-errors on a missing file, so the stencils the closure renders are seeded into the hub's stencils directory.
 	stencilsDir := fabricengine.StencilsDir(loc.HubPath)
-	if err := os.MkdirAll(filepath.Join(stencilsDir, "loom"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, body := range map[string][]byte{
-		"loom-template-parent-review-delivery.md": stencils.LoomTemplateParentReviewDelivery,
-		"loom-template-parent-review-brief.md":    stencils.LoomTemplateParentReviewBrief,
-	} {
-		if err := os.WriteFile(filepath.Join(stencilsDir, "loom", name), body, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	stencilkit.SeedInto(t, stencilsDir)
 
 	reedEngine := probeReedEngine(t, loc)
 	if _, err := reedEngine.Up(); err != nil {

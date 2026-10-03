@@ -7,24 +7,22 @@ package orchengine
 
 import (
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // orchengineAllowedImports are the only non-stdlib import paths production code in this package may use.
-var orchengineAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/configengine":  true,
-	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
-	"github.com/Knatte18/loomyard/internal/state":         true,
-	"github.com/Knatte18/loomyard/internal/lock":          true,
-	"github.com/Knatte18/loomyard/internal/logger":        true,
-	"github.com/Knatte18/loomyard/internal/stencil":       true,
-	"github.com/Knatte18/loomyard/internal/stencilstore":  true,
-	"gopkg.in/yaml.v3": true,
+var orchengineAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/configengine",
+	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	"github.com/Knatte18/loomyard/internal/state",
+	"github.com/Knatte18/loomyard/internal/lock",
+	"github.com/Knatte18/loomyard/internal/logger",
+	"github.com/Knatte18/loomyard/internal/stencil",
+	"github.com/Knatte18/loomyard/internal/stencilstore",
+	"gopkg.in/yaml.v3",
 }
 
 const (
@@ -37,63 +35,20 @@ const (
 // TestSeamInvariants_AllowlistOnly verifies that every non-test .go file in this package imports only stdlib or an entry in orchengineAllowedImports,
 // and it separately names the two denied imports so a violation reports the rule it breaks.
 func TestSeamInvariants_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine orchengine source directory location")
-	}
-	pkgDir := filepath.Dir(file)
+	scankit.AssertImportAllowlistNoStale(t, "internal/orchengine", orchengineAllowedImports...)
 
-	var failures, lyxcwdFound, claudeFound []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		relPath, _ := filepath.Rel(pkgDir, path)
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-
-			switch importPath {
+	var lyxcwdFound, claudeFound []string
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/orchengine"}, Shallow: true}, func(f *scankit.File) {
+		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
+			switch strings.Trim(imp.Path.Value, `"`) {
 			case orchengineDeniedLyxcwdImport:
-				lyxcwdFound = append(lyxcwdFound, relPath)
+				lyxcwdFound = append(lyxcwdFound, f.Rel)
 			case orchengineDeniedClaudeImport:
-				claudeFound = append(claudeFound, relPath)
+				claudeFound = append(claudeFound, f.Rel)
 			}
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || orchengineAllowedImports[importPath] {
-				continue
-			}
-			failures = append(failures, relPath+": "+importPath)
 		}
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk orchengine directory: %v", err)
-	}
-
-	if len(failures) > 0 {
-		t.Errorf("import allowlist violated; imports outside the allowlist found: %v", failures)
-	}
+	scankit.RequireFloor(t, scanned, 1, "orchengine denied-import scan")
 	if len(lyxcwdFound) > 0 {
 		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", orchengineDeniedLyxcwdImport, lyxcwdFound)
 	}

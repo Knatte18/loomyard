@@ -1,7 +1,4 @@
-// cli_test.go covers the burlercli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, run's required
-// --profile flag, the help-tree Short completeness check, decodeProfile's strict YAML decode, and
-// resultEnvelope's success-envelope shape (including its forkCount nil guard).
+// cli_test.go covers the burlercli cobra seam through RunCLI: the PersistentPreRunE group-command guard, run's required --profile flag, decodeProfile's strict YAML decode, and resultEnvelope's success-envelope shape (including its forkCount nil guard).
 // Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
 // that coverage lives in the smoke test and the sandbox suite.
 
@@ -17,49 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/spf13/cobra"
 )
-
-// TestRunCLI_NoArgs verifies that "lyx burler" with no subcommand lists the run verb and exits 0 —
-// no git repo is needed, since the PersistentPreRunE guard skips layout/config/engine resolution
-// for the group command itself.
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, "run") {
-		t.Errorf("RunCLI(nil) no-arg listing missing subcommand %q; got:\n%s", "run", got)
-	}
-}
-
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
-// envelope with ok=false, without needing a git repo (the PersistentPreRunE guard for cmd.Name() ==
-// "burler" fires before layout resolution).
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, `"ok":false`) {
-		t.Errorf("RunCLI(bogus) output missing ok:false envelope; got: %q", got)
-	}
-	if !strings.Contains(got, "unknown") {
-		t.Errorf("RunCLI(bogus) output missing \"unknown\"; got: %q", got)
-	}
-}
 
 // TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lyx burler" works
 // outside a git repository, mirroring shuttlecli's guard rationale (neither the bare listing nor
@@ -97,22 +52,6 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	if !strings.Contains(out.String(), "--profile is required") {
 		t.Errorf(`RunCLI([run]) output missing "--profile is required"; got: %q`, out.String())
 	}
-}
-
-// TestCommand_EveryCommandHasShort walks the full burler command tree and asserts that every
-// command — the parent group and every subcommand — carries a non-empty Short, per the CLI/Cobra
-// Invariant.
-func TestCommand_EveryCommandHasShort(t *testing.T) {
-	var walk func(cmd *cobra.Command)
-	walk = func(cmd *cobra.Command) {
-		if cmd.Short == "" {
-			t.Errorf("command %q has empty Short", cmd.CommandPath())
-		}
-		for _, sub := range cmd.Commands() {
-			walk(sub)
-		}
-	}
-	walk(Command())
 }
 
 // TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field

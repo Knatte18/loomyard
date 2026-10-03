@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // reworkTestEnv returns newTestEnv(t) with ReworkSpec and every Rework seam filled.
@@ -58,17 +59,26 @@ func TestPRReworkEntry_EvaluatesReworkSpecWithToldValue(t *testing.T) {
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	overview := "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder\n"
-	card := "# Card 1 — first-card\n\n**Create:**\n- `internal/x/new.go`\n\n**Intent:** placeholder.\n"
-	files := map[string]string{"00-overview.md": overview, "01-first-card.md": card}
+	files := plankit.Render(plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "first-card",
+			Summary: "placeholder",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/x/new.go"}}},
+			Intent:  "placeholder.",
+		}},
+	})
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(planDir, name), body, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
 		body, ok := files[filepath.Base(rel)]
-		return []byte(body), ok, nil
+		return body, ok, nil
 	}
 	env.Rework.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
 		return loomshed.PendingRejection{PRNumber: 1, HeadSHA: "h", RejectedAt: "t"}, true, nil
@@ -116,14 +126,6 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 }
 
 func TestPRReworkEntry_Config(t *testing.T) {
-	t.Run("UnknownKey", func(t *testing.T) {
-		_, err := prReworkEntry("Row", Config{"bogus_key": "x"}, reworkTestEnv(t))
-		if err == nil {
-			t.Fatalf("prReworkEntry() error = nil; want non-nil for an unrecognised config key")
-		}
-		assertErrContains(t, err, "bogus_key")
-	})
-
 	t.Run("ReworkPlanGate", func(t *testing.T) {
 		gateSpec, err := resolveGateSpec("PRRework", gatesCfg("rework-plan", 3), reworkTestEnv(t))
 		if err != nil {

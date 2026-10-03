@@ -4,9 +4,7 @@
 // 15's discussion promised — machine-enforcing what would otherwise be review discipline only.
 // See CONSTRAINTS.md's Cwd Resolution Invariant.
 //
-// This guard clones cmd/lyx/tierpurity_test.go's machinery: the exec.LookPath("go") clean skip, the
-// go env GOMOD module-root resolution, filepath.WalkDir, the filepath.ToSlash normalisation before
-// any comparison (Windows is the primary dev OS), and the report-every-violation-rather-than-the-
+// This guard walks through scankit and keeps tierpurity_test.go's report-every-violation-rather-than-the-
 // first posture. It departs from tierpurity_test.go in one respect: the subject set here is an
 // explicitly named per-file list, never a package prefix. Eleven packages gained a seam change in
 // this task, but each carries further non-smoke chdir-using test files this task deliberately did
@@ -23,12 +21,12 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // cwdMutationSubjectFiles is this guard's explicitly named per-file subject set (module-relative,
@@ -39,13 +37,13 @@ import (
 // task deleted the file outright, retiring the whole suite rather than leaving a migrated leftover
 // to track, and two more integration test files left it the same way when the module owning them
 // was retired.
-var cwdMutationSubjectFiles = map[string]bool{
-	"internal/fabriccli/cli_test.go":                     true,
-	"internal/configcli/configcli_integration_test.go":   true,
-	"internal/webstercli/verbs_test.go":                  true,
-	"internal/idecli/cli_test.go":                        true,
-	"internal/reedcli/cli_integration_test.go":           true,
-	"internal/fabricengine/coalesce_integration_test.go": true,
+var cwdMutationSubjectFiles = []scankit.Entry{
+	{Key: "internal/fabriccli/cli_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/configcli/configcli_integration_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/webstercli/verbs_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/idecli/cli_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/reedcli/cli_integration_test.go", Why: "migrated onto the RunCLIIn seam"},
+	{Key: "internal/fabricengine/coalesce_integration_test.go", Why: "cwd mutation is the assertion under test"},
 }
 
 // cwdMutationBannedTokens are the raw substrings a cwdMutationSubjectFiles entry may not contain,
@@ -57,86 +55,45 @@ var cwdMutationBannedTokens = []string{"t.Chdir(", "os.Chdir("}
 // cwdMutationAllowlist is this guard's per-file allowlist (path module-relative, slash-separated ->
 // reason). It carries exactly one entry: the file whose cwd mutation IS the assertion, not a
 // migration leftover.
-var cwdMutationAllowlist = map[string]string{
-	"internal/fabricengine/coalesce_integration_test.go": `cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New("") against a non-git process cwd`,
+var cwdMutationAllowlist = []scankit.Entry{
+	{
+		Key: "internal/fabricengine/coalesce_integration_test.go",
+		Why: `cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New("") against a non-git process cwd`,
+	},
 }
 
 // TestCwdMutation_MigratedFilesStayChdirFree walks the module tree and fails if any file on
 // cwdMutationSubjectFiles (other than a cwdMutationAllowlist entry) contains t.Chdir( or os.Chdir( as
 // a raw substring.
 func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
-	// tierpurity_test.go so this gate never blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
+	subjects := scankit.NewAllowlist(cwdMutationSubjectFiles)
+	allow := scankit.NewAllowlist(cwdMutationAllowlist)
 	var scanned int
 	var failures []string
 
-	walkErr := filepath.WalkDir(moduleRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if tierPuritySkipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(moduleRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		// Normalize to slash-separated form before any comparison.
-		relPath = filepath.ToSlash(relPath)
-
-		if !cwdMutationSubjectFiles[relPath] {
-			return nil
+	scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
+		if !subjects.Allowed(f.Rel) {
+			return
 		}
 		scanned++
 
-		if _, allowlisted := cwdMutationAllowlist[relPath]; allowlisted {
-			return nil
+		if allow.Allowed(f.Rel) {
+			return
 		}
 
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-
-		if tok, found := firstCwdMutationToken(string(data)); found {
+		if tok, found := firstCwdMutationToken(string(f.Data)); found {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned cwd-mutation token %q -- a subject-set file must drive the module's RunCLIIn seam at an explicit cwd instead of moving the process (see CONSTRAINTS.md's Cwd Resolution Invariant), or add a cwdMutationAllowlist entry in cmd/lyx/cwdmutation_test.go with a reason",
-				relPath, tok,
+				f.Rel, tok,
 			))
 		}
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk module tree: %v", walkErr)
-	}
 
 	// Vacuous-scan protection: every subject-set entry must actually be found on disk, or the
 	// subject set (or a file path within it) has drifted.
-	if scanned != len(cwdMutationSubjectFiles) {
-		t.Fatalf("cwd mutation guard: scanned %d of %d subject files under %s; the subject set or a file path may have drifted", scanned, len(cwdMutationSubjectFiles), moduleRoot)
-	}
+	scankit.RequireFloor(t, scanned, len(cwdMutationSubjectFiles), "cwd mutation guard")
+	subjects.RequireNoStale(t)
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Cwd Resolution Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
@@ -166,25 +123,17 @@ func TestCwdMutationGuard_NotVacuous(t *testing.T) {
 	}
 
 	const allowlistedPath = "internal/fabricengine/coalesce_integration_test.go"
-	reason, allowlisted := cwdMutationAllowlist[allowlistedPath]
-	if !allowlisted || reason == "" {
+	var reason string
+	for _, e := range cwdMutationAllowlist {
+		if e.Key == allowlistedPath {
+			reason = e.Why
+		}
+	}
+	if reason == "" {
 		t.Fatalf("%s missing a non-empty cwdMutationAllowlist reason", allowlistedPath)
 	}
 
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
-	data, err := os.ReadFile(filepath.Join(moduleRoot, filepath.FromSlash(allowlistedPath)))
+	data, err := os.ReadFile(filepath.Join(scankit.Root(t), filepath.FromSlash(allowlistedPath)))
 	if err != nil {
 		t.Fatalf("read %s: %v", allowlistedPath, err)
 	}

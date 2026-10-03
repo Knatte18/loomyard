@@ -13,10 +13,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs the hermetic git setup once before the whole suite.
+// TestMain runs the hermetic git setup once before the whole suite, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }

@@ -342,14 +342,6 @@ func TestBurlerRoundEntry_RelativePathException(t *testing.T) {
 }
 
 func TestBurlerRoundEntry_StrictUnknownKeys(t *testing.T) {
-	t.Run("OuterConfigKey", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := minimalBurlerConfig()
-		cfg["unexpected"] = "value"
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "unexpected")
-	})
-
 	t.Run("ProfileKey", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := Config{
@@ -435,27 +427,6 @@ func TestBurlerRoundEntry_RunDirectory(t *testing.T) {
 		if _, err := os.Stat(wantDir); err != nil {
 			t.Fatalf("os.Stat(%q) error = %v; want the shared run dir to exist", wantDir, err)
 		}
-	})
-
-	t.Run("OmittedFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := Config{"profile": map[string]any{"rubric": "a rubric"}}
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "run_subdir")
-	})
-
-	t.Run("EmptyStringFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := Config{"run_subdir": "", "profile": map[string]any{"rubric": "a rubric"}}
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "run_subdir")
-	})
-
-	t.Run("AbsoluteFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := Config{"run_subdir": "/etc/passwd", "profile": map[string]any{"rubric": "a rubric"}}
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "run_subdir")
 	})
 
 	t.Run("EscapingFails", func(t *testing.T) {

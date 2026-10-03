@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins loomcli's half of the R6-27
@@ -200,45 +201,23 @@ func TestValidateDiscussionCmd(t *testing.T) {
 func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *loomCLI {
 	t.Helper()
 
-	planDir := filepath.Join(anchorPath, "_lyx", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-
-	overview := "---\n" +
-		"format: 5\n" +
-		"approved: " + strconvBool(approved) + "\n" +
-		"root: \n" +
-		"language: none\n" +
-		"---\n\n" +
-		"# Plan: minimal validate-plan fixture\n\n" +
-		"## Card Index\n\n" +
-		"1 — validate-fixture — a minimal fixture card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-
-	card := "# Card 1 — validate-fixture\n\n" +
-		"**Create:**\n" +
-		"- `fixture-output.txt`\n\n" +
-		"**Intent:** minimal fixture card for validate-plan tests.\n\n" +
-		"**Commit:** `1: validate-fixture`\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		Approved: approved,
+		Language: "none",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"fixture-output.txt"}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
 
 	return &loomCLI{env: shedrecipe.Env{
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
-}
-
-// strconvBool renders b as the bare YAML boolean literal "true" or "false".
-func strconvBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 // glyphPlanFixture writes a syntactically complete, one-card language: go plan under
@@ -248,54 +227,23 @@ func strconvBool(b bool) string {
 func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget string) *loomCLI {
 	t.Helper()
 
-	planDir := filepath.Join(anchorPath, "_lyx", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-
-	overview := "---\n" +
-		"format: 5\n" +
-		"approved: true\n" +
-		"language: go\n" +
-		"---\n\n" +
-		"# Plan: minimal glyph validate-plan fixture\n\n" +
-		"## Card Index\n\n" +
-		"1 — validate-fixture — a minimal fixture card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-
-	card := "# Card 1 — validate-fixture\n\n" +
-		"**Create:**\n" +
-		"- `" + createTarget + "`\n\n" +
-		"**Intent:** minimal fixture card for validate-plan tests.\n\n" +
-		"**Commit:** `1: validate-fixture`\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{createTarget}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
 
 	return &loomCLI{env: shedrecipe.Env{
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
-}
-
-// writeGlyphRepoForCLITest writes files (keyed by repository-relative path) under a fresh
-// t.TempDir() and returns that directory's absolute path -- duplicated from
-// internal/planglyph/repo_test.go's writeFixtureRepo.
-func writeGlyphRepoForCLITest(t *testing.T, files map[string]string) string {
-	t.Helper()
-	root := t.TempDir()
-	for rel, content := range files {
-		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) failed: %v", full, err)
-		}
-	}
-	return root
 }
 
 // TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess asserts that an informational-only
@@ -305,7 +253,7 @@ func writeGlyphRepoForCLITest(t *testing.T, files map[string]string) string {
 // Plan-Burler's own gate.
 func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 	anchorPath := t.TempDir()
-	worktreeRoot := writeGlyphRepoForCLITest(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	c := glyphPlanFixture(t, anchorPath, worktreeRoot, "newpkg#Bar")
 
 	var out bytes.Buffer
@@ -371,7 +319,7 @@ func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
 func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
-	writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	c := reworkParityFixture(t, anchorPath, worktreeRoot, 1, "", true)
 
 	result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)()

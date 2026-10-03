@@ -32,13 +32,11 @@ package shuttleengine
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // completionSignalScannedFiles are the two files that own every run-outcome verdict in this package:
@@ -292,29 +290,26 @@ func scanFileContractCallSites(t *testing.T) map[string]int {
 func forEachScannedFunc(t *testing.T, visit func(funcName string, body *ast.BlockStmt)) {
 	t.Helper()
 
-	// runtime.Caller, so the scan finds the real package tree regardless of the working directory
-	// go test was invoked from — the same resolution seam_enforcement_test.go uses.
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location")
-	}
-	packageDir := filepath.Dir(thisFile)
-
+	wanted := map[string]bool{}
 	for _, name := range completionSignalScannedFiles {
-		path := filepath.Join(packageDir, name)
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
+		wanted["internal/shuttleengine/"+name] = true
+	}
+
+	parsed := 0
+	scankit.Walk(t, scankit.Options{Roots: []string{"internal/shuttleengine"}, Shallow: true}, func(f *scankit.File) {
+		if !wanted[f.Rel] {
+			return
 		}
-		for _, decl := range astFile.Decls {
+		parsed++
+		for _, decl := range f.AST(t, 0).Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
 				continue
 			}
 			visit(fn.Name.Name, fn.Body)
 		}
-	}
+	})
+	scankit.RequireFloor(t, parsed, len(completionSignalScannedFiles), "completion-signal scan")
 }
 
 // collectIdentifiers walks expr and records every bare identifier name and every selector's final

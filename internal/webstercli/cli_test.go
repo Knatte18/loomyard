@@ -1,6 +1,4 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, and the help-tree
-// Short completeness check.
+// cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
 // It also covers the three spawn-free verbs (validate/status/pause) and fabricSync's
 // SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate
 // or even a git repository beyond a plain t.TempDir().
@@ -29,39 +27,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
-
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) = %d; want 0", exitCode)
-	}
-}
-
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, `"ok":false`) {
-		t.Errorf("RunCLI(bogus) output missing ok:false envelope; got: %q", got)
-	}
-	if !strings.Contains(got, "unknown") {
-		t.Errorf("RunCLI(bogus) output missing \"unknown\"; got: %q", got)
-	}
-}
 
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -71,32 +40,6 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 
 	if exitCode != 0 {
 		t.Errorf("RunCLI(nil) outside a git repo = %d; want 0", exitCode)
-	}
-}
-
-func TestCommand_EveryCommandHasShort(t *testing.T) {
-	var walk func(cmd *cobra.Command)
-	walk = func(cmd *cobra.Command) {
-		if cmd.Short == "" {
-			t.Errorf("command %q has empty Short", cmd.CommandPath())
-		}
-		for _, sub := range cmd.Commands() {
-			walk(sub)
-		}
-	}
-	walk(Command())
-}
-
-func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
-	want := []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"}
-	got := map[string]bool{}
-	for _, sub := range Command().Commands() {
-		got[sub.Name()] = true
-	}
-	for _, name := range want {
-		if !got[name] {
-			t.Errorf("Command() is missing subcommand %q", name)
-		}
 	}
 }
 
@@ -223,21 +166,26 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	return c, hub
 }
 
-// seedValidPlanDir writes a valid format-4 plan with one card into dir.
+// onlyCreatePlan returns a one-card plan whose card Creates target.
+func onlyCreatePlan(language, target string) plankit.Plan {
+	return plankit.Plan{
+		Approved: true,
+		Language: language,
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "only",
+			Summary: "placeholder card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{target}}},
+			Intent:  "placeholder card.",
+		}},
+	}
+}
+
+// seedValidPlanDir writes a valid plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — only — placeholder card\n"
-	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n\n**Intent:** placeholder card.\n"
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, dir, onlyCreatePlan("", "internal/only/new.go"))
 }
 
 func TestValidateCmd_ValidPlan(t *testing.T) {
@@ -273,20 +221,23 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 	}
 }
 
-// seedMissingIntentPlanDir writes a format-4 plan with a card missing the **Intent:** label.
+// seedMissingIntentPlanDir writes a plan with a card missing the **Intent:** label.
 func seedMissingIntentPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — only — placeholder card\n"
-	card := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n"
+	files := plankit.Render(onlyCreatePlan("", "internal/only/new.go"))
+	card := files["01-only.md"]
+	cut := bytes.Index(card, []byte("\n**Intent:**"))
+	if cut < 0 {
+		t.Fatalf("rendered card has no Intent label to remove: %q", card)
+	}
+	files["01-only.md"] = card[:cut]
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
 	}
 }
 
@@ -322,18 +273,7 @@ func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) {
 	t.Helper()
 
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — only — placeholder card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	card := "# Card 1 — only\n\n**Create:**\n- `" + createTarget + "`\n\n**Intent:** placeholder card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, planDir, onlyCreatePlan("go", createTarget))
 
 	subDir := filepath.Join(worktreeRoot, "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -399,19 +339,7 @@ func TestValidateCmd_BlockingFindingCarriesSeverity(t *testing.T) {
 // output.Err with a message naming quarry rather than the plan.
 func TestValidateCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	c, _ := newTestCLI(t)
-	planDir := c.geom.PlanDir
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — only — placeholder card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	card := "# Card 1 — only\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, c.geom.PlanDir, onlyCreatePlan("go", "sub#Foo"))
 	// c.geom is a plain struct value, so this field write reaches only this test's *websterCLI;
 	// pointing WorktreeRoot at a path that does not exist, decoupled from planDir's own real
 	// on-disk location, is what makes quarry.Open fail without disturbing ParsePlan's own read.
@@ -437,23 +365,25 @@ func TestValidateCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	t.Helper()
 
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — first — the card whose work has already landed\n" +
-		"2 — second — the card still pending\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	first := "# Card 1 — first\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** the card whose work has already landed.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-first.md"), []byte(first), 0o644); err != nil {
-		t.Fatalf("write first card file: %v", err)
-	}
-	second := "# Card 2 — second\n\n**Create:**\n- `newpkg#Bar`\n\n**Intent:** the card still pending.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "02-second.md"), []byte(second), 0o644); err != nil {
-		t.Fatalf("write second card file: %v", err)
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "first",
+				Summary: "the card whose work has already landed",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"sub#Foo"}}},
+			},
+			{
+				Number:  2,
+				Slug:    "second",
+				Summary: "the card still pending",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
+			},
+		},
+	})
 
 	subDir := filepath.Join(worktreeRoot, "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {

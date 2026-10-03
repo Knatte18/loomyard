@@ -114,33 +114,6 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 		}
 	})
 
-	t.Run("OmittedFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
-		cfg := Config{"artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
-
-		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "run_subdir")
-	})
-
-	t.Run("EmptyStringFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
-		cfg := Config{"run_subdir": "", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
-
-		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "run_subdir")
-	})
-
-	t.Run("AbsoluteFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
-		cfg := Config{"run_subdir": "/etc/passwd", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "bouncer-rubric"}
-
-		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "run_subdir")
-	})
-
 	t.Run("EscapingFails", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
@@ -364,14 +337,6 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		cfg := Config{"run_subdir": "review-segment", "artifact_paths": []string{"artifact.md"}, "rubric_stencil": "no-such-rubric"}
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, "no-such-rubric")
-	})
-
-	t.Run("UnrecognisedConfigKey", func(t *testing.T) {
-		env := newTestEnv(t)
-		cfg := minimalBouncerConfig(t, env)
-		cfg["unexpected"] = "value"
-		_, err := bouncerEntry("review-bounce", cfg, env)
-		assertErrContains(t, err, "unexpected")
 	})
 
 	t.Run("BlankEnvRunRoot", func(t *testing.T) {

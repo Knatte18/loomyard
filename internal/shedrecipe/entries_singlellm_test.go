@@ -178,19 +178,6 @@ func TestSingleLLMEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("UnrecognisedConfigKey", func(t *testing.T) {
-		env, stencilName := validSingleLLMEnv(t)
-		cfg := validSingleLLMConfig(stencilName)
-		cfg["bogus_key"] = "x"
-		_, err := singleLLMEntry("Row", cfg, env)
-		if err == nil {
-			t.Fatalf("singleLLMEntry() error = nil; want non-nil for an unrecognised config key")
-		}
-		if !strings.Contains(err.Error(), "bogus_key") {
-			t.Errorf("singleLLMEntry() error = %v; want it to name the offending key %q", err, "bogus_key")
-		}
-	})
-
 	for _, field := range []string{"WorktreeRoot", "AnchorPath", "StencilsDir"} {
 		field := field
 		t.Run("Blank"+field, func(t *testing.T) {

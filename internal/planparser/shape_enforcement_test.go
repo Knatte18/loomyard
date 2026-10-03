@@ -1,10 +1,8 @@
 // shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
 // scans that prove the Ref-Shape Registry Invariant (CONSTRAINTS.md) holds over both packages'
-// production files, not just at the registry's own file boundary. It follows the same idiom as
-// internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib
-// go/parser only, repo root resolved from runtime.Caller(0), production files only -- every
-// _test.go file in either package is skipped by design, because a test fixture legitimately spells
-// a raw "plan:" ref or calls classifyRef directly.
+// production files, not just at the registry's own file boundary.
+// It follows the same idiom as internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib go/parser only, production files walked through scankit from the module root --
+// every _test.go file in either package is skipped by design, because a test fixture legitimately spells a raw "plan:" ref or calls classifyRef directly.
 //
 // The refKind scan flags any ast.Ident naming classifyRef, the refKind type, or one of its declared
 // constants, outside classify.go and shape.go -- the two files the Ref-Shape Registry Invariant
@@ -28,12 +26,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strconv"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // bannedRefKindIdentifiers returns the refKind scan's banned identifier set: every constant
@@ -54,6 +50,10 @@ func bannedRefKindIdentifiers(t *testing.T) map[string]bool {
 	return banned
 }
 
+// enforcementScanMinFiles is the plausible floor for how many production .go files the two packages hold together;
+// below it a scan has read the wrong directories.
+const enforcementScanMinFiles = 10
+
 // enforcementScanTarget is one production .go file under scan: its parsed AST plus its
 // repository-relative path, rendered POSIX-style, for exempt-set comparison and failure reporting.
 type enforcementScanTarget struct {
@@ -61,63 +61,15 @@ type enforcementScanTarget struct {
 	relPath string
 }
 
-// productionGoFiles walks dir (a repository-relative package directory, resolved against
-// repoRoot) and returns one enforcementScanTarget per production .go file it contains --
-// every *_test.go file is skipped, exactly as the cliwire precedent skips one.
-func productionGoFiles(t *testing.T, repoRoot, dir string) []enforcementScanTarget {
+// scanTargets returns both packages' own production-file targets, walked from the module root through scankit, together with the count of files scanned for the floor check.
+func scanTargets(t *testing.T) ([]enforcementScanTarget, int) {
 	t.Helper()
 
 	var targets []enforcementScanTarget
-	absDir := filepath.Join(repoRoot, filepath.FromSlash(dir))
-	err := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-
-		relPath, err := filepath.Rel(repoRoot, path)
-		if err != nil {
-			t.Fatalf("relativize %s against %s: %v", path, repoRoot, err)
-		}
-
-		targets = append(targets, enforcementScanTarget{astFile: astFile, relPath: filepath.ToSlash(relPath)})
-		return nil
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/planparser", "internal/planglyph"}}, func(f *scankit.File) {
+		targets = append(targets, enforcementScanTarget{astFile: f.AST(t, 0), relPath: f.Rel})
 	})
-	if err != nil {
-		t.Fatalf("walk %s: %v", absDir, err)
-	}
-	return targets
-}
-
-// scanTargets resolves the repository root and returns both packages' own production-file targets,
-// from runtime.Caller(0), so the scan always runs against the checked-out tree this test file
-// itself lives in, never a hard-coded absolute path.
-func scanTargets(t *testing.T) []enforcementScanTarget {
-	t.Helper()
-
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine planparser source directory location")
-	}
-	planparserDir := filepath.Dir(thisFile)
-	internalDir := filepath.Dir(planparserDir)
-	repoRoot := filepath.Dir(internalDir)
-
-	var targets []enforcementScanTarget
-	targets = append(targets, productionGoFiles(t, repoRoot, "internal/planparser")...)
-	targets = append(targets, productionGoFiles(t, repoRoot, "internal/planglyph")...)
-	return targets
+	return targets, scanned
 }
 
 // refKindScanExempt is the refKind scan's exempt set: the two files the Ref-Shape Registry
@@ -125,9 +77,9 @@ func scanTargets(t *testing.T) []enforcementScanTarget {
 // set -- planglyph cannot legally reference an unexported planparser identifier at all, so its
 // production files are scanned purely as a name-shape check (a local identifier that happens to
 // collide with a banned name would still trip it).
-var refKindScanExempt = map[string]bool{
-	"internal/planparser/classify.go": true,
-	"internal/planparser/shape.go":    true,
+var refKindScanExempt = []scankit.Entry{
+	{Key: "internal/planparser/classify.go", Why: "the registry's own declared home"},
+	{Key: "internal/planparser/shape.go", Why: "the registry's own declared home"},
 }
 
 // planOpScanExempt is the plan:-op scan's exempt set: classify.go and shape.go (the registry's own
@@ -136,10 +88,10 @@ var refKindScanExempt = map[string]bool{
 // set, despite sharing a basename with the exempt planparser file -- that shared basename is
 // exactly where the invariant bites, so planglyph's own handle.go is scanned like any other
 // planglyph production file.
-var planOpScanExempt = map[string]bool{
-	"internal/planparser/classify.go": true,
-	"internal/planparser/shape.go":    true,
-	"internal/planparser/handle.go":   true,
+var planOpScanExempt = []scankit.Entry{
+	{Key: "internal/planparser/classify.go", Why: "the registry's own declared home"},
+	{Key: "internal/planparser/shape.go", Why: "the registry's own declared home"},
+	{Key: "internal/planparser/handle.go", Why: "the handle grammar's declared owner"},
 }
 
 // refKindScanFile returns, for one already-parsed production file, every ast.Ident whose name
@@ -291,18 +243,21 @@ func offside(raw string) bool {
 func TestRefKindScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 
-	targets := scanTargets(t)
+	targets, scanned := scanTargets(t)
+	scankit.RequireFloor(t, scanned, enforcementScanMinFiles, "refKind scan")
 	banned := bannedRefKindIdentifiers(t)
+	exempt := scankit.NewAllowlist(refKindScanExempt)
 
 	var failures []string
 	for _, target := range targets {
-		if refKindScanExempt[target.relPath] {
+		if exempt.Allowed(target.relPath) {
 			continue
 		}
 		for _, name := range refKindScanFile(target.astFile, banned) {
 			failures = append(failures, target.relPath+": "+name)
 		}
 	}
+	exempt.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Ref-Shape Registry Invariant violated: a production file outside classify.go/shape.go "+
@@ -319,17 +274,20 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 func TestPlanOpScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 
-	targets := scanTargets(t)
+	targets, scanned := scanTargets(t)
+	scankit.RequireFloor(t, scanned, enforcementScanMinFiles, "plan:-op scan")
+	exempt := scankit.NewAllowlist(planOpScanExempt)
 
 	var failures []string
 	for _, target := range targets {
-		if planOpScanExempt[target.relPath] {
+		if exempt.Allowed(target.relPath) {
 			continue
 		}
 		for _, hit := range planOpScanFile(target.astFile) {
 			failures = append(failures, target.relPath+": "+hit)
 		}
 	}
+	exempt.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Ref-Shape Registry Invariant violated: a production file outside the handle grammar's "+
