@@ -1,5 +1,6 @@
-// step_test.go covers the generic step body's sixteen-key envelope closure, the five-kind closed
-// vocabulary, PreStep's kind threading, and PostStep's success-only, before-the-envelope ordering.
+// step_test.go covers the generic step body's closed envelope key set, the five-kind closed
+// vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and
+// AfterStep's every-Step-return placement and friction key.
 
 package shedverbs
 
@@ -21,7 +22,7 @@ func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
 }
 
-func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
+func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "P",
 		Outcome:  shedengine.Done,
@@ -31,12 +32,12 @@ func TestStepEnvelope_KeySetIsExactlySixteen(t *testing.T) {
 		Reason:   "",
 		History:  []shedengine.HistoryEntry{{Producer: "P", Outcome: shedengine.Done}},
 	}
-	env := StepEnvelope(res, "policy", "/status.json", StepLocations{}, nil)
+	env := StepEnvelope(res, "policy", "/status.json", "reflected", StepLocations{}, nil)
 
 	wantKeys := map[string]bool{
 		"producer": true, "outcome": true, "output": true, "next": true, "state": true,
 		"reason": true, "continue": true, "history_length": true, "next_interrupt_policy": true,
-		"status_file": true, "trace_file": true, "friction_dir": true, "scratch_dir": true,
+		"status_file": true, "friction": true, "trace_file": true, "friction_dir": true, "scratch_dir": true,
 		"trace_id": true, "run_id": true, "progress": true,
 	}
 	if len(env) != len(wantKeys) {
@@ -62,7 +63,7 @@ func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
 		{shedengine.StateFailed, false},
 	}
 	for _, tt := range tests {
-		env := StepEnvelope(shedengine.StepResult{State: tt.state}, "", "", StepLocations{}, nil)
+		env := StepEnvelope(shedengine.StepResult{State: tt.state}, "", "", "", StepLocations{}, nil)
 		if env["continue"] != tt.want {
 			t.Errorf("state %q: continue = %v; want %v", tt.state, env["continue"], tt.want)
 		}
@@ -159,7 +160,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env := StepEnvelope(tt.res, "", "/some/status.json", StepLocations{}, nil)
+			env := StepEnvelope(tt.res, "", "/some/status.json", "", StepLocations{}, nil)
 
 			if got := env["producer"]; got != tt.wantProducer {
 				t.Errorf("envelope[\"producer\"] = %v; want %v", got, tt.wantProducer)
@@ -441,6 +442,180 @@ func TestStepCmd_PostStepOrderingAndScope(t *testing.T) {
 	})
 }
 
+// TestStepCmd_AfterStep covers AfterStep's contract: called after PostStep and before the envelope
+// on success, called with the error on a producer or busy failure, never called when PreStep or
+// BuildShed refuses, and its return is the envelope's friction key; a nil hook leaves it empty.
+func TestStepCmd_AfterStep(t *testing.T) {
+	t.Run("Success_AfterPostStepBeforeEnvelope", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "Only")
+
+		var out strings.Builder
+		var afterRes shedengine.StepResult
+		var afterErr error
+		var afterCalls int
+		spec := &Spec{
+			BuildShed: func() (*shedengine.Shed, error) {
+				return newFakeShed(paths, []shedengine.ProducerDef{stubRow("Only")}), nil
+			},
+			Hooks: Hooks{
+				PostStep: func(res shedengine.StepResult) { out.WriteString("POSTSTEP-MARKER\n") },
+				AfterStep: func(ctx context.Context, res shedengine.StepResult, stepErr error) string {
+					afterCalls++
+					afterRes = res
+					afterErr = stepErr
+					out.WriteString("AFTERSTEP-MARKER\n")
+					return "reflected"
+				},
+			},
+		}
+
+		code := clihelp.Execute(stepCmd(stepTexts(), spec), &out, nil)
+		if code != 0 {
+			t.Fatalf("exit code = %d; want 0", code)
+		}
+		if afterCalls != 1 {
+			t.Fatalf("AfterStep call count = %d; want 1", afterCalls)
+		}
+		if afterRes.Producer != "Only" || afterErr != nil {
+			t.Errorf("AfterStep got res.Producer=%q err=%v; want Only and nil", afterRes.Producer, afterErr)
+		}
+		got := out.String()
+		postIdx := strings.Index(got, "POSTSTEP-MARKER")
+		afterIdx := strings.Index(got, "AFTERSTEP-MARKER")
+		envelopeIdx := strings.Index(got, `"ok"`)
+		if postIdx < 0 || afterIdx < postIdx || envelopeIdx < afterIdx {
+			t.Fatalf("want PostStep, then AfterStep, then the envelope; output: %q", got)
+		}
+		if !strings.Contains(got, `"friction":"reflected"`) {
+			t.Errorf("success envelope lacks friction=reflected: %q", got)
+		}
+	})
+
+	t.Run("ProducerError_ReceivesErrorAndReportsFriction", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "Bad")
+
+		wantErr := errors.New("boom")
+		var afterErr error
+		spec := &Spec{
+			BuildShed: func() (*shedengine.Shed, error) {
+				return newFakeShed(paths, []shedengine.ProducerDef{erroringRow("Bad", wantErr)}), nil
+			},
+			Hooks: Hooks{AfterStep: func(ctx context.Context, res shedengine.StepResult, stepErr error) string {
+				afterErr = stepErr
+				return "failed-reflected"
+			}},
+		}
+
+		env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+		if code != 1 {
+			t.Fatalf("exit code = %d; want 1", code)
+		}
+		if afterErr == nil || afterErr.Error() != wantErr.Error() {
+			t.Errorf("AfterStep's stepErr = %v; want %v", afterErr, wantErr)
+		}
+		if env["friction"] != "failed-reflected" {
+			t.Errorf("friction = %v; want failed-reflected", env["friction"])
+		}
+	})
+
+	t.Run("BusyError_ReceivesErrorAndReportsFriction", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "Only")
+
+		var afterErr error
+		spec := &Spec{
+			StepBusyKind: KindBusy,
+			BuildShed: func() (*shedengine.Shed, error) {
+				return newFakeShed(paths, []shedengine.ProducerDef{stubRow("Only")}), nil
+			},
+			Hooks: Hooks{AfterStep: func(ctx context.Context, res shedengine.StepResult, stepErr error) string {
+				afterErr = stepErr
+				return "busy-skipped"
+			}},
+		}
+
+		held, locked, err := lock.TryAcquireWriteLock(paths.LockPath)
+		if err != nil || !locked {
+			t.Fatalf("acquire run lock: locked=%v err=%v", locked, err)
+		}
+		defer held.Release()
+
+		env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+		if code != 1 {
+			t.Fatalf("exit code = %d; want 1", code)
+		}
+		if !errors.Is(afterErr, shedengine.ErrShedBusy) {
+			t.Errorf("AfterStep's stepErr = %v; want ErrShedBusy", afterErr)
+		}
+		if env["friction"] != "busy-skipped" {
+			t.Errorf("friction = %v; want busy-skipped", env["friction"])
+		}
+	})
+
+	t.Run("PreStepAndBuildShedRefusals_NeverCalledAndFrictionEmpty", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "Only")
+
+		called := false
+		after := func(ctx context.Context, res shedengine.StepResult, stepErr error) string {
+			called = true
+			return "should-not-appear"
+		}
+		specs := map[string]*Spec{
+			"PreStep": {Hooks: Hooks{
+				PreStep:   func(ctx context.Context) (string, error) { return KindUnseeded, errors.New("nope") },
+				AfterStep: after,
+			}},
+			"BuildShed": {
+				BuildShed: func() (*shedengine.Shed, error) { return nil, errors.New("build") },
+				Hooks:     Hooks{AfterStep: after},
+			},
+		}
+		for name, spec := range specs {
+			env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+			if code != 1 {
+				t.Fatalf("%s: exit code = %d; want 1", name, code)
+			}
+			if v, ok := env["friction"]; !ok || v != "" {
+				t.Errorf("%s: friction = %v (present=%v); want present and empty", name, v, ok)
+			}
+		}
+		if called {
+			t.Error("AfterStep was called on a PreStep or BuildShed refusal")
+		}
+	})
+
+	t.Run("NilHook_FrictionEmpty", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedStatus(t, paths, "Only")
+		ok := &Spec{BuildShed: func() (*shedengine.Shed, error) {
+			return newFakeShed(paths, []shedengine.ProducerDef{stubRow("Only")}), nil
+		}}
+		env, code := execEnvelope(t, stepCmd(stepTexts(), ok), nil)
+		if code != 0 {
+			t.Fatalf("success: exit code = %d; want 0", code)
+		}
+		if v, present := env["friction"]; !present || v != "" {
+			t.Errorf("success: friction = %v (present=%v); want present and empty", v, present)
+		}
+
+		paths2 := newTestPaths(t)
+		seedStatus(t, paths2, "Bad")
+		bad := &Spec{BuildShed: func() (*shedengine.Shed, error) {
+			return newFakeShed(paths2, []shedengine.ProducerDef{erroringRow("Bad", errors.New("boom"))}), nil
+		}}
+		env, code = execEnvelope(t, stepCmd(stepTexts(), bad), nil)
+		if code != 1 {
+			t.Fatalf("error: exit code = %d; want 1", code)
+		}
+		if v, present := env["friction"]; !present || v != "" {
+			t.Errorf("error: friction = %v (present=%v); want present and empty", v, present)
+		}
+	})
+}
+
 // TestStepCmd_ErrorEnvelopesCarryLocations covers every error path: each envelope carries the three
 // location keys, scratch_dir and friction_dir echo the Spec, and kind is unchanged.
 func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
@@ -510,7 +685,7 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 				t.Errorf("transient = %v (present=%v); want present and empty", v, ok)
 			}
 			wantKeys := map[string]bool{
-				"ok": true, "error": true, "kind": true, "transient": true, "trace_file": true,
+				"ok": true, "error": true, "kind": true, "transient": true, "friction": true, "trace_file": true,
 				"friction_dir": true, "scratch_dir": true, "trace_id": true, "run_id": true,
 			}
 			if len(env) != len(wantKeys) {

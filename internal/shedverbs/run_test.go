@@ -221,7 +221,7 @@ func TestRunCmd_PreRunAndPostRunNilOrFilled(t *testing.T) {
 
 // TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope is the property most easily lost in the
 // extraction: PostRun is called with the non-nil runErr, called BEFORE the error envelope is
-// written, and its returned map does not appear on that envelope. Ordering is asserted by having
+// written, and its returned map does appear on that envelope. Ordering is asserted by having
 // PostRun write into the same buffer the envelope is written to and checking the buffer's
 // ordering, not by a call counter alone -- a counter cannot distinguish "called before" from
 // "called after".
@@ -243,7 +243,7 @@ func TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope(t *testing.T) {
 				postRunCalled = true
 				postRunErr = runErr
 				buf.WriteString("POSTRUN-MARKER\n")
-				return map[string]any{"should_not_appear": true}
+				return map[string]any{"friction": "reflected"}
 			},
 		},
 	}
@@ -265,7 +265,7 @@ func TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope(t *testing.T) {
 	if markerIdx < 0 || envelopeIdx < 0 || markerIdx > envelopeIdx {
 		t.Fatalf("PostRun's marker did not precede the error envelope in output: %q", output)
 	}
-	if strings.Contains(output, "should_not_appear") {
-		t.Errorf("PostRun's returned map leaked onto the error envelope: %q", output)
+	if !strings.Contains(output, `"friction":"reflected"`) {
+		t.Errorf("PostRun's returned map did not reach the error envelope: %q", output)
 	}
 }

@@ -38,7 +38,7 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextPolicy := loomshed.InterruptPolicyFor(tt.next)
-			envelope := shedverbs.StepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "", shedverbs.StepLocations{}, nil)
+			envelope := shedverbs.StepEnvelope(shedengine.StepResult{Next: tt.next}, nextPolicy, "", "", shedverbs.StepLocations{}, nil)
 			if got := envelope["next_interrupt_policy"]; got != tt.want {
 				t.Errorf("envelope[\"next_interrupt_policy\"] = %v; want %v", got, tt.want)
 			}
