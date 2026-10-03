@@ -64,8 +64,6 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"StageAndCommit",
 	"CommitEmpty",
 	"StageAllAndCommit",
-	"CheckoutDetached",
-	"RestoreBranch",
 	"Pull",
 	"Fetch",
 	"IsAncestor",

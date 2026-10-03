@@ -253,26 +253,6 @@ func (r *Repo) CurrentBranch() (string, error) {
 	return head.Target().Short(), nil
 }
 
-// CheckoutDetached moves HEAD to sha without updating any branch ref,
-// or returns ErrInvalidSHA if sha is invalid.
-func (r *Repo) CheckoutDetached(sha string) error {
-	if !validSHA(sha) {
-		return ErrInvalidSHA
-	}
-	if _, err := r.runChecked("checkout", "--detach", sha); err != nil {
-		return fmt.Errorf("gitrepo: git checkout --detach %s: %w", sha, err)
-	}
-	return nil
-}
-
-// RestoreBranch moves HEAD back onto ref, ending the detached-HEAD state.
-func (r *Repo) RestoreBranch(ref string) error {
-	if _, err := r.runChecked("checkout", ref); err != nil {
-		return fmt.Errorf("gitrepo: git checkout %s: %w", ref, err)
-	}
-	return nil
-}
-
 // ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering
 // committed history only.
 // Returns ErrInvalidSHA if sha is invalid.
