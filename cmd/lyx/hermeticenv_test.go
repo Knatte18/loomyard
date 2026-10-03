@@ -36,6 +36,7 @@ var allowedNonHermetic = []scankit.Entry{
 	{Key: "internal/proc/", Why: "spawns generic non-git processes — process control is the package's subject"},
 	{Key: "cmd/lyx/hermeticenv_test.go", Why: "this guard file itself; carries the tokens as its own test data"},
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
+	{Key: "internal/testkit/tmuxkit/", Why: "its tests spawn the tmux binary against the kit's own sockets, never git"},
 	{Key: "internal/reedengine/attachgeometry_integration_test.go", Why: "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn"},
 }
 

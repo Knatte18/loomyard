@@ -42,6 +42,7 @@ var knownTierTags = []string{"integration", "smoke"}
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
 // A gitkit spawn is not a token here: gitkitSpawnReference (cmd/lyx/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
+// A tmuxkit spawn is not a token here either: tmuxkitSpawnReference (cmd/lyx/tmuxkitspawn_test.go) defines it once, as every tmuxkit export but Main.
 // Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
 // hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so an
@@ -84,6 +85,9 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		bannedTok, bad := firstBannedToken(f.Data)
 		if !bad {
 			bannedTok, bad = gitkitSpawnReference(string(f.Data))
+		}
+		if !bad {
+			bannedTok, bad = tmuxkitSpawnReference(string(f.Data))
 		}
 		if bad && !spawners.Allowed(f.Rel) {
 			failures = append(failures, fmt.Sprintf(

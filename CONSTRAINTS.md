@@ -93,6 +93,7 @@ Shared test support — fakes, builders, fixtures and the scan harness — used 
 - No non-test file under `internal/testkit/` imports an `internal/*cli` package.
 - No non-test file under `internal/testkit/` imports `os/exec`, `internal/gitexec`, `internal/gitkit`, `internal/hubforge` or `internal/testkit/lyxbin`.
   `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx`; banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
+  `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, and no other kit imports it, for the same reason.
 - A kit imports only the lowest packages defining the types it fakes; a package an import cycle bars from a kit keeps exactly one local copy; a fixture used by one package stays in that package's `_test.go` files.
 - `internal/testkit/scankit` imports the standard library only, so every package's tests can import it.
 - Enforced by `internal/testkit/enforcement_test.go` for the import rules.
@@ -380,6 +381,7 @@ Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 - No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `hubforge.NewHub` or gitkit spawn outside `integration`/`smoke`-tagged files.
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside `integration`/`smoke`-tagged files.
+- Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside `integration`/`smoke`-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
 - `time.Sleep(...)` ≥ 1s in an untagged file is flagged unless allowlisted.
 
 ## Hermetic Git Test Environment Invariant

@@ -97,6 +97,10 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 		Why: "not governed: a test-fixture builder, not a code path reachable from a lyx command",
 	},
 	{
+		Key: "internal/testkit/tmuxkit/tmuxkit.go",
+		Why: "not governed: a test-fixture isolation kit, not a code path reachable from a lyx command",
+	},
+	{
 		Key: "cmd/testtiming/main.go",
 		Why: "not governed: a test-timing harness, not a code path reachable from a lyx command",
 	},
