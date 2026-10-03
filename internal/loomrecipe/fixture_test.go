@@ -271,9 +271,9 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
 	}
 
-	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1)
-	// names; Bouncer.settle on a CONVERGED verdict never reads it, so this write only matters when
-	// verdict scripts a CONTINUE round.
+	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1) names;
+	// Bouncer.settle on a CONVERGED verdict never reads it,
+	// so this write only matters when verdict scripts a CONTINUE round.
 	focusContent := fmt.Sprintf("---\nround: %d\nexclude_lenses: []\nfocus: []\n---\n", round+1)
 	if err := os.WriteFile(spec.OutputFiles[2], []byte(focusContent), 0o644); err != nil {
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer focus %s: %w", spec.OutputFiles[2], err)
