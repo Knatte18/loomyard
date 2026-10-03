@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -25,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents --
@@ -52,43 +52,6 @@ func seedLandingConfig(t *testing.T, anchorPath string) {
 	}
 	cfgPath := filepath.Join(configDir, "landing.yaml")
 	if err := os.WriteFile(cfgPath, []byte(landingshed.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
-	}
-}
-
-// seedDiscussionStencil writes stencils.LoomTemplateDiscussion's embedded bytes to
-// <hubPath>/<fabricengine.StencilsDir relative form>/loom/loom-template-discussion.md, creating the
-// parent directories first. This is the path hubgeom.WebsterGeometry's StencilsDir field actually
-// resolves to (fabricengine.StencilsDir(l.HubPath)), and it is what the DiscussionSpec closure
-// wire() builds actually reads: stencilstore.Read hard-errors on a missing file rather than falling
-// back to the embedded default, so without this seed the closure returns an error and every Spec
-// assertion below it is unreachable.
-func seedDiscussionStencil(t *testing.T, hubPath string) {
-	t.Helper()
-	loomDir := filepath.Join(fabricengine.StencilsDir(hubPath), "loom")
-	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
-	}
-	cfgPath := filepath.Join(loomDir, "loom-template-discussion.md")
-	if err := os.WriteFile(cfgPath, stencils.LoomTemplateDiscussion, 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
-	}
-}
-
-// seedPlanStencil writes stencils.LoomTemplatePlan's embedded bytes to
-// <hubPath>/<fabricengine.StencilsDir relative form>/loom/loom-template-plan.md, creating the parent
-// directories first, identical in shape to seedDiscussionStencil beside it. This is what the PlanSpec
-// closure wire() builds actually reads: stencilstore.Read hard-errors on a missing file rather than
-// falling back to the embedded default, so without this seed the closure returns an error and every
-// Spec assertion below it is unreachable.
-func seedPlanStencil(t *testing.T, hubPath string) {
-	t.Helper()
-	loomDir := filepath.Join(fabricengine.StencilsDir(hubPath), "loom")
-	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
-	}
-	cfgPath := filepath.Join(loomDir, "loom-template-plan.md")
-	if err := os.WriteFile(cfgPath, stencils.LoomTemplatePlan, 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
@@ -164,8 +127,8 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	}
 	seedLoomConfig(t, loc.AnchorPath())
 	seedLandingConfig(t, loc.AnchorPath())
-	seedDiscussionStencil(t, hub)
-	seedPlanStencil(t, hub)
+	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 	return loc
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -87,7 +88,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 
 	env := envkit.FullEnv(t)
 	dir := filepath.Dir(env.StatusPath)
-	seedBouncerStencils(t, env.StencilsDir)
+	stencilkit.SeedInto(t, env.StencilsDir)
 	env.ParentReview = testParentReviewConfig(dir, env.DecisionRecordPath, env.SupportLogPath)
 	env.WebsterRun = (&fakeWebsterRun{}).run
 	env.Shuttle = newLoomShuttle("", false)

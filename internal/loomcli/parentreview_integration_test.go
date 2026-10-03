@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -30,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 const (
@@ -113,19 +113,8 @@ func newPRFixture(t *testing.T) *prFixture {
 		t.Fatalf("WriteSeed = %v; want nil", err)
 	}
 
-	// stencilstore.Read hard-errors on a missing file, so the two parent-review stencils are deployed into the hub's board by hand.
-	loomStencils := filepath.Join(fabricengine.StencilsDir(hub.Path), "loom")
-	if err := os.MkdirAll(loomStencils, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, body := range map[string][]byte{
-		"loom-template-parent-review-delivery.md": stencils.LoomTemplateParentReviewDelivery,
-		"loom-template-parent-review-brief.md":    stencils.LoomTemplateParentReviewBrief,
-	} {
-		if err := os.WriteFile(filepath.Join(loomStencils, name), body, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	// stencilstore.Read hard-errors on a missing file, so the stencils are seeded into the hub's board.
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub.Path))
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(location, location.AnchorPath()); err != nil {

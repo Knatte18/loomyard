@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -27,10 +26,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -41,33 +40,6 @@ type fakeAlwaysDoneProducer struct{}
 
 func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return shedengine.Done, shedengine.OutputPointer{}, nil
-}
-
-// seedBouncerStencils writes the six stencils a live Plan-Write, Discussion-Review, Plan-Review, or Webster-Review segment reads at dir, keyed by stencilstore.Path(dir, name): the two generic bouncer templates (bouncer-template-seed, bouncer-template-judge) and all three segments' rubrics (loom-rubric-discussion-review, loom-rubric-plan-review, loom-rubric-webster-review) plus loom-template-prior-plan, which the Plan-Write rotator renders once it moves a seeded plan, each seeded from its real embedded contracts/stencils bytes rather than dummy content.
-// shedadapters.NewBouncer probes the rubric eagerly at construction, and seedCall/judgeCall read the two templates at call
-// time and degrade to Stuck when either is unreadable, so dummy templates would make
-// shedengine.Done unreachable and would also diverge from the marker set internal/stencil's Fill
-// requires in production.
-func seedBouncerStencils(t *testing.T, dir string) {
-	t.Helper()
-
-	seeds := map[string][]byte{
-		"bouncer-template-seed":         stencils.BouncerTemplateSeed,
-		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
-		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
-		"loom-rubric-plan-review":       stencils.LoomRubricPlanReview,
-		"loom-rubric-webster-review":    stencils.LoomRubricWebsterReview,
-		"loom-template-prior-plan":      stencils.LoomTemplatePriorPlan,
-	}
-	for name, content := range seeds {
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("mkdir stencil dir for %s: %v", name, err)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			t.Fatalf("write stencil %s: %v", name, err)
-		}
-	}
 }
 
 // newLoomBurler returns the shedfake.BurlerRunner every review segment's Burler row runs through.
@@ -438,7 +410,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("mkdir run root: %v", err)
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
-	seedBouncerStencils(t, stencilsDir)
+	stencilkit.SeedInto(t, stencilsDir)
 	specsDir := filepath.Join(dir, "specs")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
 		t.Fatalf("mkdir specs dir: %v", err)

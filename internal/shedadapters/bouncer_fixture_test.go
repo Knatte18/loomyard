@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 the fixture stamps every stencil file with, via stencilstore.ApplyStamp.
@@ -33,7 +33,8 @@ type bouncerFixture struct {
 type bouncerFixtureSpec struct {
 	rubricName string
 	rubricBody string
-	stencils   map[string]string
+	overrides  map[string]string
+	absent     []string
 	specsDir   string
 	shuttle    Shuttle
 	clock      func() time.Time
@@ -64,9 +65,14 @@ func withSpecsMarker(specsDir string) bouncerFixtureOpt {
 	}
 }
 
-// withStencils replaces every stencil file the fixture seeds, the rubric included.
-func withStencils(files map[string]string) bouncerFixtureOpt {
-	return func(s *bouncerFixtureSpec) { s.stencils = files }
+// withStencilOverrides writes each named stencil body on top of the seeded stencils, the rubric included.
+func withStencilOverrides(files map[string]string) bouncerFixtureOpt {
+	return func(s *bouncerFixtureSpec) { s.overrides = files }
+}
+
+// withoutStencils removes the named stencils after seeding, for the tests that need one absent.
+func withoutStencils(names ...string) bouncerFixtureOpt {
+	return func(s *bouncerFixtureSpec) { s.absent = names }
 }
 
 func withShuttle(shuttle Shuttle) bouncerFixtureOpt {
@@ -83,7 +89,7 @@ func withNestedRunDir() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.nestedRun = true }
 }
 
-// withBareConfig leaves Model, Effort, Version and Now unset, seeds the rubric stencil alone, and defaults the shuttle to an empty shedfake.Shuttle.
+// withBareConfig leaves Model, Effort, Version and Now unset, writes the bare rubric body, and defaults the shuttle to an empty shedfake.Shuttle.
 func withBareConfig() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.bare = true }
 }
@@ -102,14 +108,13 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 			spec.rubricBody = bouncerFixtureBareRubric
 		}
 	}
-	files := spec.stencils
-	if files == nil {
-		files = map[string]string{spec.rubricName: spec.rubricBody}
-		if !spec.bare {
-			files["bouncer-template-seed"] = string(stencils.BouncerTemplateSeed)
-			files["bouncer-template-judge"] = string(stencils.BouncerTemplateJudge)
-		}
+	stencilsDir := stencilkit.Seed(t)
+	files := map[string]string{spec.rubricName: spec.rubricBody}
+	for name, body := range spec.overrides {
+		files[name] = body
 	}
+	writeBouncerStencils(t, stencilsDir, files)
+	stencilkit.Remove(t, stencilsDir, spec.absent...)
 
 	runDir := t.TempDir()
 	artifactDir := runDir
@@ -125,7 +130,7 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		RunDir:        runDir,
 		ArtifactPaths: []string{filepath.Join(artifactDir, "artifact.md")},
 		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   writeBouncerStencils(t, files),
+		StencilsDir:   stencilsDir,
 		RubricStencil: spec.rubricName,
 		SpecsDir:      spec.specsDir,
 		Shuttle:       spec.shuttle,
@@ -159,13 +164,12 @@ func (fx *bouncerFixture) Build() (*Bouncer, BouncerConfig) {
 	return b, fx.Config
 }
 
-// writeBouncerStencils writes each named stencil at <dir>/bouncer/<name>.md, matching stencilstore.RelPath's family-from-first-token derivation.
+// writeBouncerStencils writes each named stencil body on top of the seeded stencils in dir, at the path stencilstore.RelPath derives.
 // ApplyStamp merges into an existing leading comment rather than nesting a second one,
 // so a body already carrying its own leading comment still ends up with exactly one banner for stencil.Fill's leading-comment strip to remove.
-func writeBouncerStencils(t *testing.T, files map[string]string) string {
+func writeBouncerStencils(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 
-	dir := t.TempDir()
 	for name, body := range files {
 		absPath := filepath.Join(dir, filepath.FromSlash(stencilstore.RelPath(name)))
 		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
@@ -176,7 +180,6 @@ func writeBouncerStencils(t *testing.T, files map[string]string) string {
 			t.Fatalf("WriteFile(%q) = %v; want nil", absPath, err)
 		}
 	}
-	return dir
 }
 
 type burlerProducerSpec struct {

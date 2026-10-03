@@ -140,11 +140,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				return newBouncerFixture(t,
 					withBareConfig(),
-					withStencils(map[string]string{
-						// bouncer-template-seed deliberately absent.
-						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-					}),
+					withoutStencils("bouncer-template-seed"),
 					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
 					withClock(fixedClock(time.Now())),
 				).Build()
@@ -157,11 +153,6 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 				// deleting it before Call makes the seed spawn, not construction, fail.
 				b, cfg := newBouncerFixture(t,
 					withBareConfig(),
-					withStencils(map[string]string{
-						"bouncer-template-seed":   string(stencils.BouncerTemplateSeed),
-						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-					}),
 					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
 					withClock(fixedClock(time.Now())),
 				).Build()
@@ -176,11 +167,9 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				return newBouncerFixture(t,
 					withBareConfig(),
-					withStencils(map[string]string{
+					withStencilOverrides(map[string]string{
 						// Declares a marker the Go side does not supply.
-						"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
-						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+						"bouncer-template-seed": "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
 					}),
 					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
 					withClock(fixedClock(time.Now())),

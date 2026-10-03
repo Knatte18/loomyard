@@ -19,11 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
@@ -219,18 +218,9 @@ func TestPlanWrite_Call(t *testing.T) {
 	})
 }
 
-// seedPriorPlanStencils writes the real embedded loom-template-prior-plan stencil into a temp stencils directory and returns that directory.
 func seedPriorPlanStencils(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	path := stencilstore.Path(dir, "loom-template-prior-plan")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir stencil dir: %v", err)
-	}
-	if err := os.WriteFile(path, stencils.LoomTemplatePriorPlan, 0o644); err != nil {
-		t.Fatalf("write stencil: %v", err)
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 func TestNewPlanDirRotator(t *testing.T) {
