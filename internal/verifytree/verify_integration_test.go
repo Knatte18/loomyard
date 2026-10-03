@@ -86,6 +86,23 @@ func TestVerify_DirtyTreeRefusedWithPathsAndNoRun(t *testing.T) {
 	}
 }
 
+func TestDirtyPaths_NamesSpecialAndRenamedPathsVerbatim(t *testing.T) {
+	p := newScratch(t)
+	gitkit.Git(t, p.Worktree, "mv", "a.txt", "renamed.txt")
+	special := "café -> x.txt"
+	if err := os.WriteFile(filepath.Join(p.Worktree, special), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DirtyPaths(p.Worktree)
+	if err != nil {
+		t.Fatalf("DirtyPaths: %v", err)
+	}
+	want := []string{"renamed.txt", special}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("DirtyPaths = %q; want %q", got, want)
+	}
+}
+
 func TestVerify_RecordWrittenOnlyOnPass(t *testing.T) {
 	p := newScratch(t)
 	res := mustVerify(t, p, "exit 3")

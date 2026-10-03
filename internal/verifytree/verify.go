@@ -91,24 +91,32 @@ func NewPaths(worktree, dir string) Paths {
 	}
 }
 
-// DirtyPaths returns the paths `git status --porcelain` reports in worktree, ignored files excluded.
+// DirtyPaths returns the paths `git status --porcelain -z` reports in worktree, ignored files excluded.
 func DirtyPaths(worktree string) ([]string, error) {
-	out, err := gitexec.Run([]string{"status", "--porcelain"}, worktree)
+	out, err := gitexec.Run([]string{"status", "--porcelain", "-z"}, worktree)
 	if err != nil {
 		return nil, fmt.Errorf("verifytree: git status in %s: %w", worktree, err)
 	}
+	return parsePorcelainZ(out), nil
+}
+
+// parsePorcelainZ returns the paths of `git status --porcelain -z` output.
+// The -z form neither quotes nor escapes a path, so each comes back verbatim.
+// A rename or copy entry names its destination and is followed by a record holding its source, which is skipped.
+func parsePorcelainZ(out string) []string {
 	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if len(line) < 4 {
+	records := strings.Split(out, "\x00")
+	for i := 0; i < len(records); i++ {
+		rec := records[i]
+		if len(rec) < 4 {
 			continue
 		}
-		path := line[3:]
-		if _, after, ok := strings.Cut(path, " -> "); ok {
-			path = after
+		paths = append(paths, rec[3:])
+		if strings.ContainsAny(rec[:2], "RC") {
+			i++
 		}
-		paths = append(paths, strings.Trim(path, `"`))
 	}
-	return paths, nil
+	return paths
 }
 
 // Verify runs command in p.Worktree unless the tree is dirty or already verified.
