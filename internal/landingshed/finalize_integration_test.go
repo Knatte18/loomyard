@@ -17,7 +17,6 @@
 package landingshed_test
 
 import (
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,10 +28,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // finalizeConflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two
@@ -57,40 +55,19 @@ func seedConflictStencil(t *testing.T) string {
 	return root
 }
 
-// seedFinalSummary writes a well-formed final-summary artifact under a fresh t.TempDir() and returns
-// its path -- Call's own top-of-Call parse (finalize.go's step 1a) requires a real artifact on disk,
-// a plain non-empty path string is not enough here since this test drives a real fz.Call(ctx).
-func seedFinalSummary(t *testing.T) string {
-	t.Helper()
-	path := summaryparser.Path(t.TempDir())
-	if err := os.WriteFile(path, []byte("# A landing title\n\nA landing body.\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(final summary): %v", err)
-	}
-	return path
-}
-
-// fakeResolutionShuttle is the model seam this file fakes: on every Run call it overwrites each of
+// resolutionShuttle is the model seam this file fakes: on every Run call it overwrites each of
 // paths (joined onto worktreeRoot) with resolved, marker-free content, standing in for a real
 // conflict-resolution session's own file edits.
-type fakeResolutionShuttle struct {
-	worktreeRoot string
-	paths        []string
-	resolved     string
-	calls        int
-}
-
-func (f *fakeResolutionShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.calls++
-	for _, p := range f.paths {
-		full := filepath.Join(f.worktreeRoot, p)
-		if err := os.WriteFile(full, []byte(f.resolved), 0o644); err != nil {
-			return shuttleengine.Result{}, err
+func resolutionShuttle(worktreeRoot, resolved string, paths ...string) *shedfake.MergeShuttle {
+	return &shedfake.MergeShuttle{RunFn: func(shuttleengine.Spec) (shuttleengine.Result, error) {
+		for _, p := range paths {
+			if err := os.WriteFile(filepath.Join(worktreeRoot, p), []byte(resolved), 0o644); err != nil {
+				return shuttleengine.Result{}, err
+			}
 		}
-	}
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+	}}
 }
-
-var _ mergeresolve.Shuttle = (*fakeResolutionShuttle)(nil)
 
 // openFabricAtLanding opens a *fabricengine.Fabric on the warp worktree at path, via
 // lyxcwd.ResolveWorktree + fabricengine.Open -- the only production constructor either producer's
@@ -134,25 +111,21 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	// carries the task's content on both sides" has a concrete weft-side fact to assert.
 	gitkit.CommitFile(t, taskWeft, "task-note.txt", "task weft note\n", "task: add task-note.txt")
 
-	scratchDir := filepath.Join(t.TempDir(), "scratch")
-	shuttle := &fakeResolutionShuttle{worktreeRoot: taskWarp, paths: []string{"conflict.txt"}, resolved: "resolved content\n"}
+	shuttle := resolutionShuttle(taskWarp, "resolved content\n", "conflict.txt")
 
-	deps := landingshed.Deps{
-		WorktreeRoot:     taskWarp,
-		TaskBranch:       "task",
-		ParentBranch:     "parent",
-		DescriptionPath:  seedFinalSummary(t),
-		StencilsDir:      seedConflictStencil(t),
-		ScratchDir:       scratchDir,
-		OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },
-		OpenParentFabric: func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentWarp), nil },
-		Shuttle:          shuttle,
-		Config: landingshed.Config{
-			Squash:             true,
-			Conflict:           "claude:test-model",
-			ConflictTimeoutMin: 1,
-			CoAuthoredBy:       "Test Author <test@example.com>",
-		},
+	deps := landingshed.NewTestDeps(t)
+	deps.WorktreeRoot = taskWarp
+	deps.TaskBranch = "task"
+	deps.ParentBranch = "parent"
+	deps.StencilsDir = seedConflictStencil(t)
+	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil }
+	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentWarp), nil }
+	deps.Shuttle = shuttle
+	deps.Config = landingshed.Config{
+		Squash:             true,
+		Conflict:           "claude:test-model",
+		ConflictTimeoutMin: 1,
+		CoAuthoredBy:       "Test Author <test@example.com>",
 	}
 
 	fz, err := landingshed.NewFinalize(deps)
@@ -165,15 +138,9 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	// convention (see e.g. mergeweftlocal_integration_test.go).
 	parentWeftBefore := gitkit.RevParse(t, parentWeft, "HEAD")
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
-	if shuttle.calls != 1 {
-		t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", shuttle.calls)
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
+	if len(shuttle.Specs) != 1 {
+		t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", len(shuttle.Specs))
 	}
 
 	// The parent pair's warp carries the task's resolved content.
@@ -246,22 +213,19 @@ func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
 	gitkit.CommitFile(t, taskWarp, "feature.txt", "task feature\n", "task: add feature.txt")
 
 	newFinalize := func() *landingshed.Finalize {
-		deps := landingshed.Deps{
-			WorktreeRoot:     taskWarp,
-			TaskBranch:       "task",
-			ParentBranch:     "parent",
-			DescriptionPath:  seedFinalSummary(t),
-			StencilsDir:      seedConflictStencil(t),
-			ScratchDir:       filepath.Join(t.TempDir(), "scratch"),
-			OpenFabric:       func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil },
-			OpenParentFabric: func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentWarp), nil },
-			Shuttle:          &fakeResolutionShuttle{worktreeRoot: taskWarp},
-			Config: landingshed.Config{
-				Squash:             true,
-				Conflict:           "claude:test-model",
-				ConflictTimeoutMin: 1,
-				CoAuthoredBy:       "Test Author <test@example.com>",
-			},
+		deps := landingshed.NewTestDeps(t)
+		deps.WorktreeRoot = taskWarp
+		deps.TaskBranch = "task"
+		deps.ParentBranch = "parent"
+		deps.StencilsDir = seedConflictStencil(t)
+		deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWarp), nil }
+		deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentWarp), nil }
+		deps.Shuttle = resolutionShuttle(taskWarp, "")
+		deps.Config = landingshed.Config{
+			Squash:             true,
+			Conflict:           "claude:test-model",
+			ConflictTimeoutMin: 1,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		}
 		fz, err := landingshed.NewFinalize(deps)
 		if err != nil {
@@ -270,17 +234,11 @@ func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
 		return fz
 	}
 
-	outcome, _, err := newFinalize().Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("first Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, newFinalize(), shedengine.Done)
 	headAfterFirst := gitkit.RevParse(t, parentWarp, "HEAD")
 
 	// A second Finalize over the now already-landed parent.
-	outcome, _, err = newFinalize().Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("second Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, newFinalize(), shedengine.Done)
 	if got := gitkit.RevParse(t, parentWarp, "HEAD"); got != headAfterFirst {
 		t.Errorf("parent warp HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
 	}

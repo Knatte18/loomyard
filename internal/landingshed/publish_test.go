@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // captureLogOutput redirects logger output into a buffer for the duration of
@@ -65,16 +66,23 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 	return r.result, r.err
 }
 
-// newTestDeps returns a minimal Deps with sane defaults for a Publish test: a base-branch list
-// requiring a pull request, a told DescriptionPath pointing at a directory with no summary.md yet,
-// and a scratch dir under t.TempDir().
+// newTestDeps is the package's one Deps builder, for Publish and Finalize tests alike: a base-branch
+// list requiring a pull request, a well-formed final-summary artifact already written at
+// DescriptionPath (Finalize's top-of-Call parse requires one; a Publish test rewrites it), and a
+// scratch dir under t.TempDir().
+// NewGitHubClient is swapped for a failing factory so no test reaches the real GitHub API; a test
+// driving the client installs its own over it.
+// A test needing a different variant mutates the returned value.
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()
+	installFailingGitHubClientFactory(t, errors.New("no GitHub client in this test"))
+	summaryPath := summaryparser.Path(t.TempDir())
+	writeSummary(t, summaryPath, "A landing title", "A landing body.")
 	return Deps{
 		WorktreeRoot:    t.TempDir(),
 		TaskBranch:      "task-branch",
 		ParentBranch:    "main",
-		DescriptionPath: summaryparser.Path(t.TempDir()),
+		DescriptionPath: summaryPath,
 		StencilsDir:     t.TempDir(),
 		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
 		OriginURL:       "https://github.com/acme/proj.git",
@@ -83,6 +91,7 @@ func newTestDeps(t *testing.T) Deps {
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,
+			CoAuthoredBy:       "Test Author <test@example.com>",
 		},
 	}
 }
@@ -237,13 +246,7 @@ func TestPublish_ParentBranchNotInBaseList_Done(t *testing.T) {
 	res := &recordingResolver{}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 	if res.called {
 		t.Error("resolver.Resolve was called; want no merge-in when no pull request is required")
 	}
@@ -256,13 +259,7 @@ func TestPublish_PushSkipped_NoPRRequired_Done(t *testing.T) {
 	res := &recordingResolver{}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
 func TestPublish_PushSkipped_PRRequired_StuckBeforeMergeInAndPush(t *testing.T) {
@@ -273,13 +270,7 @@ func TestPublish_PushSkipped_PRRequired_StuckBeforeMergeInAndPush(t *testing.T) 
 	res := &recordingResolver{}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if res.called {
 		t.Error("resolver.Resolve was called; want push-skipped to refuse before merge-in")
 	}
@@ -294,13 +285,7 @@ func TestPublish_MergeInStuck(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "merge-in could not be resolved"}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if res.gotSource != deps.ParentBranch {
 		t.Errorf("resolver.Resolve source = %q; want %q", res.gotSource, deps.ParentBranch)
 	}
@@ -316,13 +301,7 @@ func TestPublish_PushFails_NoGitHubCall(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
 }
 
@@ -346,13 +325,7 @@ func TestPublish_PushRejected_DistinctReason(t *testing.T) {
 
 func runAndGetReason(t *testing.T, p *Publish) string {
 	t.Helper()
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	return requireReason(t, ptr)
 }
 
@@ -366,13 +339,7 @@ func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			p := &Publish{deps: deps, resolver: res}
 
-			outcome, ptr, err := p.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			requireReason(t, ptr)
 		})
 	}
@@ -390,13 +357,7 @@ func TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause(t *testing.T) {
 	installFailingGitHubClientFactory(t, errors.New("boom"))
 	buf := captureLogOutput(t)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
 
 	logged := buf.String()
@@ -428,13 +389,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 	srv.install(t)
 	buf := captureLogOutput(t)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
 
 	logged := buf.String()
@@ -465,13 +420,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	srv.install(t)
 	buf := captureLogOutput(t)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
 
 	logged := buf.String()
@@ -496,13 +445,7 @@ func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 
 	wantOrder := []string{"push", "list", "create"}
 	if len(order) != len(wantOrder) {
@@ -634,13 +577,7 @@ func TestPublish_ClosedAndMergedPR_Done(t *testing.T) {
 	srv.listBody = `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`
 	srv.install(t)
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
 func TestPublish_ClosedAndUnmergedPR_StuckNamesClosure(t *testing.T) {
@@ -656,13 +593,7 @@ func TestPublish_ClosedAndUnmergedPR_StuckNamesClosure(t *testing.T) {
 	srv.listBody = `[{"number":7,"state":"closed"}]`
 	srv.install(t)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	closedUnmergedReason := requireReason(t, ptr)
 
 	if !strings.Contains(closedUnmergedReason, "closed without being merged") {
@@ -672,7 +603,9 @@ func TestPublish_ClosedAndUnmergedPR_StuckNamesClosure(t *testing.T) {
 
 func TestPublish_MissingSummary_FailsLoudlyNoCreate(t *testing.T) {
 	deps := newTestDeps(t)
-	// No summary.md written.
+	if err := os.Remove(deps.DescriptionPath); err != nil {
+		t.Fatalf("remove summary.md: %v", err)
+	}
 	var order []string
 	deps.PushBranch = func() error { order = append(order, "push"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
@@ -739,9 +672,7 @@ func TestPublish_CreatedPRLogsInfo(t *testing.T) {
 	srv := newPublishGitHubServer(t, &order)
 	srv.install(t)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 
 	data, err := os.ReadFile(logger.TraceFile())
 	if err != nil {

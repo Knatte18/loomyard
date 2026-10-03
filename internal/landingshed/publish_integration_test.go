@@ -11,8 +11,6 @@
 package landingshed_test
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,17 +26,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// failingShuttle fails the test outright if Run is ever called -- this scenario stages no conflict,
-// so the real conflict-resolution session must never spawn.
-type failingShuttle struct{ t *testing.T }
-
-func (f failingShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.t.Fatal("fake shuttle Run() called; want the clean merge-in to need no conflict-resolution session")
-	return shuttleengine.Result{}, nil
-}
 
 // publishIntegrationGitHubServer is a scripted httptest server standing in for the GitHub API: its
 // List handler reports no existing pull request, and its Create handler asserts the pair is clean
@@ -95,15 +84,6 @@ func (s *publishIntegrationGitHubServer) install(t *testing.T) {
 	t.Cleanup(func() { landingshed.NewGitHubClient = orig })
 }
 
-// writeSummaryLanding writes a well-formed summary artifact at path -- this package's own local copy
-// of the in-package unit tier's identically-shaped helper.
-func writeSummaryLanding(t *testing.T, path, title, body string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(fmt.Sprintf("# %s\n\n%s\n", title, body)), 0o644); err != nil {
-		t.Fatalf("write summary.md: %v", err)
-	}
-}
-
 // TestPublish_MergesInCleanlyBeforeCreatingPullRequest drives Publish against a real pair: the task
 // worktree catches up with the parent branch (a clean, non-conflicting merge-in), pushes (a no-op
 // closure -- push mechanics are internal/gitrepo's own tier's job), and only then queries and creates
@@ -120,44 +100,32 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	gitkit.CommitFile(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
 
-	finalSummaryPath := summaryparser.Path(t.TempDir())
-	writeSummaryLanding(t, finalSummaryPath, "Task summary", "Task body.")
+	var pushed bool
+	deps := landingshed.NewTestDeps(t)
+	deps.WorktreeRoot = taskWorktree
+	deps.PushBranch = func() error { pushed = true; return nil }
+	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil }
+	// This scenario stages no conflict, so the conflict-resolution session must never spawn.
+	deps.Shuttle = &shedfake.MergeShuttle{RunFn: func(shuttleengine.Spec) (shuttleengine.Result, error) {
+		t.Fatal("fake shuttle Run() called; want the clean merge-in to need no conflict-resolution session")
+		return shuttleengine.Result{}, nil
+	}}
+	deps.Config = landingshed.Config{
+		RequirePRToBase:    []string{"main"},
+		Conflict:           "claude:test-model",
+		ConflictTimeoutMin: 1,
+	}
 
 	server := newPublishIntegrationGitHubServer(t, taskWorktree)
 	server.install(t)
-
-	var pushed bool
-	deps := landingshed.Deps{
-		WorktreeRoot:    taskWorktree,
-		TaskBranch:      "task-branch",
-		ParentBranch:    "main",
-		DescriptionPath: finalSummaryPath,
-		StencilsDir:     t.TempDir(),
-		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:       "https://github.com/acme/proj.git",
-		PushBranch:      func() error { pushed = true; return nil },
-		OpenFabric:      func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskWorktree), nil },
-		Shuttle:         failingShuttle{t: t},
-		Config: landingshed.Config{
-			RequirePRToBase:    []string{"main"},
-			Conflict:           "claude:test-model",
-			ConflictTimeoutMin: 1,
-		},
-	}
 
 	p, err := landingshed.NewPublish(deps)
 	if err != nil {
 		t.Fatalf("NewPublish() error = %v; want nil", err)
 	}
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
 	// Done: the next row is the PR-Gate, which owns the review wait.
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %q; want %q (pull request created)", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 	if !pushed {
 		t.Error("push closure never called; want the task branch pushed before the create call")
 	}
