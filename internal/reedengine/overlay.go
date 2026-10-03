@@ -247,8 +247,7 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 		return true, nil
 	}
 
-	// The interface, rather than *exec.ExitError, lets a test script tmux's exit-1 answer
-	// through the exec seam without spawning a process.
+	// The interface, rather than *exec.ExitError, lets a test script tmux's exit-1 answer through the exec seam without spawning a process.
 	var exitErr interface{ ExitCode() int }
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return false, nil
