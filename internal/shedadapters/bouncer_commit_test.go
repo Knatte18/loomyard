@@ -15,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// TestBouncer_Commit_ApprovedCallsExactlyOnce pins that a CONVERGED verdict calls Commit exactly
-// once, before Done is returned.
+// TestBouncer_Commit_ApprovedCallsExactlyOnce pins that a CONVERGED verdict calls Commit exactly once, before Done is returned.
 func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	calls := 0
 	cfg := newBouncerFixture(t).Config
@@ -41,8 +40,8 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestBouncer_Commit_BlockingNeverCalls pins that a CONTINUE verdict never calls Commit: an
-// unapproved artifact must not be committed.
+// TestBouncer_Commit_BlockingNeverCalls pins that a CONTINUE verdict never calls Commit:
+// an unapproved artifact must not be committed.
 func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 	calls := 0
 	cfg := newBouncerFixture(t).Config
@@ -172,8 +171,8 @@ func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_CalledBeforeCommit pins that a CONVERGED settle with a non-nil Approve calls
-// it exactly once, strictly before Commit. The ordering is asserted with one shared call-log slice
+// TestBouncer_Approve_CalledBeforeCommit pins that a CONVERGED settle with a non-nil Approve calls it exactly once, strictly before Commit.
+// The ordering is asserted with one shared call-log slice
 // both closures append a marker string to, never with two independent booleans, since two booleans
 // cannot distinguish the two orderings.
 func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
@@ -207,9 +206,7 @@ func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_NilStillCommits pins that a nil Approve on a CONVERGED settle still commits
-// normally, returns shedengine.Done, and is not an error -- the default behaviour every existing
-// Bouncer construction relies on staying unchanged.
+// TestBouncer_Approve_NilStillCommits pins that a nil Approve on a CONVERGED settle still commits normally, returns shedengine.Done, and is not an error -- the default behaviour every existing Bouncer construction relies on staying unchanged.
 func TestBouncer_Approve_NilStillCommits(t *testing.T) {
 	commitCalls := 0
 	cfg := newBouncerFixture(t).Config
@@ -274,8 +271,7 @@ func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Approve_BlockingNeverCalls pins that a CONTINUE verdict never calls Approve,
-// mirroring TestBouncer_Commit_BlockingNeverCalls's shape.
+// TestBouncer_Approve_BlockingNeverCalls pins that a CONTINUE verdict never calls Approve, mirroring TestBouncer_Commit_BlockingNeverCalls's shape.
 func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 	calls := 0
 	cfg := newBouncerFixture(t).Config
