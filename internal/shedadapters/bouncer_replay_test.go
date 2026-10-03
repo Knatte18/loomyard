@@ -94,10 +94,9 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 	}
 }
 
-// TestBouncer_Judged_IgnoresFocusFile proves judged(N) does not treat an absent round-2-focus.md as
-// debris: its fixture deliberately carries a CONTINUE verdict, not a CONVERGED one, so this test's
-// subject (judged's focus-file exclusion) is isolated from the clear trigger card 10 adds, which
-// fires only on a CONVERGED verdict and would otherwise collide with what this test proves.
+// TestBouncer_Judged_IgnoresFocusFile proves judged(N) does not treat an absent round-2-focus.md as debris:
+// its fixture deliberately carries a CONTINUE verdict, not a CONVERGED one,
+// so this test's subject (judged's focus-file exclusion) is isolated from the clear trigger card 10 adds, which fires only on a CONVERGED verdict and would otherwise collide with what this test proves.
 func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
