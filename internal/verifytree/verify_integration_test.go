@@ -101,6 +101,17 @@ func TestVerify_RecordWrittenOnlyOnPass(t *testing.T) {
 	}
 }
 
+func TestVerify_CommitDuringRunLeavesNoRecord(t *testing.T) {
+	p := newScratch(t)
+	command := "echo c > c.txt && git add c.txt && git commit -q -m mid-run"
+	if res := mustVerify(t, p, command); res.Status != StatusPassed {
+		t.Fatalf("Verify = %q; want %q", res.Status, StatusPassed)
+	}
+	if fileExists(p.Record) {
+		t.Error("a record was written although HEAD moved during the run")
+	}
+}
+
 func TestVerify_CancelledRunLeavesNoRecord(t *testing.T) {
 	p := newScratch(t)
 	ctx, cancel := context.WithCancel(context.Background())

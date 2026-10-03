@@ -28,7 +28,8 @@ const (
 type Status string
 
 const (
-	// StatusPassed means the command ran and exited 0; the record now names HEAD's tree.
+	// StatusPassed means the command ran and exited 0.
+	// The record now names the tree the run started on, unless HEAD moved during the run.
 	StatusPassed Status = "passed"
 	// StatusSkipped means the record already named HEAD's tree and the same command, so nothing ran.
 	StatusSkipped Status = "skipped"
@@ -113,7 +114,8 @@ func DirtyPaths(worktree string) ([]string, error) {
 // Verify runs command in p.Worktree unless the tree is dirty or already verified.
 // A dirty tree returns StatusDirty and runs nothing.
 // A record naming HEAD's tree and the same command returns StatusSkipped.
-// Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 writes the record and returns StatusPassed.
+// Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
+// The pass writes the record only when HEAD still names the tree the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
 // A cancelled ctx is a returned error and writes no record.
 func Verify(ctx context.Context, p Paths, site Site, command string) (Result, error) {
@@ -156,6 +158,15 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 	}
 	if code != 0 {
 		return Result{Status: StatusFailed, ExitCode: code, Tree: tree}, nil
+	}
+
+	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
+	after, err := headTree(p.Worktree)
+	if err != nil {
+		return Result{}, err
+	}
+	if after != tree {
+		return Result{Status: StatusPassed, Tree: tree}, nil
 	}
 
 	if err := writeRecord(p.Record, record{Tree: tree, Command: command, VerifiedAt: time.Now()}); err != nil {
