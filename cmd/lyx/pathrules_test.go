@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -75,6 +76,7 @@ var pathRules = []pathRule{
 
 	{name: "websterengine.ScratchDir", class: classTransient, mirrors: "websterengine.Dir", path: func(l *lyxcwd.Location) string { return websterengine.ScratchDir(l.AnchorPath()) }},
 	{name: "websterengine.PromptsDir", class: classTransient, path: func(l *lyxcwd.Location) string { return websterengine.PromptsDir(l.AnchorPath()) }},
+	{name: "verifytree.Dir", class: classTransient, path: func(l *lyxcwd.Location) string { return verifytree.Dir(l.AnchorPath()) }},
 	{name: "shedrun.StatusLock", class: classTransient, path: func(l *lyxcwd.Location) string { return shedrun.StatusLock(l, shedrun.SelfRunID) }},
 	{name: "shedrun.RunLock", class: classTransient, path: func(l *lyxcwd.Location) string { return shedrun.RunLock(l, shedrun.SelfRunID) }},
 	{name: "loomengine.LoomDriverLog", class: classTransient, path: loomengine.LoomDriverLog},
