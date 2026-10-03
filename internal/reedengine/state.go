@@ -3,8 +3,7 @@
 // This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller
 // writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them
 // semantically — only Display feeds the layout decision, via toRenderStrands.
-// Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb
-// (MarkRetiring), never written by a caller of AddStrand.
+// Retiring is the one field reed itself owns: lifecycle bookkeeping set by a reed verb (MarkRetiring), never written by a caller of AddStrand.
 
 package reedengine
 
