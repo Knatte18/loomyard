@@ -73,6 +73,7 @@ var bannedTokens = []string{
 	"exec.Command",
 	"hubforge.NewHub",
 	"DeltaGit",
+	"lyxbin.",
 }
 
 // tierPuritySkipDirs names directories the walk never descends into: version control

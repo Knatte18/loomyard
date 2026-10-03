@@ -81,8 +81,9 @@ var spawnObservabilityAllowedSpawners = map[string]string{
 	"internal/githubclient/token.go": "structurally barred by the GitHub Auth Invariant's leaf allowlist " +
 		"(enforced by internal/githubclient/leaf_enforcement_test.go); the failure is logged at both production " +
 		"callers instead, internal/selfreportengine/selfreport.go and internal/landingshed/publish.go",
-	"internal/hubforge/hub.go": "not governed: a test-fixture builder, not a code path reachable from a lyx command",
-	"cmd/testtiming/main.go":   "not governed: a test-timing harness, not a code path reachable from a lyx command",
+	"internal/hubforge/hub.go":          "not governed: a test-fixture builder, not a code path reachable from a lyx command",
+	"internal/testkit/lyxbin/lyxbin.go": "not governed: a test-fixture builder, not a code path reachable from a lyx command",
+	"cmd/testtiming/main.go":            "not governed: a test-timing harness, not a code path reachable from a lyx command",
 }
 
 // spawnObservabilityMinScannedFiles is the vacuous-scan floor for this guard's two-root walk of
