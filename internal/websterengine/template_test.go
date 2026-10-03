@@ -54,7 +54,7 @@ func newTestSpecsDir(t *testing.T) string {
 	return t.TempDir()
 }
 
-// mustMasterTemplate, mustIntegrationTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the
+// mustMasterTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the
 // matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay
 // terse.
 func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
@@ -62,15 +62,6 @@ func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
 	got, err := websterengine.MasterTemplate(stencilsDir)
 	if err != nil {
 		t.Fatalf("MasterTemplate(%q) = _, %v; want nil error", stencilsDir, err)
-	}
-	return got
-}
-
-func mustIntegrationTemplate(t *testing.T, stencilsDir string) []byte {
-	t.Helper()
-	got, err := websterengine.IntegrationTemplate(stencilsDir)
-	if err != nil {
-		t.Fatalf("IntegrationTemplate(%q) = _, %v; want nil error", stencilsDir, err)
 	}
 	return got
 }
@@ -323,33 +314,10 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning asserts the done-check section no longer lists a deleted-symbol reference as a batch_failed done-check,
-// since postBatchChecks now records it as a later-card warning.
-// It also asserts the section carries the later-card warning sentence quoting begin-batch's own way forward,
-// and that the batch_failed sentence names its own subject.
-func TestMasterTemplate_DoneCheckSectionTeachesLaterCardWarning(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	const heading = "## A done-check failure arrives as `batch_failed`"
-	_, rest, ok := strings.Cut(text, heading)
-	if !ok {
-		t.Fatalf("master template has no %q section", heading)
-	}
-	section, _, _ := strings.Cut(rest, "\n## ")
-
-	requireNotContains(t, section, "a symbol this batch deleted that the remaining plan still references")
-	requireContains(t, section, "A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;")
-	requireContains(t, section, "that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch NN again\".")
-	requireContains(t, section, "A done-check failure comes back as `{\"batch_failed\": true}`")
-}
-
 // TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list
-// names exactly the three outcome.yaml schema keys, immediately followed by the literal yaml block
-// spelling out their values, and separately names summary_path's own "# <title>" first-line rule.
+// names exactly the three outcome.yaml schema keys.
 func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, outcomeKeysHeadingSub)
 
 	want := []string{"outcome", "stuck_reason", "batches_done"}
 	got := extractBacktickBullets(text, outcomeKeysHeadingSub)
@@ -361,179 +329,6 @@ func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 			t.Errorf("outcome schema key bullet %d = %q; want %q", i, got[i], key)
 		}
 	}
-
-	requireContains(t, text, "outcome: done | stuck | paused")
-	requireContains(t, text, `stuck_reason: null | "<one line>"`)
-	requireContains(t, text, "batches_done: <int>")
-
-	requireContains(t, text, "{{.summary_path}}")
-	requireContains(t, text, "first line `# <title>`")
-}
-
-// TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents asserts the embedded master template's
-// bytes carry the load-bearing never-touch-`_lyx`, never-self-edit, never-/model, and
-// never-named-subagent statements in prose, so an edit that silently waters down any one of these
-// fails this test rather than only a human review — the Cwd Resolution Invariant's prompt-template
-// half plus webster's own fork-discipline bans.
-func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "NEVER run any git command against `_lyx`")
-	requireContains(t, text, "NEVER edit, create, or delete any file other than")
-	requireContains(t, text, "NEVER use a `/model` switch")
-	requireContains(t, text, "NEVER spawn a non-fork or named subagent")
-
-	// The plan and state files are read and written as ordinary files, at the told
-	// {{.plan_dir}}-rendered location — hub-relative "_lyx/plan" or standalone's absolute state
-	// directory — so the positive rule states what Master DOES rather than warning it off a second
-	// physical path, and the template must still tell Master what a policy violation MEANS
-	// (terminal stuck, never worked around).
-	requireContains(t, text, "{{.plan_dir}}` holds the plan")
-	requireContains(t, text, "Read and write them all as ordinary files")
-	requireContains(t, text, "You never run git against `_lyx` or the plan directory; they are committed for you.")
-	requireContains(t, text, "## Audit findings: policy warns, correctness fails the batch")
-	requireContains(t, text, "Still never work around an audit")
-	requireContains(t, text, "never write outside your two contract files")
-	for _, removed := range []string{"## A policy violation ends your run as stuck", "once a violation exists", "## A card-not-done refusal ends your run as stuck", `"card_not_done"`} {
-		if strings.Contains(text, removed) {
-			t.Errorf("master template still carries the removed text %q", removed)
-		}
-	}
-}
-
-// TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs asserts the master template names the `failed` progress rung and the `batch_failed` and `report_archived` ladder rungs with the verb each one takes, so a run recovers in-session instead of ending stuck.
-func TestMasterTemplate_TeachesBatchFailedAndReportArchivedRungs(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "- `failed` → webster rejected that batch's report")
-	requireContains(t, text, `"batch_failed": true`)
-	requireContains(t, text, `"report_archived": true`)
-	requireContains(t, text, "call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs")
-	// recover-batch's own batch_failed is a failed recovery, a terminal rung, never another recover-batch.
-	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work")
-	requireContains(t, text, "Do NOT call `recover-batch` for that batch again")
-	// A finding recovery cannot check is refused toward run --fresh, so it is terminal for the run too.
-	requireContains(t, text, "- `recover-batch <NN>` refuses with `{\"needs_fresh\": true}` →")
-	requireContains(t, text, "comes back from `recover-batch` as `{\"needs_fresh\": true}`")
-	requireContains(t, text, "call `lyx webster begin-batch <NN>` and re-fork that batch")
-	requireContains(t, text, "`lyx webster rebaseline --card NN`")
-}
-
-// TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck asserts the embedded master template's
-// bytes carry a scripted response to begin-batch's plan_drifted refusal, the same class of
-// structured non-done outcome as paused/policy-violation/fabric-sync but previously undocumented:
-// Master must be told to stop rather than retry the verb, exactly as it already is for a
-// fabric-sync failure.
-func TestMasterTemplate_StatesPlanDriftRefusalEndsRunAsStuck(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "## A plan-drift refusal ends your run as stuck")
-	requireContains(t, text, `"plan_drifted": true`)
-	requireContains(t, text, "do not retry the verb")
-
-	_, section, _ := strings.Cut(text, "## A plan-drift refusal ends your run as stuck")
-	section, _, _ = strings.Cut(section, "\n## ")
-	requireContains(t, section, "`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`")
-	requireContains(t, section, "`lyx webster restore-plan`")
-}
-
-// TestMasterTemplate_IntegrationFailedBranchEndsDone asserts the integration-suite stage's `status: FAILED` branch tells Master to finish with `outcome: done` (webster triages the report after the session) and no longer tells it `outcome: stuck` for that branch.
-func TestMasterTemplate_IntegrationFailedBranchEndsDone(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	_, after, ok := strings.Cut(text, "- `status: FAILED` →")
-	if !ok {
-		t.Fatalf("master template has no integration `status: FAILED` branch")
-	}
-	branch, _, _ := strings.Cut(after, "\n\n")
-	requireContains(t, branch, "`outcome: done`")
-	if strings.Contains(branch, "outcome: stuck") {
-		t.Errorf("FAILED branch still instructs outcome: stuck:\n%s", branch)
-	}
-}
-
-// TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts the master template's
-// bytes carry the harness-grounding statements that preempt the observed live spawn-killer (round
-// fable-r1, crucible): on current Claude Code, a freshly spawned Master classified the injected
-// orchestration prompt as suspicious content, reasoned "no `lyx` tool is in my toolset", and ended
-// its turn asking — which the shuttle file contract classifies asking, killing the run (~40% of
-// real spawns).
-// The template must state that the prompt is real and delivered by `lyx webster run`, that `lyx` is
-// a CLI driven via the Bash tool (never a listed tool), and that the session gets its bearings via
-// `lyx webster status` rather than ending its turn to ask.
-func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "get your bearings against the real state on disk")
-	requireContains(t, text, "non-interactively by `lyx webster run`")
-	requireContains(t, text, "it is an ordinary CLI binary")
-	requireContains(t, text, "RUNNING it with your")
-	requireContains(t, text, "run `lyx webster status`")
-	requireContains(t, text, "confirm the harness, the run state, and the plan are all present")
-	requireContains(t, text, "there is no chat partner on the other end")
-}
-
-// TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the embedded template's bytes
-// carry every rung of the begin-batch -> fork -> notification -> record-batch sequence, verbatim
-// prompt forwarding, the backgrounded-fork wait discipline (turn ended, no polling), and the
-// flat-model recovery ladder in prose.
-func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "`begin-batch` before every fork")
-	requireContains(t, text, `subagent_type: "fork"`)
-	requireContains(t, text, "with no name")
-	requireContains(t, text, "forwarded verbatim")
-	requireContains(t, text, "you are an **IMPLEMENTER")
-	requireContains(t, text, "STOP reading this Master prompt")
-	requireContains(t, text, "AUTHORITATIVE")
-	requireContains(t, text, "never evidence that you are the Master")
-	requireContains(t, text, "this instruction is authoritative")
-
-	requireContains(t, text, "BACKGROUNDED agent")
-	requireContains(t, text, "End your turn right after spawning it")
-	requireContains(t, text, "your turn ended while the fork runs, never a polling loop")
-	requireContains(t, text, "`record-batch` on the fork's completion notification")
-	requireNotContains(t, text, "lyx webster await-batch")
-	requireNotContains(t, text, "sleep 20")
-	requireContains(t, text, "re-call `recover-batch` until terminal")
-
-	requireContains(t, text, "Drive it STRICTLY in order")
-	requireContains(t, text, "re-fork the same batch once")
-	requireContains(t, text, "SAME prompt file and no new `begin-batch`")
-	requireContains(t, text, `"paused": true`)
-
-	requireContains(t, text, "OR `status: dead`")
-
-	requireContains(t, text, "## A fabric-sync error ends your run as stuck")
-	requireContains(t, text, "fabric sync")
-	requireContains(t, text, "do not retry the verb")
-
-	requireContains(t, text, "already has a report")
-	requireContains(t, text, "consume that report")
-
-	requireContains(t, text, "`done` → skip")
-	requireContains(t, text, "`stuck` → its fork reported stuck")
-	requireContains(t, text, "`dead` → its recovery already failed")
-
-	requireContains(t, text, "On its completion notification, read `{{.integration_report_path}}` once")
-	requireContains(t, text, "if the file is absent, treat it as `status: FAILED`")
-}
-
-// TestMasterTemplate_OrderingRuleMeansListedOrderNotAscendingNumber asserts the reworded
-// card-list ordering instruction: "Drive it STRICTLY in order" still appears verbatim, the
-// template now states the order is the listed one rather than ascending batch number, the
-// skip/reorder prohibition still appears, and neither retired clause remains.
-func TestMasterTemplate_OrderingRuleMeansListedOrderNotAscendingNumber(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "Drive it STRICTLY in order")
-	requireContains(t, text, "the order listed above, top to bottom")
-	requireContains(t, text, "NOT necessarily ascending batch number")
-	requireContains(t, text, `no batch is ever skipped or reordered because it "looks independent."`)
-
-	requireNotContains(t, text, "there is no DAG here to reorder around")
-	requireNotContains(t, text, "batch N assumes every batch before it is already committed")
 }
 
 // TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of
@@ -606,46 +401,6 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
 		}
 	})
-}
-
-// TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork template's bytes carry
-// the minimal fork-return contract's field names verbatim (status, head_sha, deviations — never
-// the superseded report's tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule
-// statement and the commit-per-card statement, so a silent edit to any of these fails here rather
-// than only a human review.
-func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
-	text := string(mustForkTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "status:")
-	requireContains(t, text, "head_sha:")
-	requireContains(t, text, "deviations:")
-
-	requireContains(t, text, "## The FRESH-READ rule")
-	requireContains(t, text, "Commit the card to the repo")
-	requireContains(t, text, "One commit per card is the norm")
-
-	// The fork inherits Master's loop instructions; it must be told forcefully
-	// NOT to drive the webster loop itself.
-	requireContains(t, text, "NEVER run any `lyx webster` command")
-	requireContains(t, text, "YOU are the one who WRITES that report")
-
-	// The superseded report grammar (done/stuck/tests/out_of_scope) must be gone —
-	// the report is deliberately minimal under the flat card-list model.
-	requireNotContains(t, text, "out_of_scope:")
-	requireNotContains(t, text, "tests: green")
-}
-
-// TestForkTemplate_CardLoopReadsCardFileWithWhatFallback asserts the shared implementer-body text —
-// reused by both the fork and recovery templates — carries the per-card loop's read-the-card-file
-// instruction, the empty-What Card-Index-intent fallback (the empty-What-falls-back-to-the-
-// Card-Index-intent Shared Decision), and the Commit-pin-lives-in-the-card- file wording, rather
-// than any inlined-block phrasing.
-func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
-	text := string(mustForkTemplate(t, newTestStencilsDir(t)))
-
-	requireContains(t, text, "Read the card file")
-	requireContains(t, text, "fall back to that card's one-line intent from the Card Index")
-	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
 }
 
 // TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the card did not cause.
@@ -752,28 +507,6 @@ func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 	}
 	if !bytes.Contains(mustRecoveryTemplate(t, stencilsDir), body) {
 		t.Errorf("RecoveryTemplate() does not contain ImplementerBodyTemplate()'s bytes")
-	}
-}
-
-// TestTemplates_NoDroppedBatchConceptsRemain asserts neither embedded template carries any of the
-// three dropped batch-era concepts — oversized batches, deferred-verify chains, and the per-batch
-// "## Scope" section — anywhere in its bytes.
-func TestTemplates_NoDroppedBatchConceptsRemain(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	for _, tc := range []struct {
-		name string
-		text string
-	}{
-		{"master", string(mustMasterTemplate(t, stencilsDir))},
-		{"fork", string(mustForkTemplate(t, stencilsDir))},
-		{"recovery", string(mustRecoveryTemplate(t, stencilsDir))},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			requireNotContains(t, strings.ToLower(tc.text), "oversized")
-			requireNotContains(t, strings.ToLower(tc.text), "chain")
-			requireNotContains(t, tc.text, "## Scope")
-		})
 	}
 }
 
@@ -1225,36 +958,6 @@ func TestRenderIntegrationFixPrompt_RefusesEmptyInputs(t *testing.T) {
 	if _, err := websterengine.RenderIntegrationFixPrompt(one, "go test ./...", "", "", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
 		t.Errorf("RenderIntegrationFixPrompt(empty report path) error = nil; want an error")
 	}
-}
-
-// TestIntegrationTemplate_ForbidsPollingForOwnReport asserts both the integration fork's own
-// template AND the master template's spawn directive carry the anti-poll clause: an integration
-// fork that inherits Master's own "poll for the integration report" loop and continues it — instead
-// of running the verify and writing that report itself — deadlocks the run via plain shell polls
-// the lyx-webster fork hook cannot see.
-func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	integration := string(mustIntegrationTemplate(t, stencilsDir))
-	requireContains(t, integration, "NEVER poll or wait for the integration")
-	requireContains(t, integration, "YOU are the one who WRITES")
-
-	master := string(mustMasterTemplate(t, stencilsDir))
-	requireContains(t, master, "you do NOT poll or wait for any report file")
-	requireContains(t, master, "Your FIRST action is to Read this file")
-}
-
-// TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions asserts the embedded integration
-// template's bytes carry no per-card or commit instructions of any kind: the integration fork runs
-// the plan-level verify ONCE and makes NO commit, unlike a batch's own fork template.
-func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) {
-	text := string(mustIntegrationTemplate(t, newTestStencilsDir(t)))
-
-	requireNotContains(t, text, "**Commit:**")
-	requireNotContains(t, text, "One commit per card")
-	requireNotContains(t, text, "{{.cards}}")
-	requireContains(t, text, "implement NO cards")
-	requireContains(t, text, "make NO commit")
 }
 
 // TestTemplates_ComposedOutputCarriesNoBannerLeak is the regression guard for the hazard this

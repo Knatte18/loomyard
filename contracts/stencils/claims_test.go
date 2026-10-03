@@ -14,12 +14,57 @@ import (
 // claim is one wording assertion about a stencil's raw text.
 // must is a phrase the text has to contain; mustNot is a phrase it must not contain.
 // A non-empty section limits the check to that heading's section, from the heading line up to the next "## " heading.
+// A non-empty branch limits it to the bullet that starts with that phrase, from the phrase up to the next blank line.
 type claim struct {
 	must    string
 	mustNot string
 	section string
+	branch  string
 	why     string
 }
+
+// wantAll is one must claim per phrase, all sharing a why.
+func wantAll(why string, phrases ...string) []claim {
+	claims := make([]claim, len(phrases))
+	for i, p := range phrases {
+		claims[i] = claim{must: p, why: why}
+	}
+	return claims
+}
+
+// wantNone is one mustNot claim per phrase, all sharing a why.
+func wantNone(why string, phrases ...string) []claim {
+	claims := make([]claim, len(phrases))
+	for i, p := range phrases {
+		claims[i] = claim{mustNot: p, why: why}
+	}
+	return claims
+}
+
+// inSection scopes every claim to one heading's section.
+func inSection(heading string, claims []claim) []claim {
+	for i := range claims {
+		claims[i].section = heading
+	}
+	return claims
+}
+
+// joinClaims concatenates claim groups into one row.
+func joinClaims(groups ...[]claim) []claim {
+	var all []claim
+	for _, g := range groups {
+		all = append(all, g...)
+	}
+	return all
+}
+
+const (
+	websterDoneCheckSection = "## A done-check failure arrives as `batch_failed`"
+	websterPlanDriftSection = "## A plan-drift refusal ends your run as stuck"
+	websterFailedBranch     = "- `status: FAILED` →"
+	websterOutcomeKeysLine  = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
+	droppedConceptsWhy      = "the batch-era concept (oversized batches, deferred-verify chains, the per-batch Scope section) is dropped from the prompt"
+)
 
 // stencilClaims is one row per stencil file.
 type stencilClaims struct {
@@ -134,9 +179,131 @@ var wordingClaims = []stencilClaims{
 		{must: "restates every site, commit and claim it depends on", why: "a focus entry is self-contained"},
 		{must: "never refers the reviewer to a prior round's review, fixer report, or finding ID", why: "a focus entry never points at a prior round"},
 	}, focusEntryClaims()...)},
-	{"webster-body-implementer.md", WebsterBodyImplementer, []claim{
-		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
-	}},
+	{"webster-body-implementer.md", WebsterBodyImplementer, joinClaims(
+		[]claim{{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"}},
+		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:", "deviations:"),
+		wantAll("the fork is told the fresh-read rule and to commit per card",
+			"## The FRESH-READ rule", "Commit the card to the repo", "One commit per card is the norm"),
+		wantAll("the per-card loop reads the card file, falls back to the Card Index intent when the card's own is empty, and takes a pinned commit subject from the card file",
+			"Read the card file",
+			"fall back to that card's one-line intent from the Card Index",
+			"unless the card FILE carries a `**Commit:**` line"),
+		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
+		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+	)},
+	{"webster-prefix-fork.md", WebsterPrefixFork, joinClaims(
+		wantAll("the fork inherits Master's loop instructions and must be told forcefully not to drive the loop itself or wait for a report only it writes",
+			"NEVER run any `lyx webster` command", "YOU are the one who WRITES that report"),
+		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
+		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+	)},
+	{"webster-prefix-recovery.md", WebsterPrefixRecovery, wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope")},
+	{"webster-template-integration.md", WebsterTemplateIntegration, joinClaims(
+		wantAll("an integration fork that inherits Master's poll-for-the-report loop deadlocks the run, so it is told to write the report itself",
+			"NEVER poll or wait for the integration", "YOU are the one who WRITES"),
+		wantAll("the integration fork runs the plan-level verify once and implements no cards and makes no commit", "implement NO cards", "make NO commit"),
+		wantNone("the integration fork carries no per-card or commit instructions, unlike a batch's own fork template", "**Commit:**", "One commit per card", "{{.cards}}"),
+	)},
+	{"webster-template-master.md", WebsterTemplateMaster, joinClaims(
+		inSection(websterDoneCheckSection, joinClaims(
+			wantNone("postBatchChecks records a deleted-symbol reference as a later-card warning, never a batch_failed done-check",
+				"a symbol this batch deleted that the remaining plan still references"),
+			wantAll("the done-check section teaches the later-card warning and begin-batch's own way forward, and names the batch_failed subject",
+				"A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;",
+				"that later card's own `begin-batch` refuses it, naming \"edit the plan so the named cards match the tree, run \"lyx webster rebaseline --card NN\" naming each card you edited, then begin-batch NN again\".",
+				"A done-check failure comes back as `{\"batch_failed\": true}`"),
+		)),
+		wantAll("the outcome file's schema keys and values are spelled out, and the summary file's first-line rule is named",
+			websterOutcomeKeysLine,
+			"outcome: done | stuck | paused",
+			`stuck_reason: null | "<one line>"`,
+			"batches_done: <int>",
+			"{{.summary_path}}",
+			"first line `# <title>`"),
+		wantAll("the never-touch-`_lyx`, never-self-edit, never-/model and never-named-subagent statements stay in prose, so an edit that waters one down fails here",
+			"NEVER run any git command against `_lyx`",
+			"NEVER edit, create, or delete any file other than",
+			"NEVER use a `/model` switch",
+			"NEVER spawn a non-fork or named subagent"),
+		wantAll("the plan and state files are read and written as ordinary files at the told plan directory, and an audit finding is never worked around",
+			"{{.plan_dir}}` holds the plan",
+			"Read and write them all as ordinary files",
+			"You never run git against `_lyx` or the plan directory; they are committed for you.",
+			"## Audit findings: policy warns, correctness fails the batch",
+			"Still never work around an audit",
+			"never write outside your two contract files"),
+		wantNone("the policy-violation and card-not-done rungs were removed, an audit finding replaces them",
+			"## A policy violation ends your run as stuck",
+			"once a violation exists",
+			"## A card-not-done refusal ends your run as stuck",
+			`"card_not_done"`),
+		wantAll("the failed progress rung and the batch_failed and report_archived ladder rungs name the verb each one takes, so a run recovers in-session instead of ending stuck",
+			"- `failed` → webster rejected that batch's report",
+			`"batch_failed": true`,
+			`"report_archived": true`,
+			"call `lyx webster recover-batch <NN>`, then follow the recover-batch rungs",
+			"call `lyx webster begin-batch <NN>` and re-fork that batch",
+			"`lyx webster rebaseline --card NN`"),
+		wantAll("recover-batch's own batch_failed is a failed recovery, a terminal rung, never another recover-batch",
+			"- `recover-batch <NN>` refuses with `{\"batch_failed\": true}` → the recovery strand said done but webster's checks rejected its work",
+			"Do NOT call `recover-batch` for that batch again"),
+		wantAll("a finding recovery cannot check is refused toward run --fresh, so it is terminal for the run too",
+			"- `recover-batch <NN>` refuses with `{\"needs_fresh\": true}` →",
+			"comes back from `recover-batch` as `{\"needs_fresh\": true}`"),
+		wantAll("begin-batch's plan_drifted refusal ends the run as stuck, exactly as a fabric-sync failure does, and the verb is not retried",
+			websterPlanDriftSection, `"plan_drifted": true`, "do not retry the verb"),
+		inSection(websterPlanDriftSection, wantAll("record-batch and recover-batch refuse with plan_drifted too, and the operator's way forward is restore-plan",
+			"`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`",
+			"`lyx webster restore-plan`")),
+		[]claim{
+			{must: "`outcome: done`", branch: websterFailedBranch, why: "a FAILED integration report still finishes the run as outcome: done, webster triages the report after the session"},
+			{mustNot: "outcome: stuck", branch: websterFailedBranch, why: "a FAILED integration report no longer tells Master outcome: stuck"},
+		},
+		wantAll("round fable-r1, crucible: a freshly spawned Master classified the injected orchestration prompt as suspicious content, reasoned that no lyx tool was in its toolset and ended its turn asking, which killed ~40% of real spawns; the prompt states it is real, that lyx is a CLI driven through Bash, and that the session gets its bearings through the status verb",
+			"get your bearings against the real state on disk",
+			"non-interactively by `lyx webster run`",
+			"it is an ordinary CLI binary",
+			"RUNNING it with your",
+			"run `lyx webster status`",
+			"confirm the harness, the run state, and the plan are all present",
+			"there is no chat partner on the other end"),
+		wantAll("the bracket sequence, the verbatim prompt forwarding, the backgrounded-fork wait discipline and the recovery ladder are stated in prose",
+			"`begin-batch` before every fork",
+			`subagent_type: "fork"`,
+			"with no name",
+			"forwarded verbatim",
+			"you are an **IMPLEMENTER",
+			"STOP reading this Master prompt",
+			"never evidence that you are the Master",
+			"this instruction is authoritative",
+			"BACKGROUNDED agent",
+			"End your turn right after spawning it",
+			"your turn ended while the fork runs, never a polling loop",
+			"`record-batch` on the fork's completion notification",
+			"re-call `recover-batch` until terminal",
+			"Drive it STRICTLY in order",
+			"re-fork the same batch once",
+			"SAME prompt file and no new `begin-batch`",
+			`"paused": true`,
+			"OR `status: dead`",
+			"## A fabric-sync error ends your run as stuck",
+			"already has a report",
+			"consume that report",
+			"`done` → skip",
+			"`stuck` → its fork reported stuck",
+			"`dead` → its recovery already failed",
+			"On its completion notification, read `{{.integration_report_path}}` once",
+			"if the file is absent, treat it as `status: FAILED`"),
+		wantNone("Master never polls for a report: await-batch and the sleep poll are not its verbs", "lyx webster await-batch", "sleep 20"),
+		wantAll("the card-list order is the listed one rather than ascending batch number, and no batch is skipped or reordered",
+			"the order listed above, top to bottom",
+			"NOT necessarily ascending batch number",
+			`no batch is ever skipped or reordered because it "looks independent."`),
+		wantNone("the retired ordering clauses stay gone", "there is no DAG here to reorder around", "batch N assumes every batch before it is already committed"),
+		wantAll("the master template's spawn directive carries the anti-poll clause, so the integration fork writes its own report instead of continuing Master's poll loop",
+			"you do NOT poll or wait for any report file", "Your FIRST action is to Read this file"),
+		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+	)},
 	{"friction-directive-implementer.md", FrictionDirectiveImplementer, frictionOptionalClaims},
 	{"friction-directive-review-fix.md", FrictionDirectiveReviewFix, frictionOptionalClaims},
 	{"friction-directive-orchestrator.md", FrictionDirectiveOrchestrator, frictionOptionalClaims},
@@ -152,12 +319,14 @@ func focusEntryClaims() []claim {
 	}
 }
 
-// sectionOf returns the text from the line equal to heading up to the next "## " heading, and whether the heading exists.
+// sectionOf returns the text from the line equal to heading, or starting with heading and a space, up to the next "## " heading, and whether the heading exists.
+// A heading may carry a trailing clause after the part a claim names.
 func sectionOf(text, heading string) (string, bool) {
 	lines := strings.SplitAfter(text, "\n")
 	start := -1
 	for i, line := range lines {
-		if strings.TrimRight(line, "\r\n") == heading {
+		line = strings.TrimRight(line, "\r\n")
+		if line == heading || strings.HasPrefix(line, heading+" ") {
 			start = i
 			break
 		}
@@ -175,13 +344,30 @@ func sectionOf(text, heading string) (string, bool) {
 	return strings.Join(lines[start:end], ""), true
 }
 
+// branchOf returns the text from the first occurrence of start up to the next blank line, and whether start exists.
+func branchOf(text, start string) (string, bool) {
+	_, rest, ok := strings.Cut(text, start)
+	if !ok {
+		return "", false
+	}
+	branch, _, _ := strings.Cut(rest, "\n\n")
+	return start + branch, true
+}
+
 func TestStencilClaims(t *testing.T) {
 	for _, row := range wordingClaims {
 		t.Run(row.file, func(t *testing.T) {
 			text := string(row.text)
 			for _, c := range row.claims {
 				scope, where := text, "the file"
-				if c.section != "" {
+				if c.branch != "" {
+					branch, ok := branchOf(text, c.branch)
+					if !ok {
+						t.Errorf("%s has no %q branch; claim %q (%s) cannot be checked", row.file, c.branch, c.must+c.mustNot, c.why)
+						continue
+					}
+					scope, where = branch, "the "+c.branch+" branch"
+				} else if c.section != "" {
 					section, ok := sectionOf(text, c.section)
 					if !ok {
 						t.Errorf("%s has no %q section; claim %q (%s) cannot be checked", row.file, c.section, c.must+c.mustNot, c.why)
@@ -197,6 +383,20 @@ func TestStencilClaims(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBranchOf(t *testing.T) {
+	text := "intro\n- `a` → one\n  more\n\n- `b` → two\n"
+	got, ok := branchOf(text, "- `a` →")
+	if !ok || got != "- `a` → one\n  more" {
+		t.Errorf("branchOf(a) = %q, %v; want the a bullet only", got, ok)
+	}
+	if got, ok := branchOf(text, "- `b` →"); !ok || got != "- `b` → two\n" {
+		t.Errorf("branchOf(b) = %q, %v; want the b bullet to the end", got, ok)
+	}
+	if _, ok := branchOf(text, "- `c` →"); ok {
+		t.Error("branchOf(c) found a bullet the text lacks")
 	}
 }
 
