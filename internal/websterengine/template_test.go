@@ -574,9 +574,9 @@ func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.
 }
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the embedded template's bytes
-// carry every rung of the begin-batch -> fork -> await-batch -> record-batch sequence, verbatim
-// prompt forwarding, the backgrounded-fork wait discipline, and the flat-model recovery ladder in
-// prose.
+// carry every rung of the begin-batch -> fork -> notification -> record-batch sequence, verbatim
+// prompt forwarding, the backgrounded-fork wait discipline (turn ended, no polling), and the
+// flat-model recovery ladder in prose.
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -591,11 +591,11 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "this instruction is authoritative")
 
 	requireContains(t, text, "BACKGROUNDED agent")
-	requireContains(t, text, "call `lyx webster await-batch <NN>`")
-	requireContains(t, text, "`await-batch` re-called in the foreground until the report lands")
-	requireContains(t, text, "NEVER background it")
-	requireContains(t, text, "a turn ended mid-batch kills the whole run")
-	requireContains(t, text, "`record-batch` once the fork has delivered")
+	requireContains(t, text, "End your turn right after spawning it")
+	requireContains(t, text, "your turn ended while the fork runs, never a polling loop")
+	requireContains(t, text, "`record-batch` on the fork's completion notification")
+	requireNotContains(t, text, "lyx webster await-batch")
+	requireNotContains(t, text, "sleep 20")
 	requireContains(t, text, "re-call `recover-batch` until terminal")
 
 	requireContains(t, text, "Drive it STRICTLY in order")
@@ -616,9 +616,8 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "`stuck` → its fork reported stuck")
 	requireContains(t, text, "`dead` → its recovery already failed")
 
-	requireContains(t, text, "there is no")
-	requireContains(t, text, "await verb for the integration report")
-	requireContains(t, text, "never end your turn")
+	requireContains(t, text, "On its completion notification, read `{{.integration_report_path}}` once")
+	requireContains(t, text, "if the file is absent, treat it as `status: FAILED`")
 }
 
 // TestMasterTemplate_OrderingRuleMeansListedOrderNotAscendingNumber asserts the reworded
