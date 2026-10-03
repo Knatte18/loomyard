@@ -414,6 +414,24 @@ func TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce(t *testing.T
 	}
 }
 
+// TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce asserts a pending title whose retry fails and that the same pass detects again is sent to the filer once,
+// and stays in the pending list once and out of the recorded titles.
+func TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce(t *testing.T) {
+	f := newSelfreportTestFixture(t)
+	title, _ := pendHaltTitle(t, f)
+
+	f.fileErr = errors.New("still down")
+	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
+
+	if len(f.filed) != 1 || f.filed[0].title != title {
+		t.Fatalf("filed calls = %+v; want exactly one for %q", f.filed, title)
+	}
+	marker := readFiledMarker(f.markerPath, f.markerLockPath)
+	if marker.has(title) || len(marker.Pending) != 1 || marker.Pending[0].Title != title {
+		t.Errorf("marker = %+v; want %q pending once and unrecorded", marker, title)
+	}
+}
+
 // TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending asserts a missing status file, an
 // unreadable one and an undecodable product each still retry the pending entries.
 func TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending(t *testing.T) {
