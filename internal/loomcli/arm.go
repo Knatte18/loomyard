@@ -143,11 +143,7 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 // touched the filesystem at all -- so a refusing run/step writes nothing to disk. cwd is derived as
 // location.AnchorPath() for wireLightweight/wire's own cwd parameter, since cwd is provably equal to
 // AnchorPath() after a successful resolve (see lyxcwd.Location's own doc comment).
-//
-// It records verb on c.armedVerb first, before any refusal, so reflectFrictionRow can tell at call
-// time whether this invocation was armed for "run".
 func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
-	c.armedVerb = verb
 	if err := c.resolveRunID(location, verb, args); err != nil {
 		return shedverbs.Spec{}, err
 	}

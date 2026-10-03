@@ -80,7 +80,7 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 	defer func() { _ = reflectionLock.Release() }()
 
 	report, err := frictionengine.Reflect(frictionengine.Deps{
-		Shuttle:       c.runner,
+		Shuttle:       c.reflectionShuttle,
 		FrictionDir:   c.frictionDir,
 		ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
 		StencilsDir:   c.runDeps.Geom.StencilsDir,
@@ -96,12 +96,15 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 }
 
 // reflectFrictionRow is the shedrecipe.Env.ReflectFriction closure wire installs. Its status is
-// frictionengine.StatusSkipped unless Tier 2 is on and this invocation was armed for "run", in which
-// case it is reflectFriction(true); it records the status on c.rowFrictionStatus and returns it.
-// Under step ("lyx loom step", "lyx shed step --recipe loom") it never reflects, so the notes stay in _lyx/loom/friction/ for ly-drive's operator-gated filing, because the reflection agent files public issues itself.
+// frictionengine.StatusSkipped unless Tier 2 is on, in which case it is reflectFriction(true); it
+// records the status on c.rowFrictionStatus and returns it.
+// It reflects under step ("lyx loom step", "lyx shed step --recipe loom") as under run, since every
+// driven run uses step.
+// The reflection agent files public issues during the step with no operator in the loop; the step
+// blocks for at most friction_timeout_min.
 func (c *loomCLI) reflectFrictionRow() string {
 	status := frictionengine.StatusSkipped
-	if c.frictionDir != "" && c.armedVerb == "run" {
+	if c.frictionDir != "" {
 		status = c.reflectFriction(true)
 	}
 	c.rowFrictionStatus = status

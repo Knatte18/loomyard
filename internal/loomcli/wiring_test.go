@@ -675,23 +675,6 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// TestArmAt_RecordsTheArmingVerb asserts armAt records the verb it was called with, which
-// reflectFrictionRow reads at call time. "start" is not a generic shed verb, so resolveRunID does not
-// demand a seed.
-func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{}
-	if _, err := c.armAt(loc, "start", nil); err != nil {
-		t.Fatalf("armAt(start) = %v; want nil", err)
-	}
-	if c.armedVerb != "start" {
-		t.Errorf("c.armedVerb = %q; want %q", c.armedVerb, "start")
-	}
-}
-
 // TestWire_BouncerSlugAndSegmentBounces asserts the wired Env carries the worktree's slug, and that its SegmentBounces reads the status file on each call:
 // a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
 func TestWire_BouncerSlugAndSegmentBounces(t *testing.T) {
