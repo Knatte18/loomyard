@@ -1,7 +1,4 @@
-// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones
-// that run in every plain `go test`, without `-tags integration`/`smoke`) perform no
-// expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit
-// export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
+// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`/`smoke`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
 // See CONSTRAINTS.md's Test Tier Purity Invariant.
@@ -50,9 +47,8 @@ var allowedSpawners = map[string]string{
 var knownTierTags = []string{"integration", "smoke"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
-// Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
-// matches exec.CommandContext. A gitkit spawn is not a token here: gitkitSpawnReference
-// (cmd/lyx/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
+// Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
+// A gitkit spawn is not a token here: gitkitSpawnReference (cmd/lyx/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
 // Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
 // hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so an

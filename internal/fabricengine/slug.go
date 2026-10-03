@@ -24,8 +24,7 @@ import (
 // The refusal's own text still carries the specific reason.
 var ErrInvalidSlug = errors.New("invalid slug")
 
-// invalidSlug builds a validateWorktreeSlug refusal that renders the formatted reason and matches
-// ErrInvalidSlug.
+// invalidSlug builds a validateWorktreeSlug refusal that renders the formatted reason and matches ErrInvalidSlug.
 func invalidSlug(format string, args ...any) error {
 	return &sentinelError{sentinel: ErrInvalidSlug, msg: fmt.Sprintf(format, args...)}
 }

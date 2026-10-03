@@ -44,8 +44,7 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 	}
 }
 
-// Git runs `git <args>` in dir and returns its trimmed stdout, calling tb.Fatalf on a spawn error or
-// non-zero exit.
+// Git runs `git <args>` in dir and returns its trimmed stdout, calling tb.Fatalf on a spawn error or non-zero exit.
 // It is the one spawning primitive behind the query helpers in query.go, which stay spawn-free.
 func Git(tb testing.TB, dir string, args ...string) string {
 	tb.Helper()

@@ -8,9 +8,8 @@
 // already protects a mid-merge pair, PushWeft and every read-only verb stay unaffected, and every
 // guarded verb works again once MergeAbort clears the record.
 //
-// Package fabricengine_test, reusing newMergePairFixture and its sibling helpers (commitOnBranch,
-// setupConflictingDivergence, branchAtCurrentHEAD) from mergein_integration_test.go; shares the
-// single TestMain in testmain_test.go.
+// Package fabricengine_test, reusing newMergePairFixture and its sibling helpers (commitOnBranch, setupConflictingDivergence, branchAtCurrentHEAD) from mergein_integration_test.go;
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 

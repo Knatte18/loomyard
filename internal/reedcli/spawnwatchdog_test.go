@@ -1,8 +1,6 @@
-// spawnwatchdog_test.go pins that ensureWatchdogSpawned reaches the reedengine seam and that a
-// call under a test binary re-execs nothing — spawning no subprocess and driving no live tmux at
-// all, per the Test Tier Purity Invariant. SpawnWatchdog's own no-spawn-early-return mechanism is
-// pinned in internal/reedengine/spawnwatchdog_test.go, not re-tested here; the daemon's live
-// spawn/lock behaviour is card 41's integration suite.
+// spawnwatchdog_test.go pins that ensureWatchdogSpawned reaches the reedengine seam and that a call under a test binary re-execs nothing — spawning no subprocess and driving no live tmux at all, per the Test Tier Purity Invariant.
+// SpawnWatchdog's own no-spawn-early-return mechanism is pinned in internal/reedengine/spawnwatchdog_test.go, not re-tested here;
+// the daemon's live spawn/lock behaviour is card 41's integration suite.
 
 package reedcli
 

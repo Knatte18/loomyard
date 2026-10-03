@@ -1,16 +1,8 @@
 //go:build integration
 
-// recoverbatch_test.go exercises RecoverBatch end to end (Tier 2 — see
-// docs/benchmarks/running-tests.md): a real scratch git repo backs
-// WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real
-// *shuttleengine.Runner wired over the shuttlefake Reed/Engine
-// is the Starter, webster's own
-// established fake-starter approach, and a fake Clock replays the whole
-// bounded-wait sequence with no real sleeps, webster's own fakeClock. The
-// re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-
-// calls) is this file's test centre, per the batch's own "Batch Tests"
-// note. This package's testmain_test.go already wires
-// gitkit.HermeticGitEnv() for the whole test binary.
+// recoverbatch_test.go exercises RecoverBatch end to end (Tier 2 — see docs/benchmarks/running-tests.md): a real scratch git repo backs WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real *shuttleengine.Runner wired over the shuttlefake Reed/Engine is the Starter, webster's own established fake-starter approach, and a fake Clock replays the whole bounded-wait sequence with no real sleeps, webster's own fakeClock.
+// The re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-calls) is this file's test centre, per the batch's own "Batch Tests" note.
+// This package's testmain_test.go already wires gitkit.HermeticGitEnv() for the whole test binary.
 
 package websterengine_test
 
@@ -957,11 +949,7 @@ func TestRecoverSpawn_RecordsCardSet(t *testing.T) {
 	}
 }
 
-// erroringStarter is a websterengine.Starter double whose Start always fails wrapping
-// shuttleengine.ErrNotStarted — the not-ready-start error shuttle now returns from Start itself
-// (per the shuttle-start-guarantees-readiness discussion), which recoverFixture's real
-// *shuttleengine.Runner over shuttlefake.Engine/shuttlefake.Reed never reaches on its own, since
-// shuttlefake.Engine.Startup reports StartupReady by default.
+// erroringStarter is a websterengine.Starter double whose Start always fails wrapping shuttleengine.ErrNotStarted — the not-ready-start error shuttle now returns from Start itself (per the shuttle-start-guarantees-readiness discussion), which recoverFixture's real *shuttleengine.Runner over shuttlefake.Engine/shuttlefake.Reed never reaches on its own, since shuttlefake.Engine.Startup reports StartupReady by default.
 type erroringStarter struct{}
 
 func (erroringStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, error) {

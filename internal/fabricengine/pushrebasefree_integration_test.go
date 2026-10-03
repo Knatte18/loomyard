@@ -4,8 +4,8 @@
 // bare origin: a commit ahead of its upstream pushes successfully and the returned record reports
 // the branch push; SkipGit and SkipPush each return an empty result with a nil error and push
 // nothing; and no untracked push-lock file is left behind — the residue property this function exists
-// to guarantee. Reuses coalesce_integration_test.go's addWarpBareRemote fixture
-// helper and gitsha_integration_test.go's BareBranchSHAForTest/CurrentSHAForTest re-exports.
+// to guarantee.
+// Reuses coalesce_integration_test.go's addWarpBareRemote fixture helper and gitsha_integration_test.go's BareBranchSHAForTest/CurrentSHAForTest re-exports.
 
 package fabricengine_test
 

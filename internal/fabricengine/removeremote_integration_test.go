@@ -5,8 +5,7 @@
 // non-fatal remote-failure partial-teardown guarantee, and the once-per-verb no-origin pre-check
 // shared with Cleanup.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant,
-// using the hub's own WeftBare field as the weft remote to assert against.
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against.
 // mustBreakOrigin/mustRemoveOrigin are shared with cleanupremote_integration_test.go
 // and reconcile_stale_registration_test.go — every assertion here goes through exported API.
 //

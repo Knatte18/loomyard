@@ -64,9 +64,7 @@ const (
 	oneAttachListPane   = "%1 0 0 40 20 4321\n"
 )
 
-// goodAttachLive and goodAttachStrands are the pure-Go mirrors of goodAttachListPanes and the state
-// this file's tests persist via SaveState, used to independently compute the expected planLayout
-// output for comparison, rather than re-deriving it from the same code path under test.
+// goodAttachLive and goodAttachStrands are the pure-Go mirrors of goodAttachListPanes and the state this file's tests persist via SaveState, used to independently compute the expected planLayout output for comparison, rather than re-deriving it from the same code path under test.
 func goodAttachLive() []LivePane {
 	return []LivePane{
 		{ID: "%1", Dead: false, Top: 0, Width: 40, Height: 20, PID: 4321},
@@ -80,10 +78,8 @@ func goodAttachStrands() []Strand {
 	}
 }
 
-// newAttachTestEngine builds a fixture engine with strands persisted to disk (loadOrInitStateLocked
-// reads reed.json from disk, not from an in-memory struct) and a fakeTmux answering every round trip
-// AttachArgv's pre-flight can issue with the fully-permissive script each degraded-path test starts
-// from and re-scripts exactly one answer of, so each test isolates the single guard it exists to pin.
+// newAttachTestEngine builds a fixture engine with strands persisted to disk (loadOrInitStateLocked reads reed.json from disk, not from an in-memory struct) and a fakeTmux answering every round trip AttachArgv's pre-flight can issue with the fully-permissive script each degraded-path test starts from and re-scripts exactly one answer of,
+// so each test isolates the single guard it exists to pin.
 func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
@@ -91,9 +87,8 @@ func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 		t.Fatalf("SaveState: %v", err)
 	}
 	fake := installFakeTmux(t, e)
-	// The pane-generation probe (loadOrInitStateLocked -> adoptPaneGenerationLocked) spends its own
-	// three-field format on display-message. Answering it well-formed keeps this hermetic fixture from
-	// spuriously clearing pane bindings via the probe's fail-open path.
+	// The pane-generation probe (loadOrInitStateLocked -> adoptPaneGenerationLocked) spends its own three-field format on display-message.
+	// Answering it well-formed keeps this hermetic fixture from spuriously clearing pane bindings via the probe's fail-open path.
 	fake.answer("display-message", "$0|4321|1700000000", nil)
 	fake.answerFormat("#{window-size}", "latest", nil)
 	fake.answerFormat("#{status}", "off", nil)

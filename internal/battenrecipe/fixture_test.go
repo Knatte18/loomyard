@@ -1,6 +1,4 @@
-// fixture_test.go implements testEnv, the package-internal test scaffolding every later test file
-// in this package reuses: the shared full Env from envkit and a shedbuild.ShedPaths whose paths
-// sit beside the Env's own status file.
+// fixture_test.go implements testEnv, the package-internal test scaffolding every later test file in this package reuses: the shared full Env from envkit and a shedbuild.ShedPaths whose paths sit beside the Env's own status file.
 
 package battenrecipe
 

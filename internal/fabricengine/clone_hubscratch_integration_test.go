@@ -1,7 +1,6 @@
 //go:build integration
 
-// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at
-// <hub>/_board/.lyx, which needs real git repositories.
+// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at <hub>/_board/.lyx, which needs real git repositories.
 
 package fabricengine
 

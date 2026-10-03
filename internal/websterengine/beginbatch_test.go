@@ -187,8 +187,8 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
 		Roles:   roles,
 		Config:  websterengine.Config{SelfFixCap: 2},
-		// ModelSwitchSequence answers a marker input naming the model, so a test can read the
-		// target model back out of the Injector's recorded inputs.
+		// ModelSwitchSequence answers a marker input naming the model,
+		// so a test can read the target model back out of the Injector's recorded inputs.
 		Engine: &shuttlefake.Engine{ModelSwitchSequenceFn: func(model string) []shuttleengine.PaneInput {
 			return []shuttleengine.PaneInput{{Text: "/model " + model, Submit: true}}
 		}},

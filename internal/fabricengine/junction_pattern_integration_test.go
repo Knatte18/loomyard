@@ -53,8 +53,7 @@ func resetWarpJunction(t *testing.T, l *lyxcwd.Location, slug, name string) stri
 // decide which optional junction it expects wired, so any test that wires "_extra" explicitly via
 // WireJunctions must also point RepoWiredNames at "_extra" for that production code to agree with
 // what is actually on disk.
-// A case seeds it via hubforge.SeedFabricConfig, or via seedRepoWideExtraFabricConfig below, which
-// takes a bare hub path rather than a *hubforge.Hub.
+// A case seeds it via hubforge.SeedFabricConfig, or via seedRepoWideExtraFabricConfig below, which takes a bare hub path rather than a *hubforge.Hub.
 const extraFabricConfigYAML = "branch_prefix: \"\"\npathspec: _extra\n"
 
 // seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)

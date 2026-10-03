@@ -116,10 +116,7 @@ func (e *gateRepromptReadEngine) ParseEvents(data []byte) ([]shuttleengine.Event
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
 }
 
-// ComposeSend types text into the pane and submits it with an Enter, which is what unblocks the
-// script's own `read` -- the one method this stub gives real behaviour besides Prepare and
-// ParseEvents, unlike shellLaunchEngine's own inert ComposeSend, which this suite's
-// send-verification path never needs to reach.
+// ComposeSend types text into the pane and submits it with an Enter, which is what unblocks the script's own `read` -- the one method this stub gives real behaviour besides Prepare and ParseEvents, unlike shellLaunchEngine's own inert ComposeSend, which this suite's send-verification path never needs to reach.
 func (e *gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
 }

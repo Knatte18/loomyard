@@ -13,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 the fixture stamps
-// every stencil file with, via stencilstore.ApplyStamp.
+// bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 the fixture stamps every stencil file with, via stencilstore.ApplyStamp.
 const bouncerFixtureStampHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 const (
@@ -24,8 +23,7 @@ const (
 	bouncerFixtureSpecsRubric = "# Rubric\n\nCite {{.specs_dir}}.\n\nBe thorough and cite evidence.\n"
 )
 
-// bouncerFixture is a BouncerConfig over a fresh run dir and a stencils directory, with Build
-// constructing the *Bouncer on request.
+// bouncerFixture is a BouncerConfig over a fresh run dir and a stencils directory, with Build constructing the *Bouncer on request.
 type bouncerFixture struct {
 	t           *testing.T
 	Config      BouncerConfig
@@ -79,14 +77,13 @@ func withClock(now func() time.Time) bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.clock = now }
 }
 
-// withNestedRunDir puts RunDir in a subdirectory of the temp dir and the artifact beside it, so an
-// archived sibling of RunDir lands inside the temp tree.
+// withNestedRunDir puts RunDir in a subdirectory of the temp dir and the artifact beside it,
+// so an archived sibling of RunDir lands inside the temp tree.
 func withNestedRunDir() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.nestedRun = true }
 }
 
-// withBareConfig leaves Model, Effort, Version and Now unset, seeds the rubric stencil alone, and
-// defaults the shuttle to an empty shedfake.Shuttle.
+// withBareConfig leaves Model, Effort, Version and Now unset, seeds the rubric stencil alone, and defaults the shuttle to an empty shedfake.Shuttle.
 func withBareConfig() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.bare = true }
 }
@@ -162,11 +159,9 @@ func (fx *bouncerFixture) Build() (*Bouncer, BouncerConfig) {
 	return b, fx.Config
 }
 
-// writeBouncerStencils writes each named stencil at <dir>/bouncer/<name>.md, matching
-// stencilstore.RelPath's family-from-first-token derivation.
-// ApplyStamp merges into an existing leading comment rather than nesting a second one, so a body
-// already carrying its own leading comment still ends up with exactly one banner for stencil.Fill's
-// leading-comment strip to remove.
+// writeBouncerStencils writes each named stencil at <dir>/bouncer/<name>.md, matching stencilstore.RelPath's family-from-first-token derivation.
+// ApplyStamp merges into an existing leading comment rather than nesting a second one,
+// so a body already carrying its own leading comment still ends up with exactly one banner for stencil.Fill's leading-comment strip to remove.
 func writeBouncerStencils(t *testing.T, files map[string]string) string {
 	t.Helper()
 
@@ -210,10 +205,8 @@ func withBurlerClock(now func() time.Time) burlerProducerOpt {
 	return func(s *burlerProducerSpec) { s.now = now }
 }
 
-// newBurlerProducer builds a BurlerProducer over runDir with runner, failing the test on
-// constructor error.
-// The attach seam defaults to a shedfake.Shuttle finding nothing live, the ordinary no-live-round
-// condition.
+// newBurlerProducer builds a BurlerProducer over runDir with runner, failing the test on constructor error.
+// The attach seam defaults to a shedfake.Shuttle finding nothing live, the ordinary no-live-round condition.
 func newBurlerProducer(t *testing.T, runDir string, runner *shedfake.BurlerRunner, opts ...burlerProducerOpt) *BurlerProducer {
 	t.Helper()
 

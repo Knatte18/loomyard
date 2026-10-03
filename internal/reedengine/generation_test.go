@@ -125,8 +125,7 @@ func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
 // error, which is exactly what a failed round trip produces.
 const unprobeableSession = ""
 
-// answerGenerations scripts list-sessions with the session names in answersBySessionName and
-// display-message with each session's own generation answer.
+// answerGenerations scripts list-sessions with the session names in answersBySessionName and display-message with each session's own generation answer.
 // A session absent from the map is absent from both answers, which is how a recorded session that no
 // longer exists is expressed; a session mapped to unprobeableSession is listed but does not answer.
 func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {

@@ -488,9 +488,7 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare
-// weft carrying no recorded binding, and requires the envelope's error to equal the engine's own
-// refusal text exactly.
+// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft carrying no recorded binding, and requires the envelope's error to equal the engine's own refusal text exactly.
 // The refusal's wording is owned by fabricengine's TestCloneHub_UnboundWeftNamesTwoArgForm.
 func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	fixtures := t.TempDir()

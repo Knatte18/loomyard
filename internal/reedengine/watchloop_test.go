@@ -345,10 +345,7 @@ func watchdogTestTiming() watchTiming {
 	}
 }
 
-// newWatchLoopTestEngine builds an Engine and a persisted ReedState the way reapply_test.go's
-// newReapplyTestEngine does — one strand bound to "%1", live panes "%1" and "%2" — wired to a
-// fakeTmux the test goroutine may re-script mid-run while watchLoop runs in its own, and with
-// cfg.Watchdog set to watchdog.
+// newWatchLoopTestEngine builds an Engine and a persisted ReedState the way reapply_test.go's newReapplyTestEngine does — one strand bound to "%1", live panes "%1" and "%2" — wired to a fakeTmux the test goroutine may re-script mid-run while watchLoop runs in its own, and with cfg.Watchdog set to watchdog.
 func newWatchLoopTestEngine(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
@@ -495,10 +492,7 @@ func TestWatchLoop_PollModeByDefault(t *testing.T) {
 	}
 }
 
-// waitForPromotion runs the loop already promoted to signal mode against fake's current
-// show-options answer (which must already report reed's own command), by waiting for the list-panes call
-// count to stop growing across two consecutive observation windows — the observable proxy for "no
-// more per-cycle reapplyLayout calls", since promotion is otherwise an internal mode flag.
+// waitForPromotion runs the loop already promoted to signal mode against fake's current show-options answer (which must already report reed's own command), by waiting for the list-panes call count to stop growing across two consecutive observation windows — the observable proxy for "no more per-cycle reapplyLayout calls", since promotion is otherwise an internal mode flag.
 func waitForPromotion(t *testing.T, fake *fakeTmux) int {
 	t.Helper()
 	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 1 }) {

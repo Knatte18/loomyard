@@ -153,8 +153,8 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "RubricUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				// The constructor needs a readable rubric; deleting it before Call makes the seed
-				// spawn, not construction, fail.
+				// The constructor needs a readable rubric;
+				// deleting it before Call makes the seed spawn, not construction, fail.
 				b, cfg := newBouncerFixture(t,
 					withBareConfig(),
 					withStencils(map[string]string{

@@ -191,11 +191,9 @@ func TestWatchdogSelfHeal_ShrinksBackToPlannedLayout(t *testing.T) {
 // debounce coalesces the watcher's OWN re-applies — so counting distinct sampled layouts conflates
 // tmux's native per-resize retiling with the watcher's corrective applies and can never demonstrate
 // coalescing either way.
-// What the debounce actually promises is bounded on the watcher's own select-layout calls, so this
-// counts those directly: real is a plain TmuxCmd bound to the same binary and socket with no execHook
-// of its own, and the fakeTmux installed on e.tmux forwards every call through it — so every tmux
-// round trip still hits the live server exactly as before, with select-layout invocations tallied on
-// the way past.
+// What the debounce actually promises is bounded on the watcher's own select-layout calls,
+// so this counts those directly: real is a plain TmuxCmd bound to the same binary and socket with no execHook of its own,
+// and the fakeTmux installed on e.tmux forwards every call through it — so every tmux round trip still hits the live server exactly as before, with select-layout invocations tallied on the way past.
 func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 	timing := fastWatchTiming()
 	fx := bootWatchdogFixture(t, 100, 30)

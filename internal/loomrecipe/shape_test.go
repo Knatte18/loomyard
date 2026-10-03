@@ -69,8 +69,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
 }
 
-// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are
-// absolute paths under one t.TempDir().
+// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are absolute paths under one t.TempDir().
 // It seeds the bouncer stencils and swaps in the webster run fake, the non-writing loom shuttle and the loom burler, so the discussion and plan paths this builder points at stay absent on disk.
 // ApprovePlan stays FullEnv's non-nil no-op: this file's subject is the constructed producer table and its routing graph, never a driven run, so nothing here reads the plan's approval flag.
 func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {

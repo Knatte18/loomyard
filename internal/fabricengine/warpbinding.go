@@ -14,12 +14,10 @@ import (
 	"strings"
 )
 
-// ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when
-// none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
+// ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
 var ErrNoWarpBinding = errors.New("no recorded warp binding")
 
-// ErrWarpBindingMismatch matches, under errors.Is, resolveEffectiveWarpURL's refusal to re-point a
-// recorded binding at a different warp URL.
+// ErrWarpBindingMismatch matches, under errors.Is, resolveEffectiveWarpURL's refusal to re-point a recorded binding at a different warp URL.
 var ErrWarpBindingMismatch = errors.New("warp binding mismatch")
 
 // WarpBindingFileName is the filename of the recorded warp-URL binding at the board root

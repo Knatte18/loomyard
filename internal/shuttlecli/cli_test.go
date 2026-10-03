@@ -215,17 +215,14 @@ func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
 	}
 }
 
-// errSpecCaptured is the sentinel the spec-capturing engine's Prepare returns, so the test can tell
-// "Prepare ran and recorded the spec" apart from any other failure mode.
+// errSpecCaptured is the sentinel the spec-capturing engine's Prepare returns,
+// so the test can tell "Prepare ran and recorded the spec" apart from any other failure mode.
 var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
 
 // startupPending answers every capture as a pane that never becomes ready.
 func startupPending(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
 
-// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how
-// --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed
-// fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was
-// actually called with, without a live tmux/claude session.
+// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
 // Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
 func TestRunCmd_EffortFlag(t *testing.T) {
 	tests := []struct {
@@ -315,8 +312,8 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Dir(anchorPath)
-	// The engine Prepares successfully and never becomes ready, so the Runner surfaces the mechanism
-	// failure from inside its startup step.
+	// The engine Prepares successfully and never becomes ready,
+	// so the Runner surfaces the mechanism failure from inside its startup step.
 	// The reed registers a strand, then fails every Status the way a torn-down reed session does.
 	engine := &shuttlefake.Engine{
 		PrepareLaunch: &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},

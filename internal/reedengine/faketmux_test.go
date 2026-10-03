@@ -1,5 +1,5 @@
-// faketmux_test.go is the one scripted tmux fake the reedengine tests install on an engine's
-// TmuxCmd.execHook, so no test hand-writes its own recording closure.
+// faketmux_test.go is the one scripted tmux fake the reedengine tests install on an engine's TmuxCmd.execHook,
+// so no test hand-writes its own recording closure.
 
 package reedengine
 
@@ -54,18 +54,17 @@ func installFakeTmuxOn(t *testing.T, cmd *TmuxCmd) *fakeTmux {
 	return f
 }
 
-// forwardTo sends every call no script answers to a real TmuxCmd, so an integration test still hits
-// its live server while the fake logs the calls on the way past.
+// forwardTo sends every call no script answers to a real TmuxCmd,
+// so an integration test still hits its live server while the fake logs the calls on the way past.
 func (f *fakeTmux) forwardTo(real TmuxCmd) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.real = &real
 }
 
-// answerFunc scripts verb's answer as a function of the call's argv, for an answer that depends on
-// the target or on a side effect between calls.
-// It takes precedence over answer and answerFormat, and runs outside the fake's lock, so it may
-// call the fake's own readers.
+// answerFunc scripts verb's answer as a function of the call's argv, for an answer that depends on the target or on a side effect between calls.
+// It takes precedence over answer and answerFormat, and runs outside the fake's lock,
+// so it may call the fake's own readers.
 func (f *fakeTmux) answerFunc(verb string, fn func(args []string) (string, error)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -87,8 +86,7 @@ func (f *fakeTmux) answerFormat(format, out string, err error) {
 	f.formats[format] = tmuxAnswer{out, err}
 }
 
-// answerSession scripts the answers a session with live panes gives: list-panes, the generation
-// probe and the live window-size query.
+// answerSession scripts the answers a session with live panes gives: list-panes, the generation probe and the live window-size query.
 func (f *fakeTmux) answerSession(live []LivePane, box string, boxErr error) {
 	f.answer("list-panes", encodeLivePanes(live), nil)
 	f.answerFormat(paneGenerationFormat, "$0|1|1000", nil)

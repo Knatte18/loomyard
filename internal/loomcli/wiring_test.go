@@ -467,10 +467,7 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 }
 
-// TestWire_ReviewSegmentPathsAndClock asserts the Env fields both review segments read -- shared by
-// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and
-// RunRoot against their own loomengine/fabricengine accessor rather than a re-derived literal,
-// and Now non-nil, which envkit.NilSeams skips as a documented default.
+// TestWire_ReviewSegmentPathsAndClock asserts the Env fields both review segments read -- shared by Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and RunRoot against their own loomengine/fabricengine accessor rather than a re-derived literal, and Now non-nil, which envkit.NilSeams skips as a documented default.
 func TestWire_ReviewSegmentPathsAndClock(t *testing.T) {
 	t.Parallel()
 

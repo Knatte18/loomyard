@@ -425,9 +425,8 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	// The found answer is scoped to the discussion role: this one shuttle serves every row the run
-	// drives through it, and an unscoped found answer would also intercept every other row's own
-	// Attach probe and skip its Run, starving it of the output files only Run writes.
+	// The found answer is scoped to the discussion role: this one shuttle serves every row the run drives through it,
+	// and an unscoped found answer would also intercept every other row's own Attach probe and skip its Run, starving it of the output files only Run writes.
 	loomShuttle := env.Shuttle.(*shedfake.Shuttle)
 	loomShuttle.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 	loomShuttle.DuringAttach = func() {

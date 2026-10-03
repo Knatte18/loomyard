@@ -390,8 +390,7 @@ func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) 
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
 	// Every other verb (send-keys, kill-pane) is only reached if the guard is (wrongly) bypassed;
-	// the fake answers it empty so the missing-guard regression returns nil and this test's error
-	// assertion catches it.
+	// the fake answers it empty so the missing-guard regression returns nil and this test's error assertion catches it.
 	fake := installFakeTmux(t, e)
 	fake.answer("list-panes", listPanesOut, nil)
 	// psmux silent failure: exit 0, no new pane, an EXISTING pane's id

@@ -3,8 +3,8 @@
 package fabricengine
 
 // sentinelError renders msg byte-for-byte as Error() while matching its sentinel under errors.Is.
-// A refusal carries its own operator-facing text, so the sentinel cannot be wrapped on with %w
-// without changing that text.
+// A refusal carries its own operator-facing text,
+// so the sentinel cannot be wrapped on with %w without changing that text.
 type sentinelError struct {
 	sentinel error
 	msg      string

@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// planCollapsedRows and planMinFullRows are the layout parameters the planLayout tests pin on the
-// engine and hand render.Rules as the expectation, so the two sides cannot drift apart silently.
+// planCollapsedRows and planMinFullRows are the layout parameters the planLayout tests pin on the engine and hand render.Rules as the expectation,
+// so the two sides cannot drift apart silently.
 const (
 	planCollapsedRows = 2
 	planMinFullRows   = 3

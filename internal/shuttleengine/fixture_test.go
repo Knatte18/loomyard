@@ -61,8 +61,8 @@ func withClock(clk clock) fixtureOpt {
 	return func(s *fixtureSettings) { s.clk = clk }
 }
 
-// withStrand seeds run-1 under the run-dir root with guid as its strand and an events path inside it,
-// so FindRun can resolve guid: Runner.Inject and ReadEvents, unlike (*Run).Interrupt/Send, have no in-process Run handle to draw StrandGUID from.
+// withStrand seeds run-1 under the run-dir root with guid as its strand and an events path inside it, so FindRun can resolve guid:
+// Runner.Inject and ReadEvents, unlike (*Run).Interrupt/Send, have no in-process Run handle to draw StrandGUID from.
 func withStrand(guid string) fixtureOpt {
 	return func(s *fixtureSettings) { s.guid = guid }
 }

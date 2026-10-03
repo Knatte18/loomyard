@@ -5,9 +5,7 @@
 // rewrites system-file content, diverges independently, or evolves the same _lyx/ path from a shared
 // base can no longer produce a merge conflict, a self-abort, or a moved weft HEAD — only a genuine
 // warp-side conflict still reaches unifyConflictPaths.
-// Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture,
-// advanceRemoteBranch, openFreshFabric and fabricengine.CurrentSHAForTest from the
-// package's existing test files rather than adding new fixture helpers.
+// Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture, advanceRemoteBranch, openFreshFabric and fabricengine.CurrentSHAForTest from the package's existing test files rather than adding new fixture helpers.
 
 package fabricengine_test
 

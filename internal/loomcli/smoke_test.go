@@ -77,8 +77,8 @@ func tmuxBinaryPath(t *testing.T) string {
 // smokeLyxBuild caches the one cmd/lyx binary this whole test binary needs, built exactly once
 // regardless of how many tests call sharedLyxBinary -- mirroring hubforge's own bareTemplateOnce
 // pattern for an equally expensive one-time build.
-// lyxbin.Build would delete the binary when the first test ends, so the cache builds into a
-// directory of its own.
+// lyxbin.Build would delete the binary when the first test ends,
+// so the cache builds into a directory of its own.
 var (
 	smokeLyxBuildOnce sync.Once
 	smokeLyxBuildPath string

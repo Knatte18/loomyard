@@ -6,14 +6,11 @@
 // remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
 // remote -- plus RemovePairBranch, which deletes through the same gated helpers.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant,
-// using the hub's own WeftBare field as the weft remote to assert against — this
-// hub's private copy of the weft bare remote, so a test can push an orphan branch to it and then
-// assert the ref is gone.
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
+// so a test can push an orphan branch to it and then assert the ref is gone.
 //
-// Package fabricengine_test to reuse
-// mustWeftRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go)
-// — every assertion here goes through exported API; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse mustWeftRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go) — every assertion here goes through exported API;
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 

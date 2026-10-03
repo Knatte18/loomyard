@@ -45,11 +45,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-// shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a
-// provider session. Prepare and ParseEvents carry behaviour; every other method is the embedded
-// shuttlefake.Engine's inert answer, because the attach path this suite exercises -- Start's run.json
-// persistence, reed's liveness answer, and Wait's events-plus-output-files poll -- never reaches any
-// of them.
+// shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a provider session.
+// Prepare and ParseEvents carry behaviour;
+// every other method is the embedded shuttlefake.Engine's inert answer, because the attach path this suite exercises -- Start's run.json persistence, reed's liveness answer, and Wait's events-plus-output-files poll -- never reaches any of them.
 // It is used through a pointer, since the embedded fake holds a mutex.
 //
 // The script it writes reproduces a real run's completion shape in the order shuttle's Wait requires

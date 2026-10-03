@@ -96,8 +96,7 @@ func ExcludeLines(tb testing.TB, dir string) []string {
 	return nonBlankLines(string(data))
 }
 
-// CommitFile writes rel under dir with content, stages it alone, commits it with msg and returns
-// the new HEAD SHA.
+// CommitFile writes rel under dir with content, stages it alone, commits it with msg and returns the new HEAD SHA.
 // Parent directories of rel are created.
 func CommitFile(tb testing.TB, dir, rel, content, msg string) string {
 	tb.Helper()

@@ -459,11 +459,8 @@ func layoutBouncerRound1Report(t *testing.T, env Env) {
 	}
 }
 
-// judgeSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's APPROVED verdict and
-// ledger to the spec's declared OutputFiles and reports shuttleengine.OutcomeDone, so a
-// bouncerEntry-built producer's judge call harvests and settles within the same Call that produced
-// them -- the harvest vehicle this file's commit-seam subtests drive, following
-// shedadapters/bouncer_commit_test.go's own treatment of the same removed APPROVED-replay vehicle.
+// judgeSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's APPROVED verdict and ledger to the spec's declared OutputFiles and reports shuttleengine.OutcomeDone,
+// so a bouncerEntry-built producer's judge call harvests and settles within the same Call that produced them -- the harvest vehicle this file's commit-seam subtests drive, following shedadapters/bouncer_commit_test.go's own treatment of the same removed APPROVED-replay vehicle.
 func judgeSeamShuttle() *shedfake.Shuttle {
 	return &shedfake.Shuttle{
 		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {

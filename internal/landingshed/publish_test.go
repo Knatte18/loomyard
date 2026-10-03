@@ -54,12 +54,9 @@ func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergere
 	return r.result, r.err
 }
 
-// newTestDeps is the package's one Deps builder, for Publish and Finalize tests alike: a base-branch
-// list requiring a pull request, a well-formed final-summary artifact already written at
-// DescriptionPath (Finalize's top-of-Call parse requires one; a Publish test rewrites it), and a
-// scratch dir under t.TempDir().
-// NewGitHubClient is swapped for a failing factory so no test reaches the real GitHub API; a test
-// driving the client installs its own over it.
+// newTestDeps is the package's one Deps builder, for Publish and Finalize tests alike: a base-branch list requiring a pull request, a well-formed final-summary artifact already written at DescriptionPath (Finalize's top-of-Call parse requires one; a Publish test rewrites it), and a scratch dir under t.TempDir().
+// NewGitHubClient is swapped for a failing factory so no test reaches the real GitHub API;
+// a test driving the client installs its own over it.
 // A test needing a different variant mutates the returned value.
 func newTestDeps(t *testing.T) Deps {
 	t.Helper()

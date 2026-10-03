@@ -93,10 +93,9 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 	}
 }
 
-// TestAddStrand_LogsAttributionOnlyOnColdBoot pins AddStrand's own log line, using
-// logcapture.CaptureVerbose, which sets both the logger output and its
-// verbosity — neither alone captures at Info. A cold AddStrand must emit the attribution line; a
-// second AddStrand against the now-live session must not.
+// TestAddStrand_LogsAttributionOnlyOnColdBoot pins AddStrand's own log line, using logcapture.CaptureVerbose, which sets both the logger output and its verbosity — neither alone captures at Info.
+// A cold AddStrand must emit the attribution line;
+// a second AddStrand against the now-live session must not.
 func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
 	e := newColdScratchEngine(t)
 	logs := logcapture.CaptureVerbose(t)

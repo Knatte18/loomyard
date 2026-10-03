@@ -120,9 +120,10 @@ func TestSessionsAreIdle(t *testing.T) {
 	}
 }
 
-// reapCycle is one planReapCycle call and the state it must leave behind. A nil inFlight means no
-// name is in flight, and a nil wantCounters means the counter map ends empty. wantReap and
-// wantRemaining are compared after sorting, since planReapCycle returns them in live order.
+// reapCycle is one planReapCycle call and the state it must leave behind.
+// A nil inFlight means no name is in flight,
+// and a nil wantCounters means the counter map ends empty.
+// wantReap and wantRemaining are compared after sorting, since planReapCycle returns them in live order.
 type reapCycle struct {
 	live          []string
 	hubDown       bool
@@ -390,11 +391,7 @@ func TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth(t *testi
 	}
 }
 
-// validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a
-// CLI-level test of the accepting case would fall through the pre-flight into a global logger
-// mutation, a lock acquisition under a scratch directory the command never creates, and then the
-// discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in
-// an untagged file.
+// validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
 func TestValidateWatchdogFlags(t *testing.T) {
 	tests := []struct {
 		name     string

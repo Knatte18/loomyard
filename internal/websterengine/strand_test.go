@@ -1,7 +1,4 @@
-// strand_test.go covers StrandLive against a shuttlefake.Reed (present/live,
-// present/not-live, absent), TurnEnded against a shuttlefake.Engine (stop event, no
-// stop event, missing events file, a ParseEvents error), and removeStrandIfLive's three cases
-// (live, not-live, a failed removal of a live strand).
+// strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent), TurnEnded against a shuttlefake.Engine (stop event, no stop event, missing events file, a ParseEvents error), and removeStrandIfLive's three cases (live, not-live, a failed removal of a live strand).
 // Tier 1: no git, only local fakes.
 
 package websterengine

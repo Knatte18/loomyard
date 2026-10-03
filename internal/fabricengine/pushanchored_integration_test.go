@@ -4,8 +4,8 @@
 // SkipGit and SkipPush each short-circuit to an empty result and push nothing; a weft carrying an
 // unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed
 // entry; and a diverged weft remote surfaces gitrepo.ErrPushRejected unwrapped, distinguishable via
-// errors.Is from a push error of a different kind. Reuses gitsha_integration_test.go's
-// BareBranchSHAForTest re-export.
+// errors.Is from a push error of a different kind.
+// Reuses gitsha_integration_test.go's BareBranchSHAForTest re-export.
 
 package fabricengine_test
 
