@@ -1,5 +1,5 @@
 // template_test.go pins webster's producer prompt assets (webster-template-master, the composed
-// fork/recovery templates, and webster-template-integration) against the Go contracts they key off
+// fork/recovery templates, and webster-body-verify-fix) against the Go contracts they key off
 // of — the template-parser-co-versioning decision applied here: the master template's digest-field
 // bullet list is pinned against webster's own Digest field set and order, the outcome-file bullet
 // list against the outcome schema, and the fork/recovery templates' report-schema section against
@@ -929,102 +929,6 @@ func TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork(t *testing.T) {
 	requireNotContains(t, text, "integration.yaml")
 }
 
-// TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt injects the plan's
-// own plan-level "## verify:" text (plan.Verify) into the rendered integration-suite fork prompt
-// verbatim,
-// and that an empty plan.Verify is refused loud rather than papered over with a sentinel — a caller
-// must gate this call on ShouldRunIntegration first.
-func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
-	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
-
-	got, err := renderIntegration(plan, "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), "")
-	if err != nil {
-		t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-	requireContains(t, text, plan.Verify)
-	requireContains(t, text, "> '/scratch/verify/integration.log' 2>&1")
-	requireNotContains(t, text, "## Shared Decisions")
-}
-
-// TestRenderIntegrationPrompt_EmptyLogPathErrors asserts RenderIntegrationPrompt refuses an empty log path, exactly as it refuses an empty verify.
-func TestRenderIntegrationPrompt_EmptyLogPathErrors(t *testing.T) {
-	plan := &planparser.Plan{Verify: "go build ./..."}
-
-	if _, err := renderIntegration(plan, "", "/worktree", newTestStencilsDir(t), ""); err == nil {
-		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for an empty verify log path")
-	}
-}
-
-// TestRenderIntegrationPrompt_EmptyVerifyErrors asserts RenderIntegrationPrompt refuses loud on a
-// plan with no plan-level verify, rather than silently rendering a prompt with an empty verify
-// command.
-func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
-	plan := &planparser.Plan{Verify: ""}
-
-	if _, err := renderIntegration(plan, "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), ""); err == nil {
-		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for a plan with no plan-level verify")
-	}
-}
-
-// renderIntegration calls websterengine.RenderIntegrationPrompt with the fixed report path.
-func renderIntegration(plan *planparser.Plan, logPath, worktreeRoot, stencilsDir, notePath string) ([]byte, error) {
-	return websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", logPath, worktreeRoot, stencilsDir, notePath)
-}
-
-// renderIntegrationFixForTest renders the integration-fix prompt with fixed paths and two regressions.
-func renderIntegrationFixForTest(t *testing.T, cardHint string) string {
-	t.Helper()
-	regressions := []websterengine.IntegrationFailure{
-		{ID: "TestAlpha", Kind: websterengine.FailureKindTest, Tail: "alpha: want 1, got 2\n"},
-		{ID: "example.com/pkg/beta", Kind: websterengine.FailureKindPackage, Tail: "build failed: undefined: Beta"},
-	}
-	got, err := websterengine.RenderIntegrationFixPrompt(regressions, "go test ./...", cardHint, "/reports/integration-fix.yaml", "/worktree", "/worktree/_lyx/plan", newTestStencilsDir(t), "")
-	if err != nil {
-		t.Fatalf("RenderIntegrationFixPrompt() = _, %v; want nil error", err)
-	}
-	return string(got)
-}
-
-// TestRenderIntegrationFixPrompt_CarriesRegressionsAndRules asserts the rendered strand prompt carries each regression's identity with its tail, the verify command, the plan directory in the never-write rule, the report path as the stated exception to the _lyx rule, the leave-nothing-uncommitted rule and the no-delete/skip/weaken rule.
-func TestRenderIntegrationFixPrompt_CarriesRegressionsAndRules(t *testing.T) {
-	text := renderIntegrationFixForTest(t, "")
-
-	requireContains(t, text, "- `TestAlpha`\n\n```\nalpha: want 1, got 2\n```")
-	requireContains(t, text, "- `example.com/pkg/beta`\n\n```\nbuild failed: undefined: Beta\n```")
-	requireContains(t, text, "go test ./...")
-	requireContains(t, text, "Never write under `_lyx/plan`.")
-	requireContains(t, text, "write nothing else under `_lyx` but `/reports/integration-fix.yaml`")
-	requireContains(t, text, "Leave no uncommitted change behind")
-	requireContains(t, text, "Never delete, skip or weaken a test")
-	requireContains(t, text, "non-merge commits only")
-	requireNotContains(t, text, "{{")
-}
-
-// TestRenderIntegrationFixPrompt_CardHint asserts an empty cardHint renders no hint sentence and a non-empty one names the card file.
-func TestRenderIntegrationFixPrompt_CardHint(t *testing.T) {
-	requireNotContains(t, renderIntegrationFixForTest(t, ""), "Bisect localized")
-
-	text := renderIntegrationFixForTest(t, "_lyx/plan/07-fix-commit-check.md")
-	requireContains(t, text, "Bisect localized the regression to the plan card file `_lyx/plan/07-fix-commit-check.md`")
-}
-
-// TestRenderIntegrationFixPrompt_RefusesEmptyInputs asserts an empty regressions list, verify command or report path is an error.
-func TestRenderIntegrationFixPrompt_RefusesEmptyInputs(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-	one := []websterengine.IntegrationFailure{{ID: "TestAlpha", Kind: websterengine.FailureKindTest, Tail: "x"}}
-
-	if _, err := websterengine.RenderIntegrationFixPrompt(nil, "go test ./...", "", "/r.yaml", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
-		t.Errorf("RenderIntegrationFixPrompt(no regressions) error = nil; want an error")
-	}
-	if _, err := websterengine.RenderIntegrationFixPrompt(one, "  ", "", "/r.yaml", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
-		t.Errorf("RenderIntegrationFixPrompt(empty verify) error = nil; want an error")
-	}
-	if _, err := websterengine.RenderIntegrationFixPrompt(one, "go test ./...", "", "", "/worktree", "/worktree/_lyx/plan", stencilsDir, ""); err == nil {
-		t.Errorf("RenderIntegrationFixPrompt(empty report path) error = nil; want an error")
-	}
-}
-
 // TestTemplates_ComposedOutputCarriesNoBannerLeak is the regression guard for the hazard this
 // batch's joinTemplateAssets fix closes: it seeds the stencils directory through
 // stencilstore.Reconcile, so every one of webster's five assets carries a real `lyx-stencil:` stamp
@@ -1302,36 +1206,38 @@ func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
 	})
 }
 
-// TestRenderIntegrationPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's
-// RenderIntegrationPrompt mirror.
-func TestRenderIntegrationPrompt_FrictionDirective(t *testing.T) {
-	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
+// TestRenderVerifyFixPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's
+// RenderVerifyFixPrompt mirror.
+func TestRenderVerifyFixPrompt_FrictionDirective(t *testing.T) {
+	render := func(anchorRoot, stencilsDir, notePath string) ([]byte, error) {
+		return websterengine.RenderVerifyFixPrompt("/reports/verify-gate.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, notePath)
+	}
 
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-integration.md")
-		got, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath)
+		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-verify-fix.md")
+		got, err := render(anchorRoot, stencilsDir, notePath)
 		if err != nil {
-			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
+			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
 		}
 		requireContains(t, string(got), notePath)
 	})
 
 	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, "")
+		got, err := render(anchorRoot, stencilsDir, "")
 		if err != nil {
-			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
+			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
 		}
 		requireNotContains(t, string(got), "Friction note")
 	})
 
 	t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		stripFrictionMarker(t, stencilsDir, "webster-template-integration")
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-integration.md")
-		if _, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath); err != nil {
-			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error even with a marker-free template", err)
+		stripFrictionMarker(t, stencilsDir, "webster-body-verify-fix")
+		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-verify-fix.md")
+		if _, err := render(anchorRoot, stencilsDir, notePath); err != nil {
+			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})
 }

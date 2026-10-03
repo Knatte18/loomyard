@@ -38,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -212,7 +211,6 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		t.Fatalf("batcher.Select(\"\") error = %v", err)
 	}
 
-	bisectRepo := gitrepo.New(worktree)
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
@@ -236,8 +234,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			PlanDir:      planDir,
 		},
-		RefMatcher:   websterengine.NeverMatches{},
-		OpenBisector: func() (websterengine.FabricBisector, error) { return bisectRepo, nil },
+		RefMatcher: websterengine.NeverMatches{},
 	}
 
 	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
@@ -612,62 +609,8 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 }
 
-// TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand proves a state recording a live integration-fix strand has it removed at Run entry.
-func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
-	fx := newRunFixture(t, 1)
-
-	seedMatchingState(t, fx, &websterengine.State{
-		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-	})
-	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
-	fx.Starter.startErr = fmt.Errorf("stop before spawn")
-
-	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
-		t.Fatalf("Run() error = nil; want the scripted starter error")
-	}
-
-	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.RemovedGUIDs)
-	}
-}
-
-// TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
-func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
-	cases := []struct {
-		name    string
-		fix     *websterengine.IntegrationFixState
-		strands []reedengine.StrandStatus
-	}{
-		{
-			name:    "dead strand",
-			fix:     &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-			strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}},
-		},
-		{
-			name: "empty guid",
-			fix:  &websterengine.IntegrationFixState{PreFixHead: "abc"},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			fx := newRunFixture(t, 1)
-			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
-			fx.Reed.Strands = tc.strands
-			fx.Starter.startErr = fmt.Errorf("stop before spawn")
-
-			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
-				t.Fatalf("Run() error = nil; want the scripted starter error")
-			}
-
-			if len(fx.Reed.RemovedGUIDs) != 0 {
-				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
-			}
-		})
-	}
-}
-
-// TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing proves a state without the record behaves as before.
-func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testing.T) {
+// TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing proves a state recording no strand removes nothing.
+func TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{})
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
@@ -1170,8 +1113,8 @@ func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithNestedAgentInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
-func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
+// TestRun_DoneWithNestedAgentInFixerForkWarns proves a policy finding in the fixer fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
+func TestRun_DoneWithNestedAgentInFixerForkWarns(t *testing.T) {
 	const session = "master-session-nested"
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -1182,15 +1125,9 @@ func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, AgentCalls: 1},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, AgentCalls: 1},
 	}
-	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-			t.Fatalf("write integration report: %v", err)
-		}
-	})
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -1244,15 +1181,9 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 			})
 			forks := []shuttleengine.ForkReport{
 				{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true, WritePaths: []string{tt.write(fx.Deps.Geom)}},
-				{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true},
+				{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true},
 			}
-			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-				head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-				report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-				if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-					t.Fatalf("write integration report: %v", err)
-				}
-			})
+			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 			result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -1341,9 +1272,9 @@ func TestRun_RendersVerifyFixPrompt(t *testing.T) {
 	}
 }
 
-// TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
+// TestRun_FabricReferenceInFixerForkIsStuck proves a fabric reference in the fixer fork's transcript is correctness whatever its command:
 // the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
-func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
+func TestRun_FabricReferenceInFixerForkIsStuck(t *testing.T) {
 	const session = "master-session-fabric"
 	const cmd = "cat FABRICREF/webster/state.json"
 	fx := newRunFixture(t, 1)
@@ -1356,15 +1287,9 @@ func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
 	}
-	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-			t.Fatalf("write integration report: %v", err)
-		}
-	})
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})

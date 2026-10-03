@@ -24,7 +24,7 @@ func fakeChangedPaths(byCommit map[string][]string) func(string) ([]string, erro
 }
 
 func TestCardHint_NamesCardsThatTouchedAFailingPackage(t *testing.T) {
-	failures := []IntegrationFailure{
+	failures := []VerifyFailure{
 		{ID: testModulePath + "/internal/a.TestX", Kind: FailureKindTest, Package: testModulePath + "/internal/a"},
 	}
 	shas := []string{"s1", "s2", "s3"}
@@ -46,7 +46,7 @@ func TestCardHint_NamesCardsThatTouchedAFailingPackage(t *testing.T) {
 }
 
 func TestCardHint_OpaqueAndForeignPackagesYieldNoHint(t *testing.T) {
-	failures := []IntegrationFailure{
+	failures := []VerifyFailure{
 		{ID: opaqueFailureID, Kind: FailureKindOpaque},
 		{ID: "other.org/x.TestY", Kind: FailureKindTest, Package: "other.org/x"},
 	}
@@ -61,7 +61,7 @@ func TestCardHint_OpaqueAndForeignPackagesYieldNoHint(t *testing.T) {
 }
 
 func TestCardHint_ChangedPathsErrorPropagates(t *testing.T) {
-	failures := []IntegrationFailure{{ID: testModulePath + "/a", Kind: FailureKindPackage, Package: testModulePath + "/a"}}
+	failures := []VerifyFailure{{ID: testModulePath + "/a", Kind: FailureKindPackage, Package: testModulePath + "/a"}}
 	_, err := cardHint(testModulePath, failures, []string{"s1"}, []string{"01-first"}, fakeChangedPaths(nil))
 	if err == nil {
 		t.Fatal("cardHint() error = nil, want the changedPaths error")
@@ -78,7 +78,7 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 	want := VerifyGateReport{
 		Attempt: 2,
 		Cap:     3,
-		Failures: []IntegrationFailure{
+		Failures: []VerifyFailure{
 			{ID: "m/a.TestX", Kind: FailureKindTest, Package: "m/a", Tail: "boom"},
 			{ID: "m/b", Kind: FailureKindPackage, Package: "m/b", Tail: "build failed"},
 		},
@@ -111,7 +111,7 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 	r := VerifyGateReport{
 		Attempt: 2,
 		Cap:     3,
-		Failures: []IntegrationFailure{
+		Failures: []VerifyFailure{
 			{ID: "m/a.TestX", Kind: FailureKindTest, Package: "m/a", Tail: "line one\nline two"},
 			{ID: "m/b", Kind: FailureKindPackage, Package: "m/b"},
 		},

@@ -240,12 +240,6 @@ var wordingClaims = []stencilClaims{
 		droppedConceptClaims(),
 	)},
 	{"webster-prefix-recovery.md", WebsterPrefixRecovery, droppedConceptClaims()},
-	{"webster-template-integration.md", WebsterTemplateIntegration, joinClaims(
-		wantAll("an integration fork that inherits Master's poll-for-the-report loop deadlocks the run, so it is told to write the report itself",
-			"NEVER poll or wait for the integration", "YOU are the one who WRITES"),
-		wantAll("the integration fork runs the plan-level verify once and implements no cards and makes no commit", "implement NO cards", "make NO commit"),
-		wantNone("the integration fork carries no per-card or commit instructions, unlike a batch's own fork template", "**Commit:**", "One commit per card", "{{.cards}}"),
-	)},
 	{"webster-body-verify-fix.md", WebsterBodyVerifyFix, joinClaims(
 		wantAll("the fixer reads the gate report and fixes the cause in source",
 			"{{.report_path}}", "Fix the cause in source"),
@@ -369,7 +363,7 @@ var wordingClaims = []stencilClaims{
 			"NOT necessarily ascending batch number",
 			`no batch is ever skipped or reordered because it "looks independent."`),
 		wantNone("the retired ordering clauses stay gone", "there is no DAG here to reorder around", "batch N assumes every batch before it is already committed"),
-		wantAll("the master template's spawn directive carries the anti-poll clause, so the integration fork writes its own report instead of continuing Master's poll loop",
+		wantAll("the master template's spawn directive carries the anti-poll clause, so the fixer fork does not continue Master's poll loop",
 			"you do NOT poll or wait for any report file", "Your FIRST action is to Read this file"),
 		droppedConceptClaims(),
 	)},

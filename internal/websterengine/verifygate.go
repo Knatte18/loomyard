@@ -66,14 +66,13 @@ func (n *VerifyGateNotes) Apply(websterDir string) ([]string, error) {
 	if len(flaky) == 0 {
 		return nil, nil
 	}
-	triage := IntegrationTriage{Flaky: flaky}
-	if err := AppendIntegrationTriage(websterDir, flaky, nil); err != nil {
+	if err := AppendIntegrationTriage(websterDir, flaky); err != nil {
 		return nil, err
 	}
-	if err := writeTriageFrictionNote(n.frictionDir, triage); err != nil {
+	if err := writeTriageFrictionNote(n.frictionDir, flaky); err != nil {
 		logger.Warn("websterengine: verify gate friction note not written", "cause", err)
 	}
-	return triageWarnings(triage), nil
+	return triageWarnings(flaky), nil
 }
 
 // verifyGateSeams are the reads and runs the gate closure makes, injectable so the closure's own logic is testable offline.
@@ -204,7 +203,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 	}
 
 	// failures parses the latest verify log into failing identities.
-	failures := func() ([]IntegrationFailure, error) {
+	failures := func() ([]VerifyFailure, error) {
 		output, err := s.readLog()
 		if err != nil {
 			return nil, fmt.Errorf("websterengine: read verify log %s: %w", s.logPath, err)

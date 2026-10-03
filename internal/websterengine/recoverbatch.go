@@ -465,7 +465,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
-	// Record CardSHAs like record-batch does, so integration bisect has no gaps.
+	// Record CardSHAs like record-batch does, so the verify gate's card hint has no gaps.
 	if digest.HeadSHA != "" {
 		bs.CardSHAs = []string{digest.HeadSHA}
 	}

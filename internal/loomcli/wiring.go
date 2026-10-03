@@ -437,7 +437,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Config:     websterCfg,
 		Batcher:    activeBatcher,
 		Geom:       websterGeom,
-		// FrictionDir covers the Master and integration prompts only: the per-batch fork and recovery
+		// FrictionDir covers the Master and verify-fix prompts only: the per-batch fork and recovery
 		// prompts are composed in a separate `lyx webster` process (begin-batch/recover-batch), which
 		// resolves the same value itself in internal/webstercli, per the
 		// webstercli-resolves-the-friction-directory-in-hub-mode Shared Decision.
@@ -447,12 +447,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// the never-matching stand-in: that stand-in is permitted only in standalone, where there is
 		// no wired fabric for the guard to protect, and loom is hub-only.
 		RefMatcher: fabricengine.NewRefScanner(location),
-		// The bisector opener stays a lazy closure over fabricengine.Open(location) and must not be
-		// opened here: opening stat-checks the paired sibling, and this pre-run must not fail
-		// "status"/"pause" against a healthy-but-unwired location.
-		OpenBisector: func() (websterengine.FabricBisector, error) {
-			return fabricengine.Open(location)
-		},
 		// ParentBranch lets the verify gate's fix-commit check accept a clean parent merge made while fixing, as webstercli's own wiring does.
 		ParentBranch: func() (string, error) {
 			origin, found, err := fabricengine.ReadOrigin(location)
@@ -562,7 +556,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
 		// DescribeSpec is evaluated per Call, so the stencil is read at call time. It opens the
 		// fabric lazily: wire() also runs for status/pause, where opening the fabric must not
-		// happen (the OpenBisector hazard above).
+		// happen: opening stat-checks the paired sibling, and this pre-run must not fail
+		// "status"/"pause" against a healthy-but-unwired location.
 		DescribeSpec: func() (shuttleengine.Spec, error) {
 			handle, err := fabricengine.Open(location)
 			if err != nil {
@@ -674,8 +669,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
 		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because
 		// NewPublish/NewFinalize both open their fabric pair eagerly at construction, and wire()
-		// runs for every verb including "status"/"pause" -- the same OpenBisector hazard the
-		// comment above already guards against. See landingDeps (landingdeps.go) and the
+		// runs for every verb including "status"/"pause" -- the same open-at-wire hazard the
+		// DescribeSpec comment above guards against. See landingDeps (landingdeps.go) and the
 		// env-landing-filled-in-run-not-wire design decision.
 	}
 

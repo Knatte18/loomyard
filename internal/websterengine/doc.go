@@ -14,9 +14,8 @@
 // contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
 // anywhere else re-derives that grammar; the one remaining plan-level-section
-// consumer here, RenderIntegrationPrompt (the integration-suite fork's own
-// prompt), reads plan.Verify only off the planparser.Plan model a caller
-// (internal/webstercli) hands in. Neither RenderForkPrompt nor
+// consumer here, the verify gate's command read (NewVerifyGate), reads plan.Verify
+// only off the planparser.Plan that planparser.ParsePlan returns. Neither RenderForkPrompt nor
 // RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
 // fork-context-hygiene Shared Decision, both render a card's content from its
 // SourcePath pointer, never from an inlined plan-level field.
@@ -87,8 +86,6 @@
 // and a warning names the walked merge SHAs.
 // Any non-merge movement — a plain commit, a fast-forward onto non-merge commits — is refused,
 // and so is any call made while a git merge is in progress, leaving the batch non-terminal and retryable.
-// Known limit: the integration stage's bisect over earlier CardSHAs runs on pre-merge trees.
-// Known limit: bisect and triage attribute a regression introduced by a mid-run parent merge to the first card after the merge.
 //
 // # every terminal batch runs the same mechanical pass
 //
@@ -323,8 +320,7 @@
 // onto is always supplied by the caller, per the Cwd Resolution Invariant.
 // This claim is now literally true, not aspirational: no production file in this package imports
 // internal/fabricengine, and the two seams that used to reach it are engine-declared interfaces the
-// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class, and
-// FabricBisector, reached through RunDeps.OpenBisector, for the integration-suite bisect.
+// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class.
 // internal/lyxcwd is likewise absent from this package's production imports: every path this package
 // consumes arrives already resolved, through a Geometry value (geometry.go), never through a
 // *lyxcwd.Location.
@@ -369,47 +365,6 @@
 // a different machine sees the report with no transcript behind it, which
 // record-batch treats exactly as it treats a forged report:
 // it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
-//
-// # Integration-suite fork + in-process bisect + terminal escalation
-//
-// A plan carrying a plan-level "## verify:" section (ShouldRunIntegration)
-// drives one additional, dedicated integration-suite fork after every
-// batch has landed done — never per-card, never per-batch, run once. Its
-// prompt file is Go-rendered and Go-written by run at entry
-// (RenderIntegrationPrompt into the prompts dir), exactly like a batch's
-// own fork prompt, and its path is injected into the master template —
-// Master may write nothing but its two contract files, so a
-// Master-synthesized prompt file would itself be a parent-write audit
-// violation (found live in round fable-r1: with no pre-rendered prompt the
-// stage was unreachable). Master spawns the fork exactly like a batch
-// fork and waits for its completion notification the same way;
-// AwaitIntegration, Go's own bounded wait at run exit, mirrors await-batch's
-// idiom over the single fixed IntegrationReportPath rather than a per-batch
-// report path, and a missing integration report at run exit is
-// outcome-aware: fail-loud under Master's outcome: done (a done claim
-// requires a passing suite), consistent-and-preserved under stuck (the
-// fork died or the stage never started; Master's own judgment stands).
-// The fork redirects the verify command's output to a scratch log (IntegrationLogPath),
-// so Go can name every failing test and its output tail (parseVerifyFailures) without trusting the fork's own account.
-// On a FAILED integration report, webster reruns the verify once at head and compares the remaining failures against the plan's starting commit,
-// classifying each failing identity flaky (the rerun passes), pre-existing (it also fails at the baseline), or regression.
-// The baseline is the earliest of the batches' recorded start commits by ancestry, since begin-batch does not enforce execution order;
-// start commits with no single earliest member leave nothing excused as pre-existing.
-// A test identity is the deepest failing test or subtest path go test prints, so a failing TestX/a at baseline never excuses a new TestX/b.
-// Triage excuses only what it can attribute to a named test: a package identity (a build or setup failure, a panic or timeout, a TestMain failure, a test binary that exited before reporting) or an opaque one is never pre-existing,
-// though it is still flaky when the rerun passes cleanly.
-// For the same reason the verify command must be a plain "&&" chain whose rerun reached its last step (a marker echoed before that step proves it),
-// and must not run with -failfast;
-// otherwise a non-test step's failure, or a step left unrun behind a pre-existing failure, could hide behind it, and every failure is a regression.
-// A step that runs go test inside a script is outside this reach: its own non-test failures surface only as the step's exit status.
-// The report carries the result in its optional failures and triage fields.
-// A regression demotes a Master outcome: done to stuck;
-// flaky and pre-existing failures keep the outcome and are recorded as RunResult warnings, an "## Integration suite triage" section in summary.md (AppendIntegrationTriage), and a friction note.
-// A regression is then localized: bisect performs an in-process binary search over the accumulated per-card SHA trail (every terminal batch's own BatchState.CardSHAs) — checking out each candidate SHA detached and running the plan's verify command in-process via os/exec, never a fork per bisect candidate — to find the first offending card in logarithmic, not linear, re-runs.
-// A candidate passes when none of the regressing identities fails there, not when the whole command exits zero,
-// so an unrelated flaky or pre-existing failure cannot misdirect the search.
-// BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
-// and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
 //
 // # The verify-gate fixer fork
 //

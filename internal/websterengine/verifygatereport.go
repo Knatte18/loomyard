@@ -31,7 +31,7 @@ type VerifyGateReport struct {
 	// Dirty lists the paths of a clean-tree failure, which runs no verify and so has no Failures or LogPath.
 	Dirty []string `yaml:"dirty,omitempty"`
 	// Failures lists the failing identities the verify output parsed to.
-	Failures []IntegrationFailure `yaml:"failures,omitempty"`
+	Failures []VerifyFailure `yaml:"failures,omitempty"`
 	// LogPath is the full verify log.
 	LogPath string `yaml:"log_path,omitempty"`
 	// Hint lists the NN-slug labels of the cards whose commits touched a failing package, in trail order.
@@ -61,7 +61,7 @@ func WriteVerifyGateReport(path string, r VerifyGateReport) error {
 // A failing package maps to a worktree directory through modulePath, go.mod's module path.
 // An opaque identity, or a package outside the module, contributes no directory, so it contributes no hint.
 // The hint claims only that a card touched a failing package; Merriam judges it with the plan in hand.
-func cardHint(modulePath string, failures []IntegrationFailure, shas, labels []string, changedPaths func(sha string) ([]string, error)) ([]string, error) {
+func cardHint(modulePath string, failures []VerifyFailure, shas, labels []string, changedPaths func(sha string) ([]string, error)) ([]string, error) {
 	dirs := map[string]bool{}
 	for _, f := range failures {
 		if dir, ok := moduleRelDir(modulePath, f.Package); ok {

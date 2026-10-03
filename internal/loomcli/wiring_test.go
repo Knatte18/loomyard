@@ -254,9 +254,6 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 	if deps.RefMatcher == nil {
 		t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
 	}
-	if deps.OpenBisector == nil {
-		t.Error("runDeps.OpenBisector = nil; want the lazy fabric opener")
-	}
 
 	// The same value must also be embedded verbatim in c.env.WebsterDeps.
 	if c.env.WebsterDeps.Geom != deps.Geom {
@@ -297,23 +294,6 @@ func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 
 	if _, ok := c.runDeps.RefMatcher.(*fabricengine.RefScanner); !ok {
 		t.Errorf("runDeps.RefMatcher = %T; want *fabricengine.RefScanner", c.runDeps.RefMatcher)
-	}
-}
-
-// TestWire_BisectorOpenerNonNilInHubOnlyMode asserts the bisector opener is non-nil, since loom is
-// hub-only and always has a fabric repo to open.
-func TestWire_BisectorOpenerNonNilInHubOnlyMode(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.runDeps.OpenBisector == nil {
-		t.Fatal("runDeps.OpenBisector = nil; want a non-nil closure in hub-only mode")
 	}
 }
 

@@ -150,9 +150,7 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 //
 // It checks none of WebsterDeps' other nil-able fields, each for its own reason: Batcher is
 // overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
-// caller leaves it nil; a nil Clock selects websterengine's production clock by design; a nil
-// OpenBisector is a legitimate mode meaning "no fabric in this mode", not a missing value; and
-// ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
+// caller leaves it nil; and ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
 // websterengine.Run, not to this wiring layer.
 func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Webster", cfg, env)

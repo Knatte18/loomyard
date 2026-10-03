@@ -79,10 +79,6 @@ type headRefusal struct {
 // reportHeadRefusal is the wording for a verb that records a batch at a report's head_sha.
 var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
 
-// integrationFixHeadRefusal is the wording for the integration-fix attempt, which fails rather than being re-run:
-// its way forward is the escalation's own, so the wording names the escalation and not a verb to re-run.
-var integrationFixHeadRefusal = headRefusal{head: "the fix strand's reported head", rerun: "re-run `lyx webster run`, which escalates this attempt as failed", redoMerge: "after the run is resumed"}
-
 // reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
 func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
 	head, err := headSHA(worktree)
@@ -281,15 +277,6 @@ func fixCommitRejection(worktree, base string, parentBranch ParentBranchFunc) (c
 		}
 	}
 	return "", "", nil
-}
-
-// commitParentCount returns how many parents commit has.
-func commitParentCount(worktree, commit string) (int, error) {
-	parents, err := gitrepo.New(worktree).CommitParents(commit)
-	if err != nil {
-		return 0, fmt.Errorf("websterengine: parents of %s in %s: %w", commit, worktree, err)
-	}
-	return len(parents), nil
 }
 
 // commitChangedPaths returns the slash-separated repository-relative paths a non-merge commit changes, including a root commit's.

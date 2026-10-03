@@ -1,5 +1,5 @@
-// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-template-integration.md, webster-template-integration-fix.md)
-// and the rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), RenderVerifyFixPrompt (called by run for the verify-gate fixer fork Merriam spawns on a gate failure), RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when ShouldRunIntegration reports true), and RenderIntegrationFixPrompt (for the one-shot cold-start strand that repairs an integration regression),
+// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-body-verify-fix.md)
+// and the rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), RenderVerifyFixPrompt (called by run for the verify-gate fixer fork Merriam spawns on a gate failure),
 // plus the two sequenced-execution-order renderers those prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
 // told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
@@ -24,10 +24,10 @@
 // never as inlined What/file-op fields — the implementer reads its own card file in its own turn
 // instead of trusting a Go-rendered paraphrase of it.
 //
-// Each of the four Render*Prompt functions also takes a trailing notePath parameter (the composed
+// Each of the Render*Prompt functions also takes a trailing notePath parameter (the composed
 // friction note path from friction.NotePath, or "" when Tier 2 is off) and injects
 // {{.friction_directive}} into its own values map: RenderForkPrompt, RenderRecoveryPrompt, and
-// RenderIntegrationPrompt resolve friction.RoleImplementer; RenderMasterPrompt resolves
+// RenderVerifyFixPrompt resolve friction.RoleImplementer; RenderMasterPrompt resolves
 // friction.RoleOrchestrator, since Master never edits code and only forks. A non-nil
 // friction.Directive error is swallowed — logged at Warn via internal/logger, never wrapped and
 // returned — exactly as if Tier 2 were off, per the composer-swallows-a-friction-error Shared
@@ -38,8 +38,8 @@
 // their stencilsDir parameter, filled into the shared implementer-job body's required specs_dir
 // marker. It is required, not optional: a blank render would silently reproduce a dead
 // cross-repository reference in the agent's own instructions. RenderMasterPrompt and
-// RenderIntegrationPrompt gain no such parameter — neither the Master template nor the integration
-// template cites a normative spec.
+// RenderVerifyFixPrompt gain no such parameter — neither the Master template nor the verify-fix
+// body cites a normative spec.
 
 package websterengine
 
@@ -61,17 +61,6 @@ import (
 // stencilstore.Read.
 func MasterTemplate(stencilsDir string) ([]byte, error) {
 	return stencilstore.Read(stencilsDir, "webster-template-master")
-}
-
-// IntegrationTemplate reads webster-template-integration's current content from stencilsDir via
-// stencilstore.Read.
-func IntegrationTemplate(stencilsDir string) ([]byte, error) {
-	return stencilstore.Read(stencilsDir, "webster-template-integration")
-}
-
-// IntegrationFixTemplate reads webster-template-integration-fix's current content from stencilsDir via stencilstore.Read.
-func IntegrationFixTemplate(stencilsDir string) ([]byte, error) {
-	return stencilstore.Read(stencilsDir, "webster-template-integration-fix")
 }
 
 // ImplementerBodyTemplate reads webster-body-implementer's current content from stencilsDir via
@@ -263,109 +252,6 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 	return prompt, nil
 }
 
-// RenderIntegrationPrompt fills webster-template-integration for the plan's single
-// integration-suite fork, read from stencilsDir.
-// Returns an error if plan.Verify or logPath is empty.
-// logPath is the absolute path the fork redirects the verify command's combined output to,
-// so Go can parse the failures after the fork ends.
-// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
-// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
-// friction.Directive error swallowed as a Warn rather than propagated.
-func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, logPath, worktreeRoot, stencilsDir string, notePath string) ([]byte, error) {
-	verify := strings.TrimSpace(plan.Verify)
-	if verify == "" {
-		return nil, fmt.Errorf("webster: render integration prompt: plan carries no plan-level \"## verify:\" section")
-	}
-	if strings.TrimSpace(logPath) == "" {
-		return nil, fmt.Errorf("webster: render integration prompt: verify log path is empty")
-	}
-
-	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
-	if err != nil {
-		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-template-integration", "error", err)
-		directive = ""
-	}
-
-	values := map[string]string{
-		"verify":            verify,
-		"report_path":       reportPath,
-		"verify_log_path":   logPath,
-		"worktree_root":     worktreeRoot,
-		friction.MarkerName: directive,
-	}
-	template, err := IntegrationTemplate(stencilsDir)
-	if err != nil {
-		return nil, fmt.Errorf("webster: read integration template: %w", err)
-	}
-	friction.WarnIfMarkerAbsent(template, "webster-template-integration", directive)
-	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
-	if err != nil {
-		return nil, fmt.Errorf("webster: fill integration template: %w", err)
-	}
-	return prompt, nil
-}
-
-// RenderIntegrationFixPrompt fills webster-template-integration-fix for the one-shot integration-fix strand, read from stencilsDir.
-// Returns an error if regressions, verify or reportPath is empty.
-// Each regression renders as its identity followed by its output tail in a fenced block.
-// cardHint is the plan card file bisect localized the regression to, or "" when there is no bisector (standalone mode);
-// it renders as one hint sentence, or as nothing when empty.
-// planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it.
-// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
-// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a friction.Directive error swallowed as a Warn rather than propagated.
-func RenderIntegrationFixPrompt(regressions []IntegrationFailure, verify, cardHint, reportPath, worktreeRoot, planDir, stencilsDir, notePath string) ([]byte, error) {
-	if len(regressions) == 0 {
-		return nil, fmt.Errorf("webster: render integration-fix prompt: no regressions to fix")
-	}
-	verify = strings.TrimSpace(verify)
-	if verify == "" {
-		return nil, fmt.Errorf("webster: render integration-fix prompt: verify command is empty")
-	}
-	if strings.TrimSpace(reportPath) == "" {
-		return nil, fmt.Errorf("webster: render integration-fix prompt: report path is empty")
-	}
-
-	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
-	if err != nil {
-		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-template-integration-fix", "error", err)
-		directive = ""
-	}
-
-	hint := ""
-	if card := strings.TrimSpace(cardHint); card != "" {
-		hint = fmt.Sprintf("Bisect localized the regression to the plan card file `%s`; treat that as a hint only, since the cause may lie elsewhere.", card)
-	}
-
-	values := map[string]string{
-		"regressions":       renderRegressions(regressions),
-		"verify":            verify,
-		"card_hint":         hint,
-		"report_path":       reportPath,
-		"worktree_root":     worktreeRoot,
-		"plan_dir":          masterPlanDirDisplay(worktreeRoot, planDir),
-		friction.MarkerName: directive,
-	}
-	template, err := IntegrationFixTemplate(stencilsDir)
-	if err != nil {
-		return nil, fmt.Errorf("webster: read integration-fix template: %w", err)
-	}
-	friction.WarnIfMarkerAbsent(template, "webster-template-integration-fix", directive)
-	prompt, err := stencil.FillOptional(template, values, []string{"card_hint", friction.MarkerName})
-	if err != nil {
-		return nil, fmt.Errorf("webster: fill integration-fix template: %w", err)
-	}
-	return prompt, nil
-}
-
-// renderRegressions renders each regression as its identity followed by its output tail in a fenced block, separated by blank lines.
-func renderRegressions(regressions []IntegrationFailure) string {
-	blocks := make([]string, 0, len(regressions))
-	for _, r := range regressions {
-		blocks = append(blocks, fmt.Sprintf("- `%s`\n\n```\n%s\n```", r.ID, strings.TrimRight(r.Tail, "\n")))
-	}
-	return strings.Join(blocks, "\n\n")
-}
-
 // VerifyFixTemplate reads webster-body-verify-fix's current content from stencilsDir via stencilstore.Read.
 func VerifyFixTemplate(stencilsDir string) ([]byte, error) {
 	return stencilstore.Read(stencilsDir, "webster-body-verify-fix")
@@ -511,7 +397,7 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 // Returns "none" when no batch has reached terminal state.
 // st may be nil (as-yet-uninitialized run).
 // Walking batches rather than cards preserves the property doc.go already relies on: every batch
-// number is positive, so State.Batches' reserved -1 integration key can never surface here.
+// number is positive, so a legacy -1 record in State.Batches can never surface here.
 func RenderProgress(batches []batcher.Batch, st *State) string {
 	if st == nil {
 		return "none"
