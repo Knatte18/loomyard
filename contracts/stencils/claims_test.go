@@ -454,4 +454,12 @@ func TestSectionOf(t *testing.T) {
 	if _, ok := sectionOf(text, "## Three"); ok {
 		t.Error("sectionOf(Three) found a heading the text lacks")
 	}
+
+	clause := "## Onerous\ndelta\n## One rule, with a clause\ngamma\n"
+	if got, ok := sectionOf(clause, "## One rule,"); !ok || got != "## One rule, with a clause\ngamma\n" {
+		t.Errorf("sectionOf(One rule,) = %q, %v; want the heading with its trailing clause", got, ok)
+	}
+	if got, ok := sectionOf(clause, "## One"); !ok || got != "## One rule, with a clause\ngamma\n" {
+		t.Errorf("sectionOf(One) = %q, %v; want the One heading, never Onerous", got, ok)
+	}
 }
