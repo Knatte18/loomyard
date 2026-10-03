@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -42,11 +43,12 @@ func argsFor(cmd *cobra.Command) []string {
 }
 
 // cliTreeFindings are groups whose bare or bogus invocation differs from the invariant today.
-// Each is a finding to fix in the group's own CLI and then delete from here; an entry naming a group that no longer exists fails as stale.
+// Each is a finding to fix in the group's own CLI and then delete from here.
+// An entry fails once its invocation meets the invariant, and an entry naming a group that no longer exists fails as stale.
 var cliTreeFindings = []scankit.Entry{
 	{
 		Key: "board notes#bare",
-		Why: "the alias group refuses with \"not initialized here\" outside a wired fabric instead of listing its verbs",
+		Why: "the alias group emits the \"not initialized here\" envelope outside a wired fabric ahead of its listing, and exits 1",
 	},
 	{
 		Key: "board notes#bogus",
@@ -64,6 +66,60 @@ var cliTreeFindings = []scankit.Entry{
 		Key: "selfreport#bogus",
 		Why: "prints help and exits 0 instead of refusing an unknown subcommand",
 	},
+}
+
+// bareProblems runs a bare group invocation and returns how it breaks the invariant, with its output.
+func bareProblems(args []string, children []*cobra.Command) ([]string, string) {
+	var out bytes.Buffer
+	code := run(args, &out)
+	got := out.String()
+	var problems []string
+	if code != 0 {
+		problems = append(problems, fmt.Sprintf("exit %d; want 0 for bare group listing", code))
+	}
+	if strings.Contains(got, `"ok":false`) {
+		problems = append(problems, "emitted an error envelope; want plain help text")
+	}
+	for _, child := range children {
+		if !strings.Contains(got, child.Name()) {
+			problems = append(problems, fmt.Sprintf("listing does not name %q", child.Name()))
+		}
+	}
+	return problems, got
+}
+
+// bogusProblems runs an unknown-subcommand invocation and returns how it breaks the invariant, with its output.
+func bogusProblems(args []string) ([]string, string) {
+	var out bytes.Buffer
+	code := run(args, &out)
+	got := out.String()
+	var problems []string
+	if code != 1 {
+		problems = append(problems, fmt.Sprintf("exit %d; want 1", code))
+	}
+	env, err := envelope.Parse(got)
+	switch {
+	case err != nil:
+		problems = append(problems, err.Error())
+	case env.OK:
+		problems = append(problems, "ok = true; want an error envelope")
+	case !strings.Contains(env.Error, "unknown subcommand"):
+		problems = append(problems, fmt.Sprintf("error %q does not name an unknown subcommand", env.Error))
+	}
+	return problems, got
+}
+
+// checkInvocation fails t for every problem, unless the invocation is a known finding, which fails only once its problems are gone.
+func checkInvocation(t *testing.T, args []string, known bool, problems []string, out string) {
+	t.Helper()
+	switch {
+	case known && len(problems) == 0:
+		t.Errorf("run(%v) now meets the invariant; remove its cliTreeFindings entry", args)
+	case known:
+		t.Skipf("known finding: %s", strings.Join(problems, "; "))
+	case len(problems) > 0:
+		t.Errorf("run(%v): %s\noutput: %s", args, strings.Join(problems, "; "), out)
+	}
 }
 
 // TestCLITree_EveryCommand walks newRoot() from a cwd that is not a git repository.
@@ -88,36 +144,14 @@ func TestCLITree_EveryCommand(t *testing.T) {
 		name := strings.Join(args, " ")
 
 		t.Run(name+"/bare", func(t *testing.T) {
-			if findings.Allowed(name + "#bare") {
-				t.Skip("known finding")
-			}
-			var out bytes.Buffer
-			code := run(args, &out)
-			got := out.String()
-			if code != 0 {
-				t.Fatalf("run(%v) = %d; want 0 for bare group listing\noutput: %s", args, code, got)
-			}
-			if strings.Contains(got, `"ok":false`) {
-				t.Errorf("run(%v) emitted an error envelope; want plain help text\noutput: %s", args, got)
-			}
-			for _, child := range children {
-				if !strings.Contains(got, child.Name()) {
-					t.Errorf("run(%v) listing does not name %q\noutput: %s", args, child.Name(), got)
-				}
-			}
+			problems, out := bareProblems(args, children)
+			checkInvocation(t, args, findings.Allowed(name+"#bare"), problems, out)
 		})
 
 		t.Run(name+"/bogus", func(t *testing.T) {
-			if findings.Allowed(name + "#bogus") {
-				t.Skip("known finding")
-			}
-			var out bytes.Buffer
 			bogus := append(append([]string{}, args...), "bogus")
-			code := run(bogus, &out)
-			if code != 1 {
-				t.Errorf("run(%v) = %d; want 1\noutput: %s", bogus, code, out.String())
-			}
-			envelope.RequireErr(t, out.String(), "unknown subcommand")
+			problems, out := bogusProblems(bogus)
+			checkInvocation(t, bogus, findings.Allowed(name+"#bogus"), problems, out)
 		})
 	})
 	if walked < 2 {
