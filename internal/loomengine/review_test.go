@@ -62,8 +62,7 @@ func TestResolveReview_MalformedSpec(t *testing.T) {
 	}
 }
 
-// TestResolveJudge verifies ResolveJudge resolves the template's judge value to the sonnet model
-// with effort medium.
+// TestResolveJudge verifies ResolveJudge resolves the template's judge value to the sonnet model with effort medium.
 func TestResolveJudge(t *testing.T) {
 	cfg := Config{Judge: "sonnet[medium]"}
 
@@ -84,8 +83,7 @@ func TestResolveJudge(t *testing.T) {
 	}
 }
 
-// TestResolveJudge_MalformedSpec verifies an ungrammatical judge model-spec returns an error
-// naming the judge role.
+// TestResolveJudge_MalformedSpec verifies an ungrammatical judge model-spec returns an error naming the judge role.
 func TestResolveJudge_MalformedSpec(t *testing.T) {
 	cfg := Config{Judge: "sonnet[medium"}
 
