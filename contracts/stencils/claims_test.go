@@ -106,6 +106,8 @@ var wordingClaims = []stencilClaims{
 		{must: "Relocation and exclusion findings", why: "relocation and exclusion findings are legitimate"},
 		{must: "completeness-before-leanness test", why: "completeness comes before leanness"},
 		{must: "writer/reviewer symmetry note", why: "the rubric names the writer/reviewer symmetry"},
+		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
+		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
 	}, attackSurfaceClaims...)},
 	{"loom-rubric-plan-review.md", LoomRubricPlanReview, append([]claim{
 		{must: "independently reviewable/testable unit", why: "granularity is one card per independently reviewable/testable unit"},
@@ -123,8 +125,12 @@ var wordingClaims = []stencilClaims{
 		{must: "the decision record alone is the answer key", why: "generation 0 falls back to the decision record alone"},
 		{must: "prior-generation/", why: "the prior-generation archive is never a subject"},
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
+		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
+		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
 	}, attackSurfaceClaims...)},
 	{"loom-rubric-webster-review.md", LoomRubricWebsterReview, []claim{
+		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
+		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
 		{must: "git merge-base", why: "the review range is derived via git merge-base"},
 		{must: "could not be determined", why: "an undeterminable review range raises a BLOCKING finding"},
 		{must: "carries a `class`", why: "the rework branch finds the live round by class"},
