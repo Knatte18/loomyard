@@ -81,6 +81,8 @@ No hub-level container is ever junctioned into a worktree. `_board`, `_portals`,
 Every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWire`. No hub is hand-assembled.
 
 - No package in `fabriccli`'s dependency set may import `hubforge`.
+- No test package wraps `hubforge` in its own fixture type; a test takes a `*hubforge.Hub` and reads `h.Topology`, `AddPairWith` and `OpenFabric` directly.
+  Enforcement is review discipline, not a scan.
 
 ## Testkit Invariant
 

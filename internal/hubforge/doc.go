@@ -1,7 +1,7 @@
 // Package hubforge is the repo-wide real-hub fixture factory: it builds every hub fixture through
 // fabriccli.CloneAndWire and never replicates that wiring by hand.
 // It asserts nothing about fabric — which is why its name does not end in "test" — so its only
-// exports are the Hub type, its geometry accessors, and the two builders NewHub and AddPair.
+// exports are the Hub type, its geometry accessors, and the builders NewHub, AddPair, AddPairWith and OpenFabric.
 //
 // hubforge drives fabriccli.CloneAndWire rather than fabricengine.CloneHub because CloneHub alone
 // yields a partial hub — warp clone, weft clone, board, anchor marker, warp binding, but no junctions

@@ -321,6 +321,49 @@ func TestSeedFabricConfig_CommitsAndLeavesBoardClean(t *testing.T) {
 	}
 }
 
+func TestAddPairWith_SkipPushKeepsWeftBranchOffTheBare(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+
+	skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
+	skippedWeft := fabricengine.WeftBranchName(skipped.Branch)
+	if skipped.Pushed {
+		t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
+	}
+	if gitkit.BranchExists(t, h.WeftBare, skippedWeft) {
+		t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
+	}
+
+	pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
+	pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
+	if !pushed.Pushed || !gitkit.BranchExists(t, h.WeftBare, pushedWeft) {
+		t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.WeftBare, pushedWeft))
+	}
+}
+
+func TestOpenFabric_OpensThePrimePair(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+	f := OpenFabric(t, h)
+
+	gotSHA, err := f.HeadSHA()
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if want := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); gotSHA != want {
+		t.Errorf("HeadSHA = %s; want the prime warp's HEAD %s", gotSHA, want)
+	}
+	gotBranch, err := f.CurrentBranch()
+	if err != nil {
+		t.Fatalf("CurrentBranch: %v", err)
+	}
+	if want := gitkit.CurrentBranch(t, h.PrimeWorktree()); gotBranch != want {
+		t.Errorf("CurrentBranch = %q; want %q", gotBranch, want)
+	}
+}
+
 // TestNewHub_Concurrent launches N concurrent NewHub calls from one test, asserting every returned hub
 // is independently a real hub and that no two share a Path, Container, WarpBare, or WeftBare — the
 // structural parallel safety a sync.Once template read followed by per-call tb.TempDir() is supposed
