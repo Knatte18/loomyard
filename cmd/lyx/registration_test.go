@@ -9,12 +9,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // isCommandFunc reports whether fd is func Command() *cobra.Command.
@@ -53,35 +52,13 @@ func isCommandFunc(fd *ast.FuncDecl) bool {
 
 // TestRegistration_AllModulesRegistered asserts every Command() package is registered in newRoot().
 func TestRegistration_AllModulesRegistered(t *testing.T) {
-	// Resolve the repo root from this test file's on-disk path.
-	// This file lives at cmd/lyx/registration_test.go, so two filepath.Dir
-	// calls walk up to the repo root — the same pattern used by
-	// internal/lyxcwd/enforcement_test.go.
-	_, testFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location via runtime.Caller")
-	}
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(testFile)))
+	repoRoot := scankit.Root(t)
 
 	// Phase 1: walk internal/ and collect packages with Command().
-	internalDir := filepath.Join(repoRoot, "internal")
 	discovered := make(map[string]bool)
 
-	err := filepath.WalkDir(internalDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		// Skip directories, test files, and non-Go files.
-		if d.IsDir() || strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		f, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if parseErr != nil {
-			return nil
-		}
-
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(sf *scankit.File) {
+		f := sf.AST(t, parser.SkipObjectResolution)
 		for _, decl := range f.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
 			if !ok {
@@ -92,11 +69,8 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 				break
 			}
 		}
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk internal/: %v", err)
-	}
+	scankit.RequireFloor(t, scanned, 50, "registration guard")
 
 	// Sanity sub-test: discovery must be non-empty.
 	t.Run("discovered_non_empty", func(t *testing.T) {
@@ -150,10 +124,10 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 
 	// Phase 3: assert discovered ⊆ registered.
 	// allowlist holds packages intentionally not registered in newRoot().
-	allowlist := map[string]bool{}
+	allowlist := scankit.NewAllowlist(nil)
 
 	for pkg := range discovered {
-		if allowlist[pkg] {
+		if allowlist.Allowed(pkg) {
 			continue
 		}
 		if !registered[pkg] {
@@ -163,4 +137,5 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 			)
 		}
 	}
+	allowlist.RequireNoStale(t)
 }

@@ -10,10 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // coversLinePattern matches a "**Covers:** <module>[, <module>...]" line in any
@@ -25,12 +26,27 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 // intentionally never exercised by a sandbox scenario, each with a one-line
 // reason. Coverage is module-level (see CONSTRAINTS.md's Sandbox Suite Coverage
 // invariant), so each entry excludes the whole module, not individual subcommands.
-var excludedModules = map[string]string{
-	"ide":        "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
-	"selfreport": "create files a real GitHub issue",
-	"start":      "alias of loom's own bootstrap verb; covered by the loom module's scenario",
-	"shed":       "armed re-exposure of loom's and batten's own verbs; covered by those two modules' own scenarios",
-	"orch":       "spawns a long-lived interactive Claude session and a detached watcher in the hub prime; exercised by internal/orchcli's smoke test instead",
+var excludedModules = []scankit.Entry{
+	{
+		Key: "ide",
+		Why: "side-effect heavy: spawn opens a real VS Code window, menu is an interactive stdin picker",
+	},
+	{
+		Key: "selfreport",
+		Why: "create files a real GitHub issue",
+	},
+	{
+		Key: "start",
+		Why: "alias of loom's own bootstrap verb; covered by the loom module's scenario",
+	},
+	{
+		Key: "shed",
+		Why: "armed re-exposure of loom's and batten's own verbs; covered by those two modules' own scenarios",
+	},
+	{
+		Key: "orch",
+		Why: "spawns a long-lived interactive Claude session and a detached watcher in the hub prime; exercised by internal/orchcli's smoke test instead",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
@@ -61,11 +77,12 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	})
 
 	// Assert 1: every registered module must be covered or excluded.
+	excluded := scankit.NewAllowlist(excludedModules)
 	for m := range registered {
 		if len(covered[m]) > 0 {
 			continue
 		}
-		if _, ok := excludedModules[m]; ok {
+		if excluded.Allowed(m) {
 			continue
 		}
 		t.Errorf(
@@ -83,11 +100,11 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 			)
 		}
 	}
-	for m := range excludedModules {
-		if !registered[m] {
+	for _, e := range excludedModules {
+		if !registered[e.Key] {
 			t.Errorf(
 				"excludedModules in cmd/lyx/sandbox_coverage_test.go names %q but no such module is registered in newRoot(); remove the stale allowlist entry",
-				m,
+				e.Key,
 			)
 		}
 	}
@@ -97,13 +114,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 func parseCoveredModules(t *testing.T) map[string][]string {
 	t.Helper()
 
-	_, testFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location via runtime.Caller")
-	}
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(testFile)))
-
-	suitePattern := filepath.Join(repoRoot, "tools", "sandbox", "*SUITE.md")
+	suitePattern := filepath.Join(scankit.Root(t), "tools", "sandbox", "*SUITE.md")
 	suitePaths, err := filepath.Glob(suitePattern)
 	if err != nil {
 		t.Fatalf("could not glob tools/sandbox/*SUITE.md: %v", err)

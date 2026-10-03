@@ -45,13 +45,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // spawnObservabilityLoggerImportPath is the full import path fileImportsLogger matches against.
@@ -72,18 +70,36 @@ var spawnObservabilityScanRoots = []string{"internal", "cmd"}
 // cmd/, but they were never governed by this invariant in the first place — a test-fixture builder and
 // a test-timing harness, neither reachable from a lyx command. tools/ sites need no entry at all: the
 // walk never visits tools/.
-var spawnObservabilityAllowedSpawners = map[string]string{
-	"internal/gitexec/gitexec.go": "structurally barred: internal/logger imports internal/lyxcwd, which imports " +
-		"internal/gitexec, so importing logger here would close an import cycle; gitexec.Run already returns a " +
-		"*GitError carrying args, dir, exit code, and stderr, so the diagnostic is not actually lost",
-	"internal/gitkit/gitkit.go": "structurally barred by the gitkit Leaf Invariant's pinned import list " +
-		"(stdlib, lyxcwd, weftname, configengine, lyxdirs only)",
-	"internal/githubclient/token.go": "structurally barred by the GitHub Auth Invariant's leaf allowlist " +
-		"(enforced by internal/githubclient/leaf_enforcement_test.go); the failure is logged at both production " +
-		"callers instead, internal/selfreportengine/selfreport.go and internal/landingshed/publish.go",
-	"internal/hubforge/hub.go":          "not governed: a test-fixture builder, not a code path reachable from a lyx command",
-	"internal/testkit/lyxbin/lyxbin.go": "not governed: a test-fixture builder, not a code path reachable from a lyx command",
-	"cmd/testtiming/main.go":            "not governed: a test-timing harness, not a code path reachable from a lyx command",
+var spawnObservabilityAllowedSpawners = []scankit.Entry{
+	{
+		Key: "internal/gitexec/gitexec.go",
+		Why: "structurally barred: internal/logger imports internal/lyxcwd, which imports " +
+			"internal/gitexec, so importing logger here would close an import cycle; gitexec.Run already returns a " +
+			"*GitError carrying args, dir, exit code, and stderr, so the diagnostic is not actually lost",
+	},
+	{
+		Key: "internal/gitkit/gitkit.go",
+		Why: "structurally barred by the gitkit Leaf Invariant's pinned import list " +
+			"(stdlib, lyxcwd, weftname, configengine, lyxdirs only)",
+	},
+	{
+		Key: "internal/githubclient/token.go",
+		Why: "structurally barred by the GitHub Auth Invariant's leaf allowlist " +
+			"(enforced by internal/githubclient/leaf_enforcement_test.go); the failure is logged at both production " +
+			"callers instead, internal/selfreportengine/selfreport.go and internal/landingshed/publish.go",
+	},
+	{
+		Key: "internal/hubforge/hub.go",
+		Why: "not governed: a test-fixture builder, not a code path reachable from a lyx command",
+	},
+	{
+		Key: "internal/testkit/lyxbin/lyxbin.go",
+		Why: "not governed: a test-fixture builder, not a code path reachable from a lyx command",
+	},
+	{
+		Key: "cmd/testtiming/main.go",
+		Why: "not governed: a test-timing harness, not a code path reachable from a lyx command",
+	},
 }
 
 // spawnObservabilityMinScannedFiles is the vacuous-scan floor for this guard's two-root walk of
@@ -95,82 +111,26 @@ const spawnObservabilityMinScannedFiles = 200
 // cmd/ and fails if any of them, other than a spawnObservabilityAllowedSpawners entry, contains a real
 // exec.Command/exec.CommandContext call and does not import internal/logger.
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring every sibling
-	// guard in this package so this gate never blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
-	var scanned int
+	allow := scankit.NewAllowlist(spawnObservabilityAllowedSpawners)
 	var failures []string
 
-	for _, rootRel := range spawnObservabilityScanRoots {
-		rootDir := filepath.Join(moduleRoot, rootRel)
-
-		walkErr := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				if os.IsNotExist(err) {
-					return nil
-				}
-				return err
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
-
-			relPath, relErr := filepath.Rel(moduleRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			// Normalize to slash-separated form before any comparison: filepath.WalkDir yields
-			// backslash paths on Windows (the primary dev OS).
-			relPath = filepath.ToSlash(relPath)
-			scanned++
-
-			fset := token.NewFileSet()
-			astFile, parseErr := parser.ParseFile(fset, path, nil, 0)
-			if parseErr != nil {
-				return fmt.Errorf("failed to parse %s: %w", relPath, parseErr)
-			}
-
-			if !fileHasUnloggedSpawn(astFile) {
-				return nil
-			}
-			if _, allowlisted := spawnObservabilityAllowedSpawners[relPath]; allowlisted {
-				return nil
-			}
-
-			failures = append(failures, fmt.Sprintf(
-				"%s: contains a real exec.Command/exec.CommandContext call but does not import internal/logger "+
-					"— import it and log the spawn, or add a spawnObservabilityAllowedSpawners entry in "+
-					"cmd/lyx/spawnobservability_test.go with a reason",
-				relPath,
-			))
-			return nil
-		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", rootDir, walkErr)
+	scanned := scankit.Walk(t, scankit.Options{Roots: spawnObservabilityScanRoots}, func(f *scankit.File) {
+		if !fileHasUnloggedSpawn(f.AST(t, 0)) {
+			return
 		}
-	}
+		if allow.Allowed(f.Rel) {
+			return
+		}
+		failures = append(failures, fmt.Sprintf(
+			"%s: contains a real exec.Command/exec.CommandContext call but does not import internal/logger "+
+				"— import it and log the spawn, or add a spawnObservabilityAllowedSpawners entry in "+
+				"cmd/lyx/spawnobservability_test.go with a reason",
+			f.Rel,
+		))
+	})
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < spawnObservabilityMinScannedFiles {
-		t.Fatalf("spawn-observability guard: only scanned %d non-test .go file(s) under %v; expected at least %d — the walk may be misconfigured", scanned, spawnObservabilityScanRoots, spawnObservabilityMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, spawnObservabilityMinScannedFiles, "spawn-observability guard")
+	allow.RequireNoStale(t)
 
 	sort.Strings(failures)
 	if len(failures) > 0 {
