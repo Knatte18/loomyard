@@ -33,7 +33,7 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 
 func TestPollEventsTick_WaitingIsStillRunning(t *testing.T) {
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
 	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
@@ -54,7 +54,7 @@ func TestPollEventsTick_WaitingIsStillRunning(t *testing.T) {
 
 func TestPollEventsTick_StopAfterWaitingClassifiesAsking(t *testing.T) {
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
 	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
@@ -85,7 +85,7 @@ func TestPollEventsTick_StopAfterWaitingClassifiesAsking(t *testing.T) {
 func TestPollEventsTick_WaitingWithOutputFilesIsDone(t *testing.T) {
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	touchOutputFile(t, outputFile)
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
 	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),

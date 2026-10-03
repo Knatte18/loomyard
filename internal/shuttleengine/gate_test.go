@@ -62,17 +62,13 @@ func TestGate_PassesOnFirstDone(t *testing.T) {
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -125,22 +121,18 @@ func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
 		CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 	}
 	engine := readyAgentEngine()
-	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, engine, withConfig(gateConfig))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
 	mc := &multiStepClock{fakeClock: fc, steps: []func(){
 		func() { appendEventsLine(t, eventsPath, "STOP:turn2") },
 	}}
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    mc,
-		deadline: mc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, mc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -200,7 +192,7 @@ func TestGate_FailsEveryAttempt_ExhaustsBudget(t *testing.T) {
 		CaptureQueue: repromptCaptureSequence(findingsPath, budget),
 	}
 	engine := readyAgentEngine()
-	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, engine, withConfig(gateConfig))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -208,15 +200,11 @@ func TestGate_FailsEveryAttempt_ExhaustsBudget(t *testing.T) {
 		func() { appendEventsLine(t, eventsPath, "STOP:turn2") },
 		func() { appendEventsLine(t, eventsPath, "STOP:turn3") },
 	}}
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    mc,
-		deadline: mc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: budget}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, mc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: budget}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -255,17 +243,13 @@ func TestGate_ClosureError(t *testing.T) {
 	gate := func() (GateResult, error) { return GateResult{}, wantErr }
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	_, err := run.Wait()
 	if err == nil || !errors.Is(err, wantErr) {
@@ -310,17 +294,13 @@ func TestGate_NoLiveSessionDonePaths(t *testing.T) {
 
 			reed := &fakeReed{StatusQueue: tt.statusQueue}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
-			runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 0})).Runner
+			fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 0}))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(time.Hour),
-				gate:     GateSpec{{Gate: gate, Attempts: 3}},
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Hour)),
+				withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 			result, err := run.Wait()
 			if err != nil {
@@ -360,18 +340,14 @@ func TestGate_RunDeadlineExpires_NoLiveSession(t *testing.T) {
 	}
 
 	reed := &fakeReed{}
-	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner: runner,
-		spec:   Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir: runDir,
-		state:  RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:  fc,
-		// Already expired: the very first deadline check trips it.
-		deadline: fc.Now().Add(-time.Minute),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	// The deadline is already expired: the very first deadline check trips it.
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(-time.Minute)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -413,17 +389,13 @@ func TestGate_FinishedDespiteMechanismFailure_NoLiveSession(t *testing.T) {
 
 	reed := &fakeReed{}
 	engine := &fakeEngine{ParseEventsErr: errors.New("events file unparseable")}
-	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, engine, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -455,7 +427,7 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 		callCount++
 		return GateResult{Passed: true}, nil
 	}
-	run := &Run{runDir: t.TempDir(), gate: GateSpec{{Gate: gate, Attempts: 3}}}
+	run := newFixture(t, &fakeReed{}, &fakeEngine{}).newRun(Spec{}, withRunDir(t.TempDir()), withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	first, err := run.evaluateGate(false)
 	if err != nil {
@@ -492,19 +464,15 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 		SendTextErr:  errors.New("pane swallowed input"),
 	}
 	engine := readyAgentEngine()
-	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, engine, withConfig(gateConfig))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -550,19 +518,15 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 	engine := readyAgentEngine()
 	// PollIntervalMS's 5ms Sleep after the one successful re-prompt crosses the 2ms-out deadline
 	// below, so the SECOND tick's deadline check trips with no further event ever appended.
-	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(2 * time.Millisecond),
-		gate:     GateSpec{{Gate: gate, Attempts: 3}},
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(2*time.Millisecond)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -597,17 +561,13 @@ func TestGate_ZeroGateSpec_RegressionGuard(t *testing.T) {
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		// gate left at its zero value, exactly as Run/Attach's own delegation constructs it.
-	}
+	// The gate is left at its zero value, exactly as Run/Attach's own delegation constructs it.
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)))
 
 	result, err := run.Wait()
 	if err != nil {

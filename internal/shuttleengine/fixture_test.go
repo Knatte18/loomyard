@@ -17,6 +17,15 @@ var defaultConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 // a zero result would put run.deadline at start time, which the startup step's own run-deadline check would hit after the very first pending probe.
 var fastConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
 
+// shortStartupConfig is fastConfig with a one-second startup deadline and a poll interval long enough that a single fake-clock sleep crosses it.
+var shortStartupConfig = Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 600, LivenessEveryNPolls: 1}
+
+// sparseProbeConfig is fastConfig with a liveness probe only every hundredth poll.
+var sparseProbeConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 100}
+
+// gateConfig is fastConfig with a liveness cadence no gate test reaches, so a gate's scripted STOP and pane sequence alone decides the outcome.
+var gateConfig = Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000}
+
 // fixture is a Runner over a fresh temp worktree.
 // Anchor is a real subpath of Worktree, never the same value, so a swapped NewRunner argument pair fails a test rather than passing.
 // The Runner's paneCwd is Anchor by construction, since it is built through NewRunner rather than NewDetachedRunner.
@@ -101,6 +110,7 @@ type runSettings struct {
 	state    RunState
 	clk      clock
 	deadline time.Time
+	gate     GateSpec
 }
 
 type runOpt func(*testing.T, *runSettings)
@@ -109,6 +119,16 @@ type runOpt func(*testing.T, *runSettings)
 // It precedes withRunEvents, which writes into the state it leaves.
 func withRunState(state RunState) runOpt {
 	return func(_ *testing.T, s *runSettings) { s.state = state }
+}
+
+// withRunDir sets the directory the Run reads and writes its run files in, empty otherwise.
+func withRunDir(dir string) runOpt {
+	return func(_ *testing.T, s *runSettings) { s.runDir = dir }
+}
+
+// withRunGate sets the Run's completion gate.
+func withRunGate(gate GateSpec) runOpt {
+	return func(_ *testing.T, s *runSettings) { s.gate = gate }
 }
 
 // withRunEvents seeds an events file holding events in a fresh run directory and points the Run's state at it.
@@ -144,5 +164,6 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 		state:    s.state,
 		clock:    s.clk,
 		deadline: s.deadline,
+		gate:     s.gate,
 	}
 }

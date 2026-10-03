@@ -505,7 +505,7 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
 		t.Fatalf("mkdir anchor path: %v", err)
 	}
-	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
+	cfg := defaultConfig
 
 	// Seed a corrupt reed.json so reedengine.LoadState errors during Start's
 	// opportunistic orphan sweep — Start must log and continue rather than
@@ -542,7 +542,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	// newFixture's own contract exists to prevent.
 	worktree := t.TempDir()
 	anchorPath := filepath.Join(worktree, "sub", "dir")
-	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
+	cfg := defaultConfig
 
 	if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
@@ -586,7 +586,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState(t *testing.T) {
 
 	worktree := t.TempDir()
 	anchorPath := filepath.Join(worktree, "sub", "dir")
-	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
+	cfg := defaultConfig
 
 	// .lyx exists (reed created it) but holds NO reed.json — the hand-deleted / git-cleaned shape.
 	if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {

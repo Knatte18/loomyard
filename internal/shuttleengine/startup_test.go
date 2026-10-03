@@ -235,7 +235,7 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 		CaptureQueue: []string{"❯ No, exit\n  Yes, I trust this folder"},
 	}
 	engine := &undismissableEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
 	innerReed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
 	fx := newFixture(t, innerReed, engine, withConfig(cfg), withClock(fc))
@@ -277,7 +277,7 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 func TestStartup_FileContractSatisfiedWhilePending(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
 	reed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
 	runner := newFixture(t, reed, engine, withConfig(cfg)).Runner
@@ -423,7 +423,7 @@ func TestStartup_ReedNeverTracksStrand(t *testing.T) {
 // TestStartup_TickCap covers the tick-count cap under a frozen clock, with a subtest for the
 // file-contract-satisfied variant.
 func TestStartup_TickCap(t *testing.T) {
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 
 	t.Run("NoOutputFiles_ErrNotStartedWithTeardown", func(t *testing.T) {
 		reed := &fakeReed{
@@ -569,7 +569,7 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 		CaptureErr:      errors.New("tmux: capture-pane failed"),
 	}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
 	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
 	runner, anchorPath := fx.Runner, fx.Anchor

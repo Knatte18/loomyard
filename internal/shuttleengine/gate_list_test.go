@@ -41,7 +41,7 @@ func runGateList(t *testing.T, spec GateSpec, reprompts int) (Result, *fakeReed,
 		StatusQueue:  liveStrandStatus(true),
 		CaptureQueue: repromptCaptureSequence(findingsPath, reprompts),
 	}
-	runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, readyAgentEngine(), withConfig(gateConfig))
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -51,15 +51,11 @@ func runGateList(t *testing.T, spec GateSpec, reprompts int) (Result, *fakeReed,
 		steps = append(steps, func() { appendEventsLine(t, eventsPath, line) })
 	}
 	mc := &multiStepClock{fakeClock: fc, steps: steps}
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    mc,
-		deadline: mc.Now().Add(time.Hour),
-		gate:     spec,
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, mc.Now().Add(time.Hour)),
+		withRunGate(spec))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -175,19 +171,15 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 			CaptureQueue: []string{"idle pane", "idle pane"},
 			SendTextErr:  errors.New("pane swallowed input"),
 		}
-		runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+		fx := newFixture(t, reed, readyAgentEngine(), withConfig(gateConfig))
 		stubInputSleep(t)
 		spec, rCalls := newSpec()
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Hour),
-			gate:     spec,
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Hour)),
+			withRunGate(spec))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -215,19 +207,15 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 		}
-		runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+		fx := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
 		stubInputSleep(t)
 		spec, rCalls := newSpec()
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(2 * time.Millisecond),
-			gate:     spec,
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(2*time.Millisecond)),
+			withRunGate(spec))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -378,17 +366,13 @@ func TestGateList_SecondEntryClosureErrorStaysInfrastructureError(t *testing.T) 
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Hour),
-		gate:     spec,
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(spec))
 
 	_, err := run.Wait()
 	if err == nil || !errors.Is(err, wantErr) {

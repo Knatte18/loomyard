@@ -40,7 +40,7 @@ func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...
 		t.Fatalf("seed events: %v", err)
 	}
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: captures}
-	runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
+	fx := newFixture(t, reed, readyAgentEngine(), withConfig(gateConfig))
 	stubInputSleep(t)
 
 	f := &pendingFixture{reed: reed, eventsPath: eventsPath, fc: newFakeClock(time.Now())}
@@ -49,15 +49,11 @@ func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...
 		wrapped = append(wrapped, func() { step(f) })
 	}
 	mc := &multiStepClock{fakeClock: f.fc, steps: wrapped}
-	f.run = &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    mc,
-		deadline: mc.Now().Add(time.Hour),
-		gate:     spec,
-	}
+	f.run = fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, mc.Now().Add(time.Hour)),
+		withRunGate(spec))
 	return f
 }
 
