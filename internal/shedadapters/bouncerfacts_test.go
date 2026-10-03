@@ -17,8 +17,7 @@ type factsFinding struct {
 	class    string
 }
 
-// writeFactsReview writes round's review file with the given findings, choosing the verdict the
-// parser's consistency rule demands.
+// writeFactsReview writes round's review file with the given findings, choosing the verdict the parser's consistency rule demands.
 func writeFactsReview(t *testing.T, dir string, round int, findings ...factsFinding) {
 	t.Helper()
 	verdict := "APPROVED"
