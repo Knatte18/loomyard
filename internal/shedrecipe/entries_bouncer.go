@@ -171,8 +171,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		resolvedArtifactPaths[i] = resolved
 	}
 
-	// Slug and SegmentBounces are both optional: a caller filling neither keeps a working Bouncer whose
-	// CIRCLING Reason omits the slug and the budget sentence.
+	// Slug and SegmentBounces are both optional:
+	// a caller filling neither keeps a working Bouncer whose CIRCLING Reason omits the slug and the budget sentence.
 	var bounces func() (count, budget int, ok bool, err error)
 	if env.SegmentBounces != nil {
 		bounces = func() (int, int, bool, error) { return env.SegmentBounces(name) }

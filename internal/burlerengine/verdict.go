@@ -36,8 +36,8 @@ const (
 	SeverityNit      Severity = "NIT"
 )
 
-// Class is the per-finding class tag: what kind of finding it is, which decides who decides it and
-// when a review loop stops — never whether it is fixed.
+// Class is the per-finding class tag:
+// what kind of finding it is, which decides who decides it and when a review loop stops — never whether it is fixed.
 type Class string
 
 // The four legal Class values.
@@ -56,11 +56,8 @@ const (
 // A round with no finding of this class has nothing left that holds the loop open.
 const GatingClass = ClassDesign
 
-// Finding is one recorded review-file finding: a stable ID (kept unique and fail-loud across rounds
-// so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across
-// rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from
-// the fixed vocabulary, a Class from the fixed four, a Location pointing at the offending content,
-// a prose Summary, and an optional Origin.
+// Finding is one recorded review-file finding:
+// a stable ID (kept unique and fail-loud across rounds so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from the fixed vocabulary, a Class from the fixed four, a Location pointing at the offending content, a prose Summary, and an optional Origin.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`

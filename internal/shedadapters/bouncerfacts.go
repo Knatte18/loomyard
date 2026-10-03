@@ -1,8 +1,7 @@
-// bouncerfacts.go computes and renders the per-round facts file the judge reads in place of the
-// review and fixer artifacts: counts per round, severity and class, and the finding keys that recur
-// across the ledgers.
-// The counts come from burlerengine.ParseReview, never a second parser, and the file records no
-// review's own top-level verdict, so the judge decides from the findings alone.
+// bouncerfacts.go computes and renders the per-round facts file the judge reads in place of the review and fixer artifacts:
+// counts per round, severity and class, and the finding keys that recur across the ledgers.
+// The counts come from burlerengine.ParseReview, never a second parser,
+// and the file records no review's own top-level verdict, so the judge decides from the findings alone.
 // The file is an input to the judge and never one of its declared output files.
 
 package shedadapters
@@ -58,10 +57,9 @@ type roundFacts struct {
 	Recurring []recurringKey
 }
 
-// computeRoundFacts reads rounds 1..round's review files and rounds 1..round-1's ledgers inside
-// runDir.
-// A review that is missing or fails to parse yields a row carrying the error text, and a ledger
-// that fails to parse is skipped, so the function never fails.
+// computeRoundFacts reads rounds 1..round's review files and rounds 1..round-1's ledgers inside runDir.
+// A review that is missing or fails to parse yields a row carrying the error text,
+// and a ledger that fails to parse is skipped, so the function never fails.
 func computeRoundFacts(runDir string, round int, reportName func(int) string) roundFacts {
 	facts := roundFacts{Round: round}
 	for n := 1; n <= round; n++ {
@@ -104,8 +102,7 @@ func reviewFactsRow(runDir string, round int, reportName func(int) string) round
 	return row
 }
 
-// recurringKeys collects the keys of ledgers 1..last whose rounds hold two or more distinct
-// rounds.
+// recurringKeys collects the keys of ledgers 1..last whose rounds hold two or more distinct rounds.
 // A key is reopened when an earlier ledger has it resolved and a later ledger has it open.
 func recurringKeys(runDir string, last int) []recurringKey {
 	type keyState struct {
@@ -159,10 +156,8 @@ func recurringKeys(runDir string, last int) []recurringKey {
 	return out
 }
 
-// renderRoundFacts renders f as deterministic Markdown: a heading, one table with a row per round,
-// and the recurring-keys list.
-// Severities and classes appear in their constant order and keys sorted, so two renders of the same
-// facts are byte-identical.
+// renderRoundFacts renders f as deterministic Markdown: a heading, one table with a row per round, and the recurring-keys list.
+// Severities and classes appear in their constant order and keys sorted, so two renders of the same facts are byte-identical.
 func renderRoundFacts(f roundFacts) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Round %d facts\n\n", f.Round)
@@ -241,8 +236,7 @@ func escapeCell(s string) string {
 	return strings.ReplaceAll(s, "|", `\|`)
 }
 
-// writeRoundFacts computes and renders round's facts file and writes it at factsPath, overwriting
-// any earlier render.
+// writeRoundFacts computes and renders round's facts file and writes it at factsPath, overwriting any earlier render.
 func writeRoundFacts(runDir string, round int, reportName func(int) string) error {
 	content := renderRoundFacts(computeRoundFacts(runDir, round, reportName))
 	path := factsPath(runDir, round)

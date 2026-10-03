@@ -1,7 +1,7 @@
-// circling.go defines the operator's recorded decision on a circling round: a small file the
-// `lyx loom circling` verbs write and the Bouncer reads.
-// The writer owns the mechanical precondition (the latest round was judged CIRCLING, and no decision
-// exists for it yet); the run-state half (the run is awaiting at a Bouncer row) belongs to the verbs.
+// circling.go defines the operator's recorded decision on a circling round:
+// a small file the `lyx loom circling` verbs write and the Bouncer reads.
+// The writer owns the mechanical precondition (the latest round was judged CIRCLING, and no decision exists for it yet);
+// the run-state half (the run is awaiting at a Bouncer row) belongs to the verbs.
 
 package shedadapters
 
@@ -39,8 +39,9 @@ type circlingDecisionHeader struct {
 }
 
 // RecordCirclingDecision records d as pending for the run directory's latest round and returns that round.
-// It returns ErrNotCircling unless that round's recorded verdict is CIRCLING, and ErrCirclingDecided
-// when a decision file for the round already exists; the existing file is left untouched.
+// It returns ErrNotCircling unless that round's recorded verdict is CIRCLING,
+// and ErrCirclingDecided when a decision file for the round already exists;
+// the existing file is left untouched.
 func RecordCirclingDecision(runDir string, d CirclingDecision) (int, error) {
 	if d != CirclingAccept && d != CirclingContinue {
 		return 0, fmt.Errorf("shedadapters: circling decision must be %q or %q, got %q", CirclingAccept, CirclingContinue, d)
@@ -77,10 +78,9 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, error) {
 	return round, nil
 }
 
-// readCirclingDecision reads round's decision file, returning the decision, whether it is settled,
-// and whether a file exists.
-// A present file that is malformed is an error: the round must match the filename, the decision must
-// be one of the two values, and settled is legal only on an accept.
+// readCirclingDecision reads round's decision file, returning the decision, whether it is settled, and whether a file exists.
+// A present file that is malformed is an error:
+// the round must match the filename, the decision must be one of the two values, and settled is legal only on an accept.
 func readCirclingDecision(runDir string, round int) (CirclingDecision, bool, bool, error) {
 	path := circlingDecisionPath(runDir, round)
 	raw, err := os.ReadFile(path)

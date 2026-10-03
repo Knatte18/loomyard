@@ -79,8 +79,7 @@ type Env struct {
 	ReviewVersion string
 	ReviewTimeout time.Duration
 
-	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls
-	// back to when its own model/effort/version key is absent.
+	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls back to when its own model/effort/version key is absent.
 	// BurlerRound rows keep reading the Review* fields above.
 	JudgeModel   string
 	JudgeEffort  string
@@ -160,11 +159,10 @@ type Env struct {
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
 
-	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun,
-	// WorktreeTeardown) for producer identity and stuck-reason text, and by the Bouncer entry for the
-	// `lyx loom circling` verbs its CIRCLING Awaiting Reason names. It is legal on Env because Env
-	// carries roots and run-wide values, and a value that differs per row belongs in Config instead
-	// -- Slug does not differ between the three batten rows a single caller wires.
+	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun, WorktreeTeardown) for producer identity and stuck-reason text,
+	// and by the Bouncer entry for the `lyx loom circling` verbs its CIRCLING Awaiting Reason names.
+	// It is legal on Env because Env carries roots and run-wide values,
+	// and a value that differs per row belongs in Config instead -- Slug does not differ between the three batten rows a single caller wires.
 	Slug string
 	// SegmentBounces answers a row's segment bounce count and budget from the run's persisted history,
 	// read by the Bouncer entry for the budget sentence of its CIRCLING Awaiting Reason.

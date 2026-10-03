@@ -70,11 +70,7 @@
 //
 // # Finding class
 //
-// Every finding carries a required Class beside its severity, one of four:
-// design (the design is wrong, or a decision is missing or rests on a false premise),
-// scope (the work missed a call site, file or case),
-// decision (a choice is left open that the author must make) and
-// consistency (two parts disagree, or the artifact departs from its own conventions).
+// Every finding carries a required Class beside its severity, one of four: design (the design is wrong, or a decision is missing or rests on a false premise), scope (the work missed a call site, file or case), decision (a choice is left open that the author must make) and consistency (two parts disagree, or the artifact departs from its own conventions).
 // Each loom rubric says what design means for its own segment.
 // A recurring scope gap is raised once, as a design finding about the method that keeps missing it.
 // GatingClass (design) is the one class that decides when a review loop stops, in every segment.

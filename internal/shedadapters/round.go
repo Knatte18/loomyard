@@ -56,8 +56,7 @@ func ledgerPath(runDir string, round int) string {
 }
 
 // factsPath returns the path of the per-round facts file for round inside runDir.
-// The file is an input the judge reads and is regenerated before every judge call, so it is not one
-// of judgeOutputs.
+// The file is an input the judge reads and is regenerated before every judge call, so it is not one of judgeOutputs.
 func factsPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-facts.md", round))
 }

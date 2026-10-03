@@ -42,9 +42,9 @@ type verdictHeader struct {
 }
 
 // parseVerdict parses a bouncer verdict file into a bouncerVerdict and its rationale.
-// Fails loud: the frontmatter must be present, closed, and valid YAML; verdict must be exactly
-// verdictConverged, verdictContinue or verdictCircling (case-sensitive), so a retired word is
-// rejected; rationale must be non-empty after strings.TrimSpace.
+// Fails loud: the frontmatter must be present, closed, and valid YAML;
+// verdict must be exactly verdictConverged, verdictContinue or verdictCircling (case-sensitive), so a retired word is rejected;
+// rationale must be non-empty after strings.TrimSpace.
 func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
@@ -71,8 +71,8 @@ func parseVerdict(content []byte) (bouncerVerdict, string, error) {
 }
 
 // parseRecordedVerdict parses a verdict that was already on disk at Call entry.
-// It tries parseVerdict first, and otherwise reads a legacy APPROVED as verdictConverged and a
-// legacy BLOCKING as verdictContinue, reporting legacy true for either alias.
+// It tries parseVerdict first,
+// and otherwise reads a legacy APPROVED as verdictConverged and a legacy BLOCKING as verdictContinue, reporting legacy true for either alias.
 // The rest of the file is held to parseVerdict's rules: the frontmatter and a non-empty rationale.
 func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale string, legacy bool, err error) {
 	verdict, rationale, strictErr := parseVerdict(content)
@@ -117,8 +117,8 @@ func parseRecordedVerdict(content []byte) (verdict bouncerVerdict, rationale str
 // evidence about this one, and is synthesizable -- including it would let a missing focus file
 // invalidate a judgment that provably happened.
 //
-// The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still
-// reads as judged: the clear, the replay and BurlerProducer's may-advance check all go through here.
+// The verdict is read through parseRecordedVerdict, so a run directory an older binary judged still reads as judged:
+// the clear, the replay and BurlerProducer's may-advance check all go through here.
 func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, _, err := parseRecordedVerdict(content)
@@ -126,8 +126,8 @@ func recordedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 	})
 }
 
-// harvestedVerdict is recordedVerdict for a judge this Call spawned or attached: it reads the strict
-// vocabulary only, so a legacy word never counts as a harvest and the caller re-judges the round.
+// harvestedVerdict is recordedVerdict for a judge this Call spawned or attached:
+// it reads the strict vocabulary only, so a legacy word never counts as a harvest and the caller re-judges the round.
 func harvestedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 	return readJudgment(runDir, round, func(content []byte) (bouncerVerdict, error) {
 		verdict, _, err := parseVerdict(content)
@@ -135,8 +135,8 @@ func harvestedVerdict(runDir string, round int) (bouncerVerdict, bool) {
 	})
 }
 
-// readJudgment is the shared body of recordedVerdict and harvestedVerdict: it reads round's verdict
-// through parse, then requires round's ledger to parse and to name the same round.
+// readJudgment is the shared body of recordedVerdict and harvestedVerdict:
+// it reads round's verdict through parse, then requires round's ledger to parse and to name the same round.
 func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, error)) (bouncerVerdict, bool) {
 	verdictRaw, err := os.ReadFile(verdictPath(runDir, round))
 	if err != nil {

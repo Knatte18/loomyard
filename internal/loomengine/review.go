@@ -28,8 +28,7 @@ type ReviewSettings struct {
 	Timeout time.Duration
 }
 
-// JudgeSettings is the Bouncer rows' run-wide model settings, resolved once from Config and
-// threaded onto shedrecipe.Env for every Bouncer row to fall back to.
+// JudgeSettings is the Bouncer rows' run-wide model settings, resolved once from Config and threaded onto shedrecipe.Env for every Bouncer row to fall back to.
 // It carries no timeout, since BouncerConfig carries none.
 type JudgeSettings struct {
 	// Model is the resolved judge role's provider-side model string.
@@ -40,8 +39,7 @@ type JudgeSettings struct {
 	Version string
 }
 
-// ResolveJudge parses and resolves the judge role's model-spec from cfg, returning the
-// JudgeSettings the caller threads onto shedrecipe.Env.
+// ResolveJudge parses and resolves the judge role's model-spec from cfg, returning the JudgeSettings the caller threads onto shedrecipe.Env.
 func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	spec, err := modelspec.Parse(cfg.Judge)
 	if err != nil {
