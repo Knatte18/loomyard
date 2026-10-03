@@ -131,12 +131,10 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 	}
 }
 
-// TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove against a hub-contained directory at the sibling worktree's location that is not a git checkout,
-// and asserts the composed error names the probed path once and the git command once.
+// TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove against a hub-contained directory at the sibling worktree's location that is not a git checkout, and asserts the composed error names the probed path once and the git command once.
 // The task side no longer reaches its status probe for such a directory: a plain directory at the task worktree's location is a stray path, reported and left alone.
 //
-// Both wrappers in this chain — refuseDirtyWeftWorktree's "check weft worktree status in <dir>" and the *gitexec.GitError it wraps — used to repeat the path and the git command ahead of git's own stderr,
-// which is the only part of the message an operator can act on.
+// Both wrappers in this chain — refuseDirtyWeftWorktree's "check weft worktree status in <dir>" and the *gitexec.GitError it wraps — used to repeat the path and the git command ahead of git's own stderr, which is the only part of the message an operator can act on.
 // Each layer now contributes exactly one new fact: what fabric was doing, where it probed, and what git said.
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	t.Parallel()

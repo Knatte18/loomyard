@@ -42,9 +42,9 @@
 //
 // A strand's Retiring flag is reed's own lifecycle bookkeeping, not a caller field:
 // `reed remove --detach` sets it through Engine.MarkRetiring before spawning the detached remover,
-// so a caller can tell a strand about to remove itself from a live one, and the remover no-ops on a guid that is already gone.
-// EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone,
-// and kills the server when it ends the last session.
+// so a caller can tell a strand about to remove itself from a live one,
+// and the remover no-ops on a guid that is already gone.
+// EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone, and kills the server when it ends the last session.
 //
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
