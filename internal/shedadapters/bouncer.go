@@ -47,6 +47,8 @@ type BouncerConfig struct {
 	// ArtifactPaths is the subject under review -- what the rubric is applied *to* -- as opposed
 	// to RunDir/ReportName, which name the round producer's report, a document *about* the
 	// subject. Every entry must be an absolute path.
+	// Only the seed pass reads it; the judge reads the round facts, the latest review and the
+	// previous ledger, never the artifacts.
 	ArtifactPaths []string
 	// ReportName renders the round producer's report filename for a given round, resolved
 	// relative to RunDir.
@@ -693,9 +695,16 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	// shedengine.Done unreachable.
 	outputs := judgeOutputs(b.cfg.RunDir, n)
 
+	// The facts file is regenerated on every judge call, including one that ends up attaching to a
+	// live judge, since the render is deterministic. A write failure degrades like an unreadable
+	// template, because the prompt would name a file that does not exist.
+	if err := writeRoundFacts(b.cfg.RunDir, n, b.cfg.ReportName); err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
+
 	judgeValues := map[string]string{
 		"rubric":          rubric,
-		"artifacts":       strings.Join(b.cfg.ArtifactPaths, "\n"),
+		"facts_path":      factsPath(b.cfg.RunDir, n),
 		"round":           strconv.Itoa(n),
 		"next_round":      strconv.Itoa(n + 1),
 		"report_path":     reportPath,

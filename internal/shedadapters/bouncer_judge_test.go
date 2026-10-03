@@ -211,6 +211,62 @@ func TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger(t *testing.T) {
 	}
 }
 
+func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
+	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	shedfake.RequireOutcome(t, b, shedengine.Done)
+
+	prompt := shuttle.GotSpec.Prompt
+	for name, want := range map[string]string{
+		"facts path":      factsPath(cfg.RunDir, 1),
+		"review path":     filepath.Join(cfg.RunDir, cfg.ReportName(1)),
+		"previous ledger": "(none)",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("judge prompt does not name the %s %q", name, want)
+		}
+	}
+	for _, artifact := range cfg.ArtifactPaths {
+		if strings.Contains(prompt, artifact) {
+			t.Errorf("judge prompt names the artifact path %q; want the judge never pointed at the artifacts", artifact)
+		}
+	}
+	if fixer := roundFixerReportPath(cfg.RunDir, 1); strings.Contains(prompt, fixer) {
+		t.Errorf("judge prompt names the fixer-report path %q; want it absent", fixer)
+	}
+	for _, sentence := range []string{
+		"A parse-error row for the latest round means `CONTINUE`",
+		"Never relabel a BLOCKING finding downward",
+	} {
+		if !strings.Contains(prompt, sentence) {
+			t.Errorf("judge prompt lacks the sentence %q", sentence)
+		}
+	}
+	if _, err := os.Stat(factsPath(cfg.RunDir, 1)); err != nil {
+		t.Errorf("os.Stat(facts file) = %v; want nil after a judge call", err)
+	}
+	for _, out := range shuttle.GotSpec.OutputFiles {
+		if out == factsPath(cfg.RunDir, 1) {
+			t.Error("the facts file is a declared output file; want it an input only")
+		}
+	}
+}
+
+func TestBouncer_JudgeCall_ReviewWithoutClassStillSpawnsJudge(t *testing.T) {
+	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+	// bouncerReport carries no findings with a class; the facts render a parse-error row instead.
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
+
+	if !shuttle.Called {
+		t.Error("the judge was not spawned for a round-1 review the facts could not parse; want it spawned")
+	}
+}
+
 func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 	t.Run("ValidPriorLedger", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(2, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(2), true)
