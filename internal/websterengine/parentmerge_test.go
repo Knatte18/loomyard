@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -22,7 +23,7 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	deps := fx.Deps
 
 	// 1. begin-batch 1 records its StartSHA.
-	startSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	startSHA := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	begun, err := websterengine.BeginBatch(deps, 1)
 	if err != nil {
 		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
@@ -32,19 +33,19 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	}
 
 	// 2. The fork's commit lands and its OK report names it.
-	forkSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n", "1: json-flag")
+	forkSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n", "1: json-flag")
 	reportPath := filepath.Join(deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 	if err := os.WriteFile(reportPath, []byte(validReport(forkSHA)), 0o644); err != nil {
 		t.Fatalf("write batch report: %v", err)
 	}
 
 	// 3. A parent-side commit off StartSHA is merged --no-ff into the branch.
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent-side", startSHA)
-	commitFile(t, fx.Worktree, "parent.txt", "from the parent", "parent commit")
-	mustGit(t, fx.Worktree, "checkout", base)
-	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent-side", "parent-side")
-	mergeSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent-side", startSHA)
+	gitkit.CommitFile(t, fx.Worktree, "parent.txt", "from the parent", "parent commit")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
+	gitkit.Git(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent-side", "parent-side")
+	mergeSHA := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	// 4. record-batch succeeds at the fork's commit and warns about the moved HEAD.
 	contractDir := t.TempDir()
@@ -94,7 +95,7 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	}
 
 	// 6. The batch after the merge-in is recorded too: no verb in the ring refuses.
-	fork2SHA := commitFile(t, fx.Worktree, "internal/foo/impl2.go", "package foo\n", "2: list-tests")
+	fork2SHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl2.go", "package foo\n", "2: list-tests")
 	report2Path := filepath.Join(deps.Geom.ReportsDir, websterengine.ReportFileName(2, "list-tests"))
 	if err := os.WriteFile(report2Path, []byte(validReport(fork2SHA)), 0o644); err != nil {
 		t.Fatalf("write batch 2 report: %v", err)

@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -85,12 +86,12 @@ func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
-		mustGit(t, dir, "init")
-		mustGit(t, dir, "config", "user.name", "Test User")
-		mustGit(t, dir, "config", "user.email", "test@example.com")
+		gitkit.Git(t, dir, "init")
+		gitkit.Git(t, dir, "config", "user.name", "Test User")
+		gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 	}
-	commitFile(t, warp, "base.txt", "base", "warp base commit")
-	commitFile(t, weft, "base.txt", "base", "weft base commit")
+	gitkit.CommitFile(t, warp, "base.txt", "base", "warp base commit")
+	gitkit.CommitFile(t, weft, "base.txt", "base", "weft base commit")
 
 	// Uncommitted changes under the webster pathspec, so CommitWeft has
 	// something real to commit.
@@ -173,7 +174,7 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 
 	// The commit must genuinely exist with the webster message stem -- the
 	// committed=true report above is about this commit, not a phantom.
-	subject := strings.TrimSpace(mustGit(t, weft, "log", "-1", "--format=%s"))
+	subject := strings.TrimSpace(gitkit.Git(t, weft, "log", "-1", "--format=%s"))
 	if subject != "webster: corr-fail probe" {
 		t.Errorf("weft HEAD subject = %q; want %q", subject, "webster: corr-fail probe")
 	}
@@ -228,7 +229,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 				base = prefix + lyxdirs.LyxDirName
 				scratchBase = prefix + lyxdirs.DotLyxDirName
 			}
-			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
+			committedFiles := strings.Fields(gitkit.Git(t, weft, "show", "--name-only", "--format=", "HEAD"))
 
 			// Loom's durable status.json rides a webster commit (the two
 			// modules share one _lyx); only the machine-local artifacts of
@@ -257,7 +258,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			// The excluded artifacts must also stay untracked, not merely be
 			// left out of this one commit.
 			for _, absent := range wantAbsent {
-				if tracked := strings.TrimSpace(mustGit(t, weft, "ls-files", "--", absent)); tracked != "" {
+				if tracked := strings.TrimSpace(gitkit.Git(t, weft, "ls-files", "--", absent)); tracked != "" {
 					t.Errorf("weft ls-files %q = %q; want it untracked", absent, tracked)
 				}
 			}

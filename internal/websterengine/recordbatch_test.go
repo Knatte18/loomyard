@@ -26,6 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -127,8 +128,8 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	t.Helper()
 
 	worktree := newScratchRepo(t)
-	startSHA := commitFile(t, worktree, "base.txt", "base", "base commit")
-	headSHA := commitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
+	headSHA := gitkit.CommitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
 
 	cards := []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}
 	batches := []batcher.Batch{{Cards: cards}}
@@ -1334,7 +1335,7 @@ func TestRecordBatch_BindsHandleFromDeltaEndToEnd(t *testing.T) {
 		t.Fatalf("RestampPlanBaseline() error = %v", err)
 	}
 
-	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
@@ -1365,7 +1366,7 @@ func TestRecordBatch_ScopeGuardFindingsLandInWarnings(t *testing.T) {
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
 	// A symbol added outside the plan's own declared targets.
-	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Surprise() {}\n", "01.2: add Surprise")
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Surprise() {}\n", "01.2: add Surprise")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	fx.Deps.Plan.Cards[0].Targets = []string{"unrelated/thing#Nothing"}
 
@@ -1427,14 +1428,14 @@ func TestRecordBatch_DriftBlocksOnDeletedStillReferenced(t *testing.T) {
 	// A symbol must exist at the delta's START side to be reported deleted — the fixture's own
 	// StartSHA (base.txt only) predates internal/foo entirely, so the batch's own start boundary is
 	// moved to a commit that already carries the symbol, and a later commit removes it.
-	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
 	fx.Deps.State.Batches[1].StartSHA = withSymbol
 	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
 		t.Fatalf("remove impl.go: %v", err)
 	}
-	mustGit(t, fx.Worktree, "add", "-A")
-	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
-	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "add", "-A")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	addPendingCard(fx, []string{"internal/foo#WillGoAway"})
 
@@ -1476,11 +1477,11 @@ func TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock(t *testing.T) {
 	})
 	// The symbol must exist at the delta's start side to be reported deleted, so the batch's own
 	// start boundary moves to a commit that already carries it.
-	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
+	withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
 	fx.Deps.State.Batches[1].StartSHA = withSymbol
 	// Renamed AND rewritten: the token streams differ in length, so quarry's exact tier declines it
 	// and offers it as a candidate instead.
-	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	addPendingCard(fx, []string{"internal/foo#WillMove"})
 
@@ -1510,14 +1511,14 @@ func TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
-	withSymbol := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+	withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
 	fx.Deps.State.Batches[1].StartSHA = withSymbol
 	if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
 		t.Fatalf("remove impl.go: %v", err)
 	}
-	mustGit(t, fx.Worktree, "add", "-A")
-	mustGit(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
-	headSHA := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "add", "-A")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+	headSHA := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 
 	// The card being recorded IS the Delete card, and it names the symbol its own batch removed.
@@ -1546,8 +1547,8 @@ func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	// newRecordFixture's own work commit adds internal/foo/impl.go with no declared symbol; add one
 	// the fixture's own Create target can resolve against.
-	commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.2: add Bar")
-	headSHA := commitFile(t, fx.Worktree, "base.txt", "base updated", "01.3: bump base")
+	gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.2: add Bar")
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "base.txt", "base updated", "01.3: bump base")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
 		{Type: planparser.CardTypeCreate, Refs: []string{"internal/foo#Bar"}},
@@ -1616,11 +1617,11 @@ func TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks(t *testing.T) {
 
 	// Both symbols must exist at the delta's start side, so the batch's own start boundary moves to
 	// a commit that already carries them.
-	withSymbols := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+	withSymbols := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go",
 		"package foo\n\nfunc WillMove() int { return 1 }\n\nfunc WillGoAway() {}\n", "01.2: add both symbols")
 	fx.Deps.State.Batches[1].StartSHA = withSymbols
 	// One exact-tier rename (identical body, so quarry asserts the pair) plus one genuine deletion.
-	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go",
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go",
 		"package foo\n\nfunc Moved() int { return 1 }\n", "01.3: rename one, delete the other")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
@@ -1663,16 +1664,16 @@ const recordParentBranch = "parent1"
 // returns to the original branch and merges side with --no-ff, returning the merge commit's SHA.
 func parentMerge(t *testing.T, fx *recordFixture, side, name, content string) string {
 	t.Helper()
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
 	if _, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + side}, fx.Worktree); err == nil && exitCode == 0 {
-		mustGit(t, fx.Worktree, "checkout", side)
+		gitkit.Git(t, fx.Worktree, "checkout", side)
 	} else {
-		mustGit(t, fx.Worktree, "checkout", "-b", side, fx.StartSHA)
+		gitkit.Git(t, fx.Worktree, "checkout", "-b", side, fx.StartSHA)
 	}
-	commitFile(t, fx.Worktree, name, content, side+" commit")
-	mustGit(t, fx.Worktree, "checkout", base)
-	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge "+side, side)
-	return strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, name, content, side+" commit")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
+	gitkit.Git(t, fx.Worktree, "merge", "--no-ff", "-m", "merge "+side, side)
+	return gitkit.RevParse(t, fx.Worktree, "HEAD")
 }
 
 // snapshotRecordState captures the fork-transcript bookkeeping RecordBatch mutates before it can refuse, and returns a restore func:
@@ -1779,18 +1780,18 @@ func TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn(t *testing.T) {
 func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 	cases := map[string]func(t *testing.T, fx *recordFixture){
 		"non-merge commit alone": func(t *testing.T, fx *recordFixture) {
-			commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+			gitkit.CommitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
 		},
 		"non-merge commit after a merge": func(t *testing.T, fx *recordFixture) {
 			parentMerge(t, fx, "parent1", "parent1.txt", "p1")
-			commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+			gitkit.CommitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
 		},
 		"fast-forward onto non-merge commits": func(t *testing.T, fx *recordFixture) {
-			base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-			mustGit(t, fx.Worktree, "checkout", "-b", "ffside")
-			commitFile(t, fx.Worktree, "ff.txt", "ff", "ff commit")
-			mustGit(t, fx.Worktree, "checkout", base)
-			mustGit(t, fx.Worktree, "merge", "--ff-only", "ffside")
+			base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+			gitkit.Git(t, fx.Worktree, "checkout", "-b", "ffside")
+			gitkit.CommitFile(t, fx.Worktree, "ff.txt", "ff", "ff commit")
+			gitkit.Git(t, fx.Worktree, "checkout", base)
+			gitkit.Git(t, fx.Worktree, "merge", "--ff-only", "ffside")
 		},
 	}
 	for name, move := range cases {
@@ -1798,7 +1799,7 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 			fx := parentMergeFixture(t)
 			restore := snapshotRecordState(fx)
 			move(t, fx)
-			newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+			newHead := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 			_, err := websterengine.RecordBatch(fx.Deps, 1)
 			if err == nil {
@@ -1812,7 +1813,7 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 			assertBatchOpen(t, fx)
 
 			// Taking the way forward: HEAD goes back to the report's head_sha and the same call records.
-			mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
+			gitkit.Git(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
 			restore()
 			if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 				t.Fatalf("retry RecordBatch() error = %v; want nil", err)
@@ -1826,16 +1827,16 @@ func TestRecordBatch_NonMergeMovementRefused(t *testing.T) {
 func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
 	fx := parentMergeFixture(t)
 	restore := snapshotRecordState(fx)
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", recordParentBranch, fx.StartSHA)
-	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
-	mustGit(t, fx.Worktree, "checkout", base)
-	mustGit(t, fx.Worktree, "merge", "--no-ff", "--no-commit", recordParentBranch)
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", recordParentBranch, fx.StartSHA)
+	gitkit.CommitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
+	gitkit.Git(t, fx.Worktree, "merge", "--no-ff", "--no-commit", recordParentBranch)
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "smuggled.txt"), []byte("unaudited"), 0o644); err != nil {
 		t.Fatalf("write smuggled file: %v", err)
 	}
-	mustGit(t, fx.Worktree, "add", "smuggled.txt")
-	mustGit(t, fx.Worktree, "commit", "--no-edit")
+	gitkit.Git(t, fx.Worktree, "add", "smuggled.txt")
+	gitkit.Git(t, fx.Worktree, "commit", "--no-edit")
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
@@ -1849,7 +1850,7 @@ func TestRecordBatch_EvilParentMergeRefused(t *testing.T) {
 	assertBatchOpen(t, fx)
 
 	// Taking the way forward: HEAD goes back to the report's head_sha and the same call records.
-	mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
+	gitkit.Git(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
 	restore()
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("retry RecordBatch() error = %v; want nil", err)
@@ -1863,10 +1864,10 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	fx := parentMergeFixture(t)
 	restore := snapshotRecordState(fx)
 
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", fx.StartSHA)
-	commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\n// parent side\n", "parent side impl")
-	mustGit(t, fx.Worktree, "checkout", base)
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent1", fx.StartSHA)
+	gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\n// parent side\n", "parent side impl")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
 	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", "-m", "merge parent1", "parent1"}, fx.Worktree); err != nil || exitCode == 0 {
 		t.Fatalf("conflicting merge: exit=%d err=%v; want a conflict", exitCode, err)
 	}
@@ -1883,8 +1884,8 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal/foo/impl.go"), []byte("package foo\n"), 0o644); err != nil {
 		t.Fatalf("resolve conflict: %v", err)
 	}
-	mustGit(t, fx.Worktree, "add", "internal/foo/impl.go")
-	mustGit(t, fx.Worktree, "commit", "--no-edit")
+	gitkit.Git(t, fx.Worktree, "add", "internal/foo/impl.go")
+	gitkit.Git(t, fx.Worktree, "commit", "--no-edit")
 
 	restore()
 	_, err = websterengine.RecordBatch(fx.Deps, 1)
@@ -1898,7 +1899,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	}
 	assertBatchOpen(t, fx)
 
-	mustGit(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
+	gitkit.Git(t, fx.Worktree, "reset", "--hard", fx.HeadSHA)
 	restore()
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("retry RecordBatch() error = %v; want nil", err)

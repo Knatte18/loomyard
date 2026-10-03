@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -66,42 +67,13 @@ func seedHubStencils(t *testing.T, hub string) {
 	}
 }
 
-// newScratchRepo initializes a fresh git repo at t.TempDir() and returns its path.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	mustGit(t, dir, "init")
-	mustGit(t, dir, "config", "user.name", "Test User")
-	mustGit(t, dir, "config", "user.email", "test@example.com")
+	gitkit.Git(t, dir, "init")
+	gitkit.Git(t, dir, "config", "user.name", "Test User")
+	gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 	return dir
-}
-
-// mustGit runs a git command in dir via gitexec.RunGit.
-func mustGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	stdout, stderr, exitCode, err := gitexec.RunGit(args, dir)
-	if err != nil {
-		t.Fatalf("git %v in %s: %v", args, dir, err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("git %v in %s exited %d: %s", args, dir, exitCode, stderr)
-	}
-	return stdout
-}
-
-// commitFile writes name/content in dir and commits it, returning the new HEAD SHA.
-func commitFile(t *testing.T, dir, name, content, message string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir parent of %s: %v", name, err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	mustGit(t, dir, "add", name)
-	mustGit(t, dir, "commit", "-m", message)
-	return strings.TrimSpace(mustGit(t, dir, "rev-parse", "HEAD"))
 }
 
 // seedAnchoredGitLink makes anchorPath (a plain, .git-less subdirectory of worktree) openable as a
@@ -240,7 +212,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	t.Helper()
 
 	worktree := newScratchRepo(t)
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
 	seedValidPlanDir(t, planparser.PlanDir(layout.AnchorPath()))
@@ -308,10 +280,10 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
 		t.Fatalf("mkdir worktree: %v", err)
 	}
-	mustGit(t, worktree, "init")
-	mustGit(t, worktree, "config", "user.name", "Test User")
-	mustGit(t, worktree, "config", "user.email", "test@example.com")
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.Git(t, worktree, "init")
+	gitkit.Git(t, worktree, "config", "user.name", "Test User")
+	gitkit.Git(t, worktree, "config", "user.email", "test@example.com")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 	// A hub-level board directory -- with no weft sibling anywhere near it -- is what selects hub
 	// mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats
 	// <hub>/_board/_lyx.
@@ -655,7 +627,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			// file as an embedded-repository boundary, so `git add`
 			// invoked from fx.Worktree silently refuses to descend into
 			// it and stages nothing.
-			startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+			startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 			st.CurrentBatch = 1
 			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -711,7 +683,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t, "master-model")
-	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -754,7 +726,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t, "master-model")
-	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
 
 	var out strings.Builder
@@ -854,7 +826,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	// "Finishes" means its card's own Create target actually lands and is committed: the terminal
 	// recovery path now runs the same mechanical post-batch pass record-batch does, so a recovery
 	// reporting done over a card whose target never appeared is refused rather than marked terminal.
-	head := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+	head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
@@ -1377,7 +1349,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t, "master-model")
-	startSHA := commitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {

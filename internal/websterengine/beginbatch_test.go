@@ -31,7 +31,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -40,49 +40,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newScratchRepo initializes a fresh git repo in a t.TempDir() and
-// configures a throwaway committer identity, returning its path — kept
-// package-local rather than shared, since test-helper packages are
-// deliberately not shared across modules.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	mustGit(t, dir, "init")
-	mustGit(t, dir, "config", "user.name", "Test User")
-	mustGit(t, dir, "config", "user.email", "test@example.com")
+	gitkit.Git(t, dir, "init")
+	gitkit.Git(t, dir, "config", "user.name", "Test User")
+	gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 
 	return dir
-}
-
-// mustGit runs a git command in dir via gitexec.RunGit, failing the test on
-// any spawn error or non-zero exit, and returns stdout.
-func mustGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	stdout, stderr, exitCode, err := gitexec.RunGit(args, dir)
-	if err != nil {
-		t.Fatalf("git %v in %s: %v", args, dir, err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("git %v in %s exited %d: %s", args, dir, exitCode, stderr)
-	}
-	return stdout
-}
-
-// commitFile writes name=content into dir and commits it with message,
-// returning the resulting commit SHA.
-func commitFile(t *testing.T, dir, name, content, message string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir for %s: %v", name, err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	mustGit(t, dir, "add", name)
-	mustGit(t, dir, "commit", "-m", message)
-	return strings.TrimSpace(mustGit(t, dir, "rev-parse", "HEAD"))
 }
 
 // seedPlanDir creates a t.TempDir() seeded with one throwaway markdown file,
@@ -261,7 +227,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	}
 
 	worktree := newScratchRepo(t)
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -563,11 +529,11 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	original := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	original := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "fork", StartSHA: original},
 	}
-	moved := commitFile(t, fx.Worktree, "fork.txt", "fork", "earlier fork commit")
+	moved := gitkit.CommitFile(t, fx.Worktree, "fork.txt", "fork", "earlier fork commit")
 	if moved == original {
 		t.Fatal("worktree head did not move past the recorded StartSHA")
 	}
@@ -635,7 +601,7 @@ func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "fork"},
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	result, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err != nil {
@@ -827,7 +793,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	fx := newBeginFixture(t)
 	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
-	commitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+	gitkit.CommitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
 
 	built := planparser.Card{
 		Number:         1,
@@ -961,7 +927,7 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 // a batch begun but not yet recorded, whose own Create target has already landed, is re-begun (the master_asking resume path) and must neither be refused as create-already-exists nor lose the StartSHA its first begin recorded.
 func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
 	fx := newBeginFixture(t)
-	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
 
 	built := planparser.Card{
 		Number:         1,
@@ -1016,8 +982,8 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 		}
 		return c
 	}
-	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n", "existing symbol")
-	commitFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n", "second existing symbol")
+	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n", "existing symbol")
+	gitkit.CommitFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n", "second existing symbol")
 
 	creator := card(1, "json-flag", planparser.CardTypeCreate, "sub/new.go#", nil)
 	user := card(2, "list-tests", planparser.CardTypeEdit, "sub#Existing", []string{"sub/new.go#"})

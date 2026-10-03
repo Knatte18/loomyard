@@ -12,56 +12,26 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// gitwrapNewScratchRepo initializes a fresh git repo in a t.TempDir() and
-// configures a throwaway committer identity, returning its path.
+// gitwrapNewScratchRepo is the in-package scratch-repo initialiser; the external test package keeps its own, since the two packages cannot share a helper.
 func gitwrapNewScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	gitwrapMustGit(t, dir, "init")
-	gitwrapMustGit(t, dir, "config", "user.name", "Test User")
-	gitwrapMustGit(t, dir, "config", "user.email", "test@example.com")
+	gitkit.Git(t, dir, "init")
+	gitkit.Git(t, dir, "config", "user.name", "Test User")
+	gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 
 	return dir
-}
-
-// gitwrapMustGit runs a git command in dir via gitexec.RunGit, failing the
-// test on any spawn error or non-zero exit, and returns stdout.
-func gitwrapMustGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	stdout, stderr, exitCode, err := gitexec.RunGit(args, dir)
-	if err != nil {
-		t.Fatalf("git %v in %s: %v", args, dir, err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("git %v in %s exited %d: %s", args, dir, exitCode, stderr)
-	}
-	return stdout
-}
-
-// gitwrapCommitFile writes name=content into dir and commits it with
-// message, returning the resulting commit SHA.
-func gitwrapCommitFile(t *testing.T, dir, name, content, message string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir for %s: %v", name, err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	gitwrapMustGit(t, dir, "add", name)
-	gitwrapMustGit(t, dir, "commit", "-m", message)
-	return strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "HEAD"))
 }
 
 func TestHeadSHA_ReturnsHEAD(t *testing.T) {
 	t.Parallel()
 
 	dir := gitwrapNewScratchRepo(t)
-	want := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	want := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
 	got, err := headSHA(dir)
 	if err != nil {
@@ -76,7 +46,7 @@ func TestDirty_TrueAndFalse(t *testing.T) {
 	t.Parallel()
 
 	dir := gitwrapNewScratchRepo(t)
-	gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
 	clean, err := dirty(dir)
 	if err != nil {
@@ -110,23 +80,23 @@ func gitwrapParent() (string, error) { return gitwrapParentBranch, nil }
 // It returns the merge commit SHA and the side branch's own tip SHA.
 func gitwrapMergeSide(t *testing.T, dir, side string) (mergeSHA, sideTip string) {
 	t.Helper()
-	base := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
-	baseHead := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "HEAD"))
+	base := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
+	baseHead := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "HEAD"))
 	if _, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + side}, dir); err == nil && exitCode == 0 {
-		gitwrapMustGit(t, dir, "checkout", side)
+		gitkit.Git(t, dir, "checkout", side)
 	} else {
-		gitwrapMustGit(t, dir, "checkout", "-b", side)
+		gitkit.Git(t, dir, "checkout", "-b", side)
 	}
-	sideTip = gitwrapCommitFile(t, dir, side+"-"+baseHead[:12]+".txt", side, side+" commit")
-	gitwrapMustGit(t, dir, "checkout", base)
-	gitwrapMustGit(t, dir, "merge", "--no-ff", "-m", "merge "+side, side)
-	return strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "HEAD")), sideTip
+	sideTip = gitkit.CommitFile(t, dir, side+"-"+baseHead[:12]+".txt", side, side+" commit")
+	gitkit.Git(t, dir, "checkout", base)
+	gitkit.Git(t, dir, "merge", "--no-ff", "-m", "merge "+side, side)
+	return strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "HEAD")), sideTip
 }
 
 func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	head := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	head := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
 	warning, err := reconcileReportHead(dir, head, "batch report x", gitwrapParent)
 	if err != nil || warning != "" {
@@ -137,7 +107,7 @@ func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
 func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	merge1, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 	warning, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
@@ -164,7 +134,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	report, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 	merge2, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
@@ -183,12 +153,12 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	t.Run("fast-forward onto side commits", func(t *testing.T) {
 		t.Parallel()
 		dir := gitwrapNewScratchRepo(t)
-		report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
-		base := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
-		gitwrapMustGit(t, dir, "checkout", "-b", "side")
-		gitwrapCommitFile(t, dir, "s.txt", "s", "side commit")
-		gitwrapMustGit(t, dir, "checkout", base)
-		gitwrapMustGit(t, dir, "merge", "--ff-only", "side")
+		report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
+		base := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
+		gitkit.Git(t, dir, "checkout", "-b", "side")
+		gitkit.CommitFile(t, dir, "s.txt", "s", "side commit")
+		gitkit.Git(t, dir, "checkout", base)
+		gitkit.Git(t, dir, "merge", "--ff-only", "side")
 
 		if _, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent); err == nil {
 			t.Fatal("error = nil; want refusal")
@@ -198,8 +168,8 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	t.Run("non-merge commit after report head", func(t *testing.T) {
 		t.Parallel()
 		dir := gitwrapNewScratchRepo(t)
-		report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
-		head := gitwrapCommitFile(t, dir, "b.txt", "two", "second")
+		report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
+		head := gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 
 		_, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
 		if err == nil {
@@ -215,9 +185,9 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	t.Run("non-merge commit between merges", func(t *testing.T) {
 		t.Parallel()
 		dir := gitwrapNewScratchRepo(t)
-		report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+		report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		gitwrapMergeSide(t, dir, gitwrapParentBranch)
-		gitwrapCommitFile(t, dir, "b.txt", "two", "second")
+		gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 		head, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 		_, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
@@ -234,7 +204,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	t.Run("report head only on merged-in side branch", func(t *testing.T) {
 		t.Parallel()
 		dir := gitwrapNewScratchRepo(t)
-		gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+		gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		_, sideTip := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 		if _, err := reconcileReportHead(dir, sideTip, "batch report x", gitwrapParent); err == nil {
@@ -245,7 +215,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 	t.Run("all-zero report head", func(t *testing.T) {
 		t.Parallel()
 		dir := gitwrapNewScratchRepo(t)
-		gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+		gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 		zero := strings.Repeat("0", 40)
@@ -259,14 +229,14 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 // returning the current branch's name.
 func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) {
 	t.Helper()
-	base = strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
+	base = strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
 	if _, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + gitwrapParentBranch}, dir); err == nil && exitCode == 0 {
-		gitwrapMustGit(t, dir, "checkout", gitwrapParentBranch)
+		gitkit.Git(t, dir, "checkout", gitwrapParentBranch)
 	} else {
-		gitwrapMustGit(t, dir, "checkout", "-b", gitwrapParentBranch)
+		gitkit.Git(t, dir, "checkout", "-b", gitwrapParentBranch)
 	}
-	gitwrapCommitFile(t, dir, name, content, "parent: "+name)
-	gitwrapMustGit(t, dir, "checkout", base)
+	gitkit.CommitFile(t, dir, name, content, "parent: "+name)
+	gitkit.Git(t, dir, "checkout", base)
 	return base
 }
 
@@ -287,12 +257,12 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			parent: gitwrapParent,
 			move: func(t *testing.T, dir string) {
 				gitwrapParentCommit(t, dir, "p.txt", "p")
-				gitwrapMustGit(t, dir, "merge", "--no-ff", "--no-commit", gitwrapParentBranch)
+				gitkit.Git(t, dir, "merge", "--no-ff", "--no-commit", gitwrapParentBranch)
 				if err := os.WriteFile(filepath.Join(dir, "smuggled.txt"), []byte("unaudited"), 0o644); err != nil {
 					t.Fatalf("write smuggled file: %v", err)
 				}
-				gitwrapMustGit(t, dir, "add", "smuggled.txt")
-				gitwrapMustGit(t, dir, "commit", "--no-edit")
+				gitkit.Git(t, dir, "add", "smuggled.txt")
+				gitkit.Git(t, dir, "commit", "--no-edit")
 			},
 			wantReason: "carries changes beyond a clean merge",
 		},
@@ -310,11 +280,11 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			parent: gitwrapParent,
 			move: func(t *testing.T, dir string) {
 				gitwrapParentCommit(t, dir, "p.txt", "p")
-				gitwrapCommitFile(t, dir, "scratch.txt", "arbitrary", "scratch")
-				tree := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "HEAD^{tree}"))
-				gitwrapMustGit(t, dir, "reset", "--hard", "HEAD~1")
-				forged := strings.TrimSpace(gitwrapMustGit(t, dir, "commit-tree", tree, "-p", "HEAD", "-p", gitwrapParentBranch, "-m", "forged merge"))
-				gitwrapMustGit(t, dir, "reset", "--hard", forged)
+				gitkit.CommitFile(t, dir, "scratch.txt", "arbitrary", "scratch")
+				tree := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "HEAD^{tree}"))
+				gitkit.Git(t, dir, "reset", "--hard", "HEAD~1")
+				forged := strings.TrimSpace(gitkit.Git(t, dir, "commit-tree", tree, "-p", "HEAD", "-p", gitwrapParentBranch, "-m", "forged merge"))
+				gitkit.Git(t, dir, "reset", "--hard", forged)
 			},
 			wantReason: "carries changes beyond a clean merge",
 		},
@@ -323,15 +293,15 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			parent: gitwrapParent,
 			move: func(t *testing.T, dir string) {
 				gitwrapParentCommit(t, dir, "a.txt", "parent side")
-				gitwrapCommitFile(t, dir, "a.txt", "our side", "our side")
+				gitkit.CommitFile(t, dir, "a.txt", "our side", "our side")
 				if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", gitwrapParentBranch}, dir); err != nil || exitCode == 0 {
 					t.Fatalf("expected a conflicting merge; exit %d err %v", exitCode, err)
 				}
 				if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("resolved"), 0o644); err != nil {
 					t.Fatalf("resolve conflict: %v", err)
 				}
-				gitwrapMustGit(t, dir, "add", "a.txt")
-				gitwrapMustGit(t, dir, "commit", "--no-edit")
+				gitkit.Git(t, dir, "add", "a.txt")
+				gitkit.Git(t, dir, "commit", "--no-edit")
 			},
 			wantReason: "do not merge cleanly",
 		},
@@ -340,15 +310,15 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			parent: gitwrapParent,
 			move: func(t *testing.T, dir string) {
 				// Two independent lines, both merged into the parent branch, so each octopus head is reachable from its tip.
-				base := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
+				base := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
 				for _, line := range []string{"line-a", "line-b"} {
-					gitwrapMustGit(t, dir, "checkout", "-b", line, base)
-					gitwrapCommitFile(t, dir, line+".txt", line, line+" commit")
+					gitkit.Git(t, dir, "checkout", "-b", line, base)
+					gitkit.CommitFile(t, dir, line+".txt", line, line+" commit")
 				}
-				gitwrapMustGit(t, dir, "checkout", "-b", gitwrapParentBranch, "line-a")
-				gitwrapMustGit(t, dir, "merge", "--no-ff", "-m", "parent takes line-b", "line-b")
-				gitwrapMustGit(t, dir, "checkout", base)
-				gitwrapMustGit(t, dir, "merge", "--no-ff", "-m", "octopus", "line-a", "line-b")
+				gitkit.Git(t, dir, "checkout", "-b", gitwrapParentBranch, "line-a")
+				gitkit.Git(t, dir, "merge", "--no-ff", "-m", "parent takes line-b", "line-b")
+				gitkit.Git(t, dir, "checkout", base)
+				gitkit.Git(t, dir, "merge", "--no-ff", "-m", "octopus", "line-a", "line-b")
 			},
 			wantReason: "has 3 parents",
 		},
@@ -365,9 +335,9 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := gitwrapNewScratchRepo(t)
-			report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+			report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 			tc.move(t, dir)
-			head := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "HEAD"))
+			head := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "HEAD"))
 			if head == report {
 				t.Fatal("move left HEAD at the report head")
 			}
@@ -389,10 +359,10 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	report := gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	merge, sideTip := gitwrapMergeSide(t, dir, gitwrapParentBranch)
-	gitwrapMustGit(t, dir, "update-ref", "refs/remotes/origin/"+gitwrapParentBranch, sideTip)
-	gitwrapMustGit(t, dir, "branch", "-D", gitwrapParentBranch)
+	gitkit.Git(t, dir, "update-ref", "refs/remotes/origin/"+gitwrapParentBranch, sideTip)
+	gitkit.Git(t, dir, "branch", "-D", gitwrapParentBranch)
 
 	warning, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
 	if err != nil {
@@ -406,12 +376,12 @@ func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 // gitwrapConflictingMerge sets up a conflict on file c.txt between the current branch and a side branch, leaving the merge in progress in dir.
 func gitwrapConflictingMerge(t *testing.T, dir string) {
 	t.Helper()
-	base := strings.TrimSpace(gitwrapMustGit(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
-	gitwrapCommitFile(t, dir, "c.txt", "base", "add c")
-	gitwrapMustGit(t, dir, "checkout", "-b", "conflict-side")
-	gitwrapCommitFile(t, dir, "c.txt", "side", "side c")
-	gitwrapMustGit(t, dir, "checkout", base)
-	gitwrapCommitFile(t, dir, "c.txt", "main", "main c")
+	base := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.CommitFile(t, dir, "c.txt", "base", "add c")
+	gitkit.Git(t, dir, "checkout", "-b", "conflict-side")
+	gitkit.CommitFile(t, dir, "c.txt", "side", "side c")
+	gitkit.Git(t, dir, "checkout", base)
+	gitkit.CommitFile(t, dir, "c.txt", "main", "main c")
 	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "conflict-side"}, dir); err != nil || exitCode == 0 {
 		t.Fatalf("expected a conflicting merge; exit %d err %v", exitCode, err)
 	}
@@ -420,7 +390,7 @@ func gitwrapConflictingMerge(t *testing.T, dir string) {
 func TestRefuseMidMerge(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
 	if err := refuseMidMerge(dir); err != nil {
 		t.Fatalf("clean repo: error = %v; want nil", err)
@@ -437,7 +407,7 @@ func TestRefuseMidMerge(t *testing.T) {
 		}
 	}
 
-	gitwrapMustGit(t, dir, "merge", "--abort")
+	gitkit.Git(t, dir, "merge", "--abort")
 	if err := refuseMidMerge(dir); err != nil {
 		t.Fatalf("after abort: error = %v; want nil", err)
 	}
@@ -446,11 +416,11 @@ func TestRefuseMidMerge(t *testing.T) {
 func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
-	gitwrapCommitFile(t, dir, "a.txt", "one", "first")
+	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	linked := filepath.Join(t.TempDir(), "linked")
-	gitwrapMustGit(t, dir, "worktree", "add", "-b", "linked-branch", linked)
-	gitwrapMustGit(t, linked, "config", "user.name", "Test User")
-	gitwrapMustGit(t, linked, "config", "user.email", "test@example.com")
+	gitkit.Git(t, dir, "worktree", "add", "-b", "linked-branch", linked)
+	gitkit.Git(t, linked, "config", "user.name", "Test User")
+	gitkit.Git(t, linked, "config", "user.email", "test@example.com")
 
 	gitwrapConflictingMerge(t, linked)
 	err := refuseMidMerge(linked)
@@ -461,9 +431,9 @@ func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
 
 func TestOtherWorktrees(t *testing.T) {
 	main := gitwrapNewScratchRepo(t)
-	gitwrapCommitFile(t, main, "a.txt", "x", "add a")
+	gitkit.CommitFile(t, main, "a.txt", "x", "add a")
 	added := filepath.Join(t.TempDir(), "added")
-	gitwrapMustGit(t, main, "worktree", "add", added)
+	gitkit.Git(t, main, "worktree", "add", added)
 
 	mainCanon, err := canonicalPath(main)
 	if err != nil {

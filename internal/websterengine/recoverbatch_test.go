@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -192,7 +193,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	}
 
 	worktree := newScratchRepo(t)
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
 	reed := &recoverFakeReed{}
 	engine := &recoverFakeEngine{}
@@ -602,7 +603,7 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 	if !first.Running {
 		t.Fatalf("first call = %+v; want Running=true", first)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	return head
 }
@@ -616,11 +617,11 @@ func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
 	head := recoverAtReportHead(t, fx, clk)
 	fx.Deps.ParentBranch = func() (string, error) { return "parent1", nil }
 
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
-	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
-	mustGit(t, fx.Worktree, "checkout", "-")
-	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent1", "parent1")
-	merge := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	gitkit.CommitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
+	gitkit.Git(t, fx.Worktree, "checkout", "-")
+	gitkit.Git(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent1", "parent1")
+	merge := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	result, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if err != nil {
@@ -653,8 +654,8 @@ func TestRecoverBatch_NonMergeCommitAfterReportHeadRefused(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	head := recoverAtReportHead(t, fx, clk)
 
-	commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
-	newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+	newHead := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if err == nil {
@@ -676,11 +677,11 @@ func TestRecoverBatch_MergeInProgressRefused(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	head := recoverAtReportHead(t, fx, clk)
 
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
-	commitFile(t, fx.Worktree, "base.txt", "parent side", "parent side edit")
-	mustGit(t, fx.Worktree, "checkout", base)
-	commitFile(t, fx.Worktree, "base.txt", "our side", "our side edit")
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "parent side", "parent side edit")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "our side", "our side edit")
 	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", "-m", "merge parent1", "parent1"}, fx.Worktree); err != nil || exitCode == 0 {
 		t.Fatalf("conflicting merge: exit=%d err=%v; want a conflict", exitCode, err)
 	}
@@ -1042,7 +1043,7 @@ func TestRecoverSpawn_InheritsTheStuckForksStartSHA(t *testing.T) {
 	}
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", StartSHA: bracketStart, Kind: "fork"}
 	// The stuck fork committed part of its work before reporting stuck.
-	commitFile(t, fx.Worktree, "internal/partial/impl.go", "package partial\n", "01.1: partial work")
+	gitkit.CommitFile(t, fx.Worktree, "internal/partial/impl.go", "package partial\n", "01.1: partial work")
 
 	if _, _, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil {
 		t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
@@ -1186,12 +1187,12 @@ func TestRecoverBatch_WayForward_DoneReportRecordsInstead(t *testing.T) {
 func suspectRecovery(t *testing.T) (*recoverFixture, string, string) {
 	t.Helper()
 	fx := newRecoverFixture(t)
-	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	start := gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "hash-object", "internal/x.go"))
-	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	blob := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "hash-object", "internal/x.go"))
+	gitkit.Git(t, fx.Worktree, "checkout", "--", "internal/x.go")
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
 		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
@@ -1212,8 +1213,8 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1236,11 +1237,11 @@ func TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
 	if err := os.Remove(filepath.Join(fx.Worktree, "internal", "x.go")); err != nil {
 		t.Fatal(err)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); !errors.Is(err, websterengine.ErrBatchFailed) {
 		t.Fatalf("first recovery error = %v; want ErrBatchFailed", err)
@@ -1252,9 +1253,9 @@ func TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
-	head = strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head = gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) || !strings.Contains(err.Error(), "revert it to "+start) {
@@ -1267,8 +1268,8 @@ func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	_, err := recoverSuspect(t, fx)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
 		t.Fatalf("error = %v; want ErrBatchFailed", err)
@@ -1280,7 +1281,7 @@ func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
 
 func TestPersistRecoveryTerminal_PassesReverted(t *testing.T) {
 	fx, _, _ := suspectRecovery(t)
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
@@ -1292,7 +1293,7 @@ func TestPersistRecoveryTerminal_PassesReverted(t *testing.T) {
 
 func TestPersistRecoveryTerminal_PassesRederived(t *testing.T) {
 	fx, _, _ := suspectRecovery(t)
-	commitFile(t, fx.Worktree, "internal/x.go", "derived", "strand re-derives")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "derived", "strand re-derives")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
@@ -1308,10 +1309,10 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
-	mustGit(t, fx.Worktree, "commit", "-m", "strand moves forged")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.Git(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "strand moves forged")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1329,13 +1330,17 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved(t *testing.T)
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
-	commitFile(t, fx.Worktree, ".gitignore", "internal/x.go\n", "strand moves forged and ignores x")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.Git(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	if err := os.WriteFile(filepath.Join(fx.Worktree, ".gitignore"), []byte("internal/x.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitkit.Git(t, fx.Worktree, "add", ".gitignore")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "strand moves forged and ignores x")
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("ignored"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1348,14 +1353,14 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved(t *testing.T)
 
 func TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent(t *testing.T) {
 	fx := newRecoverFixture(t)
-	commitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")
-	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
-	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", start+":internal/z.go"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")
+	start := gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	blob := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", start+":internal/z.go"))
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
 		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
 	}
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
