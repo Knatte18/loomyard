@@ -1,14 +1,8 @@
-// awaitbatch.go implements AwaitBatch, the bounded long-poll Master calls between forking a batch's
-// implementer and recording it.
-// On Claude Code 2.1.205 the Agent-tool fork is a BACKGROUNDED agent — it returns immediately
-// instead of synchronously inside Master's turn — so Master needs a blocking tool call to stay
-// inside its turn until the fork's batch-report lands;
-// a Master that simply ends its turn "waiting" is classified asking by the shuttle file contract
-// and kills the whole run (found live in round fable-r1).
-// AwaitBatch is that call: a pure, bounded watch on the batch's report path — no state read, no
-// state mutation, no fabric — mirroring recover-batch's re-entrant long-poll idiom (recover-batch's
-// re-polls each block at most one wait window; the caller re-calls until the report is present or
-// its fork has finished without one).
+// awaitbatch.go implements AwaitBatch, a bounded wait for one batch's report file behind the
+// `await-batch` verb an operator can call while a run is in flight.
+// It is a pure watch on the batch's report path — no state read, no state mutation, no fabric —
+// mirroring recover-batch's re-entrant long-poll idiom: each call blocks at most one wait window,
+// and the caller re-calls until the report is present.
 
 package websterengine
 
@@ -25,8 +19,8 @@ import (
 const awaitTick = time.Second
 
 // DefaultAwaitWaitS is await-batch's default per-call block when --wait is not given.
-// Deliberately SHORT to keep Master's foreground turn alive (Claude Code backgrounds commands after
-// ~2 minutes).
+// Short so an agent caller's foreground call stays under Claude Code's ~2-minute auto-background
+// threshold.
 const DefaultAwaitWaitS = 30
 
 // AwaitResult is what one AwaitBatch call returns to its caller.

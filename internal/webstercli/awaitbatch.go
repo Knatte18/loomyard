@@ -1,9 +1,7 @@
-// awaitbatch.go implements the `await-batch` webster verb: the bounded long-poll Master calls
-// between forking a batch's implementer and recording it.
-// Forks are backgrounded agents on current Claude Code (they return immediately, not synchronously
-// inside Master's turn — round fable-r1's F1 finding), so Master must stay inside its turn by
-// blocking on this verb until the fork's report lands; ending the turn instead classifies the run
-// asking and kills it.
+// awaitbatch.go implements the `await-batch` webster verb: a bounded wait for one batch's report
+// file, for an operator watching a run.
+// Master does not call it: it ends its turn while a backgrounded fork works and records the batch
+// on the fork's completion notification.
 // The verb is deliberately stateless: no state.json read, no lease, no fabric commit — a pure bounded watch
 // on the report path, so it can never corrupt a run no matter who calls it or when.
 package webstercli
@@ -31,11 +29,8 @@ func (c *websterCLI) awaitBatchCmd() *cobra.Command {
 file to appear, returning {"batch": "NN-<slug>", "report": true} the moment
 it lands or {"report": false} when the window elapses first. It reads and
 mutates nothing else -- no state.json, no fabric commit -- so it is safe to call at
-any time. Master calls it immediately after spawning a batch's fork (forks
-are backgrounded agents and return before the batch is done): re-call it
-while the fork is still running, then call record-batch once it returns
-{"report": true} -- or once the fork has finished without a report
-(record-batch then classifies no_report).
+any time, for example by an operator watching a run; Master itself waits on
+its fork's completion notification instead.
 
 Example:
   lyx webster await-batch 3
@@ -63,11 +58,8 @@ Example:
 			// one order by construction rather than by comment.
 			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
 
-			// Default to a SHORT block (not poll_wait_s): await-batch runs as
-			// Master's foreground call, and Claude Code auto-backgrounds a
-			// command that runs much past ~2 minutes — a backgrounded
-			// await-batch stops keeping Master's turn alive. Master re-calls
-			// in a foreground loop instead (see DefaultAwaitWaitS).
+			// Default to a short block so an agent caller's foreground call
+			// stays under Claude Code's auto-background threshold.
 			waitBudget := wait
 			if waitBudget == 0 {
 				waitBudget = time.Duration(websterengine.DefaultAwaitWaitS) * time.Second
