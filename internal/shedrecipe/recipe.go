@@ -43,8 +43,10 @@ type Env struct {
 	// anchor_path token, and by the gate resolver's "plan" gate.
 	AnchorPath string
 	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
-	// resolver's "plan" gate.
+	// resolver's "plan" and "verify" gates.
 	WorktreeRoot string
+	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
+	VerifyDir string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.

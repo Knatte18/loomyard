@@ -11,7 +11,7 @@
 // illusion holds at the public API boundary;
 // f.warp/f.weft field access remains correct for uncoordinated ops used only inside
 // internal/fabricengine.
-// See warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard for the warp-only
+// See warpforward.go's CurrentBranch/ResetHard for the warp-only
 // examples of this carve-out.
 
 package fabricengine

@@ -21,7 +21,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 - Three tiers: `lyxcwd.Resolve` → `preflight.Check` (fabric wired/synced/clean) → `loomengine.CheckSeed`.
 - A producer needs none of the tiers; an orchestrator needs tier 3; a standalone CLI probes tier 1 via `preflight.ResolveMode` only.
 - `internal/hubgeom`/`internal/standalonegeom` are the only `Geometry`-struct constructors.
-- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentreview`.
+- Bound packages: `internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentreview`.
 - A `shuttleengine` runner whose anchor is deliberately outside its worktree root is constructed only through `shuttleengine.NewDetachedRunner`, only from a standalone CLI's own wiring, and `NewRunner`'s containment assertion is never relaxed to accommodate it.
 
 ## Cliwire Sole-Wiring Invariant
@@ -473,8 +473,22 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 
 - Discussion-Write's and Discussion-Burler's gates ↔ `validate-discussion`: `discussionparser.Validate`. Plan-Write's and Plan-Burler's gates ↔ `validate-plan`: `planglyph.ValidateFormat`. PR-Rework's gate ↔ `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`. Describe's gate ↔ `validate-description`: `summaryparser.ValidateDescription`.
 - The verb's `--require-approved` mode, running the full check set, has no recipe counterpart by design: both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every fix round, and the flag's guarantee rests on that seam failing loudly instead — never on a row re-checking it.
+- The webster `verify` gate (`websterengine.NewVerifyGate`) and Webster-Burler's `verify` gate (`loomshed.NewVerifyGate`) ↔ `lyx webster verify`: `verifytree.Verify`.
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 - Moving a gate from a standalone row into a producer's own closure changed *where* the call sits, never the property this invariant binds, which is why the invariant survives the move rather than retiring with the rows.
+
+## Verified-Tree Invariant
+
+Every plan-verify site runs the plan's verify command through `verifytree.Verify`.
+
+- No site verifies a dirty tree: `Verify` refuses one with its paths before running anything.
+- A skip requires the record to name HEAD's tree and the same command.
+- The record is written only by `Verify`, and only after a pass;
+  no agent prompt names its path.
+- The sites are the webster gate, the Webster-Burler gate, Publish, Finalize and `lyx webster verify`.
+  `internal/websterengine/cardverify.go` reruns a card's own `**Verify:**` command through `verifyrun` directly and is no plan-verify site.
+- Enforced by `cmd/lyx/verifiedtree_test.go`, a tripwire rather than a completeness proof:
+  each site names `verifytree.Verify`, no other production file calls `verifyrun.Run`, and none names the retired `verify-pending` marker.
 
 ## Recipe-Format Sole-Parser Invariant
 

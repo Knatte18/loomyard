@@ -199,7 +199,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
 	// fabric handle stays a closure and must NOT be opened here: fabricengine.Open stat-checks the
 	// paired sibling and would fail this pre-run in the three healthy-but-unwired locations that run
-	// validate and status today, neither of which ever reaches the integration bisect.
+	// validate and status today, neither of which ever commits to the fabric.
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
 	c.parentBranch = func() (string, error) {
@@ -321,14 +321,13 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	return nil
 }
 
-// setRunner stores runner and its adapted seams (starter, injector, masterStarter, fixStarter) plus the claude/reed engines onto c,
+// setRunner stores runner and its adapted seams (starter, injector, masterStarter) plus the claude/reed engines onto c,
 // shared by both wireHub and wireStandalone so the adaptation is named once.
 func (c *websterCLI) setRunner(runner *shuttleengine.Runner, claudeEngine shuttleengine.Engine, reedEngine shuttleengine.ReedOps) {
 	c.runner = runner
 	c.starter = runner
 	c.injector = runner
 	c.masterStarter = runnerMasterStarter{runner: runner}
-	c.fixStarter = runnerFixStarter{runner: runner}
 	c.engine = claudeEngine
 	c.reed = reedEngine
 }

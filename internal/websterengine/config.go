@@ -39,10 +39,8 @@ type Config struct {
 	// the cold recovery strand with no report and no live strand classifies
 	// dead (dead_reason: timeout); applies only to recover-batch.
 	RecoveryTimeoutMin int `yaml:"recovery_timeout_min"`
-	// PollWaitS is the number of seconds a single recover-batch call blocks
-	// watching the recovery strand for a terminal state before returning a
-	// running snapshot.
-	PollWaitS int `yaml:"poll_wait_s"`
+	// VerifyGateAttempts is the number of attempts the plan-level verify gate on Merriam's strand gives Merriam before the gate stops the run.
+	VerifyGateAttempts int `yaml:"verify_gate_attempts"`
 }
 
 // LoadConfig loads configuration from the webster module's config file, validates role model-spec
@@ -78,9 +76,11 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	// webster.yaml carrying only the two role keys leaves every one of these at Go's zero value —
 	// and the zero values are not merely conservative, they break the run silently.
 	// RecoveryTimeoutMin at 0 makes classify's `Elapsed > BatchTimeout` true on the very first poll,
-	// so EVERY recovery batch classifies dead/timeout immediately; PollWaitS at 0 gives recover-batch
-	// no wait budget at all; MasterTimeoutMin at 0 does the same to the Master spawn. Nothing
-	// anywhere reported why. Failing at load names the key instead.
+	// so EVERY recovery batch classifies dead/timeout immediately.
+	// MasterTimeoutMin at 0 does the same to the Master spawn.
+	// VerifyGateAttempts at 0 turns the must-pass verify gate off, since shuttle skips an entry with no attempts, so the plan-level verify never runs.
+	// Nothing anywhere reported why.
+	// Failing at load names the key instead.
 	knobs := []struct {
 		key   string
 		value int
@@ -88,7 +88,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		{"self_fix_cap", cfg.SelfFixCap},
 		{"master_timeout_min", cfg.MasterTimeoutMin},
 		{"recovery_timeout_min", cfg.RecoveryTimeoutMin},
-		{"poll_wait_s", cfg.PollWaitS},
+		{"verify_gate_attempts", cfg.VerifyGateAttempts},
 	}
 	for _, knob := range knobs {
 		if knob.value <= 0 {

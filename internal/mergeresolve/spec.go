@@ -19,6 +19,10 @@ import (
 // conflictStencilName is the registered name of the conflict-resolution prompt (card 18/19).
 const conflictStencilName = "landing-template-conflict"
 
+// reportNamePrefix is the filename prefix every attempt's resolution report shares, followed by the attempt number and ".md".
+// The report path builder and Resolve's stale-report glob both use it.
+const reportNamePrefix = "conflict-resolution-r"
+
 // buildConflictSpec builds the shuttleengine.Spec for one conflict-resolution attempt: attempt
 // numbers the session (1 for the first try, 2 for the retry), and paths are the worktree-relative
 // conflicted paths the session is told to resolve.
@@ -29,7 +33,7 @@ const conflictStencilName = "landing-template-conflict"
 // composed from a Go string literal, per the Stencil Ownership Invariant.
 //
 // OutputFiles names exactly one fresh, absolute path: the resolution report at
-// <ScratchDir>/conflict-resolution-r<attempt>.md. Three properties of that choice are load-bearing:
+// <ScratchDir>/<reportNamePrefix><attempt>.md. Three properties of that choice are load-bearing:
 //
 //  1. Absolute rather than relative, because a relative entry is resolved against a worktree root
 //     that is not this scratch directory's parent on an anchored layout, which would land the
@@ -57,7 +61,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: create scratch directory %s: %w", deps.ScratchDir, err)
 	}
 
-	reportPath := filepath.Join(deps.ScratchDir, fmt.Sprintf("conflict-resolution-r%d.md", attempt))
+	reportPath := filepath.Join(deps.ScratchDir, fmt.Sprintf("%s%d.md", reportNamePrefix, attempt))
 
 	template, err := stencilstore.Read(deps.StencilsDir, conflictStencilName)
 	if err != nil {

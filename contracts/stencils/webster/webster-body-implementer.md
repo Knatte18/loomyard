@@ -25,9 +25,12 @@ For EACH card file listed above, in the order listed:
    It is your whole instruction for that card.
    If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
 2. A card names its targets under its own type label(s) and what it reads under `**Uses:**`; see `{{.specs_dir}}/loom/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type labels name.
-3. Run `go build ./...` and this card's package's unit tests from `{{.worktree_root}}`.
-   A failure here is the card's own build+unit gate — fix it before moving on;
+3. Run the card's gate command from the list below, from `{{.worktree_root}}`.
+   A failure here is the card's own gate — fix it before moving on;
    this gate is implicit in every card, never optional.
+
+{{.card_gates}}
+
 4. Commit the card to the repo — normal dev git, run from `{{.worktree_root}}` — never any `_lyx` path.
    One commit per card is the norm.
    The commit subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) — unless the card FILE carries a `**Commit:**` line, which pins the exact subject to use verbatim.
@@ -35,14 +38,14 @@ For EACH card file listed above, in the order listed:
    You never call the Agent tool yourself (no nested forks — this is banned),
    and you are never passed a name of your own when spawned.
 5. If the card declares its own `verify:` line, run it immediately after committing that card.
-   A non-zero exit fails the card exactly like the build+unit gate in step 3 — there is no separate "deferred verify" concept;
-   every card's gate (build+unit, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
+   A non-zero exit fails the card exactly like the gate in step 3 — there is no separate "deferred verify" concept;
+   every card's gate (the command above, plus its own `verify:` when it declares one) is checked right after that card's own commit, never bundled into a later card.
 
 If any card's gate fails, or a test the card broke fails, and you cannot fix it within your self-fix bound (see next section), stop and report `status: FAILED` — do not continue to a later card on top of a broken one.
 
 ## Bounded self-fix, then stop
 
-If a card's gate (build+unit,
+If a card's gate (the command above,
 or its own `verify:` when it declares one) fails, you get at most `{{.self_fix_cap}}` in-session fix attempts before you stop trying that card: fix, re-run the gate, and repeat, up to that bound — never more, and never fewer when a fix is plausible.
 
 Any failing test you observe, in the gate or in any other test run you make, counts as that card's gate failure when the card's change caused it.
@@ -68,4 +71,4 @@ deviations:
 ```
 
 `status` is `OK` when every card above is committed and every gate it ran passed;
-`FAILED` when you stopped after exhausting the self-fix bound on some card, whether its gate failed or a test the card broke did. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the deviation union — the batch's own target glyphs across its cards, reported as the paths you touched rather than resolved by you: under the glyph alphabet a symbol-shaped target is a glyph, not a package-qualified name, and the mechanical glyph scope guard (`internal/planglyph`'s `ScopeGuard`, run over the record-batch delta) is what actually compares your work against the union — your own job here is only to report what you touched, never to estimate the comparison yourself. `Uses:` stays out of the union because it is read rather than written. Omit `deviations` entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed build+unit gate, a failed card `verify:` or a test the card broke does.
+`FAILED` when you stopped after exhausting the self-fix bound on some card, whether its gate failed or a test the card broke did. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made. `deviations` is the list of worktree-relative paths you changed OUTSIDE the deviation union — the batch's own target glyphs across its cards, reported as the paths you touched rather than resolved by you: under the glyph alphabet a symbol-shaped target is a glyph, not a package-qualified name, and the mechanical glyph scope guard (`internal/planglyph`'s `ScopeGuard`, run over the record-batch delta) is what actually compares your work against the union — your own job here is only to report what you touched, never to estimate the comparison yourself. `Uses:` stays out of the union because it is read rather than written. Omit `deviations` entirely when you made no such changes. `deviations` is ALWAYS informational: a non-empty list never makes `status` `FAILED` on its own — only a failed gate, a failed card `verify:` or a test the card broke does.

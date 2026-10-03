@@ -257,9 +257,6 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 	if deps.RefMatcher == nil {
 		t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
 	}
-	if deps.OpenBisector == nil {
-		t.Error("runDeps.OpenBisector = nil; want the lazy fabric opener")
-	}
 
 	// The same value must also be embedded verbatim in c.env.WebsterDeps.
 	if c.env.WebsterDeps.Geom != deps.Geom {
@@ -267,8 +264,26 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 	}
 }
 
-// TestWire_RefMatcherIsRealScanner asserts the reference matcher is a non-nil *fabricengine.RefScanner
-// and never websterengine.NeverMatches, the standalone-only stand-in -- loom is hub-only.
+// TestWire_WebsterParentBranchNonNil asserts the wired RunDeps.ParentBranch is non-nil and is the same value the env's WebsterDeps carries.
+// Its result is covered by TestWire_WebsterParentBranchReadsPairOrigin, which needs a git repository.
+func TestWire_WebsterParentBranchNonNil(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "warp", ".")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+	if c.runDeps.ParentBranch == nil {
+		t.Error("runDeps.ParentBranch = nil; want the origin-record reader")
+	}
+	if c.env.WebsterDeps.ParentBranch == nil {
+		t.Error("c.env.WebsterDeps.ParentBranch = nil; want the origin-record reader")
+	}
+}
+
+// TestWire_RefMatcherIsRealScanner asserts the reference matcher is a non-nil *fabricengine.RefScanner and never websterengine.NeverMatches, the standalone-only stand-in -- loom is hub-only.
 func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 	t.Parallel()
 
@@ -281,23 +296,6 @@ func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 
 	if _, ok := c.runDeps.RefMatcher.(*fabricengine.RefScanner); !ok {
 		t.Errorf("runDeps.RefMatcher = %T; want *fabricengine.RefScanner", c.runDeps.RefMatcher)
-	}
-}
-
-// TestWire_BisectorOpenerNonNilInHubOnlyMode asserts the bisector opener is non-nil, since loom is
-// hub-only and always has a fabric repo to open.
-func TestWire_BisectorOpenerNonNilInHubOnlyMode(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.runDeps.OpenBisector == nil {
-		t.Fatal("runDeps.OpenBisector = nil; want a non-nil closure in hub-only mode")
 	}
 }
 

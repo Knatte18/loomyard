@@ -132,15 +132,10 @@ var TreadleTemplateTargeting []byte
 //go:embed webster/webster-template-master.md
 var WebsterTemplateMaster []byte
 
-// WebsterTemplateIntegration is webster's shipped-default integration-suite fork prompt template.
+// WebsterBodyVerifyFix is webster's shipped-default verify-gate fixer fork prompt.
 //
-//go:embed webster/webster-template-integration.md
-var WebsterTemplateIntegration []byte
-
-// WebsterTemplateIntegrationFix is webster's shipped-default integration-fix strand prompt template.
-//
-//go:embed webster/webster-template-integration-fix.md
-var WebsterTemplateIntegrationFix []byte
+//go:embed webster/webster-body-verify-fix.md
+var WebsterBodyVerifyFix []byte
 
 // WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
 // WebsterBodyImplementer to compose the fork prompt.
@@ -257,8 +252,7 @@ var entries = []registryEntry{
 	{"treadle-template-triage", &TreadleTemplateTriage},
 	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
-	{"webster-template-integration", &WebsterTemplateIntegration},
-	{"webster-template-integration-fix", &WebsterTemplateIntegrationFix},
+	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},

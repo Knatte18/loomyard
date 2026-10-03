@@ -20,17 +20,7 @@ import (
 )
 
 // runDeps builds the websterengine.RunDeps for this CLI's current wiring.
-// c.openFabric is nil in standalone mode; OpenBisector must stay nil in that case rather than being
-// wrapped in a non-nil closure over a nil c.openFabric, so that runIntegrationStage's own nil check
-// ("no fabric in this mode") fires instead of the closure panicking when invoked.
 func (c *websterCLI) runDeps() websterengine.RunDeps {
-	var openBisector func() (websterengine.FabricBisector, error)
-	if c.openFabric != nil {
-		openBisector = func() (websterengine.FabricBisector, error) {
-			return c.openFabric()
-		}
-	}
-
 	return websterengine.RunDeps{
 		Starter:      c.masterStarter,
 		Reed:         c.reed,
@@ -41,9 +31,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		Batcher:      c.batcher,
 		Geom:         c.geom,
 		RefMatcher:   c.refMatcher,
-		OpenBisector: openBisector,
 		FrictionDir:  c.frictionDir,
-		FixStarter:   c.fixStarter,
 		ParentBranch: c.parentBranch,
 	}
 }

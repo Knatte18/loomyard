@@ -342,7 +342,7 @@ func TestChangedFilesSince_Parity_NonHexSHA(t *testing.T) {
 
 // TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states the method can
 // encounter: an ordinary branch, a detached HEAD (must be an error, never an empty string — a
-// caller with no captured branch has no safe ref to hand RestoreBranch), an unborn HEAD
+// caller never mistakes "no branch captured" for a legitimate branch name), an unborn HEAD
 // (symbolic-ref succeeds and prints the branch name even with no commit yet), and an orphan branch.
 func TestCurrentBranch_Parity(t *testing.T) {
 	t.Run("OnBranch", func(t *testing.T) {

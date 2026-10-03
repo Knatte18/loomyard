@@ -144,14 +144,13 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 // The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
 // one key means one thing at every gated site, and a reader of the recipe can see which validator
 // guards each row without opening Go.
-// The shipped "Webster" row carries no "gates" key, so resolveGateSpec returns the zero GateSpec and the row runs ungated exactly as before;
-// naming one today fails loud through resolveGateSpec's own closed vocabulary, since no Webster validator exists to name.
+// The shipped "Webster" row carries no "gates" key, so resolveGateSpec returns the zero GateSpec.
+// `websterengine.Run` adds the plan-level `verify` entry to Merriam's spec itself and refuses a `deps.Gate` that already names `verify`,
+// so a recipe row cannot add a second one beside it.
 //
 // It checks none of WebsterDeps' other nil-able fields, each for its own reason: Batcher is
 // overwritten by loomshed's own wrapper on every Call, and that wrapper's own field doc says the
-// caller leaves it nil; a nil Clock selects websterengine's production clock by design; a nil
-// OpenBisector is a legitimate mode meaning "no fabric in this mode", not a missing value; and
-// ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
+// caller leaves it nil; and ShuttleCfg, Roles, Config, and Geom are value and map types whose validation belongs to
 // websterengine.Run, not to this wiring layer.
 func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	gate, err := resolveGateSpec("Webster", cfg, env)

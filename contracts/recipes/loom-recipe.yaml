@@ -297,8 +297,12 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: webster
-      # No gates key, deliberately: there is no mechanical validator over a committed diff, so this
-      # row builds an ungated producer.
+      # The verify gate runs the plan's verify command on the committed tree after each round and
+      # re-prompts the round session with the findings until it passes. A tree the record already
+      # names passes without running, so a round that changed no code costs nothing.
+      gates:
+        - name: verify
+          attempts: 3
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats

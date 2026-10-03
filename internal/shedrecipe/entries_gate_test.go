@@ -285,9 +285,35 @@ func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
 	}
 }
 
-func TestResolveGateSpec_UnknownNameListsFiveValues(t *testing.T) {
+func TestResolveGateSpec_UnknownNameListsSixValues(t *testing.T) {
 	_, err := resolveGateSpec("Row", gatesCfg("bogus", 1), newTestEnv(t))
-	for _, want := range []string{"discussion", "plan", "rework-plan", "description", "parent-review"} {
+	for _, want := range []string{"discussion", "plan", "rework-plan", "description", "verify", "parent-review"} {
 		assertErrContains(t, err, want)
+	}
+}
+
+func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
+	for _, field := range []string{"AnchorPath", "WorktreeRoot", "VerifyDir"} {
+		t.Run(field, func(t *testing.T) {
+			env := newTestEnv(t)
+			switch field {
+			case "AnchorPath":
+				env.AnchorPath = ""
+			case "WorktreeRoot":
+				env.WorktreeRoot = "relative/worktree"
+			case "VerifyDir":
+				env.VerifyDir = ""
+			}
+			_, err := resolveGateSpec("Row", gatesCfg("verify", 3), env)
+			assertErrContains(t, err, field)
+		})
+	}
+
+	spec, err := resolveGateSpec("Row", gatesCfg("verify", 3), newTestEnv(t))
+	if err != nil {
+		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+	}
+	if len(spec) != 1 || spec[0].Name != "verify" || spec[0].Attempts != 3 || spec[0].Gate == nil || spec[0].PassOnCap {
+		t.Errorf("resolveGateSpec() = %+v; want one must-pass verify entry with 3 attempts", spec)
 	}
 }

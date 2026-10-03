@@ -20,12 +20,6 @@ func (p posixShell) Invoke(bin string) string {
 	return p.Quote(bin)
 }
 
-// ReadFile returns a double-quoted command substitution that expands path's contents into one
-// argument, matching pwsh's Get-Content semantics.
-func (p posixShell) ReadFile(path string) string {
-	return `"$(cat ` + p.Quote(path) + `)"`
-}
-
 // WithEnv prefixes cmd with a POSIX command-scoped assignment (key=value cmd).
 func (p posixShell) WithEnv(key, value, cmd string) string {
 	return key + "=" + p.Quote(value) + " " + cmd

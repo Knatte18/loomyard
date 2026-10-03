@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -77,10 +78,6 @@ type headRefusal struct {
 
 // reportHeadRefusal is the wording for a verb that records a batch at a report's head_sha.
 var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
-
-// integrationFixHeadRefusal is the wording for the integration-fix attempt, which fails rather than being re-run:
-// its way forward is the escalation's own, so the wording names the escalation and not a verb to re-run.
-var integrationFixHeadRefusal = headRefusal{head: "the fix strand's reported head", rerun: "re-run `lyx webster run`, which escalates this attempt as failed", redoMerge: "after the run is resumed"}
 
 // reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
 func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
@@ -236,13 +233,51 @@ func commitsBetween(worktree, base, head string) ([]string, error) {
 	return strings.Fields(stdout), nil
 }
 
-// commitParentCount returns how many parents commit has.
-func commitParentCount(worktree, commit string) (int, error) {
-	parents, err := gitrepo.New(worktree).CommitParents(commit)
+// commitsSince returns the commits on HEAD's first-parent chain that base cannot reach, oldest first.
+// A merge commit in that range is listed, but the commits it brought in from its other parent are not.
+func commitsSince(worktree, base string) ([]string, error) {
+	newestFirst, err := commitsBetween(worktree, base, "HEAD")
 	if err != nil {
-		return 0, fmt.Errorf("websterengine: parents of %s in %s: %w", commit, worktree, err)
+		return nil, err
 	}
-	return len(parents), nil
+	slices.Reverse(newestFirst)
+	return newestFirst, nil
+}
+
+// fixCommitRejection walks the commits from base to HEAD and returns the first that is neither a non-merge commit nor a clean parent merge, with the reason it does not qualify.
+// It returns empty strings when every commit qualifies.
+// The parent tips are resolved once, on the first merge the walk meets.
+// A resolution error rejects that merge with the error as the reason, so a nil parentBranch accepts no merge.
+// An error is a failure to read the commits, never a rejection.
+func fixCommitRejection(worktree, base string, parentBranch ParentBranchFunc) (commit, reason string, err error) {
+	commits, err := commitsSince(worktree, base)
+	if err != nil {
+		return "", "", err
+	}
+	repo := gitrepo.New(worktree)
+	var parentTips []string
+	var tipsErr error
+	resolved := false
+	for _, c := range commits {
+		parents, err := repo.CommitParents(c)
+		if err != nil {
+			return "", "", fmt.Errorf("websterengine: parents of %s in %s: %w", c, worktree, err)
+		}
+		if len(parents) < 2 {
+			continue
+		}
+		if !resolved {
+			parentTips, tipsErr = resolveParentTips(repo, parentBranch)
+			resolved = true
+		}
+		if tipsErr != nil {
+			return c, tipsErr.Error(), nil
+		}
+		if rejection := parentMergeRejection(repo, c, parents, parentTips); rejection != "" {
+			return c, rejection, nil
+		}
+	}
+	return "", "", nil
 }
 
 // commitChangedPaths returns the slash-separated repository-relative paths a non-merge commit changes, including a root commit's.

@@ -1,8 +1,8 @@
 //go:build integration
 
 // warpforward_integration_test.go is the Tier-2 real-git coverage for the
-// warp-only Fabric methods added in warpforward.go: CheckoutDetached,
-// RestoreBranch, CurrentBranch, IsAncestor, and ResetHard. Each test drives a real paired
+// warp-only Fabric methods added in warpforward.go: CurrentBranch, IsAncestor,
+// and ResetHard. Each test drives a real paired
 // Fabric built from a hubforge hub's warp worktree and asserts the
 // resulting git state directly — no fake, no mock — since the whole point of
 // this file is proving the thin delegation actually reaches real git.
@@ -21,49 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
-
-// TestFabricWarp_DetachVerifyRestoreRoundTrip proves CheckoutDetached and RestoreBranch round-trip:
-// capture the current branch, make a new commit, detach HEAD to the commit before it, then restore
-// the original branch and confirm HEAD is back where it started.
-func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-	f, err := fabricengine.Open(h.Location)
-	if err != nil {
-		t.Fatalf("fabricengine.Open: %v", err)
-	}
-
-	originalBranch, err := f.CurrentBranch()
-	if err != nil {
-		t.Fatalf("CurrentBranch (before detach): %v", err)
-	}
-	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
-
-	// A later commit on warp gives CheckoutDetached somewhere to detach FROM,
-	// and something the eventual RestoreBranch must land back on top of.
-	gitkit.CommitFile(t, h.PrimeWorktree(), "round-trip.txt", "v1", "round-trip commit")
-
-	if err := f.CheckoutDetached(olderSHA); err != nil {
-		t.Fatalf("CheckoutDetached(%q): %v", olderSHA, err)
-	}
-	if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != olderSHA {
-		t.Errorf("HEAD SHA after CheckoutDetached = %q; want %q", got, olderSHA)
-	}
-	// A detached HEAD reports the literal "HEAD" for --abbrev-ref, never a
-	// branch name; this is the same signal gitrepo.Repo.CurrentBranch itself
-	// rejects.
-	if got := gitkit.CurrentBranch(t, h.PrimeWorktree()); got != "HEAD" {
-		t.Errorf("HEAD ref after CheckoutDetached = %q; want %q (detached)", got, "HEAD")
-	}
-
-	if err := f.RestoreBranch(originalBranch); err != nil {
-		t.Fatalf("RestoreBranch(%q): %v", originalBranch, err)
-	}
-	if got := gitkit.CurrentBranch(t, h.PrimeWorktree()); got != originalBranch {
-		t.Errorf("branch after RestoreBranch = %q; want %q (original)", got, originalBranch)
-	}
-}
 
 // TestFabricWarp_IsAncestorOrdersWarpCommits proves IsAncestor reaches the warp checkout's history:
 // an older warp commit is an ancestor of a later one, and not the other way round.
@@ -84,23 +41,6 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	}
 	if got, err := f.IsAncestor(laterSHA, olderSHA); err != nil || got {
 		t.Errorf("IsAncestor(later, older) = %v, %v; want false, nil", got, err)
-	}
-}
-
-// TestFabricWarp_RestoreBranchInvalidRefErrors proves RestoreBranch returns a non-nil error when
-// handed a ref that does not exist — the shape a caller would hit if the branch it captured earlier
-// was deleted out from under it.
-func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-	f, err := fabricengine.Open(h.Location)
-	if err != nil {
-		t.Fatalf("fabricengine.Open: %v", err)
-	}
-
-	if err := f.RestoreBranch("does-not-exist-anywhere"); err == nil {
-		t.Fatalf("RestoreBranch(non-existent ref) error = nil; want non-nil")
 	}
 }
 

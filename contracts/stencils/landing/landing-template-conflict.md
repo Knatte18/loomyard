@@ -33,6 +33,11 @@ For each one:
 
 Never run `git` in any form — resolving a path means editing its file content, not staging, committing, or otherwise touching the repository's history.
 
+## Edits beyond the listed paths
+
+Edit a file outside the listed paths only when the merged tree would otherwise stop building or its tests would fail, and only to keep it building and passing.
+Create no new file: a file you add is never part of the merge, and it halts the merge as stuck.
+
 ## The report — your terminal act
 
 Once every listed path above has been resolved, write a short report to:
@@ -40,6 +45,7 @@ Once every listed path above has been resolved, write a short report to:
 {{.report_path}}
 
 The report is plain prose: one paragraph per resolved path, stating what conflicted and how you resolved it.
+It also names every file you changed beyond the listed paths, with the reason for each.
 Writing this report is the last thing you do in this session — nothing you do afterward is read by anyone.
 
 Never run `git` in any form, including to check the report file's own status once it is written.

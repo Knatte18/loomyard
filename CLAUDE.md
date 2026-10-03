@@ -47,7 +47,8 @@ Table cells and blockquotes stay on one line.
 
 These are conversational shorthands; never rename code, files or docs to them unless told to.
 
-- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`.
+- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`;
+  its strand is named `<shortname>:<slug>:webster`.
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
 

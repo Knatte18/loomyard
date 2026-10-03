@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -298,5 +299,8 @@ func TestWebsterGeometry(t *testing.T) {
 	// must always come from the shared SpecsDir helper, never a re-derived literal.
 	if want := SpecsDir(stateDir); got.SpecsDir != want {
 		t.Errorf("WebsterGeometry().SpecsDir = %q; want %q (SpecsDir(stateDir))", got.SpecsDir, want)
+	}
+	if want := verifytree.Dir(stateDir); got.VerifyDir != want {
+		t.Errorf("WebsterGeometry().VerifyDir = %q; want %q (verifytree.Dir(stateDir))", got.VerifyDir, want)
 	}
 }

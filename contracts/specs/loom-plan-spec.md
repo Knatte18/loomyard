@@ -262,33 +262,36 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 ## verify model
 
-The three-tier model below is **designed, not implemented.**
-This spec pins only what exists today: the per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
-There is no mandatory per-card or per-batch verify gate in the code, and the plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the single integration suite run once at the end of the plan.
+Tiers 1 and 2 below are implemented;
+tier 3 stays explicit-only.
+The per-card **`**Verify:**`** field stays the optional, verbatim, rare escape hatch it already was under format 3 — a cheap, targeted check where it is useful.
+The plan-level `## verify:` body section in `00-overview.md` (unchanged in shape from format 3) is the integration suite run once per attempt as a must-pass gate on Merriam's strand, and again by `lyx webster verify`.
 The section holds one shell command per line;
 the parser skips code-fence lines and full-line `#` comments, then chains every remaining non-blank line with ` && ` into the one command line webster runs, so the first failing command fails the whole check.
 
 Landing is the verify line's second consumer.
-After a parent merge-in that changed the task tree, the `Publish` and `Finalize` landing producers run the same chained command in the task worktree,
-and halt Stuck on failure before anything is pushed or landed,
-so the section must cover what a parent merge can break.
+The `Publish` and `Finalize` landing producers run the same chained command in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+and halt Stuck on failure before anything is pushed or landed.
+Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
+The section must cover what a parent merge can break.
 
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Tier 1 tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn — so no known-slow-package carve-out is needed.
-  Scope: `go test`, restricted to the package(s) holding the card's own target symbol(s) plus every package holding a caller found via impact lookup, the same lookup that derives `Uses:`-based dependency edges.
+  Implemented as the Go-derived per-card gate: `go build ./...`, the whole untagged test suite, and the integration-tagged tests of the card's own package directories.
+  Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
-- **Tier 2 (plan-level, not per card).**
-  Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower; paying that cost once per plan rather than once per card that happens to touch an affected package is the point.
-  It defaults to the plan-level `## verify:` integration suite above, the same gate the Concurrency section's post-merge backstop already assumes.
-  **Deferred, not now:** a batch could eventually own its own tier 2 verify instead of waiting for the whole plan.
+- **Tier 2 (per card for its own packages, plan-level for the whole suite).**
+  Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
+  The card gate runs only the integration-tagged tests of the card's own package directories;
+  the plan-level `## verify:` stays the once-per-plan run, now a must-pass gate on Merriam that sends a failure back to Merriam to fix.
+  The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
   Tests that drive a real LLM — expensive in both wall-clock and tokens, and rare to nonexistent in this repo today.
   Never swept into an automatic per-card or per-plan gate under any circumstance.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
-The optional per-card `Verify:` field exists for what tier 1's automatic package-scoped run cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
+The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
 It stays genuinely exceptional; the default automatic tier 1 run is what most cards rely on, which is what keeps `Verify:` from becoming the long, hand-maintained list it was in millhouse's own equivalent.
 
 ## Card granularity
