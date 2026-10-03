@@ -247,37 +247,41 @@ func TestResolveReviewTarget(t *testing.T) {
 	atTask := &lyxcwd.Location{HubPath: hub, WorktreeName: "task-a"}
 	d := fakeReviewTarget("repo", "task-a", "task-b")
 
-	t.Run("task worktree addresses itself", func(t *testing.T) {
-		got, err := resolveReviewTarget("notify", atTask, "", d)
-		if err != nil || got != atTask {
-			t.Fatalf("got %v, %v; want the invoking location", got, err)
-		}
-	})
-	t.Run("slug from the prime", func(t *testing.T) {
-		got, err := resolveReviewTarget("notify", atPrime, "task-b", d)
-		if err != nil || got.WorktreeName != "task-b" {
-			t.Fatalf("got %v, %v; want task-b", got, err)
-		}
-	})
-	t.Run("slug required from the prime", func(t *testing.T) {
-		_, err := resolveReviewTarget("notify", atPrime, "", d)
-		if err == nil || !strings.Contains(err.Error(), "slug required from the prime") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx board list") {
-			t.Fatalf("err = %v; want the slug-required refusal naming lyx board list", err)
-		}
-	})
-	t.Run("unknown slug", func(t *testing.T) {
-		_, err := resolveReviewTarget("notify", atTask, "nope", d)
-		if err == nil || !strings.Contains(err.Error(), `unknown slug "nope"`) || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx board list") {
-			t.Fatalf("err = %v; want the unknown-slug refusal naming lyx board list", err)
-		}
-	})
-	t.Run("prime lookup failure", func(t *testing.T) {
-		bad := d
-		bad.primeName = func(*lyxcwd.Location) (string, error) { return "", errors.New("boom") }
-		if _, err := resolveReviewTarget("notify", atTask, "", bad); err == nil {
-			t.Fatal("err = nil; want the prime lookup failure")
-		}
-	})
+	for _, group := range []string{"review", "circling"} {
+		t.Run(group, func(t *testing.T) {
+			t.Run("task worktree addresses itself", func(t *testing.T) {
+				got, err := resolveReviewTarget(group, "notify", atTask, "", d)
+				if err != nil || got != atTask {
+					t.Fatalf("got %v, %v; want the invoking location", got, err)
+				}
+			})
+			t.Run("slug from the prime", func(t *testing.T) {
+				got, err := resolveReviewTarget(group, "notify", atPrime, "task-b", d)
+				if err != nil || got.WorktreeName != "task-b" {
+					t.Fatalf("got %v, %v; want task-b", got, err)
+				}
+			})
+			t.Run("slug required from the prime", func(t *testing.T) {
+				_, err := resolveReviewTarget(group, "notify", atPrime, "", d)
+				if err == nil || !strings.Contains(err.Error(), "loom: "+group+" notify: slug required from the prime") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx board list") || !strings.Contains(err.Error(), "lyx loom "+group+" notify <slug>") {
+					t.Fatalf("err = %v; want the slug-required refusal naming %s and lyx board list", err, group)
+				}
+			})
+			t.Run("unknown slug", func(t *testing.T) {
+				_, err := resolveReviewTarget(group, "notify", atTask, "nope", d)
+				if err == nil || !strings.Contains(err.Error(), "loom: "+group+" notify: unknown slug \"nope\"") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx board list") {
+					t.Fatalf("err = %v; want the unknown-slug refusal naming %s and lyx board list", err, group)
+				}
+			})
+			t.Run("prime lookup failure", func(t *testing.T) {
+				bad := d
+				bad.primeName = func(*lyxcwd.Location) (string, error) { return "", errors.New("boom") }
+				if _, err := resolveReviewTarget(group, "notify", atTask, "", bad); err == nil {
+					t.Fatal("err = nil; want the prime lookup failure")
+				}
+			})
+		})
+	}
 }
 
 func TestReviewSlugArg(t *testing.T) {

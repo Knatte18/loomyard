@@ -62,6 +62,45 @@ func TestResolveReview_MalformedSpec(t *testing.T) {
 	}
 }
 
+// TestResolveJudge verifies ResolveJudge resolves the template's judge value to the sonnet model with effort medium.
+func TestResolveJudge(t *testing.T) {
+	cfg := Config{Judge: "sonnet[medium]"}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	settings, err := ResolveJudge(cfg, reg)
+	if err != nil {
+		t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
+	}
+	if !strings.Contains(settings.Model, "sonnet") {
+		t.Errorf("ResolveJudge(...).Model = %q; want a sonnet model", settings.Model)
+	}
+	if settings.Effort != "medium" {
+		t.Errorf("ResolveJudge(...).Effort = %q; want %q", settings.Effort, "medium")
+	}
+}
+
+// TestResolveJudge_MalformedSpec verifies an ungrammatical judge model-spec returns an error naming the judge role.
+func TestResolveJudge_MalformedSpec(t *testing.T) {
+	cfg := Config{Judge: "sonnet[medium"}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	_, err = ResolveJudge(cfg, reg)
+	if err == nil {
+		t.Fatal("ResolveJudge(...) = _, nil; want non-nil error for malformed judge spec")
+	}
+	if !strings.Contains(err.Error(), "judge") {
+		t.Errorf("ResolveJudge(...) error = %q; want it to name the judge role", err.Error())
+	}
+}
+
 // TestLoomReviewsDirRel verifies LoomReviewsDirRel's exact relative value under the durable tree.
 func TestLoomReviewsDirRel(t *testing.T) {
 	want := filepath.Join(lyxdirs.LyxDirName, "reviews")

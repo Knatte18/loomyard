@@ -1,8 +1,4 @@
-// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-
-// judged, APPROVED round at Call entry), its archive-naming and collision behaviour, every
-// non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the
-// clear's own failure degradation, and the cross-invocation and post-commit-failure cases the
-// trigger is intended to reach.
+// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the clear's own failure degradation, and the cross-invocation and post-commit-failure cases the trigger is intended to reach.
 
 package shedadapters
 
@@ -22,17 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the
-// round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the
-// Bouncer's report, APPROVED verdict, and ledger -- the complete on-disk state a clear must move as
-// one unit.
+// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
 func layoutApprovedGeneration(t *testing.T, cfg BouncerConfig, round int) {
 	t.Helper()
 
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   round,
 		report:  bouncerReport(round),
-		verdict: bouncerVerdictContent("APPROVED"),
+		verdict: bouncerVerdictContent("CONVERGED"),
 		ledger:  bouncerLedgerContent(round),
 	}})
 	if err := os.WriteFile(roundReviewPath(cfg.RunDir, round), []byte(fmt.Sprintf("review for round %d", round)), 0o644); err != nil {
@@ -149,7 +142,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
+			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
 		}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -158,7 +151,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 		}
 		if shuttle.Called {
-			t.Error("Call() invoked the shuttle seam on a BLOCKING replay; want it never called")
+			t.Error("Call() invoked the shuttle seam on a CONTINUE replay; want it never called")
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
 	})
@@ -167,7 +160,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
-			{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"), ledger: bouncerLedgerContent(1)},
+			{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONVERGED"), ledger: bouncerLedgerContent(1)},
 			{round: 2, report: bouncerReport(2)},
 		})
 
@@ -204,7 +197,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"),
+			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONVERGED"),
 		}})
 
 		outcome, ptr, err := b.Call(context.Background())
@@ -217,7 +210,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 }
 
 func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
@@ -292,16 +285,14 @@ func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case: a
-// Commit failure surfaces from settle unchanged (the run directory is left APPROVED, since settle
-// never archives on that path), and the next Call over that same still-APPROVED directory clears
-// and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is
-// the subject.
+// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case:
+// a Commit failure surfaces from settle unchanged (the run directory is left CONVERGED, since settle never archives on that path),
+// and the next Call over that same still-CONVERGED directory clears and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is the subject.
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
 	cfg := newBouncerFixture(t, withNestedRunDir()).Config
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
+	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	cfg.Shuttle = shuttle
 	cfg.Commit = func() error {
 		commitCalls++
@@ -335,7 +326,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 		t.Fatalf("Call() (second) error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
-		t.Errorf("Call() (second) outcome = %q; want %q (the still-APPROVED directory clears and re-seeds)", outcome, shedengine.Stuck)
+		t.Errorf("Call() (second) outcome = %q; want %q (the still-CONVERGED directory clears and re-seeds)", outcome, shedengine.Stuck)
 	}
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() (second) pointer = %+v; want empty", ptr)
@@ -349,9 +340,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge BLOCKING,
-// judge APPROVED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that
-// writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
+// TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge CONTINUE, judge CONVERGED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	// Round 1: seed.
 	seedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -372,43 +361,44 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 		t.Fatalf("Call() (seed) outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 
-	// Round 1: judge BLOCKING. The round producer writes its own report first.
+	// Round 1: judge CONTINUE.
+	// The round producer writes its own report first.
 	if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(bouncerReport(1)), 0o644); err != nil {
 		t.Fatalf("WriteFile(round-1 report) = %v; want nil", err)
 	}
-	judgeShuttle := judgeFakeShuttle(1, bouncerVerdictContent("BLOCKING"), bouncerLedgerContent(1), true)
+	judgeShuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
 	b.cfg.Shuttle = judgeShuttle
 
 	outcome, ptr, err := b.Call(context.Background())
 	if err != nil {
-		t.Fatalf("Call() (judge BLOCKING) error = %v; want nil", err)
+		t.Fatalf("Call() (judge CONTINUE) error = %v; want nil", err)
 	}
 	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() (judge BLOCKING) outcome = %q; want %q", outcome, shedengine.Stuck)
+		t.Fatalf("Call() (judge CONTINUE) outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 	if ptr.Path != ledgerPath(cfg.RunDir, 1) {
-		t.Fatalf("Call() (judge BLOCKING) pointer = %q; want round 1's ledger", ptr.Path)
+		t.Fatalf("Call() (judge CONTINUE) pointer = %q; want round 1's ledger", ptr.Path)
 	}
 
-	// Round 2: judge APPROVED, earning Done.
+	// Round 2: judge CONVERGED, earning Done.
 	if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(2)), []byte(bouncerReport(2)), 0o644); err != nil {
 		t.Fatalf("WriteFile(round-2 report) = %v; want nil", err)
 	}
-	approveShuttle := judgeFakeShuttle(2, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(2), true)
+	approveShuttle := judgeFakeShuttle(2, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(2), true)
 	b.cfg.Shuttle = approveShuttle
 
 	outcome, ptr, err = b.Call(context.Background())
 	if err != nil {
-		t.Fatalf("Call() (judge APPROVED) error = %v; want nil", err)
+		t.Fatalf("Call() (judge CONVERGED) error = %v; want nil", err)
 	}
 	if outcome != shedengine.Done {
-		t.Fatalf("Call() (judge APPROVED) outcome = %q; want %q", outcome, shedengine.Done)
+		t.Fatalf("Call() (judge CONVERGED) outcome = %q; want %q", outcome, shedengine.Done)
 	}
 	if ptr.Path != ledgerPath(cfg.RunDir, 2) {
-		t.Fatalf("Call() (judge APPROVED) pointer = %q; want round 2's ledger", ptr.Path)
+		t.Fatalf("Call() (judge CONVERGED) pointer = %q; want round 2's ledger", ptr.Path)
 	}
 
-	// Re-entry: the segment is called again with the same, now-APPROVED run directory.
+	// Re-entry: the segment is called again with the same, now-CONVERGED run directory.
 	reentrySeedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b.cfg.Shuttle = reentrySeedShuttle
 
@@ -444,10 +434,10 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line. The
-// clear is not cheap: it discards a settled APPROVED generation and re-seeds from round 1, costing a
-// fresh judge spawn plus a fresh round, and it can spend the leftover budget that halts the run
-// because the round producer's episode never resets. The failure branch beside it has always logged;
+// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line.
+// The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1, costing a fresh judge spawn plus a fresh round,
+// and it can spend the leftover budget that halts the run because the round producer's episode never resets.
+// The failure branch beside it has always logged;
 // the branch that actually fires did not, so an operator whose run suddenly cost a second generation
 // had nothing to read anywhere.
 func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
@@ -460,7 +450,7 @@ func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("APPROVED"),
+		verdict: bouncerVerdictContent("CONVERGED"),
 		ledger:  bouncerLedgerContent(1),
 	}})
 

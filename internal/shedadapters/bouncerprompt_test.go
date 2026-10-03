@@ -49,7 +49,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 	}
 	judgeBase := map[string]string{
 		"rubric":          "# Rubric\n\nBe thorough.\n",
-		"artifacts":       "/abs/artifact.md",
+		"facts_path":      "/abs/round-1-facts.md",
 		"round":           "1",
 		"next_round":      "2",
 		"report_path":     "/abs/round-1-report.md",

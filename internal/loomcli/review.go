@@ -65,26 +65,26 @@ func defaultReviewTargetDeps() reviewTargetDeps {
 	}
 }
 
-// resolveReviewTarget returns the worktree a review verb acts on.
+// resolveReviewTarget returns the worktree a verb of the named group (`review` or `circling`) acts on.
 // A given slug resolves to its sibling worktree of the hub; with no slug a task worktree addresses itself and the prime refuses.
-func resolveReviewTarget(verb string, location *lyxcwd.Location, slug string, d reviewTargetDeps) (*lyxcwd.Location, error) {
+func resolveReviewTarget(group, verb string, location *lyxcwd.Location, slug string, d reviewTargetDeps) (*lyxcwd.Location, error) {
 	if slug == "" {
 		prime, err := d.primeName(location)
 		if err != nil {
-			return nil, fmt.Errorf("loom: review %s: %w", verb, err)
+			return nil, fmt.Errorf("loom: %s %s: %w", group, verb, err)
 		}
 		if location.WorktreeName == prime {
-			return nil, fmt.Errorf("loom: review %s: slug required from the prime; way forward: %s, e.g. \"lyx loom review %s <slug>\"", verb, reviewWaySlugForm, verb)
+			return nil, fmt.Errorf("loom: %s %s: slug required from the prime; way forward: %s, e.g. \"lyx loom %s %s <slug>\"", group, verb, reviewWaySlugForm, group, verb)
 		}
 		return location, nil
 	}
 	root := fabricengine.WorktreePath(location, slug)
 	if !d.dirExists(root) {
-		return nil, fmt.Errorf("loom: review %s: unknown slug %q: no worktree at %s; way forward: %s", verb, slug, root, reviewWaySlugForm)
+		return nil, fmt.Errorf("loom: %s %s: unknown slug %q: no worktree at %s; way forward: %s", group, verb, slug, root, reviewWaySlugForm)
 	}
 	target, err := d.resolveWorktree(root)
 	if err != nil {
-		return nil, fmt.Errorf("loom: review %s: resolve worktree %q: %w", verb, slug, err)
+		return nil, fmt.Errorf("loom: %s %s: resolve worktree %q: %w", group, verb, slug, err)
 	}
 	return target, nil
 }
@@ -242,7 +242,7 @@ func (s *reviewState) preRun(cmd *cobra.Command, args []string) error {
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
-	target, err := resolveReviewTarget(cmd.Name(), location, reviewSlugArg(cmd.Name(), args), defaultReviewTargetDeps())
+	target, err := resolveReviewTarget("review", cmd.Name(), location, reviewSlugArg(cmd.Name(), args), defaultReviewTargetDeps())
 	if err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)

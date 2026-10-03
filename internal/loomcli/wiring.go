@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -33,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -400,6 +402,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	judgeSettings, err := loomengine.ResolveJudge(loomCfg, registry)
+	if err != nil {
+		return err
+	}
 
 	reedGeom, err := hubgeom.ReedGeometry(location)
 	if err != nil {
@@ -653,10 +659,18 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Burler:  burlerEngine,
 		Now:     time.Now,
 
+		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
+		Slug:           seedSlug(location.WorktreeName),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath),
+
 		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,
 		ReviewVersion: reviewSettings.Version,
 		ReviewTimeout: reviewSettings.Timeout,
+
+		JudgeModel:   judgeSettings.Model,
+		JudgeEffort:  judgeSettings.Effort,
+		JudgeVersion: judgeSettings.Version,
 
 		// Landing is deliberately left unfilled here, for a different reason than the four above:
 		// Env.Landing is assembled in run.go, immediately before loomrecipe.New, because
@@ -703,6 +717,27 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	return nil
+}
+
+// segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.
+// The history is read on each call, never at wire time, because it grows during the run; an absent status file reports not-in-segment.
+func segmentBounces(statusPath, statusLockPath string) func(row string) (int, int, bool, error) {
+	return func(row string) (int, int, bool, error) {
+		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return 0, 0, false, err
+		}
+		if err != nil || !found {
+			return 0, 0, false, nil
+		}
+		routing, err := loomrecipe.Routing()
+		if err != nil {
+			return 0, 0, false, err
+		}
+		count, budget, inSegment := routing.Bounces(row, st.History)
+		return count, budget, inSegment, nil
+	}
 }
 
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.

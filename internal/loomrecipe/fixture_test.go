@@ -226,7 +226,7 @@ func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) 
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 
 	case "bouncer-judge":
-		return writeBouncerJudge(spec, "APPROVED")
+		return writeBouncerJudge(spec, "CONVERGED")
 	}
 
 	if writeOutputs {
@@ -271,9 +271,9 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer ledger %s: %w", spec.OutputFiles[1], err)
 	}
 
-	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1)
-	// names; Bouncer.settle on an APPROVED verdict never reads it, so this write only matters when
-	// verdict scripts a BLOCKING round.
+	// The focus file targets round+1, matching the path shedadapters.focusPath(runDir, round+1) names;
+	// Bouncer.settle on a CONVERGED verdict never reads it,
+	// so this write only matters when verdict scripts a CONTINUE round.
 	focusContent := fmt.Sprintf("---\nround: %d\nexclude_lenses: []\nfocus: []\n---\n", round+1)
 	if err := os.WriteFile(spec.OutputFiles[2], []byte(focusContent), 0o644); err != nil {
 		return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write bouncer focus %s: %w", spec.OutputFiles[2], err)
@@ -282,14 +282,14 @@ func writeBouncerJudge(spec shuttleengine.Spec, verdict string) (shuttleengine.R
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
 
-// blockBouncerJudge makes every bouncer-judge round of env's loom shuttle write a BLOCKING verdict instead of APPROVED,
+// blockBouncerJudge makes every bouncer-judge round of env's loom shuttle write a CONTINUE verdict instead of CONVERGED,
 // so the Bouncer reports Stuck on each judge call.
 func blockBouncerJudge(env shedrecipe.Env) {
 	shuttle := env.Shuttle.(*shedfake.Shuttle)
 	dispatch := shuttle.RunFn
 	shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 		if spec.Role == "bouncer-judge" {
-			return writeBouncerJudge(spec, "BLOCKING")
+			return writeBouncerJudge(spec, "CONTINUE")
 		}
 		return dispatch(spec)
 	}

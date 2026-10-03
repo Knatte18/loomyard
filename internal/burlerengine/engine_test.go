@@ -125,7 +125,7 @@ func newEngineForTest(t *testing.T, root string, shuttle Shuttle) *Engine {
 const (
 	approvedReview = "---\nverdict: APPROVED\n---\nlooks good\n"
 	blockingReview = "---\nverdict: BLOCKING\nfindings:\n" +
-		"  - id: F1\n    severity: BLOCKING\n    location: target.txt:1\n    summary: colors do not match\n" +
+		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: colors do not match\n" +
 		"---\nfound a mismatch\n"
 	malformedReview = "not frontmatter at all\n"
 )

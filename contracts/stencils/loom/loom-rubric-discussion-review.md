@@ -39,3 +39,11 @@ Do not flag any of the following as a finding:
 - **The writer/reviewer symmetry note.**
   The discussion writer's own stencil is `{{.stencils_dir}}/loom/loom-template-discussion.md`: read it to learn what the writer was told not to gather.
   Whatever it says not to gather, this rubric must not flag as missing, or the additive bias reappears even with the writer-side fix in place.
+
+## Finding class
+
+Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
+Their generic meanings are in burler's review step; this section does not restate them.
+In this segment, `design` means the design is wrong: a wrong or missing decision, or a false premise.
+A recurring enumeration gap is filed once as a `design` finding about the method, not once per missing item.
+Class never changes whether a finding is fixed.

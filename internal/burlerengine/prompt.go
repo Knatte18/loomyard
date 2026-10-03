@@ -277,8 +277,8 @@ func clusterRulesBlock(p *Profile) string {
 		"your inherited context and fetch only what your lens needs; you are READ-ONLY — never " +
 		"Write/Edit/delete any file, never run any git command, never touch the two round " +
 		"output files, and never call the Agent tool yourself (forks cannot nest); return your " +
-		"findings ONLY as your final message, each with a severity, a location, and a one-line " +
-		"summary.\n\n" +
+		"findings ONLY as your final message, each with a severity, a class, a location, and a " +
+		"one-line summary.\n\n" +
 		"While the forks run, YOU (the handler) do your own HOLISTIC review — architecture, " +
 		"cross-file invariants, CONSTRAINTS-fit — and prepare the ground truths and the " +
 		"severity rubric you will judge every finding against.\n\n" +

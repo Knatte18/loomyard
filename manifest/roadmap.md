@@ -73,9 +73,6 @@ No build order is implied between these items.
 
 1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config resolves only from `<cwd>/_lyx/config/<module>.yaml` today, per-worktree with no shared default (`fabric.yaml` is the sole exception, anchored at `_board`). Add a repo-wide default layer read from `_board`, with each worktree's own file as an override on top — the two-layer overlay millhouse already uses; not yet designed.
 
-1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on review findings, and scope each review stage to what its downstream stage cannot catch better.
-   See [designs/review-finding-classification.md](designs/review-finding-classification.md).
-
 1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
    None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
 

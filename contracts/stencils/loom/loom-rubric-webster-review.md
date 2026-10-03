@@ -66,3 +66,11 @@ Do not flag any of the following as a finding:
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check.**
   Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
+
+## Finding class
+
+Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
+Their generic meanings are in burler's review step; this section does not restate them.
+In this segment, `design` means the implementation does not match the plan or the invariants, or is incorrect.
+A recurring enumeration gap is filed once as a `design` finding about the method, not once per missing item.
+Class never changes whether a finding is fixed.
