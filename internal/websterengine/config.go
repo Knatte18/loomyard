@@ -77,9 +77,11 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	// webster.yaml carrying only the two role keys leaves every one of these at Go's zero value —
 	// and the zero values are not merely conservative, they break the run silently.
 	// RecoveryTimeoutMin at 0 makes classify's `Elapsed > BatchTimeout` true on the very first poll,
-	// so EVERY recovery batch classifies dead/timeout immediately; MasterTimeoutMin at 0 does the same
-	// to the Master spawn; VerifyGateAttempts at 0 leaves the verify gate no attempt. Nothing
-	// anywhere reported why. Failing at load names the key instead.
+	// so EVERY recovery batch classifies dead/timeout immediately.
+	// MasterTimeoutMin at 0 does the same to the Master spawn.
+	// VerifyGateAttempts at 0 turns the must-pass verify gate off, since shuttle skips an entry with no attempts, so the plan-level verify never runs.
+	// Nothing anywhere reported why.
+	// Failing at load names the key instead.
 	knobs := []struct {
 		key   string
 		value int
