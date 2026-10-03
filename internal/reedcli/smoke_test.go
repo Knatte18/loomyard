@@ -686,39 +686,6 @@ func pollPaneContains(t *testing.T, tmuxPath, socket, target, want string, timeo
 	}
 }
 
-var _, smokeTestFile, _, _ = runtime.Caller(0)
-
-// buildLyxBinary compiles cmd/lyx into a temp dir and returns its path.
-func buildLyxBinary(t *testing.T) string {
-	t.Helper()
-	return buildLyxBinaryWithLDFlags(t, "")
-}
-
-// buildLyxBinaryWithLDFlags compiles cmd/lyx into a temp dir with the given -ldflags value (omitted
-// from the build argv entirely when ldflags is empty) and returns its path.
-// The dev channel stamp -X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev is what makes
-// stencilstore.ModeFor(buildinfo.IsDev()) return ModeDev: buildinfo.Channel is "" for a plain `go
-// build`, so an unstamped binary is production mode and never emits the dev-refusal warn.
-func buildLyxBinaryWithLDFlags(t *testing.T, ldflags string) string {
-	t.Helper()
-	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(smokeTestFile), "..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repo root: %v", err)
-	}
-	lyxExe := filepath.Join(t.TempDir(), "lyx.exe")
-	args := []string{"build", "-o", lyxExe}
-	if ldflags != "" {
-		args = append(args, "-ldflags", ldflags)
-	}
-	args = append(args, "./cmd/lyx")
-	cmd := exec.Command("go", args...)
-	cmd.Dir = repoRoot
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
-	}
-	return lyxExe
-}
-
 // paneEventuallyContains reports whether the target pane comes to contain want.
 func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string, timeout time.Duration) bool {
 	t.Helper()

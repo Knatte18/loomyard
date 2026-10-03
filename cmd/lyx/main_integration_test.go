@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -94,31 +94,12 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 }
 
-// integrationTestFile is this source file's absolute path, captured at compile time.
-var _, integrationTestFile, _, _ = runtime.Caller(0)
-
 // traceFilenamePattern matches the durable sink's trace-file naming: "trace-<UTC timestamp>-<TraceID>-<PID>.log".
 var traceFilenamePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-\d+\.log$`)
 
-// buildLyxBinary compiles cmd/lyx into a temp dir for spawning a real lyx process.
-func buildLyxBinary(t *testing.T) string {
-	t.Helper()
-	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(integrationTestFile), "..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repo root: %v", err)
-	}
-	lyxExe := filepath.Join(t.TempDir(), "lyx.exe")
-	cmd := exec.Command("go", "build", "-o", lyxExe, "./cmd/lyx")
-	cmd.Dir = repoRoot
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
-	}
-	return lyxExe
-}
-
 // TestRootHookWritesTraceFileOnNonZeroExit verifies the root hook writes trace files on failure.
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	// Initialize a git repo so the spawned process's lyxcwd.Resolve succeeds.
 	cwd := t.TempDir()
@@ -280,7 +261,7 @@ func (fx exitSweepFixture) logNames(t *testing.T) map[string]bool {
 }
 
 func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	fx := newExitSweepFixture(t, "trace_retention_count: 2\ntrace_retention_days: 14\n")
 
 	code, out := fx.run(t, lyxExe, "bogus-subcommand")
@@ -305,7 +286,7 @@ func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
 }
 
 func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	baseline := newExitSweepFixture(t, "")
 	wantCode, _ := baseline.run(t, lyxExe, "bogus-subcommand")
 
@@ -333,7 +314,7 @@ func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
 }
 
 func TestExitSweep_QuietZeroExitNeitherArmsNorSweeps(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	for name, loggerYAML := range map[string]string{
 		"absent":  "",
 		"invalid": "trace_retention_count: 0\ntrace_retention_days: 14\n",

@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -80,12 +81,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 	t.Helper()
 	requireLiveSubstrate(t)
 
-	exe := filepath.Join(t.TempDir(), "lyx")
-	build := exec.Command("go", "build", "-o", exe, "./cmd/lyx")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
-	}
+	exe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	cfgs := map[string]string{

@@ -53,6 +53,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -74,39 +75,26 @@ func tmuxBinaryPath(t *testing.T) string {
 }
 
 // smokeLyxBuild caches the one cmd/lyx binary this whole test binary needs, built exactly once
-// regardless of how many tests call buildLyxBinary -- mirroring hubforge's own bareTemplateOnce
+// regardless of how many tests call sharedLyxBinary -- mirroring hubforge's own bareTemplateOnce
 // pattern for an equally expensive one-time build.
+// lyxbin.Build would delete the binary when the first test ends, so the cache builds into a
+// directory of its own.
 var (
 	smokeLyxBuildOnce sync.Once
 	smokeLyxBuildPath string
 	smokeLyxBuildErr  error
 )
 
-var _, smokeTestFile, _, _ = runtime.Caller(0)
-
-// buildLyxBinary compiles cmd/lyx into a scratch temp dir and returns its path, building it at most
-// once per test binary.
-func buildLyxBinary(t *testing.T) string {
+// sharedLyxBinary returns the cached cmd/lyx binary, building it at most once per test binary.
+func sharedLyxBinary(t *testing.T) string {
 	t.Helper()
 	smokeLyxBuildOnce.Do(func() {
-		repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(smokeTestFile), "..", ".."))
-		if err != nil {
-			smokeLyxBuildErr = err
-			return
-		}
 		dir, err := os.MkdirTemp("", "loomcli-smoke-lyx-*")
 		if err != nil {
 			smokeLyxBuildErr = err
 			return
 		}
-		exe := filepath.Join(dir, "lyx")
-		cmd := exec.Command("go", "build", "-o", exe, "./cmd/lyx")
-		cmd.Dir = repoRoot
-		if out, err := cmd.CombinedOutput(); err != nil {
-			smokeLyxBuildErr = fmt.Errorf("go build ./cmd/lyx: %w\n%s", err, out)
-			return
-		}
-		smokeLyxBuildPath = exe
+		smokeLyxBuildPath, smokeLyxBuildErr = lyxbin.BuildInto(dir, "")
 	})
 	if smokeLyxBuildErr != nil {
 		t.Fatalf("build lyx binary: %v", smokeLyxBuildErr)
@@ -523,7 +511,7 @@ func statusStrandCount(t *testing.T, eng *reedengine.Engine, name string) int {
 // file seeded.
 func TestSmokeBootstrap_BringsUpSessionStrandAndDriver(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -565,7 +553,7 @@ func TestSmokeBootstrap_BringsUpSessionStrandAndDriver(t *testing.T) {
 // seed-exists refusal as a failure.
 func TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -610,7 +598,7 @@ func TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver(t *testing.T) 
 // status file.
 func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -686,7 +674,7 @@ func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 // (d) the run verb on a never-seeded pair refuses on the envelope with a message naming the
 // bootstrap verb, writes no driver log, and leaves the weft clean.
 func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 
 	weftDir := fabricengine.WeftWorktree(loc)
@@ -735,7 +723,7 @@ func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 // tolerates but state.ReadJSONStrict rejects, so Shed.Run's own read gate fails before the loop ever
 // calls a producer -- before any persist can happen.
 func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	// "loom run" calls reed.Up() before the phase machine runs, so this case brings a real tmux
 	// server up even though it never reaches a producer. Without this teardown it leaked that server
@@ -808,7 +796,7 @@ func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testin
 // shape.
 func TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -929,7 +917,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 // fabricengine.Clean's own first Preflight precondition row.
 func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
@@ -990,7 +978,7 @@ func weftPathspecStatus(t *testing.T, dir, relPath string) string {
 // its own driver.
 func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -1070,7 +1058,7 @@ func TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver(t *testing.T) {
 // gate ever sees the failure.
 func TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)

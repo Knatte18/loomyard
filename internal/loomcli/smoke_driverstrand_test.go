@@ -176,7 +176,7 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // so it pins that an llm-seeded start over a strand-free session adds no status strand while its driver strand still spawns.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 
 	stubPath := writeStubDriverScript(t)
 
