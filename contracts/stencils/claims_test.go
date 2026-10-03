@@ -141,6 +141,7 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 	}},
 	{"loom-template-plan.md", LoomTemplatePlan, joinClaims(wantAll("the card-granularity contract reaches the agent", "What a card is", "independently committable", "Bundles its own test", "not a substitute for a bundled test"),
+		wantAll("a reworded message's asserting tests join the card's targets", "greps the repository for the old text", "every test asserting it joins that card's targets"),
 		wantAll("root: resolution rules reach the agent", "`root:` is optional", "`<root>/<path>`", "worktree-root-relative"),
 		wantAll("Uses: and overlap semantics reach the agent", "names what the card reads but does not change", "is a contradiction: is it being changed, or only read?"),
 		wantAll("a card's verify is runnable shell, never prose, and exceptional next to the plan-level verify", "runnable shell commands", "never prose", "exceptional rather than routine", "the single integration check for the whole plan"),
