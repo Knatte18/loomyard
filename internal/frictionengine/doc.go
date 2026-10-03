@@ -8,29 +8,25 @@
 // would be pure cost for a step whose entire purpose is optional bookkeeping.
 //
 // Reflect is re-entrant across a killed driving process.
-// Before it spawns, it writes a covered-notes record (a non-.md file beside the report) naming exactly
-// the notes that reflection covers.
+// Before it spawns, it writes a covered-notes record (a non-.md file beside the report) naming exactly the notes that reflection covers.
 // A later call settles a prior reflection first, when a record exists:
-// it probes Shuttle.Attach and waits on a live agent; with no live agent and the report present it
-// archives the covered files without spawning; with no live agent and no report it discards the
-// record, and the notes are reflected again.
-// The agent writes the report only after filing succeeded, so a report is what licenses an archive
-// without a spawn, and a reflection killed mid-filing is filed again.
+// it probes Shuttle.Attach and waits on a live agent;
+// with no live agent and the report present it archives the covered files without spawning;
+// with no live agent and no report it discards the record, and the notes are reflected again.
+// The agent writes the report only after filing succeeded, so a report is what licenses an archive without a spawn,
+// and a reflection killed mid-filing is filed again.
 // A probe error, an attached run that does not finish and a spawn that does not finish are failures:
 // the notes, the record and the report stay in place, and the next trigger settles or reflects again.
 // A record that does not parse is logged and discarded.
 // One call spends at most one positive Deps.Timeout, attach wait and spawn together, measured through Deps.Clock;
 // a zero Timeout defers each spec to shuttle's own run_timeout_min.
 //
-// A successful reflection archives only covered files: the covered notes, the record and the report
-// move into a timestamped sibling directory, and the friction directory itself is never renamed or
-// removed, so a note written after the record stays behind for the next reflection.
+// A successful reflection archives only covered files: the covered notes, the record and the report move into a timestamped sibling directory,
+// and the friction directory itself is never renamed or removed, so a note written after the record stays behind for the next reflection.
 //
-// The agent's own report file (internal/friction.ReportFileName) is excluded from the note scan, so
-// it is never mistaken for a fresh note.
-// With no record, a leftover report is stale and is deleted before a new spec is composed, so
-// shuttleengine.Spec's own OutputFiles-must-not-already-exist rule can never reject the very run
-// meant to replace it.
+// The agent's own report file (internal/friction.ReportFileName) is excluded from the note scan, so it is never mistaken for a fresh note.
+// With no record, a leftover report is stale and is deleted before a new spec is composed,
+// so shuttleengine.Spec's own OutputFiles-must-not-already-exist rule can never reject the very run meant to replace it.
 //
 // Every runtime failure below Deps validation returns a nil error: this step can never change the
 // run's own outcome, because failing a successful, already-merged run over an optional bookkeeping

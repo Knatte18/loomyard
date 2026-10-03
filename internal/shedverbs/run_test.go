@@ -219,12 +219,9 @@ func TestRunCmd_PreRunAndPostRunNilOrFilled(t *testing.T) {
 	}
 }
 
-// TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope is the property most easily lost in the
-// extraction: PostRun is called with the non-nil runErr, called BEFORE the error envelope is
-// written, and its returned map does appear on that envelope. Ordering is asserted by having
-// PostRun write into the same buffer the envelope is written to and checking the buffer's
-// ordering, not by a call counter alone -- a counter cannot distinguish "called before" from
-// "called after".
+// TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope is the property most easily lost in the extraction:
+// PostRun is called with the non-nil runErr, called BEFORE the error envelope is written, and its returned map does appear on that envelope.
+// Ordering is asserted by having PostRun write into the same buffer the envelope is written to and checking the buffer's ordering, not by a call counter alone -- a counter cannot distinguish "called before" from "called after".
 func TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope(t *testing.T) {
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")

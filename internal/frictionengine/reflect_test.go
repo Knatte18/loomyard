@@ -388,8 +388,8 @@ func archiveDirFor(deps Deps, suffix string) string {
 	return deps.ArchivePrefix + "20260912-103000" + suffix
 }
 
-// TestReflect_LiveAgentAttached_WaitsAndArchives covers a record whose agent is still live: Attach
-// finds it, nothing is spawned, and the covered files are archived once it is done.
+// TestReflect_LiveAgentAttached_WaitsAndArchives covers a record whose agent is still live:
+// Attach finds it, nothing is spawned, and the covered files are archived once it is done.
 func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
 	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -416,8 +416,7 @@ func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
 	}
 }
 
-// TestReflect_AttachedRunNotDone_FailedLeavesAll covers an attached run that does not finish: the
-// notes, record and report stay in place.
+// TestReflect_AttachedRunNotDone_FailedLeavesAll covers an attached run that does not finish: the notes, record and report stay in place.
 func TestReflect_AttachedRunNotDone_FailedLeavesAll(t *testing.T) {
 	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -441,8 +440,8 @@ func TestReflect_AttachedRunNotDone_FailedLeavesAll(t *testing.T) {
 	}
 }
 
-// TestReflect_AttachError_FailedNoSpawn covers a probe that cannot answer: it may be hiding a live
-// agent, so nothing is spawned and nothing is archived.
+// TestReflect_AttachError_FailedNoSpawn covers a probe that cannot answer:
+// it may be hiding a live agent, so nothing is spawned and nothing is archived.
 func TestReflect_AttachError_FailedNoSpawn(t *testing.T) {
 	shuttle := &shedfake.Shuttle{AttachErr: errors.New("probe failed")}
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -463,8 +462,8 @@ func TestReflect_AttachError_FailedNoSpawn(t *testing.T) {
 	requireExists(t, filepath.Join(deps.FrictionDir, coveredRecordFileName))
 }
 
-// TestReflect_RecordAndReport_ArchivesWithoutSpawn covers a finished prior reflection: no live agent,
-// the report present, so the covered files are archived and nothing is spawned.
+// TestReflect_RecordAndReport_ArchivesWithoutSpawn covers a finished prior reflection:
+// no live agent, the report present, so the covered files are archived and nothing is spawned.
 func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -493,8 +492,8 @@ func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
 	}
 }
 
-// TestReflect_NoteAfterRecord_LeftForNextSpawn covers a note written after the record: the archive
-// leaves it behind and it is the only note the next spawn's prompt lists.
+// TestReflect_NoteAfterRecord_LeftForNextSpawn covers a note written after the record:
+// the archive leaves it behind and it is the only note the next spawn's prompt lists.
 // The two archives of one call share a clock second, so they also land in distinct directories.
 func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
 	shuttle := doneShuttle()
@@ -525,8 +524,8 @@ func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
 	}
 }
 
-// TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain covers a record whose agent is gone with
-// no report: the record is discarded and its notes are reflected by a new spawn.
+// TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain covers a record whose agent is gone with no report:
+// the record is discarded and its notes are reflected by a new spawn.
 func TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -549,8 +548,7 @@ func TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain(t *testing.T) {
 	requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
 }
 
-// TestReflect_UnparsableRecord_DiscardedAndReflectedAgain covers a record that reads but does not
-// parse: it never blocks a later reflection.
+// TestReflect_UnparsableRecord_DiscardedAndReflectedAgain covers a record that reads but does not parse: it never blocks a later reflection.
 func TestReflect_UnparsableRecord_DiscardedAndReflectedAgain(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -572,8 +570,8 @@ func TestReflect_UnparsableRecord_DiscardedAndReflectedAgain(t *testing.T) {
 	requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
 }
 
-// TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive covers a note written while the agent runs: the
-// archive covers only the recorded notes, so the new one stays for the next reflection.
+// TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive covers a note written while the agent runs:
+// the archive covers only the recorded notes, so the new one stays for the next reflection.
 func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -594,8 +592,7 @@ func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
 	}
 }
 
-// TestReflect_TwoArchivesSameSecond_DistinctDirectories covers two Reflect calls whose archives share
-// a clock second.
+// TestReflect_TwoArchivesSameSecond_DistinctDirectories covers two Reflect calls whose archives share a clock second.
 func TestReflect_TwoArchivesSameSecond_DistinctDirectories(t *testing.T) {
 	deps := newTestDeps(t, doneShuttle(), fixedClock())
 	writeNote(t, deps, "note-1", "x")
@@ -610,8 +607,8 @@ func TestReflect_TwoArchivesSameSecond_DistinctDirectories(t *testing.T) {
 	requireExists(t, filepath.Join(archiveDirFor(deps, "-2"), "note-2.md"))
 }
 
-// TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned covers an Attach wait that spends the whole
-// budget: the settled set is archived, a newer note is left unspawned and the call returns failed.
+// TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned covers an Attach wait that spends the whole budget:
+// the settled set is archived, a newer note is left unspawned and the call returns failed.
 func TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned(t *testing.T) {
 	clock := fixedClock()
 	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -638,8 +635,7 @@ func TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned(t *testing.T) {
 	}
 }
 
-// TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder covers a partial spend: the spawn's
-// Spec.Timeout is the budget left.
+// TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder covers a partial spend: the spawn's Spec.Timeout is the budget left.
 func TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder(t *testing.T) {
 	clock := fixedClock()
 	shuttle := &shedfake.Shuttle{
@@ -668,8 +664,7 @@ func TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder(t *testing.T) {
 	}
 }
 
-// TestReflect_ZeroTimeout_DefersToShuttle covers a zero Deps.Timeout, the friction_timeout_min 0 that
-// defers to shuttle's run_timeout_min.
+// TestReflect_ZeroTimeout_DefersToShuttle covers a zero Deps.Timeout, the friction_timeout_min 0 that defers to shuttle's run_timeout_min.
 // It carries no budget: the attach probe and the spawn both receive a zero Spec.Timeout.
 func TestReflect_ZeroTimeout_DefersToShuttle(t *testing.T) {
 	shuttle := &shedfake.Shuttle{

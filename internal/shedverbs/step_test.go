@@ -1,6 +1,4 @@
-// step_test.go covers the generic step body's closed envelope key set, the five-kind closed
-// vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and
-// AfterStep's every-Step-return placement and friction key.
+// step_test.go covers the generic step body's closed envelope key set, the five-kind closed vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and AfterStep's every-Step-return placement and friction key.
 
 package shedverbs
 
@@ -442,9 +440,9 @@ func TestStepCmd_PostStepOrderingAndScope(t *testing.T) {
 	})
 }
 
-// TestStepCmd_AfterStep covers AfterStep's contract: called after PostStep and before the envelope
-// on success, called with the error on a producer or busy failure, never called when PreStep or
-// BuildShed refuses, and its return is the envelope's friction key; a nil hook leaves it empty.
+// TestStepCmd_AfterStep covers AfterStep's contract:
+// called after PostStep and before the envelope on success, called with the error on a producer or busy failure, never called when PreStep or BuildShed refuses, and its return is the envelope's friction key;
+// a nil hook leaves it empty.
 func TestStepCmd_AfterStep(t *testing.T) {
 	t.Run("Success_AfterPostStepBeforeEnvelope", func(t *testing.T) {
 		paths := newTestPaths(t)

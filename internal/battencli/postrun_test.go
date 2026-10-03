@@ -1,5 +1,5 @@
-// postrun_test.go covers battenPostRun's contract: its extras reach the success envelope only, so
-// batten's error envelope keeps exactly its own keys.
+// postrun_test.go covers battenPostRun's contract: its extras reach the success envelope only,
+// so batten's error envelope keeps exactly its own keys.
 
 package battencli
 

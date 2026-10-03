@@ -31,8 +31,7 @@
 //
 // # Go-authored notes
 //
-// Besides the agent-written notes the directive asks for, internal/loomcli and webster code write
-// Go-authored halt and refusal notes through NotePath, which keeps this package free of feature imports.
+// Besides the agent-written notes the directive asks for, internal/loomcli and webster code write Go-authored halt and refusal notes through NotePath, which keeps this package free of feature imports.
 //
 // # Why four roles
 //

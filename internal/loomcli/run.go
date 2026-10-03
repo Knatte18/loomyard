@@ -1,5 +1,4 @@
-// run.go holds the friction-reflection calls: reflectFriction, the call itself, and
-// reflectFrictionRow, the closure the terminal Friction-Reflect row runs.
+// run.go holds the friction-reflection calls: reflectFriction, the call itself, and reflectFrictionRow, the closure the terminal Friction-Reflect row runs.
 // The halt decision lives in halt.go, in loomAfterStep (step) and loomPostRun (run).
 
 package loomcli
@@ -27,11 +26,11 @@ import (
 // They can overlap because the halt-path call (from loomPostRun under run and loomAfterStep under step) runs after shed.Run or shed.Step has returned and released the run lock,
 // so an operator can resume the task and reach a new driver's Friction-Reflect row while that earlier reflection still runs;
 // the second would archive covered notes out from under the first one's live agent while both held the same reflection-report.md as a declared output.
-// The halt path (wait false) skips on a held lock: the other reflection already covers these
-// notes. The row path (wait true) waits, because its purpose is to hold done back until every
-// reflection over these notes has finished. The wait is bounded by the holder's friction_timeout_min,
-// an advisory lock is released on process death, and the holder never waits on anything the row
-// holds, so it cannot deadlock. The wait is not cancellable, matching frictionengine.Reflect itself.
+// The halt path (wait false) skips on a held lock: the other reflection already covers these notes.
+// The row path (wait true) waits, because its purpose is to hold done back until every reflection over these notes has finished.
+// The wait is bounded by the holder's friction_timeout_min, an advisory lock is released on process death,
+// and the holder never waits on anything the row holds, so it cannot deadlock.
+// The wait is not cancellable, matching frictionengine.Reflect itself.
 func (c *loomCLI) reflectFriction(wait bool) string {
 	// The logged "dir" is the lock's own parent — the directory this MkdirAll actually creates —
 	// not c.frictionDir, which is a sibling this call never touches (crucible round 2, R2-F4).
@@ -79,13 +78,12 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 	return report.Status
 }
 
-// reflectFrictionRow is the shedrecipe.Env.ReflectFriction closure wire installs. Its status is
-// frictionengine.StatusSkipped unless Tier 2 is on, in which case it is reflectFriction(true); it
-// records the status on c.rowFrictionStatus and returns it.
-// It reflects under step ("lyx loom step", "lyx shed step --recipe loom") as under run, since every
-// driven run uses step.
-// The reflection agent files public issues during the step with no operator in the loop; the step
-// blocks for at most friction_timeout_min.
+// reflectFrictionRow is the shedrecipe.Env.ReflectFriction closure wire installs.
+// Its status is frictionengine.StatusSkipped unless Tier 2 is on, in which case it is reflectFriction(true);
+// it records the status on c.rowFrictionStatus and returns it.
+// It reflects under step ("lyx loom step", "lyx shed step --recipe loom") as under run, since every driven run uses step.
+// The reflection agent files public issues during the step with no operator in the loop;
+// the step blocks for at most friction_timeout_min.
 func (c *loomCLI) reflectFrictionRow() string {
 	status := frictionengine.StatusSkipped
 	if c.frictionDir != "" {

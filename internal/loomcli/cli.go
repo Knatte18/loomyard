@@ -120,11 +120,9 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
-	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to
-	// the shuttle runner in production.
+	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
 	// It is the seam tests fake the reflection agent, and so its filing, through.
-	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation
-	// reports as failed.
+	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
 	reflectionShuttle frictionengine.Shuttle
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.

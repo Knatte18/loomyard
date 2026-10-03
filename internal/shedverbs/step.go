@@ -40,12 +40,9 @@ const (
 // silently.
 var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
 
-// StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned --
-// alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook
-// is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty
-// string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is
-// known). The returned map carries exactly the documented keys below; the key set is closed -- a
-// key outside them has no test and no documented meaning:
+// StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
+// The returned map carries exactly the documented keys below;
+// the key set is closed -- a key outside them has no test and no documented meaning:
 //
 //   - producer: res.Producer
 //   - outcome: string(res.Outcome)

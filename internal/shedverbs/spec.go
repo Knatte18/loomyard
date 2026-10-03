@@ -38,10 +38,9 @@ type Hooks struct {
 	// before either envelope is written. This placement is load-bearing, not incidental: it is what
 	// preserves loom's own detectAndFileAnomalies call, which must see every hard-error return --
 	// dropping this arm would lose a whole failure class, including the in-memory crash observation
-	// a resumed run can never recover once this process exits. PostRun's returned map is merged
-	// onto the success envelope, and onto the error envelope when runErr is non-nil, through
-	// output.ErrFields. A module that wants its error envelope unchanged returns nil when it is
-	// handed a non-nil runErr.
+	// a resumed run can never recover once this process exits.
+	// PostRun's returned map is merged onto the success envelope, and onto the error envelope when runErr is non-nil, through output.ErrFields.
+	// A module that wants its error envelope unchanged returns nil when it is handed a non-nil runErr.
 	PostRun func(ctx context.Context, result shedengine.Result, runErr error) map[string]any
 	// PreStep runs at the very start of step's RunE, before BuildShed and before shed.Step. A
 	// non-nil error reports on the error envelope with the hook's own returned kind on the
@@ -55,13 +54,13 @@ type Hooks struct {
 	// call site can move neither above the Step call nor below the envelope. It is filled by loom
 	// and left nil by lifecycle.
 	PostStep func(res shedengine.StepResult)
-	// AfterStep runs once shed.Step has returned, on every path: on success after PostStep, and on
-	// every shed.Step error before the refusal envelope is written. The busy error is passed
-	// through, so the hook applies its own busy skip, as PostRun does. It is not called when
-	// PreStep or BuildShed refuses, since no step ran, and it runs after the producer call and the
-	// lock release, never before a step. Its return is the envelope's friction key on the success
-	// envelope and on the error envelope of a shed.Step error alike; a nil hook yields the empty
-	// string.
+	// AfterStep runs once shed.Step has returned, on every path:
+	// on success after PostStep, and on every shed.Step error before the refusal envelope is written.
+	// The busy error is passed through, so the hook applies its own busy skip, as PostRun does.
+	// It is not called when PreStep or BuildShed refuses, since no step ran,
+	// and it runs after the producer call and the lock release, never before a step.
+	// Its return is the envelope's friction key on the success envelope and on the error envelope of a shed.Step error alike;
+	// a nil hook yields the empty string.
 	AfterStep func(ctx context.Context, res shedengine.StepResult, stepErr error) string
 	// InterruptPolicyFor resolves the interrupt policy for a producer name, keyed by the step
 	// body's own res.Next. A nil hook yields the empty string, which is the caller's "no entry"

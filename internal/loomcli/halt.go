@@ -1,5 +1,4 @@
-// halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and
-// the two hooks that write it and reflect, loomAfterStep under step and loomPostRun under run.
+// halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the two hooks that write it and reflect, loomAfterStep under step and loomPostRun under run.
 
 package loomcli
 
@@ -53,8 +52,7 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 	return nil
 }
 
-// reflectHalt writes n as a halt note and runs the non-waiting reflection, returning the envelope's
-// "friction" status.
+// reflectHalt writes n as a halt note and runs the non-waiting reflection, returning the envelope's "friction" status.
 // A note write failure only logs.
 // A held reflection lock skips the reflection, as reflectFriction(false) does.
 func (c *loomCLI) reflectHalt(n haltNote) string {
@@ -68,9 +66,8 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 }
 
 // failedHalt reports the halt behind err when it is a `failed` one.
-// It is never one for shedengine.ErrShedBusy, and otherwise only when the status file reads `failed`
-// with a persisted error equal to err.Error(), which is how shedengine persists the producer-error
-// and unrecognised-outcome arms.
+// It is never one for shedengine.ErrShedBusy,
+// and otherwise only when the status file reads `failed` with a persisted error equal to err.Error(), which is how shedengine persists the producer-error and unrecognised-outcome arms.
 // A stale `failed` status left by an earlier invocation therefore never writes a second note.
 func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 	if err == nil || errors.Is(err, shedengine.ErrShedBusy) {
@@ -94,8 +91,7 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 
 // loomAfterStep is loom's AfterStep hook and returns the envelope's "friction" key.
 // A `failed` halt behind stepErr and a `blocked` result each write a halt note and reflect.
-// `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this
-// process.
+// `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this process.
 // Every other state, awaiting and paused included, writes nothing and reports skipped.
 func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, stepErr error) string {
 	if stepErr != nil {

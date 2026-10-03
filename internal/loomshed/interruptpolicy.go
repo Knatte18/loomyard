@@ -32,9 +32,9 @@ const (
 // match before any archive, so a re-invocation reattaches to the live agent rather than spawning a
 // second one.
 //
-// NameFrictionReflect's premise is the attach premise: frictionengine.Reflect probes shuttle's
-// attach seam for a live reflection agent and archives a finished reflection's notes instead of
-// spawning, so re-invoking an interrupted step never double-files.
+// NameFrictionReflect's premise is the attach premise:
+// frictionengine.Reflect probes shuttle's attach seam for a live reflection agent and archives a finished reflection's notes instead of spawning,
+// so re-invoking an interrupted step never double-files.
 //
 // NameWebster is the exception because WebsterProducer inherits websterengine's own entry-time
 // reclaim, which stops a leftover Master rather than attaching to it (reclaimEntryTimeStrands in

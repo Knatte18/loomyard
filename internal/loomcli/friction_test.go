@@ -1,8 +1,6 @@
-// friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own: the
-// once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own
-// unconditional ensure, and the reflection call reflectFriction implements (the done path reflects
-// inside the Friction-Reflect row; halt reflection is covered by halt_test.go). Every test here is untagged Tier 1: it spawns no subprocess, drives no
-// real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
+// friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own:
+// the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the done path reflects inside the Friction-Reflect row; halt reflection is covered by halt_test.go).
+// Every test here is untagged Tier 1: it spawns no subprocess, drives no real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
 
 package loomcli
 
@@ -246,8 +244,7 @@ func TestReflectFrictionRow_SkipsWhenTierTwoOff(t *testing.T) {
 	}
 }
 
-// TestReflectFrictionRow_ReflectsWhenTierTwoOn asserts the row attempts the reflection whenever Tier 2
-// is on, whichever verb drives the run.
+// TestReflectFrictionRow_ReflectsWhenTierTwoOn asserts the row attempts the reflection whenever Tier 2 is on, whichever verb drives the run.
 func TestReflectFrictionRow_ReflectsWhenTierTwoOn(t *testing.T) {
 	t.Parallel()
 
@@ -261,9 +258,8 @@ func TestReflectFrictionRow_ReflectsWhenTierTwoOn(t *testing.T) {
 	}
 }
 
-// TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle asserts the row reflects through
-// reflectionShuttle: one spawn whose prompt names the note, the note archived and the status reported
-// as reflected.
+// TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle asserts the row reflects through reflectionShuttle:
+// one spawn whose prompt names the note, the note archived and the status reported as reflected.
 func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
 	t.Parallel()
 
