@@ -49,7 +49,7 @@ const (
 // Reflect is re-entrant across a killed driving process: a covered-notes record written before the
 // spawn lets a re-invocation settle the prior reflection first, by attaching to a live agent or by
 // archiving a finished one's files without spawning.
-// One call spends at most one deps.Timeout, measured from entry through deps.Clock.
+// One call spends at most one positive deps.Timeout, measured from entry through deps.Clock.
 //
 // Deps validation is Reflect's first act, and the only source of a non-nil error: every value on
 // Deps is a wiring bug at the one call site when missing, and is surfaced loudly rather than failing
@@ -65,8 +65,16 @@ func Reflect(deps Deps) (Report, error) {
 	if clock == nil {
 		clock = realClock{}
 	}
+	// A non-positive Timeout carries no budget: it reaches every spec unchanged,
+	// so a zero one defers to shuttle's own run_timeout_min.
+	budgeted := deps.Timeout > 0
 	entered := clock.Now()
-	remaining := func() time.Duration { return deps.Timeout - clock.Now().Sub(entered) }
+	remaining := func() time.Duration {
+		if !budgeted {
+			return deps.Timeout
+		}
+		return deps.Timeout - clock.Now().Sub(entered)
+	}
 
 	reportPath := filepath.Join(deps.FrictionDir, friction.ReportFileName)
 	recordPath := filepath.Join(deps.FrictionDir, coveredRecordFileName)
@@ -149,7 +157,7 @@ func Reflect(deps Deps) (Report, error) {
 	}
 
 	budget := remaining()
-	if budget <= 0 {
+	if budgeted && budget <= 0 {
 		logger.Warn("frictionengine: reflection budget spent before the spawn; notes left for the next reflection", "dir", deps.FrictionDir)
 		return Report{Status: StatusFailed, NoteCount: len(notes)}, nil
 	}

@@ -668,6 +668,36 @@ func TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder(t *testing.T) {
 	}
 }
 
+// TestReflect_ZeroTimeout_DefersToShuttle covers a zero Deps.Timeout, the friction_timeout_min 0 that
+// defers to shuttle's run_timeout_min.
+// It carries no budget: the attach probe and the spawn both receive a zero Spec.Timeout.
+func TestReflect_ZeroTimeout_DefersToShuttle(t *testing.T) {
+	shuttle := &shedfake.Shuttle{
+		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		AttachFound:  true,
+		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	deps := newTestDeps(t, shuttle, nil)
+	deps.Timeout = 0
+	writeNote(t, deps, "note-1", "x")
+	writeRecordFor(t, deps, "note-1")
+	writeNote(t, deps, "note-2", "y")
+
+	report, err := Reflect(deps)
+	if err != nil {
+		t.Fatalf("Reflect() error = %v; want nil", err)
+	}
+	if report.Status != StatusReflected {
+		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
+	}
+	if !shuttle.AttachCalled || shuttle.GotAttachSpec.Timeout != 0 {
+		t.Errorf("Attach called = %v with Timeout %s; want called with a zero Timeout", shuttle.AttachCalled, shuttle.GotAttachSpec.Timeout)
+	}
+	if len(shuttle.Specs) != 1 || shuttle.Specs[0].Timeout != 0 {
+		t.Errorf("Run specs = %v; want one with a zero Timeout", shuttle.Specs)
+	}
+}
+
 // TestReflect_UnwritableRecord_FailedNoSpawn covers a record write that fails before the spawn.
 func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {

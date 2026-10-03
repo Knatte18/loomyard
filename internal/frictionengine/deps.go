@@ -57,7 +57,9 @@ type Deps struct {
 	// TaskSlug names the task the notes came from; the reflection agent writes it into each issue's
 	// provenance line. Told by the caller.
 	TaskSlug string
-	// Timeout bounds the reflection session's wall-clock deadline. Told by the caller.
+	// Timeout bounds one Reflect call's wall-clock budget, attach wait and spawn together.
+	// Zero defers to shuttle's own run_timeout_min for each spec, with no budget across them.
+	// Told by the caller.
 	Timeout time.Duration
 	// Clock is the archive timestamp's seam. A nil Clock selects a package-local realClock wrapping
 	// time.Now.
