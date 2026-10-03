@@ -83,6 +83,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"MergeTree",
 	"MergeFFOnly",
 	"StageResolved",
+	"StageTrackedChanges",
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's

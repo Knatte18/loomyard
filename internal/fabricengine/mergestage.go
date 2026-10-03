@@ -7,6 +7,8 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // StageResult is the mutating result type MergeStageResolved returns, embedding MutationRecord per
@@ -123,4 +125,69 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 	}
 
 	return StageResult{}, nil
+}
+
+// MergeStageTracked stages every tracked modification and deletion in the warp checkout of an
+// in-progress fabric merge, so edits a conflict session made to already-tracked files land in the merge
+// commit MergeContinue writes.
+// Untracked files are never staged; MergeUntrackedFiles lists them so a caller can halt on them.
+// Only the warp side is staged: weft content is never a merge participant for a caller's own edits.
+//
+// It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns
+// *ErrForeignMergeState when git-level merge state fabric did not start is present and
+// *ErrNoMergeInProgress otherwise, staging nothing either way.
+// Like MergeStageResolved it takes no weft write lock, for the same reason: with a record present the
+// guarded sibling verbs already refuse, so no other fabric writer can be in the index concurrently.
+func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return StageResult{}, err
+	}
+	if !recordExists {
+		return StageResult{}, f.mergeStateOrForeignErr()
+	}
+
+	if err := f.warp.StageTrackedChanges(); err != nil {
+		return StageResult{}, fmt.Errorf("fabricengine: stage tracked changes: %w", err)
+	}
+	rec.Append(KindMergeTrackedStaged, f.warpPath, "")
+	return StageResult{}, nil
+}
+
+// MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree, unified the way
+// the conflict list is: worktree-relative, so a caller never names a fabric side.
+// Weft untracked paths map through the same visible-tree test as conflicted ones, and a path that
+// cannot be mapped to the visible worktree fails the call rather than yielding a partial list, since
+// an omitted untracked file is one a caller would silently leave out of the merge commit.
+// Junctioned `_lyx` and `.lyx` sit in `.git/info/exclude`, so they never appear.
+// It returns an empty, never nil, slice when there are none.
+func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
+	warpUntracked, err := f.warp.UntrackedFiles()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
+	}
+	weftUntracked, err := f.weft.UntrackedFiles()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
+	}
+	if len(weftUntracked) == 0 {
+		return warpUntracked, nil
+	}
+
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: resolve layout to list untracked files: %w", err)
+	}
+	anchorRel, wiredNames, err := resolveMergeGeometry(l)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: resolve merge geometry to list untracked files: %w", err)
+	}
+	unified, unmappable := unifyConflictPaths(warpUntracked, weftUntracked, anchorRel, wiredNames)
+	if unmappable {
+		return nil, fmt.Errorf("fabricengine: untracked files include a path outside the visible worktree: %v", weftUntracked)
+	}
+	return unified, nil
 }

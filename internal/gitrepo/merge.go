@@ -199,6 +199,19 @@ func (r *Repo) StageResolved(paths []string) error {
 	return nil
 }
 
+// StageTrackedChanges stages every tracked modification and deletion in the working tree and nothing
+// untracked, via `git add -u`.
+// It is how a caller lands edits made to already-tracked files mid-merge: `-u` takes no pathspec, so
+// it cannot be steered at an untracked or ignored path, and it never force-adds (see the Never
+// Force-Add Invariant).
+// A tree with nothing tracked to stage is a successful no-op.
+func (r *Repo) StageTrackedChanges() error {
+	if _, err := r.runChecked("add", "-u"); err != nil {
+		return fmt.Errorf("gitrepo: git add -u in %s: %w", r.path, err)
+	}
+	return nil
+}
+
 // MergeHeads enumerates EVERY commit the live merge is merging in — the full contents of MERGE_HEAD,
 // one SHA per entry, in git's own recorded order — returning an empty, never nil, slice when no merge
 // is live.
