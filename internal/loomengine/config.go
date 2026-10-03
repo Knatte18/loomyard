@@ -148,6 +148,7 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 
 // LoomSelfreportFiled returns the path to the machine-local marker recording which anomaly titles
 // have already been filed as GitHub issues.
+// The marker also holds the anomalies whose filing failed and awaits a retry.
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
 // status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
 // It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks

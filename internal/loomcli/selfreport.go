@@ -167,6 +167,9 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, stepHan
 // Past the three skips, the ordinary filing pass re-reads the final status from the status file --
 // never from the value shed.Run returned, which is documented meaningless whenever the returned
 // error is non-nil, and this step runs on that path too.
+// Every path past the skips reaches the filing pass, a status file that is missing, unreadable or
+// carries an undecodable product with no new anomalies, so the anomalies an earlier pass failed to
+// file and kept pending in the marker are retried on every pass the skips let through.
 func detectAndFileAnomalies(deps selfreportDeps) {
 	if !deps.Selfreport {
 		return
@@ -181,26 +184,33 @@ func detectAndFileAnomalies(deps selfreportDeps) {
 		return
 	}
 
+	runFilingPass(deps, detectFinalAnomalies(deps))
+}
+
+// detectFinalAnomalies reads the final status from deps.StatusPath and returns the anomalies the
+// detector finds in it.
+// A status file that is missing, unreadable or carries an undecodable product yields no anomalies,
+// the last two warned.
+func detectFinalAnomalies(deps selfreportDeps) []loomengine.Anomaly {
 	final, found, err := state.ReadJSONStrict[shedengine.Status](deps.StatusPath, deps.StatusLockPath)
 	if err != nil {
 		logger.Warn("loomcli: could not read the final status for self-report detection", "path", deps.StatusPath, "cause", err)
-		return
+		return nil
 	}
 	if !found {
-		return
+		return nil
 	}
 
 	var product loomengine.Status
 	if len(final.Product) > 0 {
 		if uerr := json.Unmarshal(final.Product, &product); uerr != nil {
 			logger.Warn("loomcli: could not decode the product for self-report detection", "path", deps.StatusPath, "cause", uerr)
-			return
+			return nil
 		}
 	}
 
 	ledgers := discoverLedgers(deps, final)
-	anomalies := loomengine.DetectAnomalies(deps.Entry, final, product, ledgers)
-	runFilingPass(deps, anomalies)
+	return loomengine.DetectAnomalies(deps.Entry, final, product, ledgers)
 }
 
 // discoverLedgers walks final's history entries, offering every non-empty output value to
@@ -247,27 +257,45 @@ func discoverLedgers(deps selfreportDeps, final shedengine.Status) []loomengine.
 	return ledgers
 }
 
-// runFilingPass performs the four ordered steps of the filing pass: collapse by title, filter
-// against the marker, file one filing-seam call per surviving anomaly in the slice's deterministic
-// order, and record a title in the marker immediately after that title's own filing call
-// succeeds -- never in advance and never in one batch at the end, so a failed call leaves its title
-// unrecorded and therefore retried next run while its already-filed siblings stay recorded.
+// runFilingPass performs the ordered steps of the filing pass.
+// It reads the marker and returns without a write when the marker holds no pending entry and there
+// is no new anomaly.
+// It then retries every pending entry in recorded order with its stored body: a success moves the
+// title from Pending to Titles and writes the marker at once, and a failure warns and leaves the
+// entry pending.
+// It then collapses the new anomalies by title, skips a title already recorded or pending, and files
+// one filing-seam call per surviving anomaly in the slice's deterministic order.
+// A success records the title and writes the marker, never in advance and never in one batch at
+// the end; a failure appends the title and its rendered body to Pending and writes the marker at
+// once, so the anomaly is retried on every later pass even when no later detection finds it again.
 func runFilingPass(deps selfreportDeps, anomalies []loomengine.Anomaly) {
 	collapsed := collapseAnomaliesByTitle(anomalies)
-	if len(collapsed) == 0 {
+	marker := readFiledMarker(deps.MarkerPath, deps.MarkerLockPath)
+	if len(marker.Pending) == 0 && len(collapsed) == 0 {
 		return
 	}
 
-	marker := readFiledMarker(deps.MarkerPath, deps.MarkerLockPath)
+	for _, p := range slices.Clone(marker.Pending) {
+		body := p.Body
+		if _, _, err := deps.FileIssue(p.Title, &body, selfreportengine.DefaultLabels()); err != nil {
+			logger.Warn("loomcli: could not file a pending self-report issue; it stays pending", "title", p.Title, "cause", err)
+			continue
+		}
+
+		marker.settle(p.Title)
+		writeFiledMarker(deps.MarkerPath, deps.MarkerLockPath, marker)
+	}
 
 	for _, a := range collapsed {
-		if marker.has(a.Title) {
+		if marker.has(a.Title) || marker.isPending(a.Title) {
 			continue
 		}
 
 		body := loomengine.RenderAnomalyBody(a)
 		if _, _, err := deps.FileIssue(a.Title, &body, selfreportengine.DefaultLabels()); err != nil {
-			logger.Warn("loomcli: could not file a self-report issue for a detected loom anomaly", "title", a.Title, "cause", err)
+			logger.Warn("loomcli: could not file a self-report issue for a detected loom anomaly; it is kept pending", "title", a.Title, "cause", err)
+			marker.Pending = append(marker.Pending, pendingAnomaly{Title: a.Title, Body: body})
+			writeFiledMarker(deps.MarkerPath, deps.MarkerLockPath, marker)
 			continue
 		}
 
@@ -318,16 +346,39 @@ func collapseAnomaliesByTitle(anomalies []loomengine.Anomaly) []loomengine.Anoma
 	return collapsed
 }
 
+// pendingAnomaly is an anomaly whose filing failed: its title and the body rendered when it was
+// detected, kept so a later pass can file it without detecting it again.
+type pendingAnomaly struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
 // selfreportFiledMarker is the machine-local record of which anomaly titles have already been
-// filed as GitHub issues. It stays a dumb string set with no parsing of its own -- dedupe
-// granularity is whatever the title shape already encodes.
+// filed as GitHub issues, and of the anomalies whose filing failed and awaits a retry.
+// Titles stays a dumb string set with no parsing of its own -- dedupe granularity is whatever the
+// title shape already encodes.
+// Pending holds the failed filings in the order they failed, each retried on every later pass until
+// it succeeds; a marker written before Pending existed reads as one with no pending entries.
+// A title is in at most one of Titles and Pending.
 type selfreportFiledMarker struct {
-	Titles []string `json:"titles"`
+	Titles  []string         `json:"titles"`
+	Pending []pendingAnomaly `json:"pending,omitempty"`
 }
 
 // has reports whether title is already recorded in m.
 func (m selfreportFiledMarker) has(title string) bool {
 	return slices.Contains(m.Titles, title)
+}
+
+// isPending reports whether title is waiting in m's pending list.
+func (m selfreportFiledMarker) isPending(title string) bool {
+	return slices.ContainsFunc(m.Pending, func(p pendingAnomaly) bool { return p.Title == title })
+}
+
+// settle moves title from m's pending list to its recorded set.
+func (m *selfreportFiledMarker) settle(title string) {
+	m.Pending = slices.DeleteFunc(m.Pending, func(p pendingAnomaly) bool { return p.Title == title })
+	m.record(title)
 }
 
 // record appends title to m's recorded set.
