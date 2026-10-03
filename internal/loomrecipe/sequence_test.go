@@ -17,8 +17,7 @@ type wantSequenceEntry struct {
 	outcome shedengine.Outcome
 }
 
-// wantSequenceOrder is the row 1-through-Publish name/outcome sequence a clean Run over
-// buildSequenceFixture must produce.
+// wantSequenceOrder is the row 1-through-Publish name/outcome sequence a clean Run over buildSequenceFixture must produce.
 // It follows wantProducerTable's row order, which TestNew_ShapeMatchesRecipe pins against New,
 // so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure.
 //
@@ -57,9 +56,7 @@ type wantSequenceEntry struct {
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
 //
-// It is derived from wantProducerTable's order and types: a Bouncer row expands to its three
-// entries (the Burler row follows it in the table), a Burler row contributes only through its
-// Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
+// It is derived from wantProducerTable's order and types: a Bouncer row expands to its three entries (the Burler row follows it in the table), a Burler row contributes only through its Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 
 func deriveSequenceOrder() []wantSequenceEntry {

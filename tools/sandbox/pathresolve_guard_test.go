@@ -21,8 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// pathResolveAllowlist is the single file permitted to contain a banned
-// bare-PATH lyx literal.
+// pathResolveAllowlist is the single file permitted to contain a banned bare-PATH lyx literal.
 var pathResolveAllowlist = []scankit.Entry{
 	{Key: "tools/sandbox/resolve.go", Why: "the sole resolution site"},
 }

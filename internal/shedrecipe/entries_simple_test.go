@@ -1,6 +1,4 @@
-// entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table and an
-// under-filled-Env table, plus the entry-specific subtests
-// entries_simple.go's own doc comments call out.
+// entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table and an under-filled-Env table, plus the entry-specific subtests entries_simple.go's own doc comments call out.
 
 package shedrecipe
 

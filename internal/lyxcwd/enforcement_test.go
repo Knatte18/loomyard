@@ -1,7 +1,8 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file
 // outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeps internal/lyxcwd
 // the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary
-// leak fabric-weft-visibility-cleanup closed. All three enforcement tests walk through scankit.
+// leak fabric-weft-visibility-cleanup closed.
+// All three enforcement tests walk through scankit.
 
 package lyxcwd
 
@@ -86,8 +87,7 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
-// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives:
-// the whole of internal/lyxcwd and cmd/lyx/main.go.
+// enforcementAllowlist is the set of paths TestEnforcement lets name the raw cwd/root primitives: the whole of internal/lyxcwd and cmd/lyx/main.go.
 var enforcementAllowlist = []scankit.Entry{
 	{
 		Key: "internal/lyxcwd/",
@@ -483,8 +483,8 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
 		var failures []string
 
-		// Only production Go files are scanned (scankit's default filter); test files are
-		// excluded because test geometry is a review-only rule, not a machine-enforced invariant.
+		// Only production Go files are scanned (scankit's default filter);
+		// test files are excluded because test geometry is a review-only rule, not a machine-enforced invariant.
 		scanned := scankit.Walk(t, scankit.Options{}, func(file *scankit.File) {
 			relDir := filepath.ToSlash(filepath.Dir(file.Rel))
 
@@ -497,8 +497,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			}
 		})
 
-		// A misconfigured walk (wrong root, all files skipped) must not silently produce a
-		// vacuous all-pass result.
+		// A misconfigured walk (wrong root, all files skipped) must not silently produce a vacuous all-pass result.
 		t.Run("scanned_non_empty", func(t *testing.T) {
 			scankit.RequireFloor(t, scanned, 1, "geometry-literal guard")
 		})

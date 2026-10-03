@@ -7,9 +7,7 @@
 // anything else that would drag geometry resolution in, with no list maintenance beyond a genuine
 // new dependency.
 //
-// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/ and so must be
-// allowlisted explicitly, since the stdlib test is "the first path segment contains no dot",
-// which a full module path never satisfies.
+// github.com/Knatte18/loomyard/contracts/recipes sits outside internal/ and so must be allowlisted explicitly, since the stdlib test is "the first path segment contains no dot", which a full module path never satisfies.
 
 package battenrecipe
 
@@ -35,8 +33,7 @@ var battenrecipeAllowedImports = []string{
 // reported by name rather than only implied by its absence from the allowlist above.
 const battenrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
-// that no production import path is battenrecipeDeniedLyxcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is battenrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlistNoStale(t, "internal/battenrecipe", battenrecipeAllowedImports...)
 

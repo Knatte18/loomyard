@@ -115,9 +115,8 @@ func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 		lines := strings.Split(string(f.Data), "\n")
 
 		for i, line := range lines {
-			// A pure-comment line (a doc comment mentioning either token in prose, such as a
-			// package or file header) is not a call site and carries no marker requirement of
-			// its own; only a line containing real source is a raw site.
+			// A pure-comment line (a doc comment mentioning either token in prose, such as a package or file header) is not a call site and carries no marker requirement of its own;
+			// only a line containing real source is a raw site.
 			if strings.HasPrefix(strings.TrimSpace(line), "//") {
 				continue
 			}

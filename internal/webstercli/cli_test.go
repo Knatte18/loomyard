@@ -1,5 +1,4 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command
-// guard and the help-tree stale-language check.
+// cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
 // It also covers the three spawn-free verbs (validate/status/pause) and fabricSync's
 // SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate
 // or even a git repository beyond a plain t.TempDir().

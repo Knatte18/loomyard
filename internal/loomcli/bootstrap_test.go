@@ -657,15 +657,12 @@ func driverFieldReadsIn(fset *token.FileSet, astFile *ast.File) []driverFieldRea
 	return found
 }
 
-// driverScanMinFiles is the plausible floor for how many production .go files the module holds
-// outside internal/shedrun; below it the walk has read the wrong tree.
+// driverScanMinFiles is the plausible floor for how many production .go files the module holds outside internal/shedrun;
+// below it the walk has read the wrong tree.
 const driverScanMinFiles = 100
 
-// scanRepoForDriverFieldReads walks every production (non-test) .go file in the module, skipping
-// internal/shedrun (the sole legitimate parser and writer of the Seed struct, per the Shed
-// Run-Directory Invariant), and returns every driver-field read driverFieldReadsIn finds, each
-// stamped with its repo-root-relative, slash-normalized path, together with the count of files
-// scanned.
+// scanRepoForDriverFieldReads walks every production (non-test) .go file in the module, skipping internal/shedrun (the sole legitimate parser and writer of the Seed struct, per the Shed Run-Directory Invariant),
+// and returns every driver-field read driverFieldReadsIn finds, each stamped with its repo-root-relative, slash-normalized path, together with the count of files scanned.
 func scanRepoForDriverFieldReads(t *testing.T) ([]driverFieldRead, int) {
 	t.Helper()
 	var all []driverFieldRead

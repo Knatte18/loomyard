@@ -1,8 +1,6 @@
-// commitstatus_test.go pins batten's per-transition status seam: the on-disk no-op-transition skip
-// added on top of the shared statuscommit core's dispositions, which statuscommit's own tests pin.
-// Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures and a
-// real temp-file marker path, spawning no git and no process, so the file stays Tier 1 with no hub
-// fixture.
+// commitstatus_test.go pins batten's per-transition status seam: the on-disk no-op-transition skip added on top of the shared statuscommit core's dispositions, which statuscommit's own tests pin.
+// Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures and a real temp-file marker path, spawning no git and no process,
+// so the file stays Tier 1 with no hub fixture.
 package battencli
 
 import (
@@ -21,8 +19,8 @@ func runStatusRel(loc *lyxcwd.Location, runID string) string {
 
 // TestNewCommitStatusSeam_RepeatedPairCommitsOnce is the disproportionate-weight assertion named in
 // the batch: a repeated (producer, state) pair commits and pushes exactly once, not twice, across
-// two calls to the SAME seam instance. It also pins batten's own commit-message prefix, which the
-// shared core's tests cannot, since they render whatever prefix they are given.
+// two calls to the SAME seam instance.
+// It also pins batten's own commit-message prefix, which the shared core's tests cannot, since they render whatever prefix they are given.
 func TestNewCommitStatusSeam_RepeatedPairCommitsOnce(t *testing.T) {
 	t.Parallel()
 

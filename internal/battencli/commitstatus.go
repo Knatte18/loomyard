@@ -105,20 +105,17 @@ type commitStatusMarker struct {
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps, wrapped in an
 // on-disk no-op-transition skip read from and written to markerPath (locked via markerLockPath).
 //
-// Evaluation order: the no-op-transition skip first -- when the incoming (producer, state) pair
-// equals the marker's last-committed pair, return nil without committing or pushing -- then
-// the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors,
-// push-warns.
+// Evaluation order: the no-op-transition skip first -- when the incoming (producer, state) pair equals the marker's last-committed pair, return nil without committing or pushing --
+// then the shared statuscommit core's three dispositions: skip-while-mid-merge, commit-hard-errors, push-warns.
 //
-// A missing or corrupt marker falls back to committing once rather than erroring: the marker is a
-// cache, and losing it costs one redundant commit, never correctness. The marker is rewritten by
-// the core's after-commit callback, right after a successful Commit and ahead of the Push attempt,
-// so a subsequent call skips re-committing the same pair even if the push that followed is still
-// only warned about, not retried.
+// A missing or corrupt marker falls back to committing once rather than erroring:
+// the marker is a cache, and losing it costs one redundant commit, never correctness.
+// The marker is rewritten by the core's after-commit callback, right after a successful Commit and ahead of the Push attempt,
+// so a subsequent call skips re-committing the same pair even if the push that followed is still only warned about, not retried.
 func newCommitStatusSeam(deps commitStatusDeps, markerPath, markerLockPath string) func(producer, st string) error {
-	// Rewritten unconditionally on a successful commit. A failed marker write only costs one
-	// redundant commit on the next call -- the same cost a missing marker costs on read -- so it
-	// is warned about rather than escalated.
+	// Rewritten unconditionally on a successful commit.
+	// A failed marker write only costs one redundant commit on the next call -- the same cost a missing marker costs on read --
+	// so it is warned about rather than escalated.
 	core := statuscommit.New(statuscommit.Deps{
 		MergeActive: deps.MergeActive,
 		Commit:      deps.Commit,

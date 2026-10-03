@@ -1,8 +1,5 @@
-// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an
-// `integration`- or `smoke`-tagged test file runs its tests through tmuxkit.Main, under every tag set
-// that compiles any of its test files.
-// "Starts tmux" has no static shape, so the rule keys on "has a tagged test file" instead,
-// at the cost of one temp directory per tagged package.
+// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an `integration`- or `smoke`-tagged test file runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
+// "Starts tmux" has no static shape, so the rule keys on "has a tagged test file" instead, at the cost of one temp directory per tagged package.
 // Modelled on hermeticenv_test.go; see CONSTRAINTS.md's Tmux Test Isolation Invariant.
 
 package main
@@ -191,8 +188,7 @@ func declaresTestMain(file *ast.File, dir string) (declared, callsKitMain bool) 
 	return declared, callsKitMain
 }
 
-// tmuxIsolationFailures walks the test files under opts and returns one failure line per violating package,
-// the number of tagged packages found and the number of files scanned.
+// tmuxIsolationFailures walks the test files under opts and returns the violating packages' failure lines, the number of tagged packages found and the number of files scanned.
 func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, tagged, scanned int) {
 	t.Helper()
 	opts.Filter = scankit.Test
@@ -254,9 +250,7 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration- or smoke-tagged test file,
-// unless a TestMain compiles under each tag set and on each platform that compile any of its test files,
-// and every TestMain in the package calls tmuxkit.Main.
+// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration- or smoke-tagged test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
 func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
 	failures, tagged, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)

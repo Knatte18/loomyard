@@ -1,9 +1,8 @@
 // panebin_enforcement_test.go enforces the CONSTRAINTS.md Pane Binary Resolution clause's two-sided
 // guarantee: no pane-creation site exists outside the named allowlist, and the one allowlisted
-// chokepoint still composes the prelude rather than silently becoming a plain pass-through. It is
-// modelled directly on selvagepane_enforcement_test.go: scankit walks every non-_test.go .go file
-// directly inside internal/reedengine -- never internal/reedengine/render/, and never a sibling
-// package. It spawns no process, so it carries no build tag.
+// chokepoint still composes the prelude rather than silently becoming a plain pass-through.
+// It is modelled directly on selvagepane_enforcement_test.go: scankit walks every non-_test.go .go file directly inside internal/reedengine -- never internal/reedengine/render/, and never a sibling package.
+// It spawns no process, so it carries no build tag.
 //
 // Honest residual, recorded here as this package's other enforcement test records its own: the scan
 // is a tripwire over string literals in this one package, so a pane created by a helper in another
@@ -28,8 +27,7 @@ const panebinScanMinFiles = 10
 // reedengineScanDir is the module-relative package directory both reedengine enforcement scans walk.
 const reedengineScanDir = "internal/reedengine"
 
-// paneCreationAllowlist names the files in this package permitted to contain the "split-window"
-// string literal, each with the reason.
+// paneCreationAllowlist names the files in this package permitted to contain the "split-window" string literal, each with the reason.
 var paneCreationAllowlist = []scankit.Entry{
 	{
 		Key: "internal/reedengine/spawn.go",

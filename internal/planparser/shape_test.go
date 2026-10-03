@@ -17,8 +17,7 @@
 // so a refGate constant with NO ledger entry contributed no iteration and passed, leaving lookup to
 // panic at runtime inside a live CLI verb (crucible round opus5-high-r1, F1).
 //
-// The AST-parsing tests read production files through scankit, found from the module root
-// (this file itself is a _test.go file and is never parsed as a scan target).
+// The AST-parsing tests read production files through scankit, found from the module root (this file itself is a _test.go file and is never parsed as a scan target).
 
 package planparser
 
@@ -31,8 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// planparserProdFile parses the named production file directly under internal/planparser through
-// scankit and returns its AST with its module-relative path.
+// planparserProdFile parses the named production file directly under internal/planparser through scankit and returns its AST with its module-relative path.
 func planparserProdFile(t *testing.T, name string) (*ast.File, string) {
 	t.Helper()
 

@@ -339,9 +339,7 @@ func TestPrintStatusLinesOnChange_ChangeOnlyPrinting(t *testing.T) {
 	}
 }
 
-// TestPrintStatusLinesOnChange_LineSequences covers the dedupe rule's edges: a repeated unavailable
-// line prints once, a line reprints after the tail returned to an earlier line, and the first line
-// always prints.
+// TestPrintStatusLinesOnChange_LineSequences covers the dedupe rule's edges: a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
 func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
 	tests := []struct {
 		name  string

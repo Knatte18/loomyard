@@ -1,5 +1,4 @@
-// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and
-// interrupt/send's exact-args validation.
+// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and interrupt/send's exact-args validation.
 // No live tmux/claude session is required by any test in this file;
 // the full run/interrupt/send round-trip against a live agent lives in smoke tests (batch 6) and
 // the sandbox suite.

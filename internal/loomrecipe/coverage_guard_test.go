@@ -1,8 +1,6 @@
-// coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list
-// actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table
-// of wantProducerTable (shape_test.go), checked in both directions against New's real, current output rather than against a
-// standalone literal that could drift silently. It builds a real shedrecipe.Env/ShedPaths pair and
-// calls this package's own New, rather than iterating the table alone.
+// coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table of wantProducerTable (shape_test.go),
+// checked in both directions against New's real, current output rather than against a standalone literal that could drift silently.
+// It builds a real shedrecipe.Env/ShedPaths pair and calls this package's own New, rather than iterating the table alone.
 //
 // This file used to also assert that shedrecipe.Names() carried no engine unreachable by this
 // table beyond an allowlist -- a fourth, closed-coverage direction. That assertion was correct but
@@ -19,12 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about the row-to-engine mapping
-// read off wantProducerTable (shape_test.go) against New's real, current row list: every row New
-// assembles has an entry in the table (the direction that catches a row added to the recipe before
-// its consuming task lands); every key in the table names a row New actually has (the direction
-// that keeps the table from accumulating dead entries); and every engine name the table maps to
-// resolves through shedrecipe.Lookup without error.
+// TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about the row-to-engine mapping read off wantProducerTable (shape_test.go) against New's real, current row list:
+// every row New assembles has an entry in the table (the direction that catches a row added to the recipe before its consuming task lands);
+// every key in the table names a row New actually has (the direction that keeps the table from accumulating dead entries);
+// and every engine name the table maps to resolves through shedrecipe.Lookup without error.
 func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)

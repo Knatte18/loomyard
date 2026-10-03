@@ -1,6 +1,4 @@
-// cli_test.go covers the burlercli cobra seam through RunCLI: the PersistentPreRunE group-command
-// guard, run's required --profile flag, decodeProfile's strict YAML decode, and
-// resultEnvelope's success-envelope shape (including its forkCount nil guard).
+// cli_test.go covers the burlercli cobra seam through RunCLI: the PersistentPreRunE group-command guard, run's required --profile flag, decodeProfile's strict YAML decode, and resultEnvelope's success-envelope shape (including its forkCount nil guard).
 // Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
 // that coverage lives in the smoke test and the sandbox suite.
 

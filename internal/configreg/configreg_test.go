@@ -8,9 +8,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text,
-// unknown-module error, --print sections, reconcile output, menu numbering) renders it in
-// registry order, so an out-of-sort or repeated entry is user-visible.
+// TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
+// so an out-of-sort or repeated entry is user-visible.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
 	got := Names()

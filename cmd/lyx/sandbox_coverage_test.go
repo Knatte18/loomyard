@@ -51,9 +51,8 @@ var excludedModules = []scankit.Entry{
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
 func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
-	// Build the live cobra root and collect every registered module name, skipping
-	// cobra's own infrastructure subtrees — mirrors clitree_test.go's walk skip
-	// so the module set here never drifts from what that walk already uses.
+	// Build the live cobra root and collect every registered module name, skipping cobra's own infrastructure subtrees —
+	// mirrors clitree_test.go's walk skip so the module set here never drifts from what that walk already uses.
 	root := newRoot()
 	registered := make(map[string]bool)
 	for _, child := range root.Commands() {

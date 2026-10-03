@@ -4,10 +4,8 @@
 // perform one.
 // See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant.
 //
-// This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative
-// scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed
-// by module-relative slash-separated path with a reason as its value, and the
-// minimum-scanned-files floor; scankit supplies the module root and the production-file walk.
+// This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
+// scankit supplies the module root and the production-file walk.
 //
 // Two of the nine banned tokens were corrected against a naive first guess in opposite
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
@@ -231,8 +229,8 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 }
 
 // TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see
-// CONSTRAINTS.md's Mutation Record Invariant). It takes its module root from scankit
-// and asserts two things by raw source inspection, never by inspecting an executor's body:
+// CONSTRAINTS.md's Mutation Record Invariant).
+// It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
 //
 //  1. Every executor named in destructiveGuardRecordingExecutors declares a leading
 //     `rec *Mutations` parameter in internal/fabricengine/destroy.go.

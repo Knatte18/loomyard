@@ -1,6 +1,4 @@
-// pathrules_test.go is the machine half of two invariants over every module's exported path constructor:
-// "every never-tracked file lives under .lyx, at the mirrored subpath of the _lyx content it relates to"
-// and the anchoring rule that puts every worktree-level path under AnchorPath() rather than WorktreePath().
+// pathrules_test.go is the machine half of two invariants over every module's exported path constructor: "every never-tracked file lives under .lyx, at the mirrored subpath of the _lyx content it relates to" and the anchoring rule that puts every worktree-level path under AnchorPath() rather than WorktreePath().
 // Each row of pathRules names a constructor, a closure calling it on a *lyxcwd.Location, and its class;
 // the expectations come from the class rule, never from a path literal on the row.
 // It lives in cmd/lyx because this is the only package that may import every owning module at once.
@@ -52,9 +50,7 @@ type pathRule struct {
 //
 // The planparser rows and the pattern.File row pass l.AnchorPath() in and are checked against an anchor-derived rule,
 // so they are tautological with respect to anchoring and cannot catch a production call site that passes the wrong root.
-// That proof lives in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go,
-// the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go,
-// and TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
+// That proof lives in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go, and TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
 var pathRules = []pathRule{
 	{name: "planparser.PlanDir", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanDir(l.AnchorPath()) }},
 	{name: "planparser.PlanOverview", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanOverview(l.AnchorPath()) }},
@@ -74,8 +70,7 @@ var pathRules = []pathRule{
 	{name: "websterengine.ReportsDir/blk", class: classDurable, path: func(l *lyxcwd.Location) string {
 		return filepath.Join(websterengine.ReportsDir(l.AnchorPath()), "blk")
 	}},
-	// battencli.StatusFile is durable, fabric-synced state living at shedrun's _lyx-rooted run directory,
-	// unlike battencli.RunLock, StatusLock and PrimeRunLock below, which stay ephemeral.
+	// battencli.StatusFile is durable, fabric-synced state living at shedrun's _lyx-rooted run directory, unlike battencli.RunLock, StatusLock and PrimeRunLock below, which stay ephemeral.
 	{name: "battencli.StatusFile", class: classDurable, path: func(l *lyxcwd.Location) string { return battencli.StatusFile(l, "slug") }},
 
 	{name: "websterengine.ScratchDir", class: classTransient, mirrors: "websterengine.Dir", path: func(l *lyxcwd.Location) string { return websterengine.ScratchDir(l.AnchorPath()) }},

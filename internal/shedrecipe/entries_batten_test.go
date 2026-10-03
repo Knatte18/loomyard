@@ -32,8 +32,7 @@ func newTestEnvWithSeedChild(t *testing.T) Env {
 	return env
 }
 
-// lifecycleEntryCase is one row of the table shared by the happy-path, Slug, ScratchDir and
-// nil-seam tests below.
+// lifecycleEntryCase is one row of the table shared by the happy-path, Slug, ScratchDir and nil-seam tests below.
 type lifecycleEntryCase struct {
 	// registryKey is the name this entry is registered under in registry.go.
 	registryKey string

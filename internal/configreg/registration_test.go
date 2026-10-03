@@ -20,9 +20,8 @@ const (
 	minScannedFiles  = 100
 )
 
-// TestRegistration_MatchesDeclarers fails when a package under internal/ declares a package-level
-// ConfigTemplate that Modules() does not reference, or when Modules() references a ConfigTemplate
-// no package declares.
+// TestRegistration_MatchesDeclarers fails when a package under internal/ declares a package-level ConfigTemplate that Modules() does not reference,
+// or when Modules() references a ConfigTemplate no package declares.
 func TestRegistration_MatchesDeclarers(t *testing.T) {
 	declared := map[string]bool{}
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(f *scankit.File) {
@@ -70,8 +69,7 @@ func declaresConfigTemplate(file *ast.File) bool {
 	return false
 }
 
-// registeredPackages returns the module-relative directory of every package whose ConfigTemplate
-// configreg.go's Modules() references.
+// registeredPackages returns the module-relative directory of every package whose ConfigTemplate configreg.go's Modules() references.
 func registeredPackages(t *testing.T) map[string]bool {
 	t.Helper()
 	registered := map[string]bool{}

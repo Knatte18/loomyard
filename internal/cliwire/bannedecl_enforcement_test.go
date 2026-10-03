@@ -63,8 +63,7 @@ var bannedWiringDeclarations = map[string]bool{
 // internal/burlercli declares a function, method, package-level var, or package-level const named
 // in bannedWiringDeclarations.
 // It spawns no process, so it carries no build tag.
-// It parses every non-_test.go .go file under each policed directory and inspects every top-level
-// declaration via bannedDeclNamesIn, flagging any whose declared name is banned.
+// It parses every non-_test.go .go file under each policed directory and inspects every top-level declaration via bannedDeclNamesIn, flagging any whose declared name is banned.
 // The match is on the AST, never on raw text, so a doc comment naming a function cannot trip it.
 // _test.go files are skipped: the invariant is about production wiring, and a test helper is not a
 // second copy of it.

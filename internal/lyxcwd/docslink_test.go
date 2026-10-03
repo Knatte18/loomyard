@@ -292,9 +292,7 @@ func TestDocsLinkHeadingAnchors(t *testing.T) {
 	}
 }
 
-// docsLinkKey is the allowlist key of one (file, target) link instance: the base-relative,
-// slash-normalized path of the file the link was found in and the raw target string exactly as
-// written in the source, joined by a space (a target never contains whitespace).
+// docsLinkKey is the allowlist key of one (file, target) link instance: the base-relative, slash-normalized path of the file the link was found in and the raw target string exactly as written in the source, joined by a space (a target never contains whitespace).
 func docsLinkKey(file, target string) string {
 	return file + " " + target
 }
@@ -344,14 +342,12 @@ func docsLinkResolve(repoRoot, relPath string, data []byte, filePart, fragment s
 	return ""
 }
 
-// docsLinkScan walks every ".md" file under roots (base-relative, "." for the whole tree) via
-// scankit, extracts every inline link, and resolves each one against the tree rooted at base.
+// docsLinkScan walks every ".md" file under roots (base-relative, "." for the whole tree) via scankit, extracts every inline link, and resolves each one against the tree rooted at base.
 // The root restriction is source-side only: roots names which files are scanned for outgoing links
 // and never restricts where a target may point — every target is resolved wherever it lands in the
 // tree, including the #anchor of any ".md" target whether or not that target is itself inside roots.
-// breaks is every unresolved link whose docsLinkKey is not in allow; stale is every allow key that
-// no break in this run — allowlisted or not — matched, which is how a stale allowlist entry (its
-// link now resolves, or its keyed file was renamed or deleted away) is reported.
+// breaks is every unresolved link whose docsLinkKey is not in allow;
+// stale is every allow key that no break in this run — allowlisted or not — matched, which is how a stale allowlist entry (its link now resolves, or its keyed file was renamed or deleted away) is reported.
 // scanned is the number of markdown files visited.
 func docsLinkScan(t *testing.T, base string, roots []string, allow []scankit.Entry) (breaks []docsLinkBreak, stale []string, scanned int) {
 	t.Helper()

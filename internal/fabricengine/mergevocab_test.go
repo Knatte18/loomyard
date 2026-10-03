@@ -83,13 +83,11 @@ func mergeReasonConstsFromSource(t *testing.T) map[string]mergeReasonConstDecl {
 	return got
 }
 
-// mergeVocabScanMinFiles is the plausible floor for how many production .go files internal/fabricengine
-// holds; below it the package-wide scan has read the wrong directory.
+// mergeVocabScanMinFiles is the plausible floor for how many production .go files internal/fabricengine holds;
+// below it the package-wide scan has read the wrong directory.
 const mergeVocabScanMinFiles = 20
 
-// collectMergeReasonConsts adds every package-level mergeReason* constant file declares into got,
-// failing the test on a duplicate declaration or on a member whose value is not a plain string
-// literal (the closed set must pin every member verbatim).
+// collectMergeReasonConsts adds every package-level mergeReason* constant file declares into got, failing the test on a duplicate declaration or on a member whose value is not a plain string literal (the closed set must pin every member verbatim).
 func collectMergeReasonConsts(t *testing.T, fileName string, file *ast.File, got map[string]mergeReasonConstDecl) {
 	t.Helper()
 

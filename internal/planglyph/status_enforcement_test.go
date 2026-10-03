@@ -76,17 +76,14 @@ type statusHit struct {
 	fn string
 }
 
-// statusConsumerKey is the allowlist key naming one (file, function) pair: the file's module-relative
-// path and the enclosing function, joined by a colon.
+// statusConsumerKey is the allowlist key naming one (file, function) pair: the file's module-relative path and the enclosing function, joined by a colon.
 func statusConsumerKey(rel, fn string) string {
 	return rel + ":" + fn
 }
 
-// allowedStatusConsumers is the tripwire's own allowlist. Each key names one (file, function) pair
-// verified fail-closed today: the four readable statuses are handled explicitly and everything else --
-// the zero value included -- is routed through a default/else arm rather than silently passed or
-// dropped. Adding a new .Status consumer means making it fail closed (see this file's own doc comment)
-// and then adding its pair here -- the test is what forces that review, not a style preference.
+// allowedStatusConsumers is the tripwire's own allowlist.
+// Each key names one (file, function) pair verified fail-closed today: the four readable statuses are handled explicitly and everything else -- the zero value included -- is routed through a default/else arm rather than silently passed or dropped.
+// Adding a new .Status consumer means making it fail closed (see this file's own doc comment) and then adding its pair here -- the test is what forces that review, not a style preference.
 var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/resolve.go:statusFindings", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
@@ -132,8 +129,8 @@ func statusHitsIn(astFile *ast.File) []statusHit {
 // TestStatusEnforcement_NoOutOfAllowlistConsumer parses every production .go file directly under
 // internal/planglyph (a _test.go file is skipped: the invariant is about production reads, and a
 // test's own assertions against a synthetic Status are not a second consumer) and fails when any
-// "Status" selector sits outside a function named in allowedStatusConsumers. It spawns no process
-// and carries no build tag.
+// "Status" selector sits outside a function named in allowedStatusConsumers.
+// It spawns no process and carries no build tag.
 func TestStatusEnforcement_NoOutOfAllowlistConsumer(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedStatusConsumers)
 

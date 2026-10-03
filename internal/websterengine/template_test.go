@@ -9,9 +9,7 @@
 // fork-context-hygiene Shared Decision: a thin in-session fork prompt that injects nothing already
 // inherited from Master, a full cold-start recovery prompt, and card content delivered by a
 // SourcePath pointer rather than inlined fields.
-// Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds
-// itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per
-// the runtime-read-not-embed Shared Decision.
+// Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per the runtime-read-not-embed Shared Decision.
 // Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
 // a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
 // on-disk bytes read via stencilstore.Read, stencil.Fill/FillOptional, and
@@ -54,9 +52,7 @@ func newTestSpecsDir(t *testing.T) string {
 	return t.TempDir()
 }
 
-// mustMasterTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the
-// matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay
-// terse.
+// mustMasterTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay terse.
 func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
 	t.Helper()
 	got, err := websterengine.MasterTemplate(stencilsDir)
@@ -132,9 +128,7 @@ func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir()
-// hub seeded with every registry stencil, including the friction-directive pair a non-empty
-// notePath call needs to resolve a real friction.Directive.
+// frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub seeded with every registry stencil, including the friction-directive pair a non-empty notePath call needs to resolve a real friction.Directive.
 func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -314,8 +308,7 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list
-// names exactly the three outcome.yaml schema keys.
+// TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list names exactly the outcome.yaml schema keys.
 func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -681,9 +674,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	})
 }
 
-// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like
-// patternActiveLayout — PATTERN active, every stencil seeded — but then removes the three
-// pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
+// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like patternActiveLayout — PATTERN active, every stencil seeded — but then removes the pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
 func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()

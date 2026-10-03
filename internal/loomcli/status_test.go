@@ -1,5 +1,4 @@
-// status_test.go drives loom's status verb in-process and pins the envelope key set it emits and the
-// interrupt policy it adds.
+// status_test.go drives loom's status verb in-process and pins the envelope key set it emits and the interrupt policy it adds.
 // The generic status line rendering is tested in internal/shedverbs.
 
 package loomcli

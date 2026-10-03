@@ -1,9 +1,8 @@
 // interruptpolicy_meta_test.go pins loomshed.InterruptPolicies against the production authority --
 // the rows New actually assembles -- rather than against a standalone literal that could drift
-// silently. It lives here rather than beside the table in internal/loomshed because wantProducerTable,
-// the package's one row table in shape_test.go, is the only thing that
-// can also see the engine identity behind each row, and a test in internal/loomshed cannot see it at
-// all.
+// silently.
+// It lives here rather than beside the table in internal/loomshed because wantProducerTable, the package's one row table in shape_test.go, is the only thing that can also see the engine identity behind each row,
+// and a test in internal/loomshed cannot see it at all.
 
 package loomrecipe
 
@@ -41,10 +40,10 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	}
 }
 
-// TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against
-// the row-to-engine mapping read off wantProducerTable: every row
-// whose engine is "Webster" must carry loomshed.InterruptPolicyHandback, and every row whose engine
-// is anything else must carry loomshed.InterruptPolicyReinvoke. This is the assertion that keeps a
+// TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against the row-to-engine mapping read off wantProducerTable:
+// every row whose engine is "Webster" must carry loomshed.InterruptPolicyHandback,
+// and every row whose engine is anything else must carry loomshed.InterruptPolicyReinvoke.
+// This is the assertion that keeps a
 // row which changes adapter from silently keeping the wrong policy, and the engine-name side is
 // what makes the Webster exception derivable rather than hand-maintained.
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {

@@ -1,7 +1,5 @@
 // Package scankit is the shared harness for source-scan invariant tests.
-// It locates the module root, walks source files under the shared skip set,
-// matches findings against allowlists that report their own stale entries,
-// guards a scan against running vacuously, and checks a package's imports.
+// It locates the module root, walks source files under the shared skip set, matches findings against allowlists that report their own stale entries, guards a scan against running vacuously, and checks a package's imports.
 // It imports the standard library only.
 package scankit
 

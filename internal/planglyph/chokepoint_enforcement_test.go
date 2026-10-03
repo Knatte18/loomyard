@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// planglyphScanMinFiles is the plausible floor for how many production .go files internal/planglyph
-// holds; below it a scan has read the wrong directory.
+// planglyphScanMinFiles is the plausible floor for how many production .go files internal/planglyph holds;
+// below it a scan has read the wrong directory.
 const planglyphScanMinFiles = 5
 
 // chokepointGuardedFuncs names the one function each pinned selector must be called from.
@@ -72,8 +72,9 @@ func chokepointCallSitesIn(astFile *ast.File) []string {
 
 // TestChokepointCallSites_PinnedToTheirGuardedFunctions verifies that every planglyph production
 // .go file's Resolve call sits inside resolveTargets and every quarry.Name call sits inside
-// CanonicalizeHandles. It spawns no process, so it carries no build tag. _test.go files are
-// skipped: the invariant is about production wiring, not test helpers.
+// CanonicalizeHandles.
+// It spawns no process, so it carries no build tag.
+// _test.go files are skipped: the invariant is about production wiring, not test helpers.
 func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
 	var failures []string
 

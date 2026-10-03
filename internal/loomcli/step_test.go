@@ -1,8 +1,6 @@
-// step_test.go covers loom's own step wiring: the interrupt policy it threads onto the envelope, the
-// bootstrap-stage classification, and the busy refusal driven end-to-end against a hand-populated
-// receiver, per the new-tests-stay-untagged-and-pure Shared Decision: step's success envelope cannot
-// be reached in an untagged test without a real fabric and a real reed session, so these pure
-// decisions are tested directly instead.
+// step_test.go covers loom's own step wiring: the interrupt policy it threads onto the envelope, the bootstrap-stage classification, and the busy refusal driven end-to-end against a hand-populated receiver, per the new-tests-stay-untagged-and-pure Shared Decision.
+// step's success envelope cannot be reached in an untagged test without a real fabric and a real reed session,
+// so these pure decisions are tested directly instead.
 // The generic envelope and the refusal-kind vocabulary are tested in internal/shedverbs.
 
 package loomcli

@@ -29,8 +29,7 @@ var battenshedAllowedImports = []string{
 // reported by name rather than only implied by its absence from the allowlist above.
 const battenshedDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
-// that no production import path is battenshedDeniedLyxcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is battenshedDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
 	scankit.AssertImportAllowlistNoStale(t, "internal/battenshed", battenshedAllowedImports...)
 

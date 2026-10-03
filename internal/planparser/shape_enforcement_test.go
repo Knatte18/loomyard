@@ -1,10 +1,8 @@
 // shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
 // scans that prove the Ref-Shape Registry Invariant (CONSTRAINTS.md) holds over both packages'
-// production files, not just at the registry's own file boundary. It follows the same idiom as
-// internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib
-// go/parser only, production files walked through scankit from the module root -- every
-// _test.go file in either package is skipped by design, because a test fixture legitimately spells
-// a raw "plan:" ref or calls classifyRef directly.
+// production files, not just at the registry's own file boundary.
+// It follows the same idiom as internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib go/parser only, production files walked through scankit from the module root --
+// every _test.go file in either package is skipped by design, because a test fixture legitimately spells a raw "plan:" ref or calls classifyRef directly.
 //
 // The refKind scan flags any ast.Ident naming classifyRef, the refKind type, or one of its declared
 // constants, outside classify.go and shape.go -- the two files the Ref-Shape Registry Invariant
@@ -52,8 +50,8 @@ func bannedRefKindIdentifiers(t *testing.T) map[string]bool {
 	return banned
 }
 
-// enforcementScanMinFiles is the plausible floor for how many production .go files the two packages
-// hold together; below it a scan has read the wrong directories.
+// enforcementScanMinFiles is the plausible floor for how many production .go files the two packages hold together;
+// below it a scan has read the wrong directories.
 const enforcementScanMinFiles = 10
 
 // enforcementScanTarget is one production .go file under scan: its parsed AST plus its
@@ -63,8 +61,7 @@ type enforcementScanTarget struct {
 	relPath string
 }
 
-// scanTargets returns both packages' own production-file targets, walked from the module root through
-// scankit, together with the count of files scanned for the floor check.
+// scanTargets returns both packages' own production-file targets, walked from the module root through scankit, together with the count of files scanned for the floor check.
 func scanTargets(t *testing.T) ([]enforcementScanTarget, int) {
 	t.Helper()
 

@@ -48,17 +48,15 @@ import (
 // token must sit under to be in scope for TestStencils_NoBareCrossRepoCitations.
 var citationPrefixes = []string{"contracts/", "manifest/", "docs/", "internal/"}
 
-// citationAllowKey is the allowlist key identifying one (stencil name, token) pair
-// TestStencils_NoBareCrossRepoCitations is told to pass despite matching the bare-citation token rule.
+// citationAllowKey is the allowlist key identifying one (stencil name, token) pair TestStencils_NoBareCrossRepoCitations is told to pass despite matching the bare-citation token rule.
 func citationAllowKey(stencilName, token string) string {
 	return stencilName + ":" + token
 }
 
 // citationAllowlist is the justification-carrying allowlist for tokens the bare-citation rule would
-// otherwise flag but that are not citations at all. Each entry's Why is its own justification,
-// carried as data rather than as a comment beside the entry, so the justification cannot drift away
-// from what it justifies -- the same (file, target)-keyed, owner-naming shape
-// internal/lyxcwd's Markdown Link Integrity allowlist already uses.
+// otherwise flag but that are not citations at all.
+// Each entry's Why is its own justification, carried as data rather than as a comment beside the entry,
+// so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lyxcwd's Markdown Link Integrity allowlist already uses.
 //
 // One entry, deliberately: a small allowlist is the design here, not a workaround. The entry names
 // loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
@@ -117,9 +115,8 @@ func TestStencils_NoBareCrossRepoCitations(t *testing.T) {
 	}
 }
 
-// TestStencils_AllowlistHasNoStaleEntries fails when a citationAllowlist entry matches no bare
-// citation in its named stencil's stripped body -- without this check the allowlist would silently
-// accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
+// TestStencils_AllowlistHasNoStaleEntries fails when a citationAllowlist entry matches no bare citation in its named stencil's stripped body --
+// without this check the allowlist would silently accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
 func TestStencils_AllowlistHasNoStaleEntries(t *testing.T) {
 	_, allow := scanBareCitations(t)
 	allow.RequireNoStale(t)
@@ -131,9 +128,7 @@ type bareCitation struct {
 	token   string
 }
 
-// scanBareCitations applies the token rule to every stencil's stripped body and returns the
-// violations the allowlist does not cover, together with the allowlist recording which entries
-// matched.
+// scanBareCitations applies the token rule to every stencil's stripped body and returns the violations the allowlist does not cover, together with the allowlist recording which entries matched.
 func scanBareCitations(t *testing.T) ([]bareCitation, *scankit.Allowlist) {
 	t.Helper()
 

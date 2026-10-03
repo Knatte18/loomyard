@@ -1,5 +1,4 @@
-// cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the
-// bare-group invocation's git-free guard -- mirroring internal/loomcli/cli_test.go's shape.
+// cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the bare-group invocation's git-free guard -- mirroring internal/loomcli/cli_test.go's shape.
 
 package battencli
 

@@ -56,8 +56,8 @@ import (
 )
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil --
-// webster's prompts are read from disk at call time, so a fixture hub that is never seeded fails
-// every verb that renders one.
+// webster's prompts are read from disk at call time,
+// so a fixture hub that is never seeded fails every verb that renders one.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
 	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
