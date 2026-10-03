@@ -42,8 +42,8 @@ func commitRunRecords(t *testing.T, l *lyxcwd.Location, weftDir string) {
 			t.Fatalf("write %s: %v", full, err)
 		}
 	}
-	gitkit.MustRun(t, weftDir, "git", "add", "-A")
-	gitkit.MustRun(t, weftDir, "git", "commit", "-m", "seed run records")
+	gitkit.Git(t, weftDir, "add", "-A")
+	gitkit.Git(t, weftDir, "commit", "-m", "seed run records")
 }
 
 // trackedUnderRoot returns what branch tracks under l's run-records root, read in the repo at dir.

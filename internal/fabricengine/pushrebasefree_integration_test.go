@@ -4,8 +4,8 @@
 // bare origin: a commit ahead of its upstream pushes successfully and the returned record reports
 // the branch push; SkipGit and SkipPush each return an empty result with a nil error and push
 // nothing; and no untracked push-lock file is left behind — the residue property this function exists
-// to guarantee. Reuses coalesce_integration_test.go's addWarpBareRemote and commitPlain fixture
-// helpers and gitsha_integration_test.go's BareBranchSHAForTest/CurrentSHAForTest re-exports.
+// to guarantee. Reuses coalesce_integration_test.go's addWarpBareRemote fixture
+// helper and gitsha_integration_test.go's BareBranchSHAForTest/CurrentSHAForTest re-exports.
 
 package fabricengine_test
 
@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
@@ -26,7 +27,7 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
-	warpSHA := commitPlain(t, warpPath, "warp-file.txt", "warp change")
+	warpSHA := gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
 
 	res, err := fabricengine.PushWarpRebaseFreeAt(warpPath, fabricengine.SyncOptions{})
 	if err != nil {
@@ -67,7 +68,7 @@ func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 			warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 			warpBare := addWarpBareRemote(t, fixtures, warpPath)
 			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, warpBare, "main")
-			commitPlain(t, warpPath, "warp-file.txt", "warp change never pushed")
+			gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change never pushed", "warp change never pushed")
 
 			res, err := fabricengine.PushWarpRebaseFreeAt(warpPath, tt.opts)
 			if err != nil {
@@ -92,7 +93,7 @@ func TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	addWarpBareRemote(t, fixtures, warpPath)
-	commitPlain(t, warpPath, "warp-file.txt", "warp change")
+	gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
 
 	if _, err := fabricengine.PushWarpRebaseFreeAt(warpPath, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("PushWarpRebaseFreeAt() error = %v; want nil", err)

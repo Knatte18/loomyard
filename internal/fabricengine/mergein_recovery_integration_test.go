@@ -84,7 +84,7 @@ func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, cont
 
 	original := gitkit.CurrentBranch(t, dir)
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "--detach", "HEAD")
-	commitOnCurrentBranch(t, dir, filename, content, msg)
+	gitkit.CommitFile(t, dir, filename, content, msg)
 	gitkit.MustRun(t, dir, "git", "push", "origin", "HEAD:refs/heads/"+branch)
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", original)
 }
@@ -307,10 +307,10 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 	// "feature" ref itself never moves.
 	remoteClone := t.TempDir()
 	gitkit.MustRun(t, t.TempDir(), "git", "clone", h.WarpBare, remoteClone)
-	gitkit.MustRun(t, remoteClone, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, remoteClone, "git", "config", "user.name", "Test")
+	gitkit.Git(t, remoteClone, "config", "user.email", "test@test.com")
+	gitkit.Git(t, remoteClone, "config", "user.name", "Test")
 	gitkit.MustRun(t, remoteClone, "git", "checkout", "feature")
-	commitOnCurrentBranch(t, remoteClone, "remote-tip.txt", "remote tip content\n", "advance origin/feature")
+	gitkit.CommitFile(t, remoteClone, "remote-tip.txt", "remote tip content\n", "advance origin/feature")
 	gitkit.MustRun(t, remoteClone, "git", "push", "origin", "feature")
 
 	res, err := f.MergeIn("feature")
@@ -541,8 +541,8 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved\n"), 0o644); err != nil {
 		t.Fatalf("write resolved clash.txt: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "add", "clash.txt")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 
 	st, found, err := fabricengine.LoadMergeStateForTest(f)
 	if err != nil || !found {
@@ -598,7 +598,7 @@ func abortMergeAndLandUnrelatedCommit(t *testing.T, dir, filename string) string
 	t.Helper()
 
 	gitkit.MustRun(t, dir, "git", "merge", "--abort")
-	commitOnCurrentBranch(t, dir, filename, "nothing to do with the merge\n", "unrelated operator commit")
+	gitkit.CommitFile(t, dir, filename, "nothing to do with the merge\n", "unrelated operator commit")
 	return fabricengine.CurrentSHAForTest(t, dir)
 }
 
@@ -697,14 +697,14 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	// Warp: abort the recorded merge, land an unrelated base commit, then hand-merge the RECORDED
 	// source SHA onto it and resolve — parents [unrelated, recorded source].
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "wrong-base.txt", "operator's own base\n", "unrelated base commit")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "wrong-base.txt", "operator's own base\n", "unrelated base commit")
 	wrongBaseSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	runGitExpectingConflict(t, h.PrimeWorktree(), "merge", st.WarpSource)
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved on the wrong base\n"), 0o644); err != nil {
 		t.Fatalf("write resolved clash.txt: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "add", "clash.txt")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	handSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
 	// Precondition, asserted rather than assumed: the hand-landed commit is a two-parent merge whose
@@ -837,7 +837,7 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
 	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
 	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-edit", st.WarpSource, decoySHA)
@@ -972,7 +972,7 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "other", st.WarpStart)
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "other.txt", "work that has nothing to do with feature\n", "other: unrelated work")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "other.txt", "work that has nothing to do with feature\n", "other: unrelated work")
 	otherSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "--no-ff", otherSHA)
@@ -1019,7 +1019,7 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
 	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
 	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", warpBranch)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", st.WarpSource, decoySHA)
@@ -1188,7 +1188,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	warpStart := st.WarpStart
 
 	// The operator finishes the squash by hand, exactly as doc.go's plain-git last resort describes.
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-q", "-m", "hand-landed squash conclude")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "-q", "-m", "hand-landed squash conclude")
 	handLandedSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if handLandedSHA == warpStart {
 		t.Fatalf("warp HEAD did not move; the hand-landed squash conclude this test needs is not present")
@@ -1255,8 +1255,8 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "clash.txt"), []byte("resolved\n"), 0o644); err != nil {
 		t.Fatalf("write resolved clash.txt: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-q", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "add", "clash.txt")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "-q", "--no-edit")
 	concludeSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
 	// The operator now starts a second merge of their own and leaves it uncommitted.

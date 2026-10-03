@@ -61,11 +61,7 @@ func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 
 	warpPath := fabricengine.WorktreePath(l, slug)
 	tracked := filepath.Join(warpPath, "tracked.md")
-	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", tracked, err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", "tracked.md")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-m", "seed tracked file")
+	gitkit.CommitFile(t, warpPath, "tracked.md", "committed\n", "seed tracked file")
 	if err := os.WriteFile(tracked, []byte("committed\nuncommitted\n"), 0o644); err != nil {
 		t.Fatalf("dirty %s: %v", tracked, err)
 	}

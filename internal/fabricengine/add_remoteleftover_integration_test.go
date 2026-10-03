@@ -27,11 +27,7 @@ func pushCommitToOrigin(t *testing.T, bare, branch string) {
 	clone := t.TempDir()
 	mustGit(clone, "clone", "--quiet", bare, ".")
 	mustGit(clone, "checkout", "--quiet", branch)
-	if err := os.WriteFile(clone+"/leftover.txt", []byte("leftover\n"), 0o644); err != nil {
-		t.Fatalf("write leftover file: %v", err)
-	}
-	mustGit(clone, "add", "leftover.txt")
-	mustGit(clone, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "leftover work")
+	gitkit.CommitFile(t, clone, "leftover.txt", "leftover\n", "leftover work")
 	mustGit(clone, "push", "--quiet", "origin", branch)
 }
 
@@ -159,14 +155,10 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 	wt := fabricengine.WorktreePath(f.Layout, slug)
-	if err := os.WriteFile(wt+"/work.txt", []byte("work\n"), 0o644); err != nil {
-		t.Fatalf("write work: %v", err)
-	}
-	mustGit(wt, "add", "work.txt")
-	mustGit(wt, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "warp work")
+	gitkit.CommitFile(t, wt, "work.txt", "work\n", "warp work")
 	mustGit(wt, "push", "--quiet", "origin", slug)
 	mustGit(f.Hub, "merge", "--squash", slug)
-	mustGit(f.Hub, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "land "+slug)
+	gitkit.Git(t, f.Hub, "commit", "-m", "land "+slug)
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
@@ -196,7 +188,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	if _, err := topology.Remove(f.Layout, slug, false, true); err != nil {
 		t.Fatalf("setup Remove(remote): %v", err)
 	}
-	mustGit(f.Hub, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "--allow-empty", "-m", "advance prime")
+	gitkit.Git(t, f.Hub, "commit", "--allow-empty", "-m", "advance prime")
 
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
@@ -235,18 +227,6 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	}
 }
 
-// commitInWeft writes file into the pair's weft worktree and commits it, leaving the commit unpushed.
-func commitInWeft(t *testing.T, f fabricFixture, slug, file string) {
-	t.Helper()
-
-	wt := fabricengine.WeftWorktreePath(f.Layout, slug)
-	if err := os.WriteFile(wt+"/"+file, []byte(file+"\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", file, err)
-	}
-	mustGit(wt, "add", file)
-	mustGit(wt, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "extra weft work")
-}
-
 // requireArchiveCovers asserts an archive/<slug>/* tag on the weft bare targets oldTip or a descendant of it.
 func requireArchiveCovers(t *testing.T, weftBare, slug, oldTip string) {
 	t.Helper()
@@ -274,7 +254,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	commitInWeft(t, f, slug, "extra.txt")
+	gitkit.CommitFile(t, fabricengine.WeftWorktreePath(f.Layout, slug), "extra.txt", "extra.txt\n", "extra weft work")
 	mustGit(fabricengine.WeftWorktreePath(f.Layout, slug), "push", "--quiet", "origin", weftBranch)
 	oldTip := gitkit.RevParse(t, f.WeftBare, weftBranch)
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
@@ -317,7 +297,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 	oldTip := gitkit.RevParse(t, f.WeftBare, weftBranch)
-	commitInWeft(t, f, slug, "unpushed.txt")
+	gitkit.CommitFile(t, fabricengine.WeftWorktreePath(f.Layout, slug), "unpushed.txt", "unpushed.txt\n", "extra weft work")
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}

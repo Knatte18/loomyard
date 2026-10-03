@@ -214,7 +214,7 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 
 	// The weft gains its own commit during the attempt window — its own advance, independent of the
 	// merge attempt in progress on the warp side.
-	commitOnCurrentBranch(t, h.PrimeWeft(), "weft-progress.txt", "progress\n", "weft: progress during attempt")
+	gitkit.CommitFile(t, h.PrimeWeft(), "weft-progress.txt", "progress\n", "weft: progress during attempt")
 	weftDuringAttempt := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
 	if _, err := f.MergeAbort(); err != nil {

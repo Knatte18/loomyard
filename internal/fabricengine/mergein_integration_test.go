@@ -51,10 +51,10 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 		commitOnBranch(t, weftDir, branch, filename, content, msg)
 	}
 	commitOnWarpCurrent = func(filename, content, msg string) {
-		commitOnCurrentBranch(t, warpDir, filename, content, msg)
+		gitkit.CommitFile(t, warpDir, filename, content, msg)
 	}
 	commitOnWeftCurrent = func(filename, content, msg string) {
-		commitOnCurrentBranch(t, weftDir, filename, content, msg)
+		gitkit.CommitFile(t, weftDir, filename, content, msg)
 	}
 	return h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent
 }
@@ -72,7 +72,7 @@ func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
 	}
 
-	commitOnCurrentBranch(t, dir, filename, content, msg)
+	gitkit.CommitFile(t, dir, filename, content, msg)
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
 }
@@ -84,27 +84,15 @@ func branchAtCurrentHEAD(t *testing.T, dir, branch string) {
 	gitkit.MustRun(t, dir, "git", "branch", branch)
 }
 
-// commitOnCurrentBranch writes filename with content in dir, stages it, and commits msg on whatever
-// branch is currently checked out.
-func commitOnCurrentBranch(t *testing.T, dir, filename, content, msg string) {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", filename, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", filename)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", msg)
-}
-
 // setupConflictingDivergence seeds filename on dir's current branch, branches off, diverges the
 // branch's copy, then diverges the current branch's own copy again — so merging branch into the
 // current branch conflicts on filename.
 func setupConflictingDivergence(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
-	commitOnCurrentBranch(t, dir, filename, "seed content\n", "seed "+filename)
+	gitkit.CommitFile(t, dir, filename, "seed content\n", "seed "+filename)
 	commitOnBranch(t, dir, branch, filename, "branch content\n", "diverge "+filename+" on "+branch)
-	commitOnCurrentBranch(t, dir, filename, "current content\n", "diverge "+filename+" on current")
+	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
 // setupCleanFastForward creates branch off dir's current HEAD with one new-file commit — a
@@ -120,7 +108,7 @@ func setupCleanFastForward(t *testing.T, dir, branch, filename string) {
 func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile string) {
 	t.Helper()
 	commitOnBranch(t, dir, branch, branchFile, "clean branch content\n", "clean "+branchFile+" on "+branch)
-	commitOnCurrentBranch(t, dir, currentFile, "current progress\n", "progress current past "+branch)
+	gitkit.CommitFile(t, dir, currentFile, "current progress\n", "progress current past "+branch)
 }
 
 // TestMergeIn_BothSidesClean covers the both-sides-clean scenario: Committed true, both sides

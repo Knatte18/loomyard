@@ -6,7 +6,6 @@
 package fabricengine
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -27,14 +26,10 @@ func newPlainWarpRepo(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	gitkit.Git(t, dir, "init", "-q", "-b", "main")
+	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
+	gitkit.Git(t, dir, "config", "user.name", "Test")
+	gitkit.CommitFile(t, dir, "README", "warp", "init")
 	return dir
 }
 
@@ -64,19 +59,9 @@ func newPlainWeftRepo(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-
-	lyxDir := filepath.Join(dir, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(lyxDir, "config.yaml"), []byte("test"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	gitkit.Git(t, dir, "init", "-q", "-b", "main")
+	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
+	gitkit.Git(t, dir, "config", "user.name", "Test")
+	gitkit.CommitFile(t, dir, filepath.Join(lyxdirs.LyxDirName, "config.yaml"), "test", "init")
 	return dir
 }

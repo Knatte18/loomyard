@@ -48,27 +48,21 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	gitkit.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.Git(t, bare, "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, tempWork, "init", "-b", "main")
+	gitkit.Git(t, tempWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, tempWork, "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
 	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
 
-	readmePath := filepath.Join(tempWork, "README.md")
-	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-
-	gitkit.MustRun(t, tempWork, "git", "add", "README.md")
-	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.CommitFile(t, tempWork, "README.md", "# "+name, "init")
 	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
@@ -103,16 +97,16 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	gitkit.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.Git(t, bare, "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, tempWork, "init", "-b", "main")
+	gitkit.Git(t, tempWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, tempWork, "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
 	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
@@ -129,8 +123,8 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("write subdir marker: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "add", "README.md", subdir)
-	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.Git(t, tempWork, "add", "README.md", subdir)
+	gitkit.Git(t, tempWork, "commit", "-m", "init")
 	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
@@ -149,21 +143,11 @@ func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents
 	t.Helper()
 
 	scratch := filepath.Join(dir, "scratch-"+branch+"-"+filepath.Base(relPath))
-	gitkit.MustRun(t, dir, "git", "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
-	gitkit.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, scratch, "git", "config", "user.name", "Test")
-	gitkit.MustRun(t, scratch, "git", "checkout", branch)
-
-	target := filepath.Join(scratch, relPath)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		t.Fatalf("mkdir for %s: %v", relPath, err)
-	}
-	if err := os.WriteFile(target, []byte(contents), 0o644); err != nil {
-		t.Fatalf("write %s: %v", relPath, err)
-	}
-	gitkit.MustRun(t, scratch, "git", "add", relPath)
-	gitkit.MustRun(t, scratch, "git", "commit", "-m", "seed "+relPath)
-	gitkit.MustRun(t, scratch, "git", "push", "origin", branch)
+	gitkit.Git(t, dir, "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
+	gitkit.Git(t, scratch, "config", "user.email", "test@test.com")
+	gitkit.Git(t, scratch, "config", "user.name", "Test")
+	gitkit.CommitFileOnBranch(t, scratch, branch, relPath, contents, "seed "+relPath)
+	gitkit.Git(t, scratch, "push", "origin", branch)
 }
 
 // makeEmptyBareRemote creates a bare git repository with no commits at all —
@@ -243,15 +227,11 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	// marker file that only exists on main-weft.
 	seedWork := filepath.Join(fixtures, "seed-weft")
 	gitkit.MustRun(t, fixtures, "git", "clone", filepath.ToSlash(weftBare), "seed-weft")
-	gitkit.MustRun(t, seedWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, seedWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, seedWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, seedWork, "config", "user.name", "Test")
 	gitkit.MustRun(t, seedWork, "git", "checkout", "-b", "main-weft")
 	markerName := "synced-weft-state.txt"
-	if err := os.WriteFile(filepath.Join(seedWork, markerName), []byte("weft history"), 0o644); err != nil {
-		t.Fatalf("write weft marker: %v", err)
-	}
-	gitkit.MustRun(t, seedWork, "git", "add", markerName)
-	gitkit.MustRun(t, seedWork, "git", "commit", "-m", "weft sync")
+	gitkit.CommitFile(t, seedWork, markerName, "weft history", "weft sync")
 	gitkit.MustRun(t, seedWork, "git", "push", "-u", "origin", "main-weft")
 
 	remoteTip := gitOutput(t, seedWork, "rev-parse", "main-weft")

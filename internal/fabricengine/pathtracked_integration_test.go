@@ -10,32 +10,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
-
-func commitFileForPathTrackedTest(t *testing.T, repoDir, rel string) {
-	t.Helper()
-	abs := filepath.Join(repoDir, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(abs, []byte("x\n"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	for _, args := range [][]string{
-		{"add", "--", rel},
-		{"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "add " + rel},
-	} {
-		if _, stderr, exitCode, err := gitexec.RunGit(args, repoDir); err != nil || exitCode != 0 {
-			t.Fatalf("git %v: err=%v exit=%d stderr=%s", args, err, exitCode, stderr)
-		}
-	}
-}
 
 func TestPathTracked(t *testing.T) {
 	repoDir := newGitRepoForExcludeTest(t)
-	commitFileForPathTrackedTest(t, repoDir, "tracked.txt")
-	commitFileForPathTrackedTest(t, repoDir, "sub/dir/nested.json")
+	gitkit.CommitFile(t, repoDir, "tracked.txt", "x\n", "add tracked.txt")
+	gitkit.CommitFile(t, repoDir, "sub/dir/nested.json", "x\n", "add sub/dir/nested.json")
 	if err := os.WriteFile(filepath.Join(repoDir, "untracked.txt"), []byte("y\n"), 0o644); err != nil {
 		t.Fatalf("write untracked: %v", err)
 	}

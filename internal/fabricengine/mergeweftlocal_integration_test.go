@@ -5,7 +5,7 @@
 // rewrites system-file content, diverges independently, or evolves the same _lyx/ path from a shared
 // base can no longer produce a merge conflict, a self-abort, or a moved weft HEAD — only a genuine
 // warp-side conflict still reaches unifyConflictPaths.
-// Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture, commitOnCurrentBranch,
+// Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture,
 // advanceRemoteBranch, openFreshFabric and fabricengine.CurrentSHAForTest from the
 // package's existing test files rather than adding new fixture helpers.
 
@@ -80,7 +80,7 @@ func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) 
 	if err := os.MkdirAll(filepath.Join(targetWeftPath, "_lyx", "loom"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(_lyx/loom) on target weft: %v", err)
 	}
-	commitOnCurrentBranch(t, targetWeftPath, filepath.ToSlash(statusRel), `{"target":true}`, "target: weft status diverge")
+	gitkit.CommitFile(t, targetWeftPath, filepath.ToSlash(statusRel), `{"target":true}`, "target: weft status diverge")
 
 	wantContent, err := os.ReadFile(filepath.Join(targetWeftPath, statusRel))
 	if err != nil {
@@ -116,10 +116,10 @@ func TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes(t *testing
 	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
 	// lands a real conclude-commit — otherwise a plain fast-forward reports Committed false on its
 	// own, for a reason unrelated to what this scenario is about.
-	commitOnCurrentBranch(t, h.PairWarpWorktree("target"), "target-progress.txt", "target progress\n", "target: progress")
+	gitkit.CommitFile(t, h.PairWarpWorktree("target"), "target-progress.txt", "target progress\n", "target: progress")
 
 	targetWeftPath := h.PairWeftSibling("target")
-	commitOnCurrentBranch(t, targetWeftPath, "_lyx/shared.txt", "target content\n", "target: lyx shared")
+	gitkit.CommitFile(t, targetWeftPath, "_lyx/shared.txt", "target content\n", "target: lyx shared")
 	commitOnSourceWeft("feature-weft", "_lyx/shared.txt", "feature content\n", "feature: lyx shared")
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
@@ -141,7 +141,7 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 
 	const childContent = "child content\n"
-	commitOnCurrentBranch(t, h.PrimeWeft(), "_lyx/parent-child.txt", childContent, "child: seed lyx content")
+	gitkit.CommitFile(t, h.PrimeWeft(), "_lyx/parent-child.txt", childContent, "child: seed lyx content")
 
 	commitOnWarpBranch("parent", "parent-warp.txt", "parent warp content\n", "parent: warp change")
 	commitOnWeftBranch("parent-weft", "_lyx/parent-only.txt", "parent lyx content\n", "parent: weft lyx change")

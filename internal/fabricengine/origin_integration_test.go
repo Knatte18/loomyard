@@ -293,11 +293,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	// TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
-	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
-		t.Fatalf("write precious.txt: %v", err)
-	}
-	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
-	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
+	gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 

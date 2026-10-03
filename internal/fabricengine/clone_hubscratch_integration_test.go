@@ -20,15 +20,10 @@ func initTinyRepo(t *testing.T, dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
-	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-	readme := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(readme, []byte("# "+filepath.Base(dir)), 0o644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", "README.md")
-	gitkit.MustRun(t, dir, "git", "commit", "-m", "init")
+	gitkit.Git(t, dir, "init", "-b", "main")
+	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
+	gitkit.Git(t, dir, "config", "user.name", "Test")
+	gitkit.CommitFile(t, dir, "README.md", "# "+filepath.Base(dir), "init")
 }
 
 // TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates

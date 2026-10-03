@@ -20,26 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// commitLyxFileInWeft commits a file under _lyx in the pair's weft worktree, returning the new tip.
-func commitLyxFileInWeft(t *testing.T, weftWorktree string) string {
-	t.Helper()
-
-	dir := filepath.Join(weftWorktree, "_lyx")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", dir, err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "record.txt"), []byte("run record\n"), 0o644); err != nil {
-		t.Fatalf("write record: %v", err)
-	}
-	gitkit.MustRun(t, weftWorktree, "git", "add", "-f", "_lyx/record.txt")
-	gitkit.MustRun(t, weftWorktree, "git", "commit", "-m", "record")
-	out, err := gitexec.Run([]string{"rev-parse", "HEAD"}, weftWorktree)
-	if err != nil {
-		t.Fatalf("rev-parse HEAD in %s: %v", weftWorktree, err)
-	}
-	return strings.TrimSpace(out)
-}
-
 // archiveTagsAt lists the archive/ tags present in the repo at repoRoot.
 func archiveTagsAt(t *testing.T, repoRoot string) []string {
 	t.Helper()
@@ -62,7 +42,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
-	tip := commitLyxFileInWeft(t, fabricengine.WeftWorktreePath(l, slug))
+	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -92,7 +72,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
-	tip := commitLyxFileInWeft(t, fabricengine.WeftWorktreePath(l, slug))
+	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	// Plant the state an earlier archive leaves: a lightweight tag at the tip, as archiveWeftTip itself creates, pushed to the origin.
 	wantTag := "archive/" + slug + "/" + tip[:12]
@@ -239,7 +219,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
-	tip := commitLyxFileInWeft(t, fabricengine.WeftWorktreePath(l, slug))
+	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, true, false)
 	if err != nil {
@@ -265,7 +245,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
-	tip := commitLyxFileInWeft(t, fabricengine.WeftWorktreePath(l, slug))
+	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {

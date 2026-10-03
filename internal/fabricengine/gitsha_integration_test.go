@@ -1,7 +1,7 @@
 //go:build integration
 
 // gitsha_integration_test.go holds the SHA/commit-message-reading fixture helpers export_test.go
-// used to carry: CurrentSHAForTest, commitWarp, BareBranchSHAForTest, and commitMessageAt, plus their ForTest
+// used to carry: CurrentSHAForTest, CommitWarpForTest, BareBranchSHAForTest, and commitMessageAt, plus their ForTest
 // re-exports. They live here rather than in export_test.go because each spawns git directly via
 // os/exec.Command to capture its output, and every one of their callers is itself
 // integration-tagged; an untagged export_test.go carrying a raw exec.Command call would trip the
@@ -10,9 +10,7 @@
 package fabricengine
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -24,21 +22,10 @@ func CurrentSHAForTest(t *testing.T, dir string) string {
 	return gitkit.RevParse(t, dir, "HEAD")
 }
 
-// CommitWarpForTest re-exports commitWarp (relocated fixture helper, formerly
-// index_integration_test.go): several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
-var CommitWarpForTest = commitWarp
-
-// commitWarp creates a new commit in warpPath carrying content, returning the new HEAD SHA.
-func commitWarp(t *testing.T, warpPath, content string) string {
+// CommitWarpForTest commits content as warpPath's README, with content as the message, and returns the new HEAD SHA.
+func CommitWarpForTest(t *testing.T, warpPath, content string) string {
 	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", ".")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
-	return gitkit.RevParse(t, warpPath, "HEAD")
+	return gitkit.CommitFile(t, warpPath, "README", content, content)
 }
 
 // BareBranchSHAForTest returns the SHA that branch points to inside the bare repo at bareDir.

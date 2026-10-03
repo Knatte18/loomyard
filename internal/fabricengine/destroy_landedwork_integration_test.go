@@ -8,45 +8,25 @@
 package fabricengine
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
-
-func landedWorkGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	out, err := gitexec.Run(args, dir)
-	if err != nil {
-		t.Fatalf("git %v in %s: %v", args, dir, err)
-	}
-	return out
-}
 
 // landedWorkRepo returns a repository whose main branch holds one commit, plus a bare remote it
 // is wired to.
 func landedWorkRepo(t *testing.T) (repo, remote string) {
 	t.Helper()
 	remote = t.TempDir()
-	landedWorkGit(t, remote, "init", "--bare", "-b", "main")
+	gitkit.Git(t, remote, "init", "--bare", "-b", "main")
 	repo = t.TempDir()
-	landedWorkGit(t, repo, "init", "-b", "main")
-	landedWorkGit(t, repo, "config", "user.email", "t@example.com")
-	landedWorkGit(t, repo, "config", "user.name", "t")
-	landedWorkGit(t, repo, "remote", "add", "origin", remote)
-	landedWorkGit(t, repo, "commit", "--allow-empty", "-m", "base")
+	gitkit.Git(t, repo, "init", "-b", "main")
+	gitkit.Git(t, repo, "config", "user.email", "t@example.com")
+	gitkit.Git(t, repo, "config", "user.name", "t")
+	gitkit.Git(t, repo, "remote", "add", "origin", remote)
+	gitkit.Git(t, repo, "commit", "--allow-empty", "-m", "base")
 	return repo, remote
-}
-
-func landedWorkCommitFile(t *testing.T, repo, name string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(repo, name), []byte(name), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	landedWorkGit(t, repo, "add", name)
-	landedWorkGit(t, repo, "commit", "-m", name)
 }
 
 func landedWorkCheck(repo, branch string) error {
@@ -62,10 +42,10 @@ func landedWorkCheck(repo, branch string) error {
 
 func TestLandedWork_PushedBranchPasses(t *testing.T) {
 	repo, _ := landedWorkRepo(t)
-	landedWorkGit(t, repo, "switch", "-c", "task")
-	landedWorkGit(t, repo, "commit", "--allow-empty", "-m", "work")
-	landedWorkGit(t, repo, "push", "origin", "task")
-	landedWorkGit(t, repo, "switch", "main")
+	gitkit.Git(t, repo, "switch", "-c", "task")
+	gitkit.Git(t, repo, "commit", "--allow-empty", "-m", "work")
+	gitkit.Git(t, repo, "push", "origin", "task")
+	gitkit.Git(t, repo, "switch", "main")
 
 	if err := landedWorkCheck(repo, "task"); err != nil {
 		t.Fatalf("pushed branch refused: %v", err)
@@ -74,11 +54,11 @@ func TestLandedWork_PushedBranchPasses(t *testing.T) {
 
 func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 	repo, _ := landedWorkRepo(t)
-	landedWorkGit(t, repo, "switch", "-c", "task")
-	landedWorkCommitFile(t, repo, "work.txt")
-	landedWorkGit(t, repo, "switch", "main")
-	landedWorkGit(t, repo, "merge", "--squash", "task")
-	landedWorkGit(t, repo, "commit", "-m", "landed")
+	gitkit.Git(t, repo, "switch", "-c", "task")
+	gitkit.CommitFile(t, repo, "work.txt", "work.txt", "work.txt")
+	gitkit.Git(t, repo, "switch", "main")
+	gitkit.Git(t, repo, "merge", "--squash", "task")
+	gitkit.Git(t, repo, "commit", "-m", "landed")
 
 	if err := landedWorkCheck(repo, "task"); err != nil {
 		t.Fatalf("squash-landed branch refused: %v", err)
@@ -87,10 +67,10 @@ func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 
 func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
 	repo, _ := landedWorkRepo(t)
-	landedWorkGit(t, repo, "switch", "-c", "task")
-	landedWorkCommitFile(t, repo, "one.txt")
-	landedWorkCommitFile(t, repo, "two.txt")
-	landedWorkGit(t, repo, "switch", "main")
+	gitkit.Git(t, repo, "switch", "-c", "task")
+	gitkit.CommitFile(t, repo, "one.txt", "one.txt", "one.txt")
+	gitkit.CommitFile(t, repo, "two.txt", "two.txt", "two.txt")
+	gitkit.Git(t, repo, "switch", "main")
 
 	err := landedWorkCheck(repo, "task")
 	assertRefusalCheck(t, err, CheckDirtiness)
@@ -102,8 +82,8 @@ func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
 
 func TestLandedWork_CheckedOutBranchRefused(t *testing.T) {
 	repo, _ := landedWorkRepo(t)
-	landedWorkGit(t, repo, "switch", "-c", "task")
-	landedWorkGit(t, repo, "push", "origin", "task")
+	gitkit.Git(t, repo, "switch", "-c", "task")
+	gitkit.Git(t, repo, "push", "origin", "task")
 
 	err := landedWorkCheck(repo, "task")
 	assertRefusalCheck(t, err, CheckDirtiness)

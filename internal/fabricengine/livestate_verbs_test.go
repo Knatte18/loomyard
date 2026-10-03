@@ -973,12 +973,7 @@ func pullCase() VerbCase {
 
 			scratch := tb.TempDir()
 			mustGit(filepath.Dir(scratch), "clone", h.WarpBare, filepath.Base(scratch))
-			advanceFile := filepath.Join(scratch, "pull-advance.txt")
-			if err := os.WriteFile(advanceFile, []byte("livestate: pull advance\n"), 0o644); err != nil {
-				tb.Fatalf("write %s: %v", advanceFile, err)
-			}
-			mustGit(scratch, "add", "pull-advance.txt")
-			mustGit(scratch, "commit", "-m", "livestate: advance warp bare for Pull")
+			gitkit.CommitFile(tb, scratch, "pull-advance.txt", "livestate: pull advance\n", "livestate: advance warp bare for Pull")
 			mustGit(scratch, "push", "origin", "HEAD:"+gitkit.CurrentBranch(tb, h.PrimeWorktree()))
 			to := gitkit.RevParse(tb, scratch, "HEAD")
 

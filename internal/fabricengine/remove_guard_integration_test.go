@@ -66,11 +66,7 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", "--detach", foreign)
 
 	marker := filepath.Join(foreign, "content-marker")
-	if err := os.WriteFile(marker, []byte("keep me\n"), 0o644); err != nil {
-		t.Fatalf("seed marker: %v", err)
-	}
-	gitkit.MustRun(t, foreign, "git", "add", "content-marker")
-	gitkit.MustRun(t, foreign, "git", "commit", "-m", "seed marker")
+	gitkit.CommitFile(t, foreign, "content-marker", "keep me\n", "seed marker")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	_, err := topology.Remove(l, slug, false, false)

@@ -31,7 +31,7 @@ func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 		t.Errorf("HeadSHA before commit = %q; want %q", before, want)
 	}
 
-	newSHA := commitFile(t, dir, "headsha.txt", "x", "headsha commit")
+	newSHA := gitkit.CommitFile(t, dir, "headsha.txt", "x", "headsha commit")
 
 	after, err := f.HeadSHA()
 	if err != nil {

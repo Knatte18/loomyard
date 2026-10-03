@@ -94,15 +94,11 @@ func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	if err := os.MkdirAll(clone, 0o755); err != nil {
 		t.Fatalf("create unrelated clone directory: %v", err)
 	}
-	gitkit.MustRun(t, clone, "git", "init", "-b", "main", ".")
+	gitkit.Git(t, clone, "init", "-b", "main", ".")
 
 	code := filepath.Join(clone, "code.txt")
 	const sentinel = "UNRELATED-PROJECT-SOURCE"
-	if err := os.WriteFile(code, []byte(sentinel+"\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", code, err)
-	}
-	gitkit.MustRun(t, clone, "git", "add", "code.txt")
-	gitkit.MustRun(t, clone, "git", "commit", "-m", "unrelated project commit")
+	gitkit.CommitFile(t, clone, "code.txt", sentinel+"\n", "unrelated project commit")
 
 	result, err := topology.Prune(l, true, true)
 	if err != nil {

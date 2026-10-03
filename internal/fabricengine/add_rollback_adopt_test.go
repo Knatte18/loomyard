@@ -67,12 +67,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
-	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
-		t.Fatalf("write precious.txt: %v", err)
-	}
-	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
-	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
-	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
+	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
@@ -284,12 +279,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
-	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
-		t.Fatalf("write precious.txt: %v", err)
-	}
-	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
-	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
-	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
+	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so step 11's push fails AFTER step 10b has

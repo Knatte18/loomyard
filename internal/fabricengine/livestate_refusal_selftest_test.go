@@ -114,12 +114,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	warpTarget := h.PairWarpWorktree(slug)
 
 	trackedFile := filepath.Join(warpTarget, "dirt.txt")
-	if err := os.WriteFile(trackedFile, []byte("v1\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", trackedFile, err)
-	}
-	mustGit(warpTarget, "add", "dirt.txt")
-	mustGit(warpTarget, "commit", "-m", "livestate: seed tracked file for dirtiness refusal")
-	head := gitkit.RevParse(t, warpTarget, "HEAD")
+	head := gitkit.CommitFile(t, warpTarget, "dirt.txt", "v1\n", "livestate: seed tracked file for dirtiness refusal")
 	if err := os.WriteFile(trackedFile, []byte("v2\n"), 0o644); err != nil {
 		t.Fatalf("modify %s: %v", trackedFile, err)
 	}

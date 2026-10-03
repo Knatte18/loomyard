@@ -37,11 +37,7 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	tracked := filepath.Join(weftPath, "tracked.md")
-	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", tracked, err)
-	}
-	gitkit.MustRun(t, weftPath, "git", "add", "tracked.md")
-	gitkit.MustRun(t, weftPath, "git", "commit", "-m", "seed tracked file")
+	gitkit.CommitFile(t, weftPath, "tracked.md", "committed\n", "seed tracked file")
 
 	// The uncommitted work a forced removal would discard.
 	const sentinel = "PRUNE-SENTINEL"

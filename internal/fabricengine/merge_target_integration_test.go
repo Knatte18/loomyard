@@ -86,9 +86,9 @@ func advanceRemoteBranch(t *testing.T, bareRemote, branch, filename, content, ms
 
 	dir := t.TempDir()
 	gitkit.MustRun(t, dir, "git", "clone", "-q", "-b", branch, bareRemote, ".")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-	commitOnCurrentBranch(t, dir, filename, content, msg)
+	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
+	gitkit.Git(t, dir, "config", "user.name", "Test")
+	gitkit.CommitFile(t, dir, filename, content, msg)
 	gitkit.MustRun(t, dir, "git", "push", "-q", "origin", branch)
 }
 
@@ -160,8 +160,8 @@ func TestMerge_CleanNonSquash(t *testing.T) {
 	// A target-side commit on each checkout, so merging "feature" is a genuine (non-fast-forward)
 	// merge on the warp side rather than a plain pointer advance. The weft-side commit only proves the
 	// weft checkout stays put across the merge.
-	commitOnCurrentBranch(t, targetWarpPath, "target-progress.txt", "target progress\n", "target: progress")
-	commitOnCurrentBranch(t, targetWeftPath, "_lyx/target-progress.txt", "target progress\n", "target: progress weft")
+	gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "target progress\n", "target: progress")
+	gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "target progress\n", "target: progress weft")
 	weftBefore := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
@@ -239,7 +239,7 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	h1, target1, commitOnSourceWarp1, commitOnSourceWeft1 := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp1, commitOnSourceWeft1)
 	targetWarpPath1 := h1.PairWarpWorktree("target")
-	commitOnCurrentBranch(t, targetWarpPath1, "tracked.txt", "v1\n", "target: seed tracked")
+	gitkit.CommitFile(t, targetWarpPath1, "tracked.txt", "v1\n", "target: seed tracked")
 	warpBefore1 := fabricengine.CurrentSHAForTest(t, targetWarpPath1)
 	weftBefore1 := fabricengine.CurrentSHAForTest(t, h1.PairWeftSibling("target"))
 	if err := os.WriteFile(filepath.Join(targetWarpPath1, "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
@@ -270,10 +270,10 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
 	// fabricates a commit — the shape needed to assert Committed true below, mirroring
 	// TestMerge_CleanNonSquash's own reason for the same seed commit.
-	commitOnCurrentBranch(t, targetWarpPath2, "warp-progress.txt", "target progress\n", "target: progress")
+	gitkit.CommitFile(t, targetWarpPath2, "warp-progress.txt", "target progress\n", "target: progress")
 	seedSourceAndTarget(t, commitOnSourceWarp2, commitOnSourceWeft2)
 	targetWeftPath2 := h2.PairWeftSibling("target")
-	commitOnCurrentBranch(t, targetWeftPath2, "_lyx/tracked.txt", "v1\n", "target: seed tracked weft")
+	gitkit.CommitFile(t, targetWeftPath2, "_lyx/tracked.txt", "v1\n", "target: seed tracked weft")
 	warpBefore2 := fabricengine.CurrentSHAForTest(t, targetWarpPath2)
 	weftBefore2 := fabricengine.CurrentSHAForTest(t, targetWeftPath2)
 	if err := os.WriteFile(filepath.Join(targetWeftPath2, "_lyx", "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
@@ -342,7 +342,7 @@ func TestMerge_DivergedTargetRefuses(t *testing.T) {
 	// Fetch so the guard's own read-only @{u} check sees the remote advance (the guard stage never
 	// fetches on its own), then diverge locally so neither direction is an ancestor of the other.
 	gitkit.MustRun(t, targetWarpPath, "git", "fetch", "-q", "origin")
-	commitOnCurrentBranch(t, targetWarpPath, "local-warp.txt", "local content\n", "target: local progress")
+	gitkit.CommitFile(t, targetWarpPath, "local-warp.txt", "local content\n", "target: local progress")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, targetWarpPath)
 	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
@@ -417,7 +417,7 @@ func TestMerge_NoUpstreamSidePassesVacuously(t *testing.T) {
 // produce any more — see the merge-drops-weft task.
 func TestMerge_ConflictSelfAborts(t *testing.T) {
 	hWarp, targetWarp, commitOnSourceWarp1, commitOnSourceWeft1 := newMergeTargetFixture(t, ".")
-	commitOnCurrentBranch(t, hWarp.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
+	gitkit.CommitFile(t, hWarp.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
 	commitOnSourceWarp1("feature", "conflict.txt", "feature content\n", "feature: diverge conflict.txt")
 	commitOnSourceWeft1("feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
 
@@ -479,8 +479,8 @@ func TestMerge_CrashRecovery(t *testing.T) {
 	t.Run("MergeInProgress true and MergeAbort restores", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
-		commitOnCurrentBranch(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
-		commitOnCurrentBranch(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
+		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
+		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 		warpStart := fabricengine.CurrentSHAForTest(t, targetWarpPath)
@@ -539,8 +539,8 @@ func TestMerge_CrashRecovery(t *testing.T) {
 	t.Run("MergeContinue concludes a crashed-after-clean-staging merge", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
-		commitOnCurrentBranch(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
-		commitOnCurrentBranch(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
+		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
+		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
 		warpStart := fabricengine.CurrentSHAForTest(t, targetWarpPath)
@@ -664,7 +664,7 @@ func divergeSideWithoutFetching(t *testing.T, worktree, bareRemote, branch, remo
 	t.Helper()
 
 	advanceRemoteBranch(t, bareRemote, branch, remoteFile, "remote content\n", "origin: advance "+branch)
-	commitOnCurrentBranch(t, worktree, localFile, "local content\n", "local progress on "+branch)
+	gitkit.CommitFile(t, worktree, localFile, "local content\n", "local progress on "+branch)
 
 	head := gitkit.RevParse(t, worktree, "HEAD")
 	tracking := gitkit.RevParse(t, worktree, "origin/"+branch)
@@ -764,7 +764,7 @@ func TestMerge_FetchedDivergedWeftDoesNotRefuse(t *testing.T) {
 
 	advanceRemoteBranch(t, h.WeftBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
 	gitkit.MustRun(t, targetWeftPath, "git", "fetch", "-q", "origin")
-	commitOnCurrentBranch(t, targetWeftPath, "local-weft.txt", "local content\n", "target-weft: local progress")
+	gitkit.CommitFile(t, targetWeftPath, "local-weft.txt", "local content\n", "target-weft: local progress")
 
 	// The warp side is left strictly behind its upstream: legal on its own (the sync step exists to
 	// fast-forward exactly this).

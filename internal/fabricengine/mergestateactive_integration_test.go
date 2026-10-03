@@ -4,8 +4,7 @@
 // weft reports false; a weft carrying a live MERGE_HEAD (no conflicts) reports true; a weft carrying
 // a conflicted `git merge --squash` (no MERGE_HEAD) reports true, pinning that neither probe kind is
 // redundant; and a warp-alone mid-merge with a clean weft reports false, pinning the weft-only scope.
-// Reuses mergestate_integration_test.go's writeConflictFile and driveConflictedMergeStart fixture
-// helpers.
+// Reuses mergestate_integration_test.go's driveConflictedMergeStart fixture helper.
 
 package fabricengine_test
 
@@ -26,9 +25,7 @@ func driveMergeHeadOnlyNoConflicts(t *testing.T, dir string) {
 	t.Helper()
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", "no-conflict-branch")
-	writeConflictFile(t, dir, "no-conflict-file.txt", "no conflict content")
-	gitkit.MustRun(t, dir, "git", "add", "no-conflict-file.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "no-conflict branch commit")
+	gitkit.CommitFile(t, dir, "no-conflict-file.txt", "no conflict content", "no-conflict branch commit")
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-")
 	gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "--no-ff", "no-conflict-branch")
@@ -41,14 +38,10 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 	t.Helper()
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", "squash-conflict-branch")
-	writeConflictFile(t, dir, "conflict-target.txt", "branch content")
-	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "branch content commit")
+	gitkit.CommitFile(t, dir, "conflict-target.txt", "branch content", "branch content commit")
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-")
-	writeConflictFile(t, dir, "conflict-target.txt", "main content")
-	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "main content commit")
+	gitkit.CommitFile(t, dir, "conflict-target.txt", "main content", "main content commit")
 
 	mergeCmd := exec.Command("git", "merge", "--squash", "squash-conflict-branch")
 	mergeCmd.Dir = dir

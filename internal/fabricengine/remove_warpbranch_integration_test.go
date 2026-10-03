@@ -13,7 +13,6 @@ package fabricengine_test
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -25,11 +24,7 @@ import (
 func warpBranchCommit(t *testing.T, l *lyxcwd.Location, slug, name string) {
 	t.Helper()
 	dir := fabricengine.WorktreePath(l, slug)
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", name)
+	gitkit.CommitFile(t, dir, name, name, name)
 }
 
 func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
@@ -71,7 +66,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 
 	prime := l.WorktreePath()
 	gitkit.MustRun(t, prime, "git", "merge", "--squash", slug)
-	gitkit.MustRun(t, prime, "git", "commit", "-m", "land "+slug)
+	gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {

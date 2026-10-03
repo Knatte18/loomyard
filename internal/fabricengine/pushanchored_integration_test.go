@@ -4,8 +4,8 @@
 // SkipGit and SkipPush each short-circuit to an empty result and push nothing; a weft carrying an
 // unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed
 // entry; and a diverged weft remote surfaces gitrepo.ErrPushRejected unwrapped, distinguishable via
-// errors.Is from a push error of a different kind. Reuses coalesce_integration_test.go's commitPlain
-// fixture helper and gitsha_integration_test.go's BareBranchSHAForTest re-export.
+// errors.Is from a push error of a different kind. Reuses gitsha_integration_test.go's
+// BareBranchSHAForTest re-export.
 
 package fabricengine_test
 
@@ -34,8 +34,8 @@ func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 
 	dir := filepath.Join(t.TempDir(), "clone")
 	gitkit.MustRun(t, filepath.Dir(dir), "git", "clone", bareRepo, dir)
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.Git(t, dir, "config", "user.email", "test@test.com")
+	gitkit.Git(t, dir, "config", "user.name", "Test")
 	gitkit.MustRun(t, dir, "git", "checkout", "-B", branch, "origin/"+branch)
 	return dir
 }
@@ -60,7 +60,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 				t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 			}
 			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.WeftBare, fabricengine.WeftBranchName("main"))
-			commitPlain(t, h.PrimeWeft(), "weft-file.txt", "weft change never pushed")
+			gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change never pushed", "weft change never pushed")
 
 			res, err := fabricengine.PushAnchored(h.Location, tt.opts)
 			if err != nil {
@@ -82,7 +82,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 // and the returned record contains exactly one KindBranchPushed entry.
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
-	weftSHA := commitPlain(t, h.PrimeWeft(), "weft-file.txt", "weft change")
+	weftSHA := gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
 
 	res, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{})
 	if err != nil {
@@ -126,10 +126,10 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 	}
 
 	weftClone2 := cloneBareForTest(t, h.WeftBare, fabricengine.WeftBranchName("main"))
-	commitPlain(t, weftClone2, "other.txt", "from second weft clone")
+	gitkit.CommitFile(t, weftClone2, "other.txt", "from second weft clone", "from second weft clone")
 	gitkit.MustRun(t, weftClone2, "git", "push")
 
-	commitPlain(t, h.PrimeWeft(), "weft-file.txt", "weft change that will be rejected")
+	gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change that will be rejected", "weft change that will be rejected")
 
 	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{})
 	if err == nil {
@@ -145,7 +145,7 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 // sibling's origin remote removed entirely — must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
 func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
-	commitPlain(t, h.PrimeWeft(), "weft-file.txt", "weft change")
+	gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "remote", "remove", "origin")
 
 	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{})

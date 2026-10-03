@@ -23,20 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// commitFile writes name/content in dir and commits it there with msg,
-// returning the new HEAD SHA. Used to build up warp history the four
-// warp-only Fabric methods can then checkout/reset against.
-func commitFile(t *testing.T, dir, name, content, msg string) string {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", "--", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", msg)
-	return gitkit.RevParse(t, dir, "HEAD")
-}
-
 // TestFabricWarp_DetachVerifyRestoreRoundTrip proves CheckoutDetached and RestoreBranch round-trip:
 // capture the current branch, make a new commit, detach HEAD to the commit before it, then restore
 // the original branch and confirm HEAD is back where it started.
@@ -57,7 +43,7 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 
 	// A later commit on warp gives CheckoutDetached somewhere to detach FROM,
 	// and something the eventual RestoreBranch must land back on top of.
-	commitFile(t, fixture.Layout.WorktreePath(), "round-trip.txt", "v1", "round-trip commit")
+	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "round-trip.txt", "v1", "round-trip commit")
 
 	if err := f.CheckoutDetached(olderSHA); err != nil {
 		t.Fatalf("CheckoutDetached(%q): %v", olderSHA, err)
@@ -92,7 +78,7 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	}
 
 	olderSHA := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD")
-	laterSHA := commitFile(t, fixture.Layout.WorktreePath(), "ancestry.txt", "v1", "ancestry commit")
+	laterSHA := gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "ancestry.txt", "v1", "ancestry commit")
 
 	if got, err := f.IsAncestor(olderSHA, laterSHA); err != nil || !got {
 		t.Errorf("IsAncestor(older, later) = %v, %v; want true, nil", got, err)
@@ -137,7 +123,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	// A committed change past olderSHA, with no uncommitted change on top —
 	// ResetHard must still discard the committed history.
 	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
-	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
+	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 
 	if err := f.ResetHard(fabricengine.NewMutations(""), olderSHA); err != nil {
 		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
@@ -170,7 +156,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	// A committed change past olderSHA, then an uncommitted change on top —
 	// ResetHard must refuse rather than discard either one.
 	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
-	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
+	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 	const uncommittedContent = "uncommitted edit"
 	if err := os.WriteFile(laterPath, []byte(uncommittedContent), 0o644); err != nil {
 		t.Fatalf("write uncommitted change: %v", err)
