@@ -58,7 +58,7 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 
 	want := websterengine.Config{
 		Master:             "sonnet[medium]",
-		Recovery:           "opus[effort=high]",
+		Recovery:           "opus[high]",
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,

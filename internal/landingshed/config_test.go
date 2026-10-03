@@ -41,8 +41,8 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if !cfg.Squash {
 		t.Error("cfg.Squash = false; want true")
 	}
-	if cfg.Conflict != "opus[effort=high]" {
-		t.Errorf("cfg.Conflict = %q; want %q", cfg.Conflict, "opus[effort=high]")
+	if cfg.Conflict != "opus[high]" {
+		t.Errorf("cfg.Conflict = %q; want %q", cfg.Conflict, "opus[high]")
 	}
 	if cfg.ConflictTimeoutMin != 60 {
 		t.Errorf("cfg.ConflictTimeoutMin = %d; want %d", cfg.ConflictTimeoutMin, 60)
@@ -82,8 +82,8 @@ func TestLoadConfig_DescribeDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 	}
-	if cfg.Describe != "sonnet[effort=medium]" {
-		t.Errorf("cfg.Describe = %q; want %q", cfg.Describe, "sonnet[effort=medium]")
+	if cfg.Describe != "sonnet[medium]" {
+		t.Errorf("cfg.Describe = %q; want %q", cfg.Describe, "sonnet[medium]")
 	}
 	if cfg.DescribeTimeoutMin != 30 {
 		t.Errorf("cfg.DescribeTimeoutMin = %d; want 30", cfg.DescribeTimeoutMin)
