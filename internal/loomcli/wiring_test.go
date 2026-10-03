@@ -257,27 +257,6 @@ func TestWire_CwdIsToldToTheEnv(t *testing.T) {
 	}
 }
 
-// TestWire_WebsterRunIsFilled asserts c.env.WebsterRun is non-nil.
-//
-// This is the single most likely regression the conversion reintroduces: websterEntry calls
-// requireSeam("Webster", "WebsterRun", env.WebsterRun) and errors on nil, while the pre-conversion
-// wire deliberately left the corresponding field (loomshed.Deps.WebsterRun) nil and relied on
-// shedadapters.NewWebsterProducer's own nil-defaulting.
-func TestWire_WebsterRunIsFilled(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.env.WebsterRun == nil {
-		t.Error("c.env.WebsterRun = nil; want websterengine.Run")
-	}
-}
-
 // TestWire_WebsterDepsFullyPopulated asserts every field the webster hub wiring fills is non-zero in
 // the assembled websterengine.RunDeps.
 func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
@@ -389,10 +368,8 @@ func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
 	}
 }
 
-// TestWire_DiscussionSeamsFilled asserts c.env.Shuttle, c.env.DiscussionSpec, and
-// c.env.CommitDiscussion are each non-nil after wire(), and that c.env.Shuttle is the same
-// *shuttleengine.Runner value c.runner holds.
-func TestWire_DiscussionSeamsFilled(t *testing.T) {
+// TestWire_EnvShuttleIsTheRunner asserts c.env.Shuttle is the same *shuttleengine.Runner value c.runner holds.
+func TestWire_EnvShuttleIsTheRunner(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "warp", ".")
@@ -402,23 +379,13 @@ func TestWire_DiscussionSeamsFilled(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if c.env.Shuttle == nil {
-		t.Error("c.env.Shuttle = nil; want a non-nil shedadapters.Shuttle")
-	}
-	if c.env.DiscussionSpec == nil {
-		t.Error("c.env.DiscussionSpec = nil; want a non-nil shedadapters.SpecSource")
-	}
-	if c.env.CommitDiscussion == nil {
-		t.Error("c.env.CommitDiscussion = nil; want a non-nil commit closure")
-	}
 	if c.env.Shuttle != c.runner {
 		t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
 	}
 }
 
-// TestWire_DescribeSeamsFilled asserts wire() fills the three Env fields the Describe entry reads,
-// and that DescriptionPath equals the accessor expression.
-func TestWire_DescribeSeamsFilled(t *testing.T) {
+// TestWire_DescriptionPathMatchesLandingDir asserts DescriptionPath equals the accessor expression.
+func TestWire_DescriptionPathMatchesLandingDir(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "warp", ".")
@@ -430,12 +397,6 @@ func TestWire_DescribeSeamsFilled(t *testing.T) {
 
 	if want := summaryparser.Path(loomengine.LandingDir(loc)); c.env.DescriptionPath != want {
 		t.Errorf("c.env.DescriptionPath = %q; want %q", c.env.DescriptionPath, want)
-	}
-	if c.env.DescribeSpec == nil {
-		t.Error("c.env.DescribeSpec = nil; want a non-nil shedadapters.SpecSource")
-	}
-	if c.env.CommitDescription == nil {
-		t.Error("c.env.CommitDescription = nil; want a non-nil commit closure")
 	}
 }
 
@@ -506,35 +467,11 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 }
 
-// TestWire_PlanSeamsFilled asserts c.env.PlanSpec, c.env.CommitPlan and c.env.CommitWebster are each
-// non-nil after wire().
-func TestWire_PlanSeamsFilled(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.env.PlanSpec == nil {
-		t.Error("c.env.PlanSpec = nil; want a non-nil shedadapters.SpecSource")
-	}
-	if c.env.CommitPlan == nil {
-		t.Error("c.env.CommitPlan = nil; want a non-nil commit closure")
-	}
-	if c.env.CommitWebster == nil {
-		t.Error("c.env.CommitWebster = nil; want a non-nil commit closure")
-	}
-}
-
-// TestWire_ReviewSegmentSeamsFilled asserts the four Env fields both review segments read
-// (StencilsDir, RunRoot, Burler, Now) are filled after wire() -- shared by Discussion-Bouncer/
-// Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- following
-// TestWire_PathFieldsMatchLoomengineAccessors' convention of asserting an Env path field against
-// its own loomengine/fabricengine accessor rather than a re-derived literal.
-func TestWire_ReviewSegmentSeamsFilled(t *testing.T) {
+// TestWire_ReviewSegmentPathsAndClock asserts the Env fields both review segments read -- shared by
+// Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and
+// RunRoot against their own loomengine/fabricengine accessor rather than a re-derived literal,
+// and Now non-nil, which envkit.NilSeams skips as a documented default.
+func TestWire_ReviewSegmentPathsAndClock(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "warp", ".")
@@ -549,9 +486,6 @@ func TestWire_ReviewSegmentSeamsFilled(t *testing.T) {
 	}
 	if want := loomengine.LoomReviewsDir(loc); c.env.RunRoot != want {
 		t.Errorf("c.env.RunRoot = %q; want %q", c.env.RunRoot, want)
-	}
-	if c.env.Burler == nil {
-		t.Error("c.env.Burler = nil; want a non-nil shedadapters.BurlerRunner")
 	}
 	if c.env.Now == nil {
 		t.Error("c.env.Now = nil; want a non-nil clock")
@@ -778,23 +712,6 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// TestWire_ReflectFrictionIsFilled asserts wire installs the Friction-Reflect row's closure, which
-// the recipe's frictionReflectEntry refuses to build without.
-func TestWire_ReflectFrictionIsFilled(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.env.ReflectFriction == nil {
-		t.Error("c.env.ReflectFriction = nil; want c.reflectFrictionRow")
-	}
-}
-
 // TestArmAt_RecordsTheArmingVerb asserts armAt records the verb it was called with, which
 // reflectFrictionRow reads at call time. "start" is not a generic shed verb, so resolveRunID does not
 // demand a seed.
@@ -809,21 +726,5 @@ func TestArmAt_RecordsTheArmingVerb(t *testing.T) {
 	}
 	if c.armedVerb != "start" {
 		t.Errorf("c.armedVerb = %q; want %q", c.armedVerb, "start")
-	}
-}
-
-// TestWire_SkipPlanReviewIsFilled asserts c.env.SkipPlanReview is non-nil: Plan-Bouncer's skip_seam is guarded by requireSeam, so a nil closure would fail the recipe build.
-func TestWire_SkipPlanReviewIsFilled(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "warp", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.env.SkipPlanReview == nil {
-		t.Error("c.env.SkipPlanReview = nil; want loomshed.PlanReviewSkippable over the rework deps")
 	}
 }
