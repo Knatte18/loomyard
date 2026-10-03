@@ -15,31 +15,18 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 const (
 	reworkTestHead       = "abc123"
 	reworkTestRejectedAt = "2026-09-30T10:00:00Z"
 	reworkTestFindings   = "the findings text\n"
-	reworkTestCard1      = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n**Intent:** placeholder card.\n"
 )
-
-// reworkCard renders a card numbered number whose single target group has label and target.
-func reworkCard(number int, slug, label, target string) string {
-	return fmt.Sprintf("# Card %d — %s\n\n**%s:**\n- `%s`\n\n**Intent:** card %d.\n", number, slug, label, target, number)
-}
 
 // reworkGenCard is one card of a generation the fake session writes.
 type reworkGenCard struct {
 	slug, label, target string
-}
-
-func reworkOverview(approved bool, framing string, first int, slugs ...string) string {
-	var index strings.Builder
-	for i, c := range slugs {
-		fmt.Fprintf(&index, "%d — %s — placeholder card %d\n", first+i, c, first+i)
-	}
-	return fmt.Sprintf("---\nformat: 5\napproved: %t\nlanguage: none\nfirst_card: %d\n---\n\n# Plan\n\n%s\n\n## Card Index\n\n%s", approved, first, framing, index.String())
 }
 
 // reworkFixture is one PR-Rework test setup: a committed one-card plan mirrored in the working tree.
@@ -95,17 +82,17 @@ func (f *reworkFixture) writeGeneration(first int, cards ...reworkGenCard) {
 	if err := os.MkdirAll(f.planDir, 0o755); err != nil {
 		f.t.Fatal(err)
 	}
-	slugs := make([]string, len(cards))
+	plan := plankit.Plan{Approved: true, Language: "none", FirstCard: first, Framing: "Framing."}
 	for i, c := range cards {
-		slugs[i] = c.slug
-		name := fmt.Sprintf("%02d-%s.md", first+i, c.slug)
-		if err := os.WriteFile(filepath.Join(f.planDir, name), []byte(reworkCard(first+i, c.slug, c.label, c.target)), 0o644); err != nil {
-			f.t.Fatal(err)
-		}
+		plan.Cards = append(plan.Cards, plankit.Card{
+			Number:  first + i,
+			Slug:    c.slug,
+			Summary: fmt.Sprintf("placeholder card %d", first+i),
+			Groups:  []plankit.Group{{Label: c.label, Targets: []string{c.target}}},
+			Intent:  fmt.Sprintf("card %d.", first+i),
+		})
 	}
-	if err := os.WriteFile(filepath.Join(f.planDir, "00-overview.md"), []byte(reworkOverview(true, "Framing.", first, slugs...)), 0o644); err != nil {
-		f.t.Fatal(err)
-	}
+	plankit.Write(f.t, f.planDir, plan)
 }
 
 // commitWorkingPlan mirrors the working-tree plan files into the committed map, dropping whatever plan files were committed before.

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -28,22 +29,21 @@ func writePlanFixture(t *testing.T, cards map[int]string) (string, *planparser.P
 	}
 	sort.Ints(numbers)
 
-	var indexLines []string
+	// plankit renders the overview and the Card Index; each card file is then replaced by its raw body, which is the part under test.
+	spec := plankit.Plan{Approved: true, Language: "go", Framing: "framing"}
+	for _, n := range numbers {
+		spec.Cards = append(spec.Cards, plankit.Card{Number: n, Slug: fmt.Sprintf("card%d", n), Summary: "summary"})
+	}
+	files := plankit.Render(spec)
 	for _, n := range numbers {
 		slug := fmt.Sprintf("card%d", n)
-		indexLines = append(indexLines, fmt.Sprintf("%d — %s — summary", n, slug))
-		content := fmt.Sprintf("# Card %d — %s\n\n%s\n", n, slug, cards[n])
-		path := filepath.Join(dir, fmt.Sprintf("%02d-%s.md", n, slug))
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		files[fmt.Sprintf("%02d-%s.md", n, slug)] = []byte(fmt.Sprintf("# Card %d — %s\n\n%s\n", n, slug, cards[n]))
+	}
+	for name, data := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) failed: %v", path, err)
 		}
-	}
-
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n" +
-		strings.Join(indexLines, "\n") + "\n"
-	overviewPath := filepath.Join(dir, "00-overview.md")
-	if err := os.WriteFile(overviewPath, []byte(overview), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) failed: %v", overviewPath, err)
 	}
 
 	plan, err := planparser.ParsePlan(dir)

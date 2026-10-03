@@ -5,8 +5,6 @@
 package loomcli
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -15,45 +13,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-const verifyOverviewHead = `---
-format: 5
-approved: true
----
+const verifySectionBody = "```\ngo build ./...\ngo test ./...\n```"
 
-# Plan: verify wiring
-
-Framing paragraph.
-
-## Card Index
-
-1 — only — the only card
-`
-
-const verifyOverviewSection = `
-## verify:
-
-` + "```" + `
-go build ./...
-go test ./...
-` + "```" + `
-`
-
-const verifyCardFile = "# Card 1 — only\n\n**Edit:**\n- `internal/x#Y`\n**Intent:** placeholder card.\n"
-
-func writeVerifyPlan(t *testing.T, planDir, overview string) {
+func writeVerifyPlan(t *testing.T, planDir string, sections ...plankit.Section) {
 	t.Helper()
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(verifyCardFile), 0o644); err != nil {
-		t.Fatalf("write card: %v", err)
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Framing:  "Framing paragraph.",
+		Sections: sections,
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "only",
+			Summary: "the only card",
+			Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"internal/x#Y"}}},
+			Intent:  "placeholder card.",
+		}},
+	})
 }
 
 func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
@@ -69,7 +48,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	}
 
 	planDir := planparser.PlanDir(loc.AnchorPath())
-	writeVerifyPlan(t, planDir, verifyOverviewHead+verifyOverviewSection)
+	writeVerifyPlan(t, planDir, plankit.Section{Heading: "verify:", Body: verifySectionBody})
 	got, err := deps.VerifyCommand()
 	if err != nil {
 		t.Fatalf("VerifyCommand after plan written: %v", err)
@@ -78,7 +57,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("VerifyCommand = %q, want %q", got, want)
 	}
 
-	writeVerifyPlan(t, planDir, verifyOverviewHead)
+	writeVerifyPlan(t, planDir)
 	got, err = deps.VerifyCommand()
 	if err != nil || got != "" {
 		t.Errorf("VerifyCommand with no verify section = (%q, %v), want (\"\", nil)", got, err)

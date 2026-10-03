@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -160,31 +161,33 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 	t.Helper()
 
+	files := plankit.Render(plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"fixture-output.txt"}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
+	recognized := fmt.Sprintf("format: %d\n", planparser.RecognizedFormat)
+	overview := bytes.Replace(files["00-overview.md"], []byte(recognized), []byte("format: 1\n"), 1)
+	if bytes.Equal(overview, files["00-overview.md"]) {
+		t.Fatalf("overview does not carry %q", recognized)
+	}
+	files["00-overview.md"] = overview
+
 	planDir := filepath.Join(anchorPath, "_lyx", "plan")
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
-
-	overview := "---\n" +
-		"format: 1\n" +
-		"approved: true\n" +
-		"root: \n" +
-		"language: none\n" +
-		"---\n\n" +
-		"# Plan: format-invalid fixture\n\n" +
-		"## Card Index\n\n" +
-		"1 — validate-fixture — a minimal fixture card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-
-	card := "# Card 1 — validate-fixture\n\n" +
-		"**Create:**\n" +
-		"- `fixture-output.txt`\n\n" +
-		"**Intent:** minimal fixture card for validate-plan tests.\n\n" +
-		"**Commit:** `1: validate-fixture`\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(planDir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
 	}
 
 	return &loomCLI{env: shedrecipe.Env{
@@ -203,54 +206,28 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
 	t.Helper()
 
-	planDir := filepath.Join(anchorPath, "_lyx", "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-
-	overview := "---\n" +
-		"format: 5\n" +
-		"approved: true\n" +
-		"language: go\n" +
-		"---\n\n" +
-		"# Plan: minimal glyph parity fixture\n\n" +
-		"## Card Index\n\n" +
-		"1 — validate-fixture — a minimal fixture card\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-
-	usesBlock := ""
+	var uses []string
 	if useTarget != "" {
-		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", useTarget)
+		uses = []string{useTarget}
 	}
-	card := fmt.Sprintf(
-		"# Card 1 — validate-fixture\n\n**Create:**\n- `%s`\n%s\n**Intent:** minimal fixture card for validate-plan tests.\n\n**Commit:** `1: validate-fixture`\n",
-		createTarget, usesBlock,
-	)
-	if err := os.WriteFile(filepath.Join(planDir, "01-validate-fixture.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
+	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{createTarget}}},
+			Uses:    uses,
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
 
 	return &loomCLI{env: shedrecipe.Env{
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
-}
-
-// writeGlyphRepoForParityTest writes files (keyed by repository-relative path) under dir --
-// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo.
-func writeGlyphRepoForParityTest(t *testing.T, dir string, files map[string]string) {
-	t.Helper()
-	for rel, content := range files {
-		full := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) failed: %v", full, err)
-		}
-	}
 }
 
 // planParityCase is one fixture for TestGateParity_PlanGate: build populates anchorPath and
@@ -333,7 +310,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// attributable to the Uses: side alone.
 			name: "GlyphNotResolving",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg2#Baz", "sub#Missing")
 			},
 			wantGate: verdictStuck,
@@ -346,7 +323,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// same way, reaching done rather than bouncing on a condition Plan-Write cannot fix.
 			name: "InformationalOnly",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+				plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 				return glyphRepoPlanFixture(t, anchorPath, worktreeRoot, "newpkg3#Qux", "")
 			},
 			wantGate: verdictDone,
@@ -497,37 +474,46 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 // It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {
 	t.Helper()
-	planDir := planparser.PlanDir(anchorPath)
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	overview := func(firstCard int, index string) string {
-		first := ""
-		if firstCard > 1 {
-			first = fmt.Sprintf("first_card: %d\n", firstCard)
-		}
-		return "---\nformat: 5\napproved: true\nlanguage: go\n" + first + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" + index
-	}
-	oldIndex := "1 — first-card — placeholder card 1\n"
-	oldCard := "# Card 1 — first-card\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
-	usesBlock := ""
+	var usesTargets []string
 	if uses != "" {
-		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", uses)
+		usesTargets = []string{uses}
 	}
-	files := map[string]string{
-		"00-overview.md": overview(cardNumber, fmt.Sprintf("%d — new-card — placeholder card %d\n", cardNumber, cardNumber)),
-		fmt.Sprintf("%02d-new-card.md", cardNumber): fmt.Sprintf("# Card %d — new-card\n\n**Create:**\n- `newpkg#Bar`\n%s\n**Intent:** new generation card.\n", cardNumber, usesBlock),
+	firstCard := 0
+	if cardNumber > 1 {
+		firstCard = cardNumber
 	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+		Approved:  true,
+		Language:  "go",
+		FirstCard: firstCard,
+		Framing:   "Framing.",
+		Cards: []plankit.Card{{
+			Number:  cardNumber,
+			Slug:    "new-card",
+			Summary: fmt.Sprintf("placeholder card %d", cardNumber),
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
+			Uses:    usesTargets,
+			Intent:  "new generation card.",
+		}},
+	})
 
 	head := map[string][]byte{}
 	if committed {
-		head[path.Join(planparser.PlanDirRel(), "00-overview.md")] = []byte(overview(1, oldIndex))
-		head[path.Join(planparser.PlanDirRel(), "01-first-card.md")] = []byte(oldCard)
+		oldPlan := plankit.Render(plankit.Plan{
+			Approved: true,
+			Language: "go",
+			Framing:  "Framing.",
+			Cards: []plankit.Card{{
+				Number:  1,
+				Slug:    "first-card",
+				Summary: "placeholder card 1",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"sub#Foo"}}},
+				Intent:  "placeholder card.",
+			}},
+		})
+		for name, data := range oldPlan {
+			head[path.Join(planparser.PlanDirRel(), name)] = data
+		}
 	}
 	return &loomCLI{env: shedrecipe.Env{
 		AnchorPath:   anchorPath,
@@ -558,7 +544,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
-			writeGlyphRepoForParityTest(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.committed)
 
 			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)()
