@@ -93,6 +93,13 @@ type BouncerConfig struct {
 	// Nil is the absent value and leaves every row behaving exactly as before.
 	// The seam can only approve what its caller already classified: it cannot reject, re-route, or touch the run directory.
 	Skip func() (bool, error)
+	// Slug is the task slug the CIRCLING Awaiting Reason addresses the `lyx loom circling` verbs with.
+	// Empty means the verbs run without a slug argument.
+	Slug string
+	// Bounces is the optional seam reporting this segment's spent bounce count and its budget.
+	// The Awaiting Reason adds its budget-block sentence only when ok is true and count has reached budget.
+	// Nil is the absent value, ok false means unknown, and an error warns; each omits the sentence and none blocks the Awaiting.
+	Bounces func() (count, budget int, ok bool, err error)
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -202,6 +209,16 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to
 // 0, and the same call falls through into the seed branch below, since round1FocusSeeded() reads
 // false over the freshly recreated, empty directory.
+// The clear also fires when the round's verdict is CIRCLING and its recorded decision is a settled
+// accept, so a re-entry, including a resume after a failed Commit seam, archives and re-seeds
+// instead of settling again; the entry-time probe still runs before both.
+// It does not fire on an undecided CIRCLING round, so a segment re-entered after a `lyx loom goto`
+// to an earlier row halts Awaiting again on that round, and a `continue` then sends the rewritten
+// artifact to a fresh review round.
+//
+// Circling decision: an accept lets exactly one circling round pass without a converged judgment.
+// It skips no seam, its record stays in the committed run directory, and Done remains reachable only
+// from a judged round whose review exists.
 //
 // Pointer rule: OutputPointer.Path names a file this producer has verified exists, or it is
 // empty. shedengine.Done is reachable only through harvest, and a CONTINUE shedengine.Stuck or a
@@ -273,7 +290,7 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	if n > 0 {
-		if verdict, ok := recordedVerdict(b.cfg.RunDir, n); ok && verdict == verdictConverged {
+		if b.settledGeneration(n) {
 			// The trigger is state this producer already wrote: a CONVERGED verdict sitting on
 			// disk at Call entry is the durable record that some earlier Call settled this
 			// segment. Continuing instead of clearing would replay that stale verdict, which is
@@ -360,6 +377,24 @@ func (b *Bouncer) round1FocusSeeded() bool {
 func (b *Bouncer) judged(round int) bool {
 	_, ok := recordedVerdict(b.cfg.RunDir, round)
 	return ok
+}
+
+// settledGeneration reports whether round's verdict on disk is the durable record of an earlier Call
+// settling the segment: CONVERGED, or CIRCLING with a settled accept.
+// A malformed decision file is not a settled one, so settle reports it.
+func (b *Bouncer) settledGeneration(round int) bool {
+	verdict, ok := recordedVerdict(b.cfg.RunDir, round)
+	if !ok {
+		return false
+	}
+	switch verdict {
+	case verdictConverged:
+		return true
+	case verdictCircling:
+		decision, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+		return err == nil && exists && settled && decision == CirclingAccept
+	}
+	return false
 }
 
 // awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
@@ -491,10 +526,11 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 // ensureFocus(round + 1) and returns
 // shedengine.Stuck with the same ledger pointer, deliberately committing nothing: an unapproved
 // artifact must not be committed, and a blocked run has already escalated to a human who is the
-// right party to judge the partial fixes. On verdictCircling it calls ensureFocus(round + 1) and
-// returns shedengine.Awaiting with the same ledger pointer and a Reason naming the segment, the
-// round and that the judge found no progress; it spawns nothing, and a re-call over the same
-// on-disk verdict returns the same Awaiting. All three returns survive cancellation: a genuinely parsed
+// right party to judge the partial fixes. On verdictCircling it acts on the operator's recorded
+// decision (see settleCircling): with none it calls ensureFocus(round + 1) and returns
+// shedengine.Awaiting with the same ledger pointer and a Reason naming the segment, the round, the
+// circling verbs and the resume command; it spawns nothing, and a re-call over the same on-disk
+// state returns the same Awaiting. All three returns survive cancellation: a genuinely parsed
 // verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer treats a
 // shuttle OutcomeDone -- that rule says a parsed verdict is never retracted because the context
 // was cancelled, not that the branch performs no side effects, so the approved branch's approve
@@ -536,13 +572,72 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 		}
 		return shedengine.Stuck, ptr, nil
 	case verdictCircling:
-		b.ensureFocus(round + 1)
-		reason := fmt.Sprintf("bouncer %s: the judge found no progress at round %d (CIRCLING)", b.cfg.Name, round)
-		return shedengine.Awaiting, shedengine.OutputPointer{Path: ptr.Path, Reason: reason}, nil
+		return b.settleCircling(ctx, round, ptr)
 	default:
 		// Unreachable: parseRecordedVerdict only ever returns one of the three verdict constants.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file carries an unrecognized verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
 	}
+}
+
+// settleCircling maps a CIRCLING round onto the operator's recorded decision.
+// No decision halts Awaiting with the verbs and the resume command in the Reason; a continue is a
+// CONTINUE; a pending accept settles its record, then approves and commits exactly as CONVERGED does.
+// A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
+// A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
+// A malformed decision file degrades with the read error as the Reason.
+func (b *Bouncer) settleCircling(ctx context.Context, round int, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	decision, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+	if err != nil {
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v", round, err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+	}
+	switch {
+	case !exists:
+		b.ensureFocus(round + 1)
+		return shedengine.Awaiting, shedengine.OutputPointer{Path: ptr.Path, Reason: b.circlingReason(round)}, nil
+	case decision == CirclingContinue:
+		b.ensureFocus(round + 1)
+		return shedengine.Stuck, ptr, nil
+	case settled:
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+	}
+
+	if err := settleCirclingAccept(b.cfg.RunDir, round); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): settle circling accept: %w", b.cfg.Name, bouncerEngineLabel, err)
+	}
+	if b.cfg.Approve != nil {
+		if err := b.cfg.Approve(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+	}
+	if b.cfg.Commit != nil {
+		if err := b.cfg.Commit(); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): commit approved artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+	}
+	return shedengine.Done, ptr, nil
+}
+
+// circlingReason is the Awaiting Reason of an undecided CIRCLING round: the verbs that record the
+// decision, the resume command, and, when the segment's bounce budget is spent, what a continue will hit.
+// The circling verbs take the slug, while the resume commands address the cwd worktree's own run.
+func (b *Bouncer) circlingReason(round int) string {
+	verbSuffix := ""
+	if b.cfg.Slug != "" {
+		verbSuffix = " " + b.cfg.Slug
+	}
+	reason := fmt.Sprintf("bouncer %s: the judge found no progress at round %d (CIRCLING); decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom start` in the task worktree to resume", b.cfg.Name, round, verbSuffix, verbSuffix)
+	if b.cfg.Bounces == nil {
+		return reason
+	}
+	count, budget, ok, err := b.cfg.Bounces()
+	if err != nil {
+		logger.Warn("shedadapters: bouncer bounce-budget seam failed; omitting the budget sentence", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return reason
+	}
+	if ok && count >= budget {
+		reason += fmt.Sprintf("; continue will block on the bounce budget (%d of %d spent), and `lyx loom goto --to %s` in the task worktree, from that block, gives the segment a fresh budget", count, budget, b.cfg.Name)
+	}
+	return reason
 }
 
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt

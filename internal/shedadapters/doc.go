@@ -58,7 +58,11 @@
 //     adapter probes for a live agent first" below). A parsed CONTINUE verdict maps to Stuck on
 //     harvest or on a CONTINUE replay, and a parsed CIRCLING verdict maps to Awaiting on harvest
 //     or on a replay without spawning anything, all three reporting the round's ledger path as the
-//     pointer; every
+//     pointer; a CIRCLING round acts on the operator's recorded decision, so a recorded continue
+//     maps to Stuck, a pending accept settles its record and maps to Done after Approve and Commit,
+//     and no decision maps to Awaiting whose Reason names the `lyx loom circling` verbs, the
+//     `lyx loom start` resume and, when the segment's bounce budget is spent, the budget block and
+//     the `lyx loom goto` that clears it; every
 //     other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports
 //     an empty Path, with the re-bounce and degraded paths carrying their cause on Reason. The
 //     legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict
