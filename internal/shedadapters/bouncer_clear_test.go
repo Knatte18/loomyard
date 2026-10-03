@@ -21,46 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// newClearTestBouncerConfig builds a BouncerConfig exactly like testBouncerConfig, except RunDir is
-// a subdirectory the test creates inside t.TempDir() rather than t.TempDir() itself, so an archived
-// sibling this file's clear-triggering tests produce lands inside the temp tree and is cleaned up
-// with it.
-func newClearTestBouncerConfig(t *testing.T) BouncerConfig {
-	t.Helper()
-
-	parent := t.TempDir()
-	runDir := filepath.Join(parent, "run")
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(runDir) = %v; want nil", err)
-	}
-	stencilsDir := shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nBe thorough and cite evidence.\n")
-	return BouncerConfig{
-		Name:          "gate",
-		RunDir:        runDir,
-		ArtifactPaths: []string{filepath.Join(parent, "artifact.md")},
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   stencilsDir,
-		RubricStencil: "bouncer-template-rubric",
-		Model:         "claude-x",
-		Effort:        "high",
-		Version:       "v1",
-		Now:           fixedClock(bouncerJudgeTestClock),
-	}
-}
-
-// newClearTestBouncer builds a *Bouncer over newClearTestBouncerConfig's run dir, driven by shuttle.
-func newClearTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
-	t.Helper()
-
-	cfg := newClearTestBouncerConfig(t)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	return b, cfg
-}
-
 // layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the
 // round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the
 // Bouncer's report, APPROVED verdict, and ledger -- the complete on-disk state a clear must move as
@@ -113,7 +73,7 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -162,7 +122,7 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 
 func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	shedfake.CallOK(t, b)
@@ -186,7 +146,7 @@ func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
 func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	t.Run("InSegmentBlockingReplay", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
 		}})
@@ -204,7 +164,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 
 	t.Run("MidSegmentResumeUnjudgedRound", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
 			{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"), ledger: bouncerLedgerContent(1)},
 			{round: 2, report: bouncerReport(2)},
@@ -222,7 +182,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 
 	t.Run("ReBounce_FocusSeededNoReport", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 			t.Fatalf("WriteFile(...) = %v; want nil", err)
@@ -241,7 +201,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	t.Run("VerdictWithNoParsableLedger", func(t *testing.T) {
 		logBuf := captureBouncerWarnings(t)
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"),
 		}})
@@ -257,7 +217,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 
 func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-	b, cfg := newClearTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -286,7 +246,7 @@ func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
 func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	logBuf := captureBouncerWarnings(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	parent := filepath.Dir(cfg.RunDir)
@@ -312,7 +272,7 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 // and re-seeds on its very first Call, exactly as an in-process re-entry does. Nothing about the
 // trigger depends on in-memory state, since it reads only what a previous settle wrote to disk.
 func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
-	cfg := newClearTestBouncerConfig(t)
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
 	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	layoutApprovedGeneration(t, cfg, 1)
 
@@ -339,7 +299,7 @@ func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
-	cfg := newClearTestBouncerConfig(t)
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Shuttle = shuttle
 	cfg.Commit = func() error {
@@ -401,7 +361,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newClearTestBouncer(t, seedShuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(seedShuttle)).Build()
 
 	outcome, _, err := b.Call(context.Background())
 	if err != nil {
@@ -490,7 +450,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 // the branch that actually fires did not, so an operator whose run suddenly cost a second generation
 // had nothing to read anywhere.
 func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
-	cfg := newClearTestBouncerConfig(t)
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
 	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, err := NewBouncer(cfg)
 	if err != nil {

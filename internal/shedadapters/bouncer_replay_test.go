@@ -22,7 +22,7 @@ import (
 
 func TestBouncer_Replay_Approved(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
@@ -45,7 +45,7 @@ func TestBouncer_Replay_Approved(t *testing.T) {
 func TestBouncer_Replay_Blocking(t *testing.T) {
 	logBuf := captureBouncerWarnings(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
@@ -99,7 +99,7 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 // fires only on an APPROVED verdict and would otherwise collide with what this test proves.
 func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round:   1,
 		report:  bouncerReport(1),
@@ -121,7 +121,7 @@ func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
 func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 	t.Run("JudgeBlockingReplay", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round:   1,
 			report:  bouncerReport(1),
@@ -165,7 +165,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 
 	t.Run("SeedPath", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		malformed := "garbage, not frontmatter (malformed round-1 focus)"
 		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(malformed), 0o644); err != nil {
 			t.Fatalf("WriteFile(malformed focus) = %v; want nil", err)
@@ -205,7 +205,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 func TestBouncer_PointerDiscipline(t *testing.T) {
 	t.Run("JudgeCall_Approved", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -216,7 +216,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("JudgeCall_Blocking", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("BLOCKING"), bouncerLedgerContent(1), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -227,7 +227,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("Harvest_Approved", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -238,7 +238,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("Replay_Blocking", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
 		}})
@@ -251,7 +251,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("SeedCall_EmptyPointer", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newTestBouncer(t, shuttle)
+		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		if ptr != (shedengine.OutputPointer{}) {
@@ -261,7 +261,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("ReBounce_EmptyPointer", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 			t.Fatalf("WriteFile(...) = %v; want nil", err)
@@ -275,7 +275,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("DegradedJudgePath_EmptyPointer", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(""), 0o644); err != nil {
 			t.Fatalf("WriteFile(empty report) = %v; want nil", err)
 		}
@@ -288,7 +288,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 	t.Run("ErrorReturn_EmptyPointer", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newTestBouncer(t, shuttle)
+		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -307,7 +307,7 @@ func TestBouncer_PointerDiscipline(t *testing.T) {
 
 func TestBouncer_Cancellation_AlreadyCancelled(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, _ := newTestBouncer(t, shuttle)
+	b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -326,7 +326,7 @@ func TestBouncer_Cancellation_AlreadyCancelled(t *testing.T) {
 func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
 	t.Run("Approved", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -353,7 +353,7 @@ func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
 
 	t.Run("Blocking", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -382,7 +382,7 @@ func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
 func TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError(t *testing.T) {
 	t.Run("SeedCall", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newTestBouncer(t, shuttle)
+		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		ctx, cancel := context.WithCancel(context.Background())
 		shuttle.DuringRun = cancel
 
@@ -403,7 +403,7 @@ func TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError(t *testing.T) {
 
 	t.Run("DegradedJudgePath", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 		ctx, cancel := context.WithCancel(context.Background())
 		// DuringRun cancels without writing anything usable, so judged(1) stays false and the

@@ -1,65 +1,10 @@
 package shedadapters
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 newBouncerStencilsFixture
-// stamps every fixture file with, via stencilstore.ApplyStamp -- realistic in shape, never checked
-// for correctness by anything this fixture feeds.
-const bouncerFixtureStampHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
-// newBouncerStencilsFixture builds a stencils fixture directory under t.TempDir(), writing each
-// named stencil at <dir>/bouncer/<name>.md, matching stencilstore.RelPath's family-from-first-token
-// derivation, and giving each file a realistic leading <!-- lyx-stencil: sha256=... --> stamp
-// banner via stencilstore.ApplyStamp -- which merges into an existing leading comment rather than
-// nesting a second one, so a body already carrying its own leading comment (as the shipped bouncer
-// templates do) still ends up with exactly one banner for stencil.Fill's leading-comment strip to
-// remove. Batches 3 and 4's later test files reuse this helper.
-func newBouncerStencilsFixture(t *testing.T, stencils map[string]string) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	for name, body := range stencils {
-		relPath := stencilstore.RelPath(name)
-		absPath := filepath.Join(dir, filepath.FromSlash(relPath))
-		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(absPath), err)
-		}
-		content := stencilstore.ApplyStamp([]byte(body), bouncerFixtureStampHash)
-		if err := os.WriteFile(absPath, content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", absPath, err)
-		}
-	}
-	return dir
-}
-
-// validBouncerConfig returns a BouncerConfig satisfying every NewBouncer validation rule,
-// resolved against a temp run dir and a stencils fixture seeded with rubricName.
-func validBouncerConfig(t *testing.T, rubricName string) BouncerConfig {
-	t.Helper()
-
-	runDir := t.TempDir()
-	stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-		rubricName: "# Rubric\n\nBe thorough.\n",
-	})
-	return BouncerConfig{
-		Name:          "gate",
-		RunDir:        runDir,
-		ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   stencilsDir,
-		RubricStencil: rubricName,
-		Shuttle:       &shedfake.Shuttle{},
-	}
-}
 
 func TestNewBouncer_ValidationRules(t *testing.T) {
 	tests := []struct {
@@ -121,7 +66,7 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := validBouncerConfig(t, "bouncer-template-rubric-"+tt.name)
+			cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-"+tt.name)).Config
 			tt.mutate(&cfg)
 
 			_, err := NewBouncer(cfg)
@@ -136,7 +81,7 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 }
 
 func TestNewBouncer_EmptyModelEffortVersionAccepted(t *testing.T) {
-	cfg := validBouncerConfig(t, "bouncer-template-rubric-empty-triple")
+	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-empty-triple")).Config
 	cfg.Model = ""
 	cfg.Effort = ""
 	cfg.Version = ""
@@ -147,7 +92,7 @@ func TestNewBouncer_EmptyModelEffortVersionAccepted(t *testing.T) {
 }
 
 func TestNewBouncer_NilNowDefaultsToNonNilClock(t *testing.T) {
-	cfg := validBouncerConfig(t, "bouncer-template-rubric-nil-now")
+	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-nil-now")).Config
 	cfg.Now = nil
 
 	b, err := NewBouncer(cfg)
@@ -160,7 +105,7 @@ func TestNewBouncer_NilNowDefaultsToNonNilClock(t *testing.T) {
 }
 
 func TestNewBouncer_ArtifactPathNeedNotExist(t *testing.T) {
-	cfg := validBouncerConfig(t, "bouncer-template-rubric-nonexistent-artifact")
+	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-nonexistent-artifact")).Config
 	cfg.ArtifactPaths = []string{filepath.Join(cfg.RunDir, "not-yet-written.md")}
 
 	if _, err := NewBouncer(cfg); err != nil {
@@ -170,7 +115,7 @@ func TestNewBouncer_ArtifactPathNeedNotExist(t *testing.T) {
 
 func TestNewBouncer_RubricProbe(t *testing.T) {
 	t.Run("Absent", func(t *testing.T) {
-		cfg := validBouncerConfig(t, "bouncer-template-rubric-present")
+		cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-present")).Config
 		cfg.RubricStencil = "bouncer-template-rubric-absent"
 
 		_, err := NewBouncer(cfg)
@@ -183,7 +128,7 @@ func TestNewBouncer_RubricProbe(t *testing.T) {
 	})
 
 	t.Run("Readable", func(t *testing.T) {
-		cfg := validBouncerConfig(t, "bouncer-template-rubric-readable")
+		cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-readable")).Config
 
 		if _, err := NewBouncer(cfg); err != nil {
 			t.Fatalf("NewBouncer(...) error = %v; want nil for a readable RubricStencil", err)

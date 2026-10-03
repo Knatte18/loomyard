@@ -16,7 +16,7 @@ import (
 func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	var callLog []string
 	shuttle := &shedfake.Shuttle{}
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return true, nil }
 	cfg.Approve = func() error {
@@ -50,7 +50,7 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 // TestBouncer_Skip_FalseSeedsRoundOne pins that a false seam reviews exactly as an unconfigured Bouncer does: the seed pass runs and the call returns Stuck.
 func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 	shuttle := &shedfake.Shuttle{}
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return false, nil }
 	b, err := NewBouncer(cfg)
@@ -71,7 +71,7 @@ func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
 func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 	approveCalls := 0
 	shuttle := &shedfake.Shuttle{}
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = shuttle
 	cfg.Skip = func() (bool, error) { return true, errors.New("classifier failed") }
 	cfg.Approve = func() error {
@@ -99,7 +99,7 @@ func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
 func TestBouncer_Skip_FailingApproveSkipsCommit(t *testing.T) {
 	sentinel := errors.New("approve failed")
 	commitCalls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Skip = func() (bool, error) { return true, nil }
 	cfg.Approve = func() error { return sentinel }

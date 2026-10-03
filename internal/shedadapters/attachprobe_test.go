@@ -53,7 +53,7 @@ func TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning(t *testing.T) {
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-session"},
 	}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 
 	// The live agent's own in-progress review, already on disk. It must still be there afterwards.
 	writeRoundFile(t, roundReviewPath(runDir, 1))
@@ -81,7 +81,7 @@ func TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts(t *testing.T) {
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	attach := &shedfake.Shuttle{}
 	opts := burlerengine.RunOpts{Timeout: 90 * time.Minute}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 	writeJudgedRound(t, runDir, 1)
 
 	shedfake.CallOK(t, p)
@@ -102,7 +102,7 @@ func TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore(t *testing.T) {
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	attach := &shedfake.Shuttle{AttachFound: false}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if runner.Calls != 1 {
@@ -117,7 +117,7 @@ func TestBurlerProducer_AttachedRunAlreadyDiedRespawnsFromAttemptOne(t *testing.
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
 	}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if runner.Calls != 1 {
@@ -134,7 +134,7 @@ func TestBurlerProducer_AttachErrorNeitherArchivesNorSpawns(t *testing.T) {
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	attach := &shedfake.Shuttle{AttachErr: sentinel}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 	writeRoundFile(t, roundReviewPath(runDir, 1))
 
 	outcome, _, err := p.Call(context.Background())
@@ -159,7 +159,7 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	// Only round 1's report exists at Call entry -- a verdict already on disk would settle (or, if
 	// APPROVED, clear) before judgeCall is ever reached, so the judge branch would go unexercised.
 	// The attached judge writes its verdict and ledger while Call waits on it, which duringAttach
@@ -193,7 +193,7 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 
 func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachErr: errors.New("reed state unreadable")}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -219,7 +219,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing(t *testing.T) 
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
-	b, cfg := newClearTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 	// What the live judge still had left to write when the driver died: its third declared output.
 	attach.DuringAttach = func() {
@@ -247,7 +247,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T)
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
 	}})
@@ -280,7 +280,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T)
 func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 	logBuf := captureBouncerWarnings(t)
 	attach := &shedfake.Shuttle{AttachErr: errors.New("reed state unreadable")}
-	b, cfg := newClearTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -304,7 +304,7 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 // gone and re-entry genuinely means a settled generation is being re-judged.
 func TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -326,7 +326,7 @@ func TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore(t *testing.T) {
 // pair -- silently matches nothing and is indistinguishable from no agent being alive at all.
 func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
 	}})
@@ -347,7 +347,7 @@ func TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning(t *testing.T) {
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-seed"},
 	}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	// A parseable round-1 focus file would make Call take its re-bounce branch instead of seeding,
 	// so the live seed's in-progress file is deliberately unparseable here -- which is exactly what
 	// a half-written focus file looks like.
@@ -370,7 +370,7 @@ func TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning(t *testing.T) {
 
 func TestBouncer_SeedCall_NoLiveRunArchivesThenSpawns(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, attach)
+	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	focus := focusPath(cfg.RunDir, 1)
 	if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(partial focus) = %v; want nil", err)

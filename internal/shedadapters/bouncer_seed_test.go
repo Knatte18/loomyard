@@ -8,7 +8,6 @@ package shedadapters
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -23,68 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// shippedBouncerStencilsFixture builds a stencils fixture directory seeded with the shipped
-// bouncer template bytes taken from the contracts/stencils package's own exported vars, plus a
-// rubric stencil carrying a realistic leading stamp banner.
-func shippedBouncerStencilsFixture(t *testing.T, rubricName, rubricBody string) string {
-	t.Helper()
-	return newBouncerStencilsFixture(t, map[string]string{
-		"bouncer-template-seed":  string(stencils.BouncerTemplateSeed),
-		"bouncer-template-judge": string(stencils.BouncerTemplateJudge),
-		rubricName:               rubricBody,
-	})
-}
-
-// testBouncerConfig builds a BouncerConfig over a fresh run dir and the shipped bouncer stencils,
-// filling every field except Shuttle exactly as newTestBouncer's own literal always has. It exists
-// so a test needing a non-default config field -- the commit seam is the first -- can build one
-// without duplicating the fixture.
-func testBouncerConfig(t *testing.T) BouncerConfig {
-	t.Helper()
-
-	runDir := t.TempDir()
-	stencilsDir := shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nBe thorough and cite evidence.\n")
-	return BouncerConfig{
-		Name:          "gate",
-		RunDir:        runDir,
-		ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   stencilsDir,
-		RubricStencil: "bouncer-template-rubric",
-		Model:         "claude-x",
-		Effort:        "high",
-		Version:       "v1",
-		Now:           fixedClock(time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)),
-	}
-}
-
-// newTestBouncer builds a *Bouncer over a fresh run dir and the shipped bouncer stencils, ready
-// for a seed-mode Call: an empty run dir with no report and no round-1 focus file.
-func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
-	t.Helper()
-
-	cfg := testBouncerConfig(t)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	return b, cfg
-}
-
-// testBouncerConfigWithSpecsMarker builds a BouncerConfig like testBouncerConfig, but seeds the
-// rubric with a literal {{.specs_dir}} marker and sets cfg.SpecsDir to specsDir -- the fixture the
-// composed-prompt specs_dir assertions need, since testBouncerConfig's own default rubric carries
-// no marker at all.
-func testBouncerConfigWithSpecsMarker(t *testing.T, specsDir string) BouncerConfig {
-	t.Helper()
-
-	cfg := testBouncerConfig(t)
-	cfg.StencilsDir = shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nCite {{.specs_dir}}.\n\nBe thorough and cite evidence.\n")
-	cfg.SpecsDir = specsDir
-	return cfg
-}
 
 // TestBouncer_SeedCall_ComposedPromptStatesSpecsDir asserts the seed call's composed prompt --
 // where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
@@ -106,12 +43,7 @@ func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 		}
 	}
 
-	cfg := testBouncerConfigWithSpecsMarker(t, specsDir)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
+	b, _ := newBouncerFixture(t, withSpecsMarker(specsDir), withShuttle(shuttle)).Build()
 
 	shedfake.CallOK(t, b)
 
@@ -135,7 +67,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr != (shedengine.OutputPointer{}) {
@@ -170,7 +102,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 
 func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	// round-1-focus.md present but unparseable, with no report on disk.
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte("not frontmatter at all"), 0o644); err != nil {
@@ -206,56 +138,34 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "SeedTemplateUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					// bouncer-template-seed deliberately absent.
-					"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				return b, cfg
+				return newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						// bouncer-template-seed deliberately absent.
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
 			},
 		},
 		{
 			name: "RubricUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					"bouncer-template-seed":  string(stencils.BouncerTemplateSeed),
-					"bouncer-template-judge": string(stencils.BouncerTemplateJudge),
-					// The registered rubric name below is never seeded, so the probe would fail
-					// at construction; give the constructor a readable placeholder rubric and
-					// then delete it before Call so the seed spawn (not construction) fails.
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				if err := os.Remove(filepath.Join(stencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
+				// The constructor needs a readable rubric; deleting it before Call makes the seed
+				// spawn, not construction, fail.
+				b, cfg := newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						"bouncer-template-seed":   string(stencils.BouncerTemplateSeed),
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
+				if err := os.Remove(filepath.Join(cfg.StencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
 					t.Fatalf("Remove(rubric) = %v; want nil", err)
 				}
 				return b, cfg
@@ -264,46 +174,35 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "FillFailure",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					// Declares a marker the Go side does not supply.
-					"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
-					"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				return b, cfg
+				return newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						// Declares a marker the Go side does not supply.
+						"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
 			},
 		},
 		{
 			name: "RunError",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &shedfake.Shuttle{Err: errors.New("run exploded")})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Err: errors.New("run exploded")})).Build()
 			},
 		},
 		{
 			name: "NonOutcomeDone",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}})).Build()
 			},
 		},
 		{
 			name: "AgentWroteNothing",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 			},
 		},
 		{
@@ -316,7 +215,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 						t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 					}
 				}
-				return newTestBouncer(t, shuttle)
+				return newBouncerFixture(t, withShuttle(shuttle)).Build()
 			},
 		},
 	}
@@ -360,7 +259,7 @@ func TestBouncer_SeedSideHarvest_SurvivesLateRunError(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
@@ -382,7 +281,7 @@ func TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
@@ -397,7 +296,7 @@ func TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone(t *testing.T) {
 
 func TestBouncer_ReBounce(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
@@ -455,7 +354,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 				AttachFound:  tt.attachFound,
 				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 			}
-			b, cfg := newTestBouncer(t, shuttle)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 			if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 				t.Fatalf("WriteFile(...) = %v; want nil", err)
@@ -506,7 +405,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		AttachErr: errors.New("reed state unreadable"),
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
@@ -645,7 +544,7 @@ func TestBouncer_SpecIdentity_RoleAndRound(t *testing.T) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, _ := newTestBouncer(t, shuttle)
+	b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	shedfake.CallOK(t, b)
 	if shuttle.GotSpec.Role != "bouncer-seed" {
@@ -665,7 +564,7 @@ func TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs(t *testing
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	shedfake.CallOK(t, b)
 	if shuttle.GotSpec.Model != cfg.Model {

@@ -19,7 +19,7 @@ import (
 // once, before Done is returned.
 func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 	calls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error {
 		calls++
@@ -45,7 +45,7 @@ func TestBouncer_Commit_ApprovedCallsExactlyOnce(t *testing.T) {
 // unapproved artifact must not be committed.
 func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 	calls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Commit = func() error {
 		calls++
@@ -73,7 +73,7 @@ func TestBouncer_Commit_BlockingNeverCalls(t *testing.T) {
 // carries no commit_seam key -- its Burler partner commits its own fixes, so BouncerConfig never
 // sets Commit for this row.
 func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	b, err := NewBouncer(cfg)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestBouncer_Commit_NilIsNotAnError(t *testing.T) {
 // catches that regression here rather than leaving it for a reader to notice.
 func TestBouncer_Commit_FailingCommitIsAnError(t *testing.T) {
 	sentinel := errors.New("commit failed")
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error { return sentinel }
 	b, err := NewBouncer(cfg)
@@ -136,7 +136,7 @@ func TestBouncer_Commit_FailingCommitIsAnError(t *testing.T) {
 // never consults ctx on the approved branch, which is exactly the property under test here.
 func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 	calls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Commit = func() error {
 		calls++
@@ -178,7 +178,7 @@ func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
 // cannot distinguish the two orderings.
 func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 	var callLog []string
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Approve = func() error {
 		callLog = append(callLog, "approve")
@@ -212,7 +212,7 @@ func TestBouncer_Approve_CalledBeforeCommit(t *testing.T) {
 // Bouncer construction relies on staying unchanged.
 func TestBouncer_Approve_NilStillCommits(t *testing.T) {
 	commitCalls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Commit = func() error {
 		commitCalls++
@@ -240,7 +240,7 @@ func TestBouncer_Approve_NilStillCommits(t *testing.T) {
 func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 	sentinel := errors.New("approve failed")
 	commitCalls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Approve = func() error { return sentinel }
 	cfg.Commit = func() error {
@@ -278,7 +278,7 @@ func TestBouncer_Approve_FailingApproveSkipsCommit(t *testing.T) {
 // mirroring TestBouncer_Commit_BlockingNeverCalls's shape.
 func TestBouncer_Approve_BlockingNeverCalls(t *testing.T) {
 	calls := 0
-	cfg := testBouncerConfig(t)
+	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = &shedfake.Shuttle{}
 	cfg.Approve = func() error {
 		calls++

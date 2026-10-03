@@ -27,27 +27,6 @@ func simpleBurlerProfile() burlerengine.Profile {
 	}
 }
 
-// newTestBurlerProducer builds a BurlerProducer over runDir with runner, failing the test on
-// constructor error.
-// The attach seam defaults to a shedfake.Shuttle finding nothing live, which is the ordinary
-// no-live-round condition every pre-existing case in this file assumes; a case that wants the probe
-// to find something uses newTestBurlerProducerWithAttach instead.
-func newTestBurlerProducer(t *testing.T, runDir string, profile burlerengine.Profile, opts burlerengine.RunOpts, runner *shedfake.BurlerRunner, now func() time.Time) *BurlerProducer {
-	t.Helper()
-	return newTestBurlerProducerWithAttach(t, runDir, profile, opts, runner, &shedfake.Shuttle{}, now)
-}
-
-// newTestBurlerProducerWithAttach is newTestBurlerProducer with the attach seam supplied, for the
-// cases that script what the live-round probe finds.
-func newTestBurlerProducerWithAttach(t *testing.T, runDir string, profile burlerengine.Profile, opts burlerengine.RunOpts, runner *shedfake.BurlerRunner, attach Shuttle, now func() time.Time) *BurlerProducer {
-	t.Helper()
-	p, err := NewBurlerProducer("burler", runner, attach, profile, opts, runDir, now)
-	if err != nil {
-		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
-	}
-	return p
-}
-
 // writeRoundFile writes a placeholder file at path, creating its parent directory.
 func writeRoundFile(t *testing.T, path string) {
 	t.Helper()
@@ -130,7 +109,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		base := t.TempDir()
 		runDir := filepath.Join(base, "runs")
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if _, err := os.Stat(runDir); err != nil {
@@ -147,7 +126,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 	t.Run("EmptyRunDirStartsAtOne", func(t *testing.T) {
 		runDir := t.TempDir()
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "1" {
@@ -159,7 +138,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		runDir := t.TempDir()
 		writeJudgedRound(t, runDir, 2)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "3" {
@@ -179,7 +158,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		writeRoundPair(t, runDir, 1) // complete, but the Bouncer wrote no verdict for it
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 		attach := &shedfake.Shuttle{}
-		p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, attach, fixedClock(time.Now()))
+		p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 
 		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if want := roundReviewPath(runDir, 1); ptr.Path != want {
@@ -206,7 +185,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 			t.Fatalf("WriteFile(unparseable verdict): %v", err)
 		}
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if runner.Calls != 0 {
@@ -221,7 +200,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 			t.Fatalf("Remove(ledger): %v", err)
 		}
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if runner.Calls != 0 {
@@ -233,7 +212,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundPair(t, runDir, 1)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -250,7 +229,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundFile(t, roundFixerReportPath(runDir, 1))
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "1" {
@@ -265,7 +244,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 
 		instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, fixedClock(instant))
+		p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "2" {
@@ -282,7 +261,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		notes := filepath.Join(runDir, "notes.txt")
 		writeRoundFile(t, notes)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "1" {
@@ -297,7 +276,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundFile(t, filepath.Join(runDir, "round-2-review-20260820T101500Z.md"))
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "1" {
@@ -314,7 +293,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		writeRoundFile(t, filepath.Join(runDir, "round-3b-review.md"))
 		writeRoundFile(t, filepath.Join(runDir, "round-3b-fixer-report.md"))
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "1" {
@@ -329,7 +308,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 	t.Run("Round1HydratesNothingBeyondTemplate", func(t *testing.T) {
 		runDir := t.TempDir()
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		if !stringSlicesEqual(runner.GotProfiles[0].PriorReviews, []string{}) {
@@ -345,7 +324,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		writeJudgedRound(t, runDir, 1)
 		writeJudgedRound(t, runDir, 2)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		wantReviews := []string{roundReviewPath(runDir, 1), roundReviewPath(runDir, 2)}
@@ -363,7 +342,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		writeJudgedRound(t, runDir, 1)
 		writeRoundFile(t, filepath.Join(runDir, "round-1-review-20260820T101500Z.md"))
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		wantReviews := []string{roundReviewPath(runDir, 1)}
@@ -377,7 +356,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		writeRoundFile(t, roundReviewPath(runDir, 1)) // no fixer report: incomplete
 		writeJudgedRound(t, runDir, 2)
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		wantReviews := []string{roundReviewPath(runDir, 2)}
@@ -401,7 +380,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		profile.PriorReviews = []string{toldReview}
 		profile.PriorFixerReports = []string{toldFixer}
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, profile, burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile))
 
 		shedfake.CallOK(t, p)
 		wantReviews := []string{toldReview, roundReviewPath(runDir, 1)}
@@ -419,7 +398,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 		writeJudgedRound(t, runDir, 1)
 		writeFocusFile(t, runDir, 2, focusFile{Round: 2, Focus: []string{"look at the relocation candidate"}})
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		shedfake.CallOK(t, p)
 		wantReviews := []string{roundReviewPath(runDir, 1)}
@@ -449,7 +428,7 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 			writeJudgedRound(t, runDir, 1)
 			tt.setup(t, runDir)
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+			p := newBurlerProducer(t, runDir, runner)
 
 			shedfake.CallOK(t, p)
 			if got := runner.GotProfiles[0].FocusDirective; got != "" {
@@ -479,7 +458,7 @@ func TestBurlerProducer_StalePreexistingRoundFileArchivedBeforeInvocation(t *tes
 		_, err = os.Stat(filepath.Join(runDir, "round-1-review-20260820T101500Z.md"))
 		stampedExistsAtInvoke = err == nil
 	}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, fixedClock(instant))
+	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
 
 	shedfake.CallOK(t, p)
 	if !reviewGoneAtInvoke {
@@ -504,7 +483,7 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := t.TempDir()
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone, Verdict: tt.verdict}}}
-			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+			p := newBurlerProducer(t, runDir, runner)
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			wantPath := roundReviewPath(runDir, 1)
@@ -525,7 +504,7 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, profile, burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile))
 
 	shedfake.CallOK(t, p)
 	got := runner.GotProfiles[0]
@@ -566,7 +545,7 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 			writeJudgedRound(t, runDir, 1)
 			writeFocusFileRaw(t, runDir, 2, tt.focus)
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+			p := newBurlerProducer(t, runDir, runner)
 
 			shedfake.CallOK(t, p)
 			if got := runner.GotProfiles[0].ClusterExclude; got != nil {
@@ -586,7 +565,7 @@ func TestBurlerProducer_Call_RunOptsCarriesRoundToken(t *testing.T) {
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 4)
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{Model: "m"}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Model: "m"}))
 
 	shedfake.CallOK(t, p)
 	if runner.GotOpts[0].Round != "5" {
@@ -601,7 +580,7 @@ func TestBurlerProducer_Call_RunOptsCarriesNoteID(t *testing.T) {
 	runDir := filepath.Join(t.TempDir(), "webster")
 	writeJudgedRound(t, runDir, 2)
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	shedfake.CallOK(t, p)
 	want := "burler-webster-r3"
@@ -627,7 +606,7 @@ func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 			writeRoundFile(t, fixerPath)
 		}
 	}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if runner.Calls != 2 {
@@ -658,7 +637,7 @@ func TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions(t *testin
 			{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s2", RunDir: "/kept/2"},
 		},
 	}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	_, _, err := p.Call(context.Background())
 	if err == nil {
@@ -675,7 +654,7 @@ func TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions(t *testin
 func TestBurlerProducer_Call_AskingIsHardErrorOnFirstOccurrence(t *testing.T) {
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	_, _, err := p.Call(context.Background())
 	if err == nil {
@@ -693,7 +672,7 @@ func TestBurlerProducer_Call_RunnerErrorWrapped(t *testing.T) {
 	runDir := t.TempDir()
 	seamErr := errors.New("seam exploded")
 	runner := &shedfake.BurlerRunner{Errs: []error{seamErr}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	_, _, err := p.Call(context.Background())
 	if err == nil {
@@ -710,7 +689,7 @@ func TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile(t
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, profile, burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile))
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if !stringSlicesEqual(runner.GotProfiles[0].ClusterExclude, []string{"not-in-fan"}) {
@@ -723,7 +702,7 @@ func TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile(t
 func TestBurlerProducer_Call_AlreadyCancelledContext(t *testing.T) {
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -745,7 +724,7 @@ func TestBurlerProducer_Call_CancelledBetweenAttempts(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDied}}}
 	runner.DuringRun = func(int) { cancel() }
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	_, _, err := p.Call(ctx)
 	if err == nil {
@@ -769,7 +748,7 @@ func TestBurlerProducer_Call_CancelledDuringFailedRoundArchives(t *testing.T) {
 		cancel()
 	}
 	instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, fixedClock(instant))
+	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
 
 	_, _, err := p.Call(ctx)
 	if err == nil {
@@ -798,7 +777,7 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 		writeRoundFile(t, fixerPath)
 		cancel()
 	}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	outcome, _, err := p.Call(ctx)
 	if err == nil {
@@ -829,7 +808,7 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 	}
 
 	runner2 := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p2 := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner2, nil)
+	p2 := newBurlerProducer(t, runDir, runner2)
 	shedfake.CallOK(t, p2)
 	if runner2.GotOpts[0].Round != "2" {
 		t.Errorf("second Call() round token = %q; want %q (advances past the completed round)", runner2.GotOpts[0].Round, "2")
@@ -844,7 +823,7 @@ func TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday(t *testing.T) {
 		Outcome: shuttleengine.OutcomeDone,
 		Gate:    &shuttleengine.GateOutcome{Passed: true},
 	}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	wantPath := roundReviewPath(runDir, 1)
@@ -869,7 +848,7 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 		writeRoundFile(t, fixerPath)
 	}
 	instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, fixedClock(instant))
+	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != "" {
@@ -898,7 +877,7 @@ func TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry(t *testing.T) 
 		Outcome: shuttleengine.OutcomeDone,
 		Gate:    &shuttleengine.GateOutcome{Passed: false},
 	}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+	p := newBurlerProducer(t, runDir, runner)
 
 	shedfake.CallOK(t, p)
 	if runner.Calls != 1 {
@@ -924,7 +903,7 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
 		return shuttleengine.GateResult{Passed: false}, nil
 	}}}}
-	p := newTestBurlerProducerWithAttach(t, runDir, simpleBurlerProfile(), opts, runner, attach, fixedClock(time.Now()))
+	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 	// Only the review file exists at Call entry -- a complete pair here would make
 	// highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is
 	// ever reached, exactly as the pre-existing attach tests in this file are careful to leave
@@ -961,7 +940,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 	assertUnchangedRoundOnRerun := func(t *testing.T, runDir string) {
 		t.Helper()
 		runner2 := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		p2 := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner2, nil)
+		p2 := newBurlerProducer(t, runDir, runner2)
 		shedfake.CallOK(t, p2)
 		if runner2.GotOpts[0].Round != "1" {
 			t.Errorf("second Call() round token = %q; want %q (unchanged from the failed first Call())", runner2.GotOpts[0].Round, "1")
@@ -983,7 +962,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 				writeRoundFile(t, reviewPath)
 			}
 		}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		if _, _, err := p.Call(context.Background()); err == nil {
 			t.Fatal("Call() error = nil; want non-nil")
@@ -998,7 +977,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 				{Outcome: shuttleengine.OutcomeDied, SessionID: "s1", NotStarted: notStarted},
 				{Outcome: shuttleengine.OutcomeDied, SessionID: "s2", NotStarted: notStarted},
 			}}
-			p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+			p := newBurlerProducer(t, runDir, runner)
 
 			_, _, err := p.Call(context.Background())
 			if err == nil {
@@ -1013,7 +992,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 	t.Run("AskingHardError", func(t *testing.T) {
 		runDir := t.TempDir()
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking}}}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		if _, _, err := p.Call(context.Background()); err == nil {
 			t.Fatal("Call() error = nil; want non-nil")
@@ -1030,7 +1009,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 			writeRoundFile(t, reviewPath)
 			cancel()
 		}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		if _, _, err := p.Call(ctx); err == nil {
 			t.Fatal("Call() error = nil; want non-nil")
@@ -1051,7 +1030,7 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 			writeRoundFile(t, reviewPath)
 			writeRoundFile(t, fixerPath)
 		}
-		p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, nil)
+		p := newBurlerProducer(t, runDir, runner)
 
 		if _, _, err := p.Call(context.Background()); err == nil {
 			t.Fatal("Call() error = nil; want non-nil")
@@ -1091,7 +1070,7 @@ func TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation(t *test
 	}
 
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newTestBurlerProducer(t, runDir, simpleBurlerProfile(), burlerengine.RunOpts{}, runner, now)
+	p := newBurlerProducer(t, runDir, runner, withBurlerClock(now))
 
 	_, _, err := p.Call(ctx)
 

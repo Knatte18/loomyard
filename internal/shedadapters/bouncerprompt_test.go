@@ -84,7 +84,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
 			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-			cfg := testBouncerConfig(t)
+			cfg := newBouncerFixture(t).Config
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			b, err := NewBouncer(cfg)
@@ -101,7 +101,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 
 		t.Run(fmt.Sprintf("Judge_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {
 			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-			cfg := testBouncerConfig(t)
+			cfg := newBouncerFixture(t).Config
 			cfg.Shuttle = shuttle
 			cfg.ClusterExcludes = clusterExcludes
 			b, err := NewBouncer(cfg)

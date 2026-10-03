@@ -107,12 +107,7 @@ func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 	}
 
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-	cfg := testBouncerConfigWithSpecsMarker(t, specsDir)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
+	b, cfg := newBouncerFixture(t, withSpecsMarker(specsDir), withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	shedfake.CallOK(t, b)
@@ -128,7 +123,7 @@ func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 
 func TestBouncer_JudgeCall_Approved(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -163,7 +158,7 @@ func TestBouncer_JudgeCall_Approved(t *testing.T) {
 
 func TestBouncer_JudgeCall_Blocking(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("BLOCKING"), bouncerLedgerContent(1), true)
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -185,7 +180,7 @@ func TestBouncer_JudgeCall_Blocking(t *testing.T) {
 
 func TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger(t *testing.T) {
 	shuttle := judgeFakeShuttle(3, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(3), true)
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
 		{round: 1, report: bouncerReport(1)},
 		{round: 2, report: bouncerReport(2)},
@@ -220,7 +215,7 @@ func TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger(t *testing.T) {
 func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 	t.Run("ValidPriorLedger", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(2, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(2), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
 			{round: 1, report: bouncerReport(1)},
 			{round: 2, report: bouncerReport(2)},
@@ -241,7 +236,7 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 
 	t.Run("MalformedPriorLedger", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(2, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(2), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
 			{round: 1, report: bouncerReport(1)},
 			{round: 2, report: bouncerReport(2)},
@@ -258,7 +253,7 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 
 	t.Run("NoPriorLedger", func(t *testing.T) {
 		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		shedfake.CallOK(t, b)
@@ -268,7 +263,7 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 	})
 }
 
-// bouncerJudgeTestClock is the fixed instant newTestBouncer resolves cfg.Now to, reused here so
+// bouncerJudgeTestClock is the fixed instant newBouncerFixture resolves cfg.Now to, so
 // archive-sibling filenames are computable rather than discovered by directory scan.
 var bouncerJudgeTestClock = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 
@@ -323,7 +318,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "UnreadableReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 				reportPath := filepath.Join(cfg.RunDir, cfg.ReportName(1))
 				if err := os.Mkdir(reportPath, 0o755); err != nil {
 					t.Fatalf("Mkdir(report path) = %v; want nil", err)
@@ -334,7 +329,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "EmptyReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 				if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(""), 0o644); err != nil {
 					t.Fatalf("WriteFile(empty report) = %v; want nil", err)
 				}
@@ -344,7 +339,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "WhitespaceOnlyReportFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: "   \n\t  \n"}})
 				return b, cfg
 			},
@@ -352,26 +347,16 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "JudgeTemplateUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-					// bouncer-template-judge deliberately absent.
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(bouncerJudgeTestClock),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
+				b, cfg := newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+						// bouncer-template-judge deliberately absent.
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(bouncerJudgeTestClock)),
+				).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -379,7 +364,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "RubricUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				if err := os.Remove(filepath.Join(cfg.StencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
 					t.Fatalf("Remove(rubric) = %v; want nil", err)
@@ -390,27 +375,17 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "FillFailure",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					"bouncer-template-seed": "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
-					// Declares a marker the Go side does not supply.
-					"bouncer-template-judge":  "# Judge\n\n{{.unknown_marker}}\n",
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(bouncerJudgeTestClock),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
+				b, cfg := newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						"bouncer-template-seed": "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
+						// Declares a marker the Go side does not supply.
+						"bouncer-template-judge":  "# Judge\n\n{{.unknown_marker}}\n",
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(bouncerJudgeTestClock)),
+				).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -418,7 +393,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		{
 			name: "RunError",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				b, cfg := newTestBouncer(t, &shedfake.Shuttle{Err: errors.New("judge run exploded")})
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Err: errors.New("judge run exploded")})).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -435,7 +410,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 					_ = os.Mkdir(outputs[0], 0o755)
 					_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 				}
-				b, cfg := newTestBouncer(t, shuttle)
+				b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -444,7 +419,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 			name: "UnparseableVerdictFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				shuttle := judgeFakeShuttle(1, "garbage, not frontmatter", bouncerLedgerContent(1), true)
-				b, cfg := newTestBouncer(t, shuttle)
+				b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -453,7 +428,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 			name: "UnparseableLedgerFile",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), "garbage, not frontmatter", true)
-				b, cfg := newTestBouncer(t, shuttle)
+				b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 				return b, cfg
 			},
@@ -484,7 +459,7 @@ func TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue(t *testing.T
 		t.Run(string(oc), func(t *testing.T) {
 			logBuf := captureBouncerWarnings(t)
 			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: oc}}
-			b, cfg := newTestBouncer(t, shuttle)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 			outcome, ptr, err := b.Call(context.Background())
@@ -506,7 +481,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 			// Deliberately does not write the focus file: harvest is keyed on judged(n), not
 			// on whether the run reported completion.
 		}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
@@ -526,7 +501,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("APPROVED")), 0o644)
 			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
 		}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -538,7 +513,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 
 	t.Run("Contrast_NothingWrittenDegrades", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
-		b, cfg := newTestBouncer(t, shuttle)
+		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 		outcome, ptr, err := b.Call(context.Background())
@@ -607,7 +582,7 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-			b, cfg := newTestBouncer(t, shuttle)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 			tt.layoutDebris(t, cfg)
 
@@ -631,7 +606,7 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 
 func TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 	staleVerdict := "garbage, not frontmatter (stale verdict)"
