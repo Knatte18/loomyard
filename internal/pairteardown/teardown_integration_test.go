@@ -2,7 +2,7 @@
 
 // teardown_integration_test.go drives the composite on a real hub pair with a real reed session and a stub driver strand.
 
-package pairteardown
+package pairteardown_test
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -25,7 +26,7 @@ import (
 // livePair is a hub pair with a reed session in its task worktree and a stub driver strand in it.
 type livePair struct {
 	h     *hubforge.Hub
-	td    *Teardown
+	td    *pairteardown.Teardown
 	slug  string
 	eng   *reedengine.Engine
 	guid  string
@@ -48,17 +49,13 @@ func newLivePair(t *testing.T, slug string) *livePair {
 	}
 	hubforge.AddPair(t, h, slug)
 
-	td, err := New(h.Location)
+	td, err := pairteardown.New(h.Location)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	task, err := td.taskLocation(slug)
+	eng, err := td.ReedEngineForTest(slug)
 	if err != nil {
-		t.Fatalf("taskLocation: %v", err)
-	}
-	eng, err := td.reedEngine(task)
-	if err != nil {
-		t.Fatalf("reedEngine: %v", err)
+		t.Fatalf("ReedEngineForTest: %v", err)
 	}
 	t.Cleanup(func() { _, _ = eng.Down() })
 
@@ -117,7 +114,7 @@ func TestRun_TaskSideDirtinessRefusalLeavesSessionAndStrandsLive(t *testing.T) {
 	p := newLivePair(t, "pt-dirty")
 	writeFile(t, filepath.Join(p.h.PairWarpWorktree(p.slug), "dirty.txt"), "uncommitted\n")
 
-	_, err := p.td.Run(context.Background(), Request{Slug: p.slug})
+	_, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug})
 	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
 		t.Fatalf("Run error = %v, want the task-side dirtiness refusal", err)
 	}
@@ -133,7 +130,7 @@ func TestRun_SiblingChangesOutsidePathspecLeaveEverythingUntouched(t *testing.T)
 	writeFile(t, filepath.Join(sibling, "stray.txt"), "not a record\n")
 	tip := gitkit.RevParse(t, sibling, "HEAD")
 
-	_, err := p.td.Run(context.Background(), Request{Slug: p.slug})
+	_, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug})
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		t.Fatalf("Run error = %v, want ErrPairSiblingDirty", err)
 	}
@@ -152,7 +149,7 @@ func TestRun_SiblingChangesOutsidePathspecLeaveEverythingUntouched(t *testing.T)
 func TestRun_EndsTheSessionAndRemovesThePair(t *testing.T) {
 	p := newLivePair(t, "pt-run")
 
-	res, err := p.td.Run(context.Background(), Request{Slug: p.slug})
+	res, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -176,7 +173,7 @@ func TestRun_TaskWorktreeRemovedByHandEndsTheSessionByName(t *testing.T) {
 		t.Fatal("session is not up before Run")
 	}
 
-	res, err := p.td.Run(context.Background(), Request{Slug: p.slug, QuietWait: RemoveQuietWait, RefuseWhenBusy: true})
+	res, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -193,7 +190,7 @@ func TestRun_TaskWorktreeRemovedByHandEndsTheSessionByName(t *testing.T) {
 
 func TestRun_WaitsForRetiringDriverThenArchivesTheCommittedReport(t *testing.T) {
 	p := newLivePair(t, "pt-wait")
-	p.td.interval = 50 * time.Millisecond
+	p.td.SetIntervalForTest(50 * time.Millisecond)
 
 	sibling := p.h.PairWeftSibling(p.slug)
 	rel := "_lyx/shed/" + p.slug + "/drive-reports/stop.md"
@@ -202,8 +199,8 @@ func TestRun_WaitsForRetiringDriverThenArchivesTheCommittedReport(t *testing.T) 
 	gitkit.MustRun(t, sibling, "git", "commit", "-m", "stop report")
 
 	var marked bool
-	realSleep := p.td.sleep
-	p.td.sleep = func(ctx context.Context, d time.Duration) error {
+	realSleep := p.td.SleepForTest()
+	p.td.SetSleepForTest(func(ctx context.Context, d time.Duration) error {
 		if !marked {
 			marked = true
 			if err := p.eng.MarkRetiring(p.guid, true); err != nil {
@@ -211,9 +208,9 @@ func TestRun_WaitsForRetiringDriverThenArchivesTheCommittedReport(t *testing.T) 
 			}
 		}
 		return realSleep(ctx, d)
-	}
+	})
 
-	res, err := p.td.Run(context.Background(), Request{Slug: p.slug, QuietWait: 10 * time.Second, RefuseWhenBusy: true})
+	res, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, QuietWait: 10 * time.Second, RefuseWhenBusy: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
