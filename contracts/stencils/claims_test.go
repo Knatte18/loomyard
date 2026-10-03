@@ -15,11 +15,13 @@ import (
 // must is a phrase the text has to contain; mustNot is a phrase it must not contain.
 // A non-empty section limits the check to that heading's section, from the heading line up to the next "## " heading.
 // A non-empty branch limits it to the bullet that starts with that phrase, from the phrase up to the next blank line.
+// anyCase matches the phrase case-insensitively.
 type claim struct {
 	must    string
 	mustNot string
 	section string
 	branch  string
+	anyCase bool
 	why     string
 }
 
@@ -47,6 +49,15 @@ func inSection(heading string, claims []claim) []claim {
 		claims[i].section = heading
 	}
 	return claims
+}
+
+// droppedConceptClaims bars the batch-era concepts from a stencil, matching the two concept words in any case.
+func droppedConceptClaims() []claim {
+	return []claim{
+		{mustNot: "oversized", anyCase: true, why: droppedConceptsWhy},
+		{mustNot: "chain", anyCase: true, why: droppedConceptsWhy},
+		{mustNot: "## Scope", why: droppedConceptsWhy},
+	}
 }
 
 // joinClaims concatenates claim groups into one row.
@@ -216,15 +227,15 @@ var wordingClaims = []stencilClaims{
 			"fall back to that card's one-line intent from the Card Index",
 			"unless the card FILE carries a `**Commit:**` line"),
 		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
-		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+		droppedConceptClaims(),
 	)},
 	{"webster-prefix-fork.md", WebsterPrefixFork, joinClaims(
 		wantAll("the fork inherits Master's loop instructions and must be told forcefully not to drive the loop itself or wait for a report only it writes",
 			"NEVER run any `lyx webster` command", "YOU are the one who WRITES that report"),
 		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
-		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+		droppedConceptClaims(),
 	)},
-	{"webster-prefix-recovery.md", WebsterPrefixRecovery, wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope")},
+	{"webster-prefix-recovery.md", WebsterPrefixRecovery, droppedConceptClaims()},
 	{"webster-template-integration.md", WebsterTemplateIntegration, joinClaims(
 		wantAll("an integration fork that inherits Master's poll-for-the-report loop deadlocks the run, so it is told to write the report itself",
 			"NEVER poll or wait for the integration", "YOU are the one who WRITES"),
@@ -329,7 +340,7 @@ var wordingClaims = []stencilClaims{
 		wantNone("the retired ordering clauses stay gone", "there is no DAG here to reorder around", "batch N assumes every batch before it is already committed"),
 		wantAll("the master template's spawn directive carries the anti-poll clause, so the integration fork writes its own report instead of continuing Master's poll loop",
 			"you do NOT poll or wait for any report file", "Your FIRST action is to Read this file"),
-		wantNone(droppedConceptsWhy, "oversized", "chain", "## Scope"),
+		droppedConceptClaims(),
 	)},
 	{"friction-directive-implementer.md", FrictionDirectiveImplementer, frictionOptionalClaims},
 	{"friction-directive-review-fix.md", FrictionDirectiveReviewFix, frictionOptionalClaims},
@@ -402,10 +413,14 @@ func TestStencilClaims(t *testing.T) {
 					}
 					scope, where = section, "the "+c.section+" section"
 				}
-				if c.must != "" && !strings.Contains(scope, c.must) {
+				contains := strings.Contains
+				if c.anyCase {
+					contains = func(s, substr string) bool { return strings.Contains(strings.ToLower(s), strings.ToLower(substr)) }
+				}
+				if c.must != "" && !contains(scope, c.must) {
 					t.Errorf("%s: %s does not contain %q; want: %s", row.file, where, c.must, c.why)
 				}
-				if c.mustNot != "" && strings.Contains(scope, c.mustNot) {
+				if c.mustNot != "" && contains(scope, c.mustNot) {
 					t.Errorf("%s: %s contains %q; want it absent: %s", row.file, where, c.mustNot, c.why)
 				}
 			}
