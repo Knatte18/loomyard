@@ -170,7 +170,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	// in-sync state — unlike the old paired-fixture template, which left weft prime on a literal
 	// "main" branch and required an explicit checkout to reach parity. Confirm the invariant rather
 	// than reconstructing it by hand.
-	if branch := currentBranchName(t, weftPrime); branch != fabricengine.WeftBranchName("main") {
+	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabricengine.WeftBranchName("main") {
 		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.WeftBranchName("main"))
 	}
 

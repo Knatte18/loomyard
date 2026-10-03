@@ -6,7 +6,7 @@
 // base can no longer produce a merge conflict, a self-abort, or a moved weft HEAD — only a genuine
 // warp-side conflict still reaches unifyConflictPaths.
 // Reuses newMergeTargetFixture, seedSourceAndTarget, newMergePairFixture, commitOnCurrentBranch,
-// advanceRemoteBranch, openFreshFabric, gitRevParse and fabricengine.CurrentSHAForTest from the
+// advanceRemoteBranch, openFreshFabric and fabricengine.CurrentSHAForTest from the
 // package's existing test files rather than adding new fixture helpers.
 
 package fabricengine_test
@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged covers scenario 1: a
@@ -145,8 +146,8 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 	commitOnWarpBranch("parent", "parent-warp.txt", "parent warp content\n", "parent: warp change")
 	commitOnWeftBranch("parent-weft", "_lyx/parent-only.txt", "parent lyx content\n", "parent: weft lyx change")
 
-	parentWeftSHA := gitRevParse(t, h.PrimeWeft(), "parent-weft")
-	childWeftSHABefore := gitRevParse(t, h.PrimeWeft(), "HEAD")
+	parentWeftSHA := gitkit.RevParse(t, h.PrimeWeft(), "parent-weft")
+	childWeftSHABefore := gitkit.RevParse(t, h.PrimeWeft(), "HEAD")
 	if parentWeftSHA == childWeftSHABefore {
 		t.Fatalf("parent-weft (%s) equals the child's own weft HEAD (%s); the fixture must diverge them", parentWeftSHA, childWeftSHABefore)
 	}
@@ -169,7 +170,7 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 	if string(got) != childContent {
 		t.Errorf("_lyx/parent-child.txt after MergeIn = %q; want unchanged %q", got, childContent)
 	}
-	if got := gitRevParse(t, h.PrimeWeft(), "HEAD"); got != childWeftSHABefore {
+	if got := gitkit.RevParse(t, h.PrimeWeft(), "HEAD"); got != childWeftSHABefore {
 		t.Errorf("child weft HEAD after MergeIn = %q; want unchanged %q", got, childWeftSHABefore)
 	}
 }

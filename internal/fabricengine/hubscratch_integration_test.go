@@ -5,9 +5,8 @@
 // and the board's stage-all commit path never picks up anything planted inside the hub scratch tree
 // in between.
 //
-// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go) and readWeftExcludeLines
-// (dotlyxjunction_integration_test.go) rather than re-declaring either; shares the single TestMain
-// in testmain_test.go — no new TestMain is added here.
+// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go) rather than re-declaring it;
+// shares the single TestMain in testmain_test.go — no new TestMain is added here.
 
 package fabricengine_test
 
@@ -19,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning asserts that at the instant
@@ -52,7 +52,7 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
-	lines := readWeftExcludeLines(t, res.BoardDir)
+	lines := gitkit.ExcludeLines(t, res.BoardDir)
 	if !containsLine(lines, ".lyx/") {
 		t.Fatalf("weft common gitdir info/exclude reached from %s = %v; want it to already contain %q at the instant CloneHub returns", res.BoardDir, lines, ".lyx/")
 	}

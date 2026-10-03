@@ -65,8 +65,8 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
-	current := currentBranchName(t, dir)
-	if branchExistsLocally(t, dir, branch) {
+	current := gitkit.CurrentBranch(t, dir)
+	if gitkit.BranchExists(t, dir, branch) {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
 	} else {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
@@ -94,18 +94,6 @@ func commitOnCurrentBranch(t *testing.T, dir, filename, content, msg string) {
 	}
 	gitkit.MustRun(t, dir, "git", "add", filename)
 	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", msg)
-}
-
-// currentBranchName (dir's currently checked-out branch name) is livestate_verbs_test.go's own
-// helper, reused unqualified since both files share package fabricengine_test.
-
-// branchExistsLocally reports whether branch already exists as a local ref in dir.
-func branchExistsLocally(t *testing.T, dir, branch string) bool {
-	t.Helper()
-
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = dir
-	return cmd.Run() == nil
 }
 
 // setupConflictingDivergence seeds filename on dir's current branch, branches off, diverges the

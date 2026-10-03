@@ -7,7 +7,7 @@
 //
 // Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant (via
 // newFabricFixture), using the hub's own WeftBare field as the weft remote to assert against.
-// mustBreakOrigin/mustRemoveOrigin/branchExistsAt are shared with cleanupremote_integration_test.go
+// mustBreakOrigin/mustRemoveOrigin are shared with cleanupremote_integration_test.go
 // and reconcile_stale_registration_test.go — every assertion here goes through exported API.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestRemove_RemoteTrueDeletesWeftBranchOnRemote covers case 1: remote true deletes the pair's weft
@@ -47,7 +48,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	if res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchError = %q; want empty", res.RemoteBranchError)
 	}
-	if branchExistsAt(t, fixture.WeftBare, weftBranch) {
+	if gitkit.BranchExists(t, fixture.WeftBare, weftBranch) {
 		t.Errorf("weft branch %q still exists on the remote after Remove(remote=true)", weftBranch)
 	}
 
@@ -84,7 +85,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	if res.RemoteBranchDeleted {
 		t.Errorf("RemoteBranchDeleted = true; want false — remote is opt-in")
 	}
-	if !branchExistsAt(t, fixture.WeftBare, weftBranch) {
+	if !gitkit.BranchExists(t, fixture.WeftBare, weftBranch) {
 		t.Errorf("weft branch %q no longer exists on the remote after Remove(remote=false)", weftBranch)
 	}
 }

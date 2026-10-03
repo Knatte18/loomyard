@@ -52,7 +52,7 @@ func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
 		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
 	}
-	if branchExistsAt(t, l.WorktreePath(), slug) {
+	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
 	}
 }
@@ -80,7 +80,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
 		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
 	}
-	if branchExistsAt(t, prime, slug) {
+	if gitkit.BranchExists(t, prime, slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
 	}
 }
@@ -115,7 +115,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			if res.WarpBranchKeptReason == "" {
 				t.Errorf("WarpBranchKeptReason is empty; want the gate's reason")
 			}
-			if !branchExistsAt(t, l.WorktreePath(), slug) {
+			if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 				t.Errorf("warp branch %q was deleted despite unlanded work", slug)
 			}
 		})

@@ -12,7 +12,7 @@
 // assert the ref is gone.
 //
 // Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go) and
-// mustWeftRepoRoot/branchExistsAt (add_rollback_adopt_test.go / reconcile_stale_registration_test.go)
+// mustWeftRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go)
 // — every assertion here goes through exported API; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -81,10 +81,10 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	if entry.RemoteError != "" {
 		t.Errorf("entry.RemoteError = %q; want empty", entry.RemoteError)
 	}
-	if branchExistsAt(t, weftRoot, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
 	}
-	if branchExistsAt(t, fixture.WeftBare, branch) {
+	if gitkit.BranchExists(t, fixture.WeftBare, branch) {
 		t.Errorf("branch %q still exists on the remote after Cleanup(apply=true, remote=true)", branch)
 	}
 }
@@ -115,7 +115,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	if entry.RemoteDeleted {
 		t.Errorf("entry.RemoteDeleted = true; want false — remote is opt-in")
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, fixture.WeftBare, branch) {
 		t.Errorf("branch %q no longer exists on the remote after Cleanup(apply=true, remote=false); remote must be opt-in", branch)
 	}
 }
@@ -143,10 +143,10 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	if entry.Deleted || entry.RemoteDeleted {
 		t.Errorf("entry = %+v; want no deletion on a dry run", entry)
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed locally on a dry run", branch)
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, fixture.WeftBare, branch) {
 		t.Errorf("branch %q was removed on the remote on a dry run", branch)
 	}
 }
@@ -216,10 +216,10 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	if entry.Deleted || entry.RemoteDeleted {
 		t.Errorf("entry = %+v; want neither local nor remote deletion of a protected entry", entry)
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("protected branch %q was removed locally", branch)
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, fixture.WeftBare, branch) {
 		t.Errorf("protected branch %q was removed on the remote", branch)
 	}
 }
@@ -251,7 +251,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	if entry.RemoteError == "" {
 		t.Errorf("entry.RemoteError is empty; want a reason naming the remote deletion failure")
 	}
-	if branchExistsAt(t, weftRoot, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
 	}
 }
@@ -291,7 +291,7 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 		if entry.RemoteError != "" {
 			t.Errorf("entry for %q: RemoteError = %q; want empty — the reason lives on the verb-level field, not here", b, entry.RemoteError)
 		}
-		if branchExistsAt(t, weftRoot, b) {
+		if gitkit.BranchExists(t, weftRoot, b) {
 			t.Errorf("branch %q still exists locally after Cleanup(apply=true)", b)
 		}
 	}
@@ -324,7 +324,7 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 	if entry.Deleted {
 		t.Errorf("entry.Deleted = true; want false — apply is false")
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed on a dry run", branch)
 	}
 }
@@ -386,7 +386,7 @@ func TestRemovePairBranch_DeletesLocalAndRemoteAndRefusesALivePair(t *testing.T)
 	if !res.LocalDeleted || !res.RemoteDeleted {
 		t.Errorf("RemovePairBranch() = %+v; want LocalDeleted and RemoteDeleted", res)
 	}
-	if branchExistsAt(t, weftRoot, branch) || branchExistsAt(t, fixture.WeftBare, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) || gitkit.BranchExists(t, fixture.WeftBare, branch) {
 		t.Errorf("branch %q still present locally or on the remote", branch)
 	}
 	if _, err := topology.RemovePairBranch(l, slug); err != nil {

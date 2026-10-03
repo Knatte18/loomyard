@@ -9,7 +9,7 @@
 // and Fabric.Diff bridged against such an answer via weftAnchorForWarpSHA
 // would graft the current branches onto the other branch's history.
 //
-// Package fabricengine_test to reuse newFabricFixture/currentBranchOf from
+// Package fabricengine_test to reuse newFabricFixture from
 // reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -76,7 +76,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if _, err := top.Checkout(l, targetBranch); err != nil {
 		t.Fatalf("Checkout(%q): %v", targetBranch, err)
 	}
-	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
+	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
 		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.WeftBranchName(targetBranch))
 	}
 

@@ -170,8 +170,8 @@ func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T)
 func commitOnBranchDeleting(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
-	current := currentBranchName(t, dir)
-	if branchExistsLocally(t, dir, branch) {
+	current := gitkit.CurrentBranch(t, dir)
+	if gitkit.BranchExists(t, dir, branch) {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
 	} else {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)

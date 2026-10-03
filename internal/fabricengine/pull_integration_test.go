@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -80,25 +79,6 @@ func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA str
 	commitPlain(t, clone, "rewritten.txt", "rewritten history")
 	gitkit.MustRun(t, clone, "git", "push", "--force", "origin", "main")
 	return fabricengine.CurrentSHAForTest(t, clone)
-}
-
-// revListCountBetween returns `git rev-list --count <rangeArg>` in repoPath —
-// used to assert exactly how many commits separate two points, e.g. that a
-// reconcile added exactly one new weft commit on top of pre-existing history.
-func revListCountBetween(t *testing.T, repoPath, rangeArg string) int {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-list", "--count", rangeArg)
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-list --count %s in %s: %v", rangeArg, repoPath, err)
-	}
-	var n int
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n); err != nil {
-		t.Fatalf("parse rev-list --count output %q: %v", out, err)
-	}
-	return n
 }
 
 // TestPull_DetectsDriftUnreachableUnprunedObject asserts that Fabric.Pull detects a warp history
@@ -244,7 +224,7 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	if weftHEADAfter != result.ReanchorWeftSHA {
 		t.Errorf("weft HEAD after Pull = %q; want the reported re-anchor SHA %q", weftHEADAfter, result.ReanchorWeftSHA)
 	}
-	if got := revListCountBetween(t, weftFixture.PrimeWeft(), weftHEADBefore+".."+weftHEADAfter); got != 1 {
+	if got := gitkit.RevListCount(t, weftFixture.PrimeWeft(), weftHEADBefore+".."+weftHEADAfter); got != 1 {
 		t.Errorf("commits added on top of pre-existing weft history = %d; want exactly 1 (the re-anchor commit)", got)
 	}
 }

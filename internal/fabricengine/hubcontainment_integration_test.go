@@ -8,7 +8,7 @@
 // does not build.
 //
 // Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go),
-// makeBareRemote (clone_adopt_test.go), and readExcludeLines (junction_pattern_integration_test.go);
+// and makeBareRemote (clone_adopt_test.go);
 // shares the single TestMain in testmain_test.go — no new TestMain is added here.
 package fabricengine_test
 
@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -57,7 +58,7 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 	}
 	slug := filepath.Base(l.WorktreePath())
 	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
-	for _, line := range readExcludeLines(t, l, slug) {
+	for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)) {
 		if line == boardPattern {
 			t.Errorf(".git/info/exclude carries %q after CloneHub; want no _board exclude line", boardPattern)
 		}
@@ -85,7 +86,7 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	}
 
 	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
-	for _, line := range readExcludeLines(t, l, slug) {
+	for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)) {
 		if line == boardPattern {
 			t.Errorf(".git/info/exclude carries %q after Add; want no _board exclude line", boardPattern)
 		}
@@ -124,7 +125,7 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 		}
 
 		pairSlug := filepath.Base(warpPath)
-		for _, line := range readExcludeLines(t, l, pairSlug) {
+		for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, pairSlug)) {
 			if line == boardPattern {
 				t.Errorf("%s .git/info/exclude carries %q after Reconcile; want no _board exclude line", warpPath, boardPattern)
 			}

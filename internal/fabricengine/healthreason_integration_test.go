@@ -12,13 +12,11 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -188,10 +186,7 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	l := fixture.Layout
 
 	weftWorktree := fabricengine.WeftWorktree(l)
-	warpBranch, err := readBranchForTest(t, l.WorktreePath())
-	if err != nil {
-		t.Fatalf("read warp branch: %v", err)
-	}
+	warpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	weftBranch := fabricengine.WeftBranchName(warpBranch)
 
 	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
@@ -218,17 +213,4 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	if !ok {
 		t.Errorf("Healthy = false (reason %+v); want true — the pair is correctly wired and paired", reason)
 	}
-}
-
-// readBranchForTest reads the current branch of the worktree at path for test setup.
-func readBranchForTest(t *testing.T, path string) (string, error) {
-	t.Helper()
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, path)
-	if err != nil {
-		return "", err
-	}
-	if exitCode != 0 {
-		return "", os.ErrInvalid
-	}
-	return strings.TrimSpace(stdout), nil
 }

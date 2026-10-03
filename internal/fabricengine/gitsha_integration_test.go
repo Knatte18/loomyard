@@ -1,7 +1,7 @@
 //go:build integration
 
 // gitsha_integration_test.go holds the SHA/commit-message-reading fixture helpers export_test.go
-// used to carry: currentSHA, commitWarp, bareBranchSHA, and commitMessageAt, plus their ForTest
+// used to carry: CurrentSHAForTest, commitWarp, BareBranchSHAForTest, and commitMessageAt, plus their ForTest
 // re-exports. They live here rather than in export_test.go because each spawns git directly via
 // os/exec.Command to capture its output, and every one of their callers is itself
 // integration-tagged; an untagged export_test.go carrying a raw exec.Command call would trip the
@@ -13,28 +13,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// CurrentSHAForTest re-exports currentSHA (relocated fixture helper, formerly
-// index_integration_test.go): several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
-var CurrentSHAForTest = currentSHA
-
-// currentSHA returns dir's HEAD commit SHA.
-func currentSHA(t *testing.T, dir string) string {
+// CurrentSHAForTest returns dir's HEAD commit SHA for the external test package.
+func CurrentSHAForTest(t *testing.T, dir string) string {
 	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
+	return gitkit.RevParse(t, dir, "HEAD")
 }
 
 // CommitWarpForTest re-exports commitWarp (relocated fixture helper, formerly
@@ -51,25 +38,13 @@ func commitWarp(t *testing.T, warpPath, content string) string {
 	}
 	gitkit.MustRun(t, warpPath, "git", "add", ".")
 	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
-	return currentSHA(t, warpPath)
+	return gitkit.RevParse(t, warpPath, "HEAD")
 }
 
-// BareBranchSHAForTest re-exports bareBranchSHA (relocated fixture helper, formerly
-// coalesce_integration_test.go): bolt_integration_test.go (package fabricengine, never migrating)
-// calls it unqualified.
-var BareBranchSHAForTest = bareBranchSHA
-
-// bareBranchSHA returns the SHA that branch points to inside the bare repo at bareDir.
-func bareBranchSHA(t *testing.T, bareDir, branch string) string {
+// BareBranchSHAForTest returns the SHA that branch points to inside the bare repo at bareDir.
+func BareBranchSHAForTest(t *testing.T, bareDir, branch string) string {
 	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", branch)
-	cmd.Dir = bareDir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse %s in %s: %v", branch, bareDir, err)
-	}
-	return strings.TrimSpace(string(out))
+	return gitkit.RevParse(t, bareDir, branch)
 }
 
 // CommitMessageAtForTest re-exports commitMessageAt (relocated fixture helper, formerly

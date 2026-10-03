@@ -60,7 +60,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 		t.Fatalf("Cleanup reported no entry for %q; want it reported and protected", primaryWeftBranch)
 	}
 
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), primaryWeftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), primaryWeftBranch) {
 		t.Fatalf("primary weft branch %q no longer exists after cleanup --apply --force", primaryWeftBranch)
 	}
 }

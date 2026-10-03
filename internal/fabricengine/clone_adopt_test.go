@@ -78,19 +78,6 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// currentBranch returns the branch checked out at repoPath via `git branch
-// --show-current`, failing the test on any git error.
-func currentBranch(t *testing.T, repoPath string) string {
-	t.Helper()
-	cmd := exec.Command("git", "branch", "--show-current")
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git branch --show-current in %s: %v", repoPath, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // gitOutput runs a git command in dir and returns its trimmed stdout, failing
 // the test on any error — the capture-variant sibling of gitkit.MustRun,
 // which discards output.
@@ -222,7 +209,7 @@ func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch stri
 		t.Errorf("_board git-common-dir = %q; want %q (same weft repo as weft prime)", boardCommonDir, weftCommonDir)
 	}
 
-	if got := currentBranch(t, boardPath); got != wantBranch {
+	if got := gitkit.Git(t, boardPath, "branch", "--show-current"); got != wantBranch {
 		t.Errorf("_board branch = %q; want %q", got, wantBranch)
 	}
 }
@@ -290,7 +277,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	// lyxcwd so the assertion cannot rot against clone's own geometry.
 	weftPrime := weftname.SiblingPath(hubPath, "adopt-warp")
 
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.CurrentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 
@@ -350,7 +337,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 
 	weftPrime := weftname.SiblingPath(hubPath, "fresh-warp")
 	want := fabricengine.WeftBranchName("main")
-	if got := currentBranch(t, weftPrime); got != want {
+	if got := gitkit.CurrentBranch(t, weftPrime); got != want {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}
 
@@ -431,7 +418,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	weftPrime := weftname.SiblingPath(hubPath, "orphan-warp")
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.Git(t, weftPrime, "branch", "--show-current"); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 	// The weft prime's suffixed branch must be BORN — a real ref, not merely the checked-out name.
@@ -479,7 +466,7 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
 	weftPrime := weftname.SiblingPath(res.HubPath, "foreign-head-warp")
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.Git(t, weftPrime, "branch", "--show-current"); got != "main-weft" {
 		t.Errorf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 	if hasNoCommits(t, weftPrime) {

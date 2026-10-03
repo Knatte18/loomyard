@@ -165,10 +165,10 @@ func TestRemove_WeftDirtyRefusalPushesNoTagAndResumeArchivesOnce(t *testing.T) {
 			t.Errorf("%s missing after a refused Remove: %v", p, statErr)
 		}
 	}
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a refused Remove")
 	}
-	if !branchExistsAt(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, weftRoot, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("weft branch gone after a refused Remove")
 	}
 
@@ -220,10 +220,10 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 			t.Errorf("%s missing after a failed archive: %v", p, err)
 		}
 	}
-	if !branchExistsAt(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, weftRoot, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("weft branch gone after a failed archive")
 	}
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a failed archive")
 	}
 }

@@ -6,7 +6,7 @@
 // commit kind carries), and the run launcher that lands alongside it in the same batch.
 //
 // Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers
-// (shaOf, mustWeftRepoRoot, branchExistsAt); shares the single TestMain in testmain_test.go.
+// (mustWeftRepoRoot); shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -34,23 +33,6 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 		t.Fatalf("git show %s:%s in %s: %v", rev, path, dir, err)
 	}
 	return out
-}
-
-// gitRevListCount runs `git rev-list --count <args...>` in dir, failing the test on any git or parse
-// error — the fabricengine_test package's own copy of commit_lock_integration_test.go's
-// gitCommitCount, which lives in the internal package and is not reachable from here.
-func gitRevListCount(t *testing.T, dir string, args ...string) int {
-	t.Helper()
-
-	out, err := gitexec.Run(append([]string{"rev-list", "--count"}, args...), dir)
-	if err != nil {
-		t.Fatalf("git rev-list --count %v in %s: %v", args, dir, err)
-	}
-	count, convErr := strconv.Atoi(strings.TrimSpace(out))
-	if convErr != nil {
-		t.Fatalf("parse git rev-list --count output %q: %v", out, convErr)
-	}
-	return count
 }
 
 // TestAdd_RecordsNonDefaultParentBranch proves that Add records the acting warp worktree's actual
@@ -213,7 +195,7 @@ func TestCommitWeftPaths_SerializesConcurrentCommits(t *testing.T) {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	before := gitRevListCount(t, weftPath, "HEAD")
+	before := gitkit.RevListCount(t, weftPath, "HEAD")
 
 	names := [2]string{"race-a.txt", "race-b.txt"}
 	for _, name := range names {
@@ -250,11 +232,11 @@ func TestCommitWeftPaths_SerializesConcurrentCommits(t *testing.T) {
 		t.Errorf("landed commit count = %d; want %d (both concurrent CommitWeftPaths calls should land, serialized rather than raced away)", landed, len(names))
 	}
 
-	after := gitRevListCount(t, weftPath, "HEAD")
+	after := gitkit.RevListCount(t, weftPath, "HEAD")
 	if after != before+len(names) {
 		t.Errorf("weft commit count after = %d; want %d (%d before plus %d landed)", after, before+len(names), before, len(names))
 	}
-	merges := gitRevListCount(t, weftPath, "--merges", "HEAD")
+	merges := gitkit.RevListCount(t, weftPath, "--merges", "HEAD")
 	if merges != 0 {
 		t.Errorf("weft merge commit count = %d; want 0 (concurrent CommitWeftPaths calls should serialize into a linear history, never race into a merge)", merges)
 	}
@@ -284,7 +266,7 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 		t.Fatalf("Add(%q) error = %v; want the step-11 push failure, so rollback runs after the record step", slug, err)
 	}
 
-	if branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Errorf("weft branch %q survived rollback on the created-branch path; want it (and the record commit it carried) removed", weftBranch)
 	}
 	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
@@ -316,7 +298,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	}
 	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
 	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
-	preciousSHA := shaOf(t, seedDir, "HEAD")
+	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so the push (the nearest step after the record's write-and-commit
@@ -332,15 +314,15 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	}
 
 	weftRoot := mustWeftRepoRoot(t, l)
-	if !branchExistsAt(t, weftRoot, weftBranch) {
+	if !gitkit.BranchExists(t, weftRoot, weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
 
-	headSHA := shaOf(t, weftRoot, "refs/heads/"+weftBranch)
+	headSHA := gitkit.RevParse(t, weftRoot, "refs/heads/"+weftBranch)
 	if headSHA == preciousSHA {
 		t.Fatalf("adopted weft branch %q HEAD = %s (the pre-existing commit); want the record's own commit retained on top of it", weftBranch, headSHA)
 	}
-	parentSHA := shaOf(t, weftRoot, "refs/heads/"+weftBranch+"^")
+	parentSHA := gitkit.RevParse(t, weftRoot, "refs/heads/"+weftBranch+"^")
 	if parentSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q's retained commit's parent = %s; want the pre-existing commit %s", weftBranch, parentSHA, preciousSHA)
 	}
@@ -379,7 +361,7 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 	recordPath := fabricengine.OriginRecordPathFor(l, slug)
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	weftBranch := fabricengine.WeftBranchName(slug)
-	wantSHA := shaOf(t, weftPath, "refs/heads/"+weftBranch)
+	wantSHA := gitkit.RevParse(t, weftPath, "refs/heads/"+weftBranch)
 
 	var fileWrittenCount, commitCreatedCount int
 	for _, m := range res.Mutated().Entries() {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // pushCommitToOrigin clones bare, adds one commit to branch, and pushes it back, so origin's branch diverges from any local copy.
@@ -66,10 +67,10 @@ func requireNothingCreated(t *testing.T, f fabricFixture, slug string) {
 			t.Errorf("%s exists after a refused Add (stat err = %v)", p, err)
 		}
 	}
-	if branchExistsAt(t, f.Hub, slug) {
+	if gitkit.BranchExists(t, f.Hub, slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
-	if branchExistsAt(t, f.WeftPrime, fabricengine.WeftBranchName(slug)) {
+	if gitkit.BranchExists(t, f.WeftPrime, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("local weft branch %q exists after a refused Add", fabricengine.WeftBranchName(slug))
 	}
 }
@@ -97,7 +98,7 @@ func TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight(t *testing.T) {
 	weftBranch := fabricengine.WeftBranchName(slug)
 	f := removedPair(t, slug)
 	pushCommitToOrigin(t, f.WeftBare, weftBranch)
-	before := weftBareTip(t, f.WeftBare, weftBranch)
+	before := gitkit.RevParse(t, f.WeftBare, weftBranch)
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	res, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{})
@@ -114,7 +115,7 @@ func TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight(t *testing.T) {
 		t.Errorf("record has %d entries; want empty", n)
 	}
 	requireNothingCreated(t, f, slug)
-	if after := weftBareTip(t, f.WeftBare, weftBranch); after != before {
+	if after := gitkit.RevParse(t, f.WeftBare, weftBranch); after != before {
 		t.Errorf("origin weft branch moved %s -> %s", before, after)
 	}
 }
@@ -130,7 +131,7 @@ func TestAdd_AdoptedWeftDivergedRefusedAtPreflight(t *testing.T) {
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	oldTip := weftBareTip(t, f.WeftBare, weftBranch)
+	oldTip := gitkit.RevParse(t, f.WeftBare, weftBranch)
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 	if leftover := requireRemoteLeftover(t, err, slug); leftover.Slug != slug {
 		t.Errorf("ErrRemoteLeftover.Slug = %q; want %q", leftover.Slug, slug)
 	}
-	if branchExistsAt(t, f.Hub, slug) {
+	if gitkit.BranchExists(t, f.Hub, slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
 }
@@ -200,7 +201,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
-	newTip := mustGitHeadSHA(t, fabricengine.WorktreePath(f.Layout, slug))
+	newTip := gitkit.RevParse(t, fabricengine.WorktreePath(f.Layout, slug), "HEAD")
 	out, err := gitexec.Run([]string{"rev-parse", "refs/heads/" + slug}, f.Bare)
 	if err != nil {
 		t.Fatalf("rev-parse origin warp branch: %v", err)
@@ -219,17 +220,17 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	weftBranch := fabricengine.WeftBranchName(slug)
 	f := removedPair(t, slug)
 	pushCommitToOrigin(t, f.WeftBare, weftBranch)
-	weftBefore := weftBareTip(t, f.WeftBare, weftBranch)
-	warpBefore := weftBareTip(t, f.Bare, slug)
+	weftBefore := gitkit.RevParse(t, f.WeftBare, weftBranch)
+	warpBefore := gitkit.RevParse(t, f.Bare, slug)
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add(SkipPush): %v", err)
 	}
-	if got := weftBareTip(t, f.WeftBare, weftBranch); got != weftBefore {
+	if got := gitkit.RevParse(t, f.WeftBare, weftBranch); got != weftBefore {
 		t.Errorf("origin weft branch moved %s -> %s", weftBefore, got)
 	}
-	if got := weftBareTip(t, f.Bare, slug); got != warpBefore {
+	if got := gitkit.RevParse(t, f.Bare, slug); got != warpBefore {
 		t.Errorf("origin warp branch moved %s -> %s", warpBefore, got)
 	}
 }
@@ -275,7 +276,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	}
 	commitInWeft(t, f, slug, "extra.txt")
 	mustGit(fabricengine.WeftWorktreePath(f.Layout, slug), "push", "--quiet", "origin", weftBranch)
-	oldTip := weftBareTip(t, f.WeftBare, weftBranch)
+	oldTip := gitkit.RevParse(t, f.WeftBare, weftBranch)
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
@@ -284,8 +285,8 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
-	newTip := mustGitHeadSHA(t, fabricengine.WeftWorktreePath(f.Layout, slug))
-	if got := weftBareTip(t, f.WeftBare, weftBranch); got != newTip {
+	newTip := gitkit.RevParse(t, fabricengine.WeftWorktreePath(f.Layout, slug), "HEAD")
+	if got := gitkit.RevParse(t, f.WeftBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
 	}
 	requireArchiveCovers(t, f.WeftBare, slug, oldTip)
@@ -315,7 +316,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	oldTip := weftBareTip(t, f.WeftBare, weftBranch)
+	oldTip := gitkit.RevParse(t, f.WeftBare, weftBranch)
 	commitInWeft(t, f, slug, "unpushed.txt")
 	if _, err := topology.Remove(f.Layout, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
@@ -325,8 +326,8 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	if _, err := topology.Add(f.Layout, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
-	newTip := mustGitHeadSHA(t, fabricengine.WeftWorktreePath(f.Layout, slug))
-	if got := weftBareTip(t, f.WeftBare, weftBranch); got != newTip {
+	newTip := gitkit.RevParse(t, fabricengine.WeftWorktreePath(f.Layout, slug), "HEAD")
+	if got := gitkit.RevParse(t, f.WeftBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
 	}
 }
@@ -341,7 +342,7 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	var moved string
 	fabricengine.SetAddBeforeWeftReplaceHookForTest(t, func() {
 		pushCommitToOrigin(t, f.WeftBare, weftBranch)
-		moved = weftBareTip(t, f.WeftBare, weftBranch)
+		moved = gitkit.RevParse(t, f.WeftBare, weftBranch)
 	})
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -358,7 +359,7 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	if moved == "" {
 		t.Fatal("the replace hook never ran; want Add to reach the step-12 replacement")
 	}
-	if got := weftBareTip(t, f.WeftBare, weftBranch); got != moved {
+	if got := gitkit.RevParse(t, f.WeftBare, weftBranch); got != moved {
 		t.Errorf("origin weft branch %q = %q; want the moved tip %q", weftBranch, got, moved)
 	}
 }

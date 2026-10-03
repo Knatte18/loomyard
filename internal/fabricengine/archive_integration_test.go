@@ -16,17 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
-// archiveTipOf returns the full SHA branch points at in the repo at repoRoot.
-func archiveTipOf(t *testing.T, repoRoot, branch string) string {
-	t.Helper()
-
-	out, err := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + branch}, repoRoot)
-	if err != nil {
-		t.Fatalf("rev-parse %s in %s: %v", branch, repoRoot, err)
-	}
-	return strings.TrimSpace(out)
-}
-
 // tagTargetAt returns the SHA the tag names in the repo at repoRoot, or "" when the tag is absent.
 func tagTargetAt(t *testing.T, repoRoot, tag string) string {
 	t.Helper()
@@ -59,7 +48,7 @@ func TestArchiveWeftTip_TagsAndPushesTip(t *testing.T) {
 	l := fixture.Layout
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 
 	rec := fabricengine.NewMutations(l.HubPath)
 	tag, reason, err := fabricengine.ArchiveWeftTipForTest(rec, l, slug, branch)
@@ -95,7 +84,7 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 	l := fixture.Layout
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -125,7 +114,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 	l := fixture.Layout
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -159,7 +148,7 @@ func TestArchiveWeftTip_OriginOnlyBranch(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", branch)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -200,7 +189,7 @@ func TestArchiveWeftTip_ClashingTagErrors(t *testing.T) {
 	l := fixture.Layout
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 
 	other, err := gitexec.Run([]string{"commit-tree", "-m", "unrelated", "HEAD^{tree}"}, weftRoot)
 	if err != nil {

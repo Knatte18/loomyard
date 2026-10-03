@@ -9,9 +9,8 @@
 // guarded verb works again once MergeAbort clears the record.
 //
 // Package fabricengine_test, reusing newMergePairFixture and its sibling helpers (commitOnBranch,
-// setupConflictingDivergence, branchAtCurrentHEAD, currentBranchName) from
-// mergein_integration_test.go, and readBranchForTest from healthreason_integration_test.go; shares
-// the single TestMain in testmain_test.go.
+// setupConflictingDivergence, branchAtCurrentHEAD) from mergein_integration_test.go; shares the
+// single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -65,14 +65,8 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	// The pair's own branches — captured before MergeIn ever runs, since these (not the "feature"/
 	// "feature-weft" merge-source branches) are what Cleanup's existing liveWarpBranches skip
 	// protects, and what every other guarded verb must leave untouched.
-	pairWarpBranch, err := readBranchForTest(t, warpDir)
-	if err != nil {
-		t.Fatalf("readBranchForTest(warp) before MergeIn: %v", err)
-	}
-	pairWeftBranch, err := readBranchForTest(t, weftDir)
-	if err != nil {
-		t.Fatalf("readBranchForTest(weft) before MergeIn: %v", err)
-	}
+	pairWarpBranch := gitkit.CurrentBranch(t, warpDir)
+	pairWeftBranch := gitkit.CurrentBranch(t, weftDir)
 
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
 	branchAtCurrentHEAD(t, weftDir, fabricengine.WeftBranchName("feature"))
@@ -131,11 +125,11 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 		if !errors.As(err, &refused) {
 			t.Fatalf("Checkout() error = %v (%T); want *ErrMergeInProgress", err, err)
 		}
-		if got, err := readBranchForTest(t, warpDir); err != nil || got != pairWarpBranch {
-			t.Errorf("warp branch after refused Checkout = (%q, %v); want unchanged %q", got, err, pairWarpBranch)
+		if got := gitkit.CurrentBranch(t, warpDir); got != pairWarpBranch {
+			t.Errorf("warp branch after refused Checkout = %q; want unchanged %q", got, pairWarpBranch)
 		}
-		if got, err := readBranchForTest(t, weftDir); err != nil || got != pairWeftBranch {
-			t.Errorf("weft branch after refused Checkout = (%q, %v); want unchanged %q", got, err, pairWeftBranch)
+		if got := gitkit.CurrentBranch(t, weftDir); got != pairWeftBranch {
+			t.Errorf("weft branch after refused Checkout = %q; want unchanged %q", got, pairWeftBranch)
 		}
 		assertHEADsUnchanged(t, "Checkout")
 	})
@@ -196,11 +190,11 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 				if _, statErr := os.Stat(weftDir); statErr != nil {
 					t.Errorf("weft worktree %s missing after Cleanup(apply=%v, force=%v): %v", weftDir, tt.apply, tt.force, statErr)
 				}
-				if got, err := readBranchForTest(t, warpDir); err != nil || got != pairWarpBranch {
-					t.Errorf("warp branch after Cleanup(apply=%v, force=%v) = (%q, %v); want unchanged %q", tt.apply, tt.force, got, err, pairWarpBranch)
+				if got := gitkit.CurrentBranch(t, warpDir); got != pairWarpBranch {
+					t.Errorf("warp branch after Cleanup(apply=%v, force=%v) = %q; want unchanged %q", tt.apply, tt.force, got, pairWarpBranch)
 				}
-				if got, err := readBranchForTest(t, weftDir); err != nil || got != pairWeftBranch {
-					t.Errorf("weft branch after Cleanup(apply=%v, force=%v) = (%q, %v); want unchanged %q", tt.apply, tt.force, got, err, pairWeftBranch)
+				if got := gitkit.CurrentBranch(t, weftDir); got != pairWeftBranch {
+					t.Errorf("weft branch after Cleanup(apply=%v, force=%v) = %q; want unchanged %q", tt.apply, tt.force, got, pairWeftBranch)
 				}
 				if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || !exists {
 					t.Errorf("MergeRecordExistsForTest() after Cleanup(apply=%v, force=%v) = (%v, %v); want (true, nil)", tt.apply, tt.force, exists, err)

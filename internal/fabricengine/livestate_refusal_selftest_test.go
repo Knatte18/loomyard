@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -118,7 +119,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	}
 	mustGit(warpTarget, "add", "dirt.txt")
 	mustGit(warpTarget, "commit", "-m", "livestate: seed tracked file for dirtiness refusal")
-	head := mustGitHeadSHA(t, warpTarget)
+	head := gitkit.RevParse(t, warpTarget, "HEAD")
 	if err := os.WriteFile(trackedFile, []byte("v2\n"), 0o644); err != nil {
 		t.Fatalf("modify %s: %v", trackedFile, err)
 	}

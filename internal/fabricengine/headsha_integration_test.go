@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestFabricHeadSHA_TracksWorktreeHead asserts HeadSHA equals git rev-parse HEAD of the task worktree
@@ -26,7 +27,7 @@ func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HeadSHA (before): %v", err)
 	}
-	if want := currentSHAOf(t, dir); before != want {
+	if want := gitkit.RevParse(t, dir, "HEAD"); before != want {
 		t.Errorf("HeadSHA before commit = %q; want %q", before, want)
 	}
 

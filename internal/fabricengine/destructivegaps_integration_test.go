@@ -566,7 +566,7 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, wef
 		if !strings.Contains(err.Error(), wantSubstring) {
 			t.Errorf("DeleteBranchForTest(%q, force=%v) error = %q; want it to contain %q", branch, force, err, wantSubstring)
 		}
-		if !branchExistsAt(t, weftRoot, branch) {
+		if !gitkit.BranchExists(t, weftRoot, branch) {
 			t.Fatalf("DeleteBranchForTest(%q, force=%v) deleted a branch the gate should have refused", branch, force)
 		}
 	}
@@ -627,7 +627,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		if err != nil {
 			t.Fatalf("DeleteBranchForTest(%q) = err %v; want a clean deletion", orphan, err)
 		}
-		if branchExistsAt(t, weftRoot, orphan) {
+		if gitkit.BranchExists(t, weftRoot, orphan) {
 			t.Errorf("branch %q still exists after an accepted deletion", orphan)
 		}
 	})
@@ -660,7 +660,7 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 		t.Fatalf("Add should have failed (broken origin remote)")
 	}
 
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
 	}
 }

@@ -12,11 +12,9 @@
 package fabricengine_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
@@ -70,17 +68,6 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	}
 }
 
-// weftBareTip returns the SHA of branch on the weft bare, or "" when absent.
-func weftBareTip(t *testing.T, weftBare, branch string) string {
-	t.Helper()
-
-	out, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftBare)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(out)
-}
-
 // archivedDeleteFixture builds a hub with a pushed pair and returns the hub, its weft repo root, the pair's weft branch and the branch's tip on origin.
 func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, string, string) {
 	t.Helper()
@@ -92,7 +79,7 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 		t.Fatalf("WeftRepoRoot: %v", err)
 	}
 	branch := fabricengine.WeftBranchName(slug)
-	tip := weftBareTip(t, h.WeftBare, branch)
+	tip := gitkit.RevParse(t, h.WeftBare, branch)
 	if tip == "" {
 		t.Fatalf("weft branch %s is not on origin after Add", branch)
 	}
@@ -111,8 +98,8 @@ func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteArchivedWeftBranchForTest error = %v; want nil", err)
 	}
-	if got := weftBareTip(t, h.WeftBare, branch); got != "" {
-		t.Errorf("origin still has %s at %s; want it deleted", branch, got)
+	if gitkit.BranchExists(t, h.WeftBare, branch) {
+		t.Errorf("origin still has %s at %s; want it deleted", branch, gitkit.RevParse(t, h.WeftBare, branch))
 	}
 	entries := rec.Entries()
 	if len(entries) != 1 || entries[0].Kind != fabricengine.KindRemoteBranchDeleted {
@@ -126,14 +113,15 @@ func TestDeleteArchivedWeftBranch_PrimaryRefused(t *testing.T) {
 
 	h, weftRoot, _, _ := archivedDeleteFixture(t, "archprimary")
 	primary := fabricengine.WeftBranchName("main")
-	tip := weftBareTip(t, h.WeftBare, primary)
+	tip := gitkit.RevParse(t, weftRoot, primary)
+	onOriginBefore := gitkit.BranchExists(t, h.WeftBare, primary)
 
 	_, err := fabricengine.DeleteArchivedWeftBranchForTest(h.Location, weftRoot, "main", primary, "archive/main/x", tip)
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
 		t.Fatalf("error = %v; want a CheckOwnership refusal", err)
 	}
-	if got := weftBareTip(t, h.WeftBare, primary); got != tip {
-		t.Errorf("origin primary = %q; want unchanged %q", got, tip)
+	if onOrigin := gitkit.BranchExists(t, h.WeftBare, primary); onOrigin != onOriginBefore {
+		t.Errorf("origin primary present = %v; want unchanged %v", onOrigin, onOriginBefore)
 	}
 }
 
@@ -148,7 +136,7 @@ func TestDeleteArchivedWeftBranch_EmptyArchiveTagRefused(t *testing.T) {
 	if !RefusedByGate(err, fabricengine.CheckDirtiness) {
 		t.Fatalf("error = %v; want a CheckDirtiness refusal", err)
 	}
-	if got := weftBareTip(t, h.WeftBare, branch); got != tip {
+	if got := gitkit.RevParse(t, h.WeftBare, branch); got != tip {
 		t.Errorf("origin %s = %q; want unchanged %q", branch, got, tip)
 	}
 }
@@ -164,7 +152,7 @@ func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
 	if !RefusedByGate(err, fabricengine.CheckDirtiness) {
 		t.Fatalf("error = %v; want a CheckDirtiness refusal", err)
 	}
-	if got := weftBareTip(t, h.WeftBare, branch); got != tip {
+	if got := gitkit.RevParse(t, h.WeftBare, branch); got != tip {
 		t.Errorf("origin %s = %q; want unchanged %q", branch, got, tip)
 	}
 }
@@ -181,7 +169,7 @@ func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {
 	clone := other + "/clone"
 	gitkit.MustRun(t, clone, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "advance")
 	gitkit.MustRun(t, clone, "git", "push", "origin", branch)
-	advanced := weftBareTip(t, h.WeftBare, branch)
+	advanced := gitkit.RevParse(t, h.WeftBare, branch)
 	if advanced == staleTip {
 		t.Fatal("origin did not advance")
 	}
@@ -196,7 +184,7 @@ func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {
 	if rec.Len() != 0 {
 		t.Errorf("record = %+v; want empty", rec.Entries())
 	}
-	if got := weftBareTip(t, h.WeftBare, branch); got != advanced {
+	if got := gitkit.RevParse(t, h.WeftBare, branch); got != advanced {
 		t.Errorf("origin %s = %q; want the advanced tip %q", branch, got, advanced)
 	}
 }

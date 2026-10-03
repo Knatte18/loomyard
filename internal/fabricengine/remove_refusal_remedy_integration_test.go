@@ -120,10 +120,10 @@ func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
 			t.Errorf("%s missing after a refused Remove: %v", p, err)
 		}
 	}
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a refused Remove")
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(slug)) {
 		t.Errorf("weft branch gone after a refused Remove")
 	}
 }

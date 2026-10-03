@@ -82,7 +82,7 @@ func gitMergeAllowConflict(t *testing.T, dir, ref string) {
 func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
-	original := currentBranchName(t, dir)
+	original := gitkit.CurrentBranch(t, dir)
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "--detach", "HEAD")
 	commitOnCurrentBranch(t, dir, filename, content, msg)
 	gitkit.MustRun(t, dir, "git", "push", "origin", "HEAD:refs/heads/"+branch)
@@ -336,7 +336,7 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 	pushDetachedContentAsRemoteBranch(t, h.PrimeWorktree(), "feature", "remote-only.txt", "remote only content\n", "warp: remote-only feature")
 	pushDetachedContentAsRemoteBranch(t, h.PrimeWeft(), "feature-weft", "remote-only-weft.txt", "remote only weft content\n", "weft: remote-only feature")
 
-	if branchExistsLocally(t, h.PrimeWorktree(), "feature") {
+	if gitkit.BranchExists(t, h.PrimeWorktree(), "feature") {
 		t.Fatal("test setup produced a local \"feature\" ref; want remote-only")
 	}
 
@@ -587,31 +587,6 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	}
 }
 
-// resolveSHAForTest resolves ref to a full SHA in dir via plain git — the independent read a test
-// uses to name a commit fabric itself resolved, rather than trusting fabric's own answer.
-func resolveSHAForTest(t *testing.T, dir, ref string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", ref)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse %s in %s: %v", ref, dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// isAncestorForTest reports whether ancestor is reachable from descendant in dir, via plain
-// `git merge-base --is-ancestor` — how a test proves a merge source really did (or really did not)
-// get merged.
-func isAncestorForTest(t *testing.T, dir, ancestor, descendant string) bool {
-	t.Helper()
-
-	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancestor, descendant)
-	cmd.Dir = dir
-	return cmd.Run() == nil
-}
-
 // abortMergeAndLandUnrelatedCommit reproduces the adversarial shape MergeContinue's adoption arm
 // must refuse: an operator discards the in-progress git merge with plain `git merge --abort` and
 // then lands one commit of their own, while fabric's merge record is still live and still says this
@@ -651,7 +626,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 		t.Fatalf("MergeIn(feature).Conflicts = %v; want the warp-side conflict — the scenario needs a real conclude pending", res.Conflicts)
 	}
 
-	sourceWarpSHA := resolveSHAForTest(t, h.PrimeWorktree(), "feature")
+	sourceWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "feature")
 	unrelatedWarpSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWorktree(), "warp-unrelated.txt")
 
 	// Precondition, asserted rather than assumed: the record must still be live and must still show
@@ -686,7 +661,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
 		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil) — the record is the operator's only remaining handle on this merge", exists, err)
 	}
-	if isAncestorForTest(t, h.PrimeWorktree(), sourceWarpSHA, unrelatedWarpSHA) {
+	if gitkit.IsAncestor(t, h.PrimeWorktree(), sourceWarpSHA, unrelatedWarpSHA) {
 		t.Fatalf("feature (%q) is an ancestor of the unrelated commit (%q); the fixture did not actually leave the source un-merged", sourceWarpSHA, unrelatedWarpSHA)
 	}
 }
@@ -776,7 +751,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	// A decoy branch off the current warp HEAD with one non-conflicting commit, so a plain merge of
 	// it onto the recorded start auto-concludes into a two-parent commit.
 	commitOnBranch(t, h.PrimeWorktree(), "decoy", "decoy.txt", "nothing to do with feature\n", "decoy commit")
-	decoySHA := resolveSHAForTest(t, h.PrimeWorktree(), "decoy")
+	decoySHA := gitkit.RevParse(t, h.PrimeWorktree(), "decoy")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -833,13 +808,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 func rootCommitForTest(t *testing.T, dir string) string {
 	t.Helper()
 
-	cmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-list --max-parents=0 HEAD in %s: %v", dir, err)
-	}
-	lines := strings.Fields(string(out))
+	lines := strings.Fields(gitkit.Git(t, dir, "rev-list", "--max-parents=0", "HEAD"))
 	if len(lines) == 0 {
 		t.Fatalf("git rev-list --max-parents=0 HEAD in %s returned nothing", dir)
 	}
@@ -866,7 +835,7 @@ func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T
 	// a redundant parent and build a two-parent commit instead of the octopus this test needs.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
-	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
 	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
 	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
@@ -1001,7 +970,7 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 
 	// The operator discards fabric's staged merge and starts an unrelated one, leaving it uncommitted.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
-	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "other", st.WarpStart)
 	commitOnCurrentBranch(t, h.PrimeWorktree(), "other.txt", "work that has nothing to do with feature\n", "other: unrelated work")
 	otherSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
@@ -1048,7 +1017,7 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--abort")
 	decoyBase := rootCommitForTest(t, h.PrimeWorktree())
-	warpBranch := currentBranchName(t, h.PrimeWorktree())
+	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "-b", "decoy", decoyBase)
 	commitOnCurrentBranch(t, h.PrimeWorktree(), "decoy.txt", "content nobody asked this merge for\n", "decoy: unrelated work")
 	decoySHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
@@ -1318,7 +1287,7 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	if mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
 		t.Error("weft checkout still carries a live MERGE_HEAD after MergeContinue returned without error")
 	}
-	if !isAncestorForTest(t, h.PrimeWorktree(), st.WarpSource, fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())) {
+	if !gitkit.IsAncestor(t, h.PrimeWorktree(), st.WarpSource, fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())) {
 		t.Errorf("recorded source %q is not an ancestor of warp HEAD; the merge did not actually land", st.WarpSource)
 	}
 	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || exists {

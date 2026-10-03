@@ -34,7 +34,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -91,7 +90,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	if info, err := os.Stat(weftPath); err != nil || !info.IsDir() {
 		t.Fatalf("weft worktree not recreated at %s: %v", weftPath, err)
 	}
-	if got, want := currentBranchOf(t, weftPath), fabricengine.WeftBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, weftPath), fabricengine.WeftBranchName(slug); got != want {
 		t.Errorf("recreated weft worktree branch = %q; want %q", got, want)
 	}
 }
@@ -184,32 +183,6 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
-}
-
-// currentBranchOf returns the branch currently checked out at dir via
-// git rev-parse --abbrev-ref HEAD, failing the test on any git error. Shared
-// by every regression guard in this file plus checkout_rollback_test.go and
-// checkout_index_refresh_test.go, which reference it across the shared
-// fabricengine_test package.
-func currentBranchOf(t *testing.T, dir string) string {
-	t.Helper()
-
-	out, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("rev-parse --abbrev-ref HEAD in %s: err=%v exit=%d", dir, err, exitCode)
-	}
-	return strings.TrimSpace(out)
-}
-
-// branchExistsAt reports whether branch exists as a local ref in the repo at repoRoot.
-func branchExistsAt(t *testing.T, repoRoot, branch string) bool {
-	t.Helper()
-
-	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, repoRoot)
-	if err != nil {
-		t.Fatalf("rev-parse --verify refs/heads/%s in %s: %v", branch, repoRoot, err)
-	}
-	return exitCode == 0
 }
 
 // findPruneEntryByWeftPath returns the fabricengine.PruneEntry matching
@@ -418,7 +391,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 			t.Errorf("Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
 		}
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), mainWeft) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), mainWeft) {
 		t.Errorf("main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 	}
 }
@@ -448,7 +421,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	if entry.Deleted {
 		t.Errorf("Deleted = true for non-suffixed branch %q; want false even under force", warpManagedBranch)
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
 		t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 	}
 }
@@ -500,7 +473,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	if forcedEntry.Error != "" {
 		t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
 	}
 }
@@ -658,7 +631,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	if !appliedEntry.Deleted {
 		t.Fatalf("--apply did not delete %q without --force; want it deleted (no fold-back gate protects an orphan)", orphan)
 	}
-	if branchExistsAt(t, weftRepoRoot, orphan) {
+	if gitkit.BranchExists(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists in the weft repo after --apply; want deleted", orphan)
 	}
 }
@@ -722,10 +695,10 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 			}
 		}
 	}
-	if branchExistsAt(t, weftRepoRoot, orphan) {
+	if gitkit.BranchExists(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists after Cleanup(apply, force=true); want deleted", orphan)
 	}
-	if !branchExistsAt(t, weftRepoRoot, unmanaged) {
+	if !gitkit.BranchExists(t, weftRepoRoot, unmanaged) {
 		t.Errorf("unmanaged branch %q was deleted by Cleanup(apply, force=true); want it to survive", unmanaged)
 	}
 }

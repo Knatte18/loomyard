@@ -77,34 +77,6 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	}
 }
 
-// readExcludeLines resolves and reads the warp worktree's .git/info/exclude
-// file, mirroring the resolution logic seedGitExclude/unseedGitExclude use
-// (git rev-parse --git-path info/exclude, joined with the worktree path if
-// relative) so this test observes the same path the production code writes.
-func readExcludeLines(t *testing.T, l *lyxcwd.Location, slug string) []string {
-	t.Helper()
-
-	worktreePath := fabricengine.WorktreePath(l, slug)
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("git rev-parse --git-path info/exclude failed: %v (exit %d)", err, exitCode)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		t.Fatalf("read exclude file: %v", err)
-	}
-	return strings.Split(string(content), "\n")
-}
-
 // TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression guard: seedLyxJunction
 // must create the weft-side target directory when it is missing (the
 // checkout/reconcile-left-dangling shape), leaving a junction that resolves immediately, and a
@@ -220,7 +192,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	}
 	for _, name := range []string{lyxdirs.LyxDirName, "_extra"} {
 		pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, name)
-		if lines := readExcludeLines(t, l, slug); !containsLine(lines, pattern) {
+		if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, pattern) {
 			t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern, lines)
 		}
 	}
@@ -245,10 +217,10 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if _, statErr := os.Lstat(extraLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", extraLink)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, lyxdirs.LyxDirName) {
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, lyxdirs.LyxDirName) {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lyxdirs.LyxDirName, lines)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, "_extra") {
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, "_extra") {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", "_extra", lines)
 	}
 }
@@ -771,7 +743,7 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	lines := readExcludeLines(t, l, slug)
+	lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
 	pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lyxdirs.LyxDirName)
 	if !containsLine(lines, pattern) {
 		t.Errorf(".git/info/exclude = %v; want it to contain the anchored pattern %q", lines, pattern)
@@ -806,11 +778,7 @@ func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 func excludeFilePath(t *testing.T, l *lyxcwd.Location, slug string) string {
 	t.Helper()
 	worktreePath := fabricengine.WorktreePath(l, slug)
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("resolve exclude path: err=%v exit=%d stderr=%s", err, exitCode, stderr)
-	}
-	excludePath := strings.TrimSpace(stdout)
+	excludePath := gitkit.Git(t, worktreePath, "rev-parse", "--git-path", "info/exclude")
 	if !filepath.IsAbs(excludePath) {
 		excludePath = filepath.Join(worktreePath, excludePath)
 	}
