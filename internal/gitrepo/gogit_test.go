@@ -21,8 +21,6 @@
 package gitrepo
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/gitrepo/internal/gitoracle"
 )
 
 // forceGoGitFinalizersOnCleanup forces the garbage collector to run,
@@ -333,98 +332,6 @@ func TestGoGit_OpenHandleDoesNotBlockWorktreeRemove(t *testing.T) {
 	runtime.KeepAlive(handle)
 }
 
-// errOracleNoCommits is the oracle's own "no commits yet" sentinel, local to
-// this package for the same package-boundary reason as this file's other
-// duplicated oracle helpers — it is never compared for identity against
-// oracle_test.go's identically-named sentinel, since the two are never used
-// in the same comparison.
-var errOracleNoCommits = errors.New("oracle: repository has no commits")
-
-// oracleCurrentSHA reimplements CurrentSHA directly on `git rev-parse HEAD`.
-// Duplicated from oracle_test.go's identically-named function rather than
-// imported, because that one lives in package gitrepo_test (a different Go
-// package, structurally unreachable from this file's package gitrepo) — the
-// same package-boundary reason this file builds its own linked-worktree
-// fixtures rather than a gitrepo_test one.
-func oracleCurrentSHA(t *testing.T, dir string) (string, error) {
-	t.Helper()
-
-	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "HEAD"}, dir)
-	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		if strings.Contains(stderr, "ambiguous argument 'HEAD'") || strings.Contains(stderr, "unknown revision") {
-			return "", errOracleNoCommits
-		}
-		return "", fmt.Errorf("oracle: git rev-parse HEAD: %s", stderr)
-	}
-	return strings.TrimSpace(stdout), nil
-}
-
-// oracleCurrentBranch reimplements CurrentBranch directly on
-// `git symbolic-ref --short HEAD`. Duplicated from oracle_test.go for the
-// same package-boundary reason as oracleCurrentSHA above.
-func oracleCurrentBranch(t *testing.T, dir string) (string, error) {
-	t.Helper()
-
-	stdout, stderr, code, err := gitexec.RunGit([]string{"symbolic-ref", "--short", "HEAD"}, dir)
-	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		return "", fmt.Errorf("oracle: git symbolic-ref --short HEAD: %s", stderr)
-	}
-	return strings.TrimSpace(stdout), nil
-}
-
-// oracleSHAExists reimplements SHAExists directly on
-// `git rev-parse --verify --quiet <sha>^{commit}`. Duplicated from
-// oracle_test.go for the same package-boundary reason as oracleCurrentSHA
-// above.
-func oracleSHAExists(t *testing.T, dir, sha string) bool {
-	t.Helper()
-
-	_, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", sha + "^{commit}"}, dir)
-	if err != nil {
-		t.Fatalf("oracle: git rev-parse --verify --quiet %s^{commit} spawn error = %v", sha, err)
-	}
-	switch code {
-	case 0:
-		return true
-	case 1:
-		return false
-	default:
-		t.Fatalf("oracle: git rev-parse --verify --quiet %s^{commit} exited %d: %s", sha, code, stderr)
-		return false
-	}
-}
-
-// oracleChangedFilesSince reimplements ChangedFilesSince directly on
-// `git diff --name-only -z --no-renames <sha>..HEAD`. Duplicated from
-// oracle_test.go for the same package-boundary reason as oracleCurrentSHA
-// above.
-func oracleChangedFilesSince(t *testing.T, dir, sha string) ([]string, error) {
-	t.Helper()
-
-	stdout, stderr, code, err := gitexec.RunGit([]string{"diff", "--name-only", "-z", "--no-renames", sha + "..HEAD"}, dir)
-	if err != nil {
-		return nil, err
-	}
-	if code != 0 {
-		return nil, fmt.Errorf("oracle: git diff --name-only -z --no-renames %s..HEAD: %s", sha, stderr)
-	}
-
-	var files []string
-	for _, path := range strings.Split(stdout, "\x00") {
-		if path == "" {
-			continue
-		}
-		files = append(files, path)
-	}
-	return files, nil
-}
-
 // containsString reports whether haystack contains needle, used to assert a
 // specific path is present in a ChangedFilesSince result without depending on
 // list order.
@@ -521,7 +428,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	repo := New(dir)
 
 	t.Run("CurrentSHA", func(t *testing.T) {
-		oracleGot, oracleErr := oracleCurrentSHA(t, dir)
+		oracleGot, oracleErr := gitoracle.CurrentSHA(t, dir)
 		if oracleErr != nil {
 			t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
 		}
@@ -538,7 +445,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	})
 
 	t.Run("CurrentBranch_OnBranch", func(t *testing.T) {
-		oracleGot, oracleErr := oracleCurrentBranch(t, dir)
+		oracleGot, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
 			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
 		}
@@ -555,7 +462,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	})
 
 	t.Run("SHAExists", func(t *testing.T) {
-		oracleGot := oracleSHAExists(t, dir, fx.sharedSHA)
+		oracleGot := gitoracle.SHAExists(t, dir, fx.sharedSHA)
 		implGot := repo.SHAExists(fx.sharedSHA)
 		if oracleGot != implGot {
 			t.Errorf("SHAExists() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
@@ -566,7 +473,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	})
 
 	t.Run("ChangedFilesSince", func(t *testing.T) {
-		oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, fx.sharedSHA)
+		oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, fx.sharedSHA)
 		if oracleErr != nil {
 			t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
 		}
@@ -621,7 +528,7 @@ func TestLinkedWorktree_Parity(t *testing.T) {
 		repo := New(fx.linkedDir)
 		gitkit.MustRun(t, fx.linkedDir, "git", "checkout", "--detach", fx.linkedSHA)
 
-		_, oracleErr := oracleCurrentBranch(t, fx.linkedDir)
+		_, oracleErr := gitoracle.CurrentBranch(t, fx.linkedDir)
 		_, implErr := repo.CurrentBranch()
 		if (oracleErr == nil) != (implErr == nil) {
 			t.Errorf("CurrentBranch() parity mismatch on detached linked-worktree HEAD: oracle err = %v; gitrepo err = %v", oracleErr, implErr)

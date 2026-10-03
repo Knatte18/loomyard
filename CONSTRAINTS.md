@@ -473,6 +473,8 @@ All GitHub authentication goes through `internal/githubclient`; no other product
 
 `internal/gitrepo` splits local-vs-remote by client: go-git owns local reads; `gitexec` owns anything remote-authenticating or working-tree-mutating.
 
+- The parity oracle `internal/gitrepo/internal/gitoracle` imports only stdlib and `gitexec`, never `gitrepo`, enforced by its leaf test.
+
 ## gitexec Checked-Call Invariant
 
 `gitexec.Run`/`runChecked` is the default entry point; the raw forms (`gitexec.RunGit`/`r.run`) survive only at pinned, `//gitexec:raw`-marked call sites.
