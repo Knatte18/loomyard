@@ -47,11 +47,8 @@ func writeRoundPair(t *testing.T, runDir string, n int) {
 	writeRoundFile(t, roundFixerReportPath(runDir, n))
 }
 
-// writeJudgedRound writes round n's own two files plus the CONTINUE verdict and ledger the
-// segment's Bouncer writes when it rejects that round -- the complete on-disk state of a round the
-// producer may advance past.
-// The verdict is CONTINUE rather than CONVERGED because a CONVERGED round is one the segment left on
-// a Done, never one the round producer is called after.
+// writeJudgedRound writes round n's own two files plus the CONTINUE verdict and ledger the segment's Bouncer writes when it rejects that round -- the complete on-disk state of a round the producer may advance past.
+// The verdict is CONTINUE rather than CONVERGED because a CONVERGED round is one the segment left on a Done, never one the round producer is called after.
 func writeJudgedRound(t *testing.T, runDir string, n int) {
 	t.Helper()
 	writeRoundPair(t, runDir, n)
