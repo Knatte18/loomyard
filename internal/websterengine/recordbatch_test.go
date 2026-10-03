@@ -1034,7 +1034,7 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 }
 
 // TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a repeated record-batch on a done batch never attributes another fork's unseen transcript to it:
-// while a later fork batch of the same session is open, or once the integration report exists, the call refuses as already terminal and consumes nothing.
+// while a later fork batch of the same session is open, or once the verify-gate report exists, the call refuses as already terminal and consumes nothing.
 func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1043,9 +1043,9 @@ func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 		{"later batch open", func(t *testing.T, fx *recordFixture) {
 			fx.Deps.State.Batches[2] = &websterengine.BatchState{Slug: "later", Kind: "fork", SessionID: "session-1"}
 		}},
-		{"integration report present", func(t *testing.T, fx *recordFixture) {
-			if err := os.WriteFile(websterengine.IntegrationReportPath(fx.ReportsDir), []byte("status: OK\n"), 0o644); err != nil {
-				t.Fatalf("write integration report: %v", err)
+		{"verify-gate report present", func(t *testing.T, fx *recordFixture) {
+			if err := os.WriteFile(websterengine.VerifyGateReportPath(fx.ReportsDir), []byte("attempt: 1\ncap: 3\n"), 0o644); err != nil {
+				t.Fatalf("write verify-gate report: %v", err)
 			}
 		}},
 	}

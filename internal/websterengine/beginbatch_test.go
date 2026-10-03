@@ -997,3 +997,27 @@ func TestBeginBatch_WayForward_ReportExistsIsRecorded(t *testing.T) {
 		t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
 	}
 }
+
+// TestBeginBatch_PromptFileCarriesCardGateCommand proves begin-batch renders each card's Go-derived gate command into the fork's prompt file.
+func TestBeginBatch_PromptFileCarriesCardGateCommand(t *testing.T) {
+	fx := newBeginFixture(t)
+	if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	fx.Deps.Batches[0].Cards[0].TargetGroups = []planparser.TargetGroup{
+		{Type: planparser.CardTypeEdit, Refs: []string{"internal/alpha/alpha.go#"}},
+	}
+
+	result, err := websterengine.BeginBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("BeginBatch() error = %v; want nil", err)
+	}
+	data, err := os.ReadFile(result.PromptPath)
+	if err != nil {
+		t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
+	}
+	want := "`go build ./... && go test ./... && go test -tags integration ./internal/alpha`"
+	if !strings.Contains(string(data), want) {
+		t.Errorf("prompt file does not carry the card's gate command %s; got:\n%s", want, data)
+	}
+}

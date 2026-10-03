@@ -29,6 +29,11 @@
 // # Caller policies
 //
 // `fabric remove` passes RemoveQuietWait with Request.RefuseWhenBusy: a driver still busy when the bound is spent is never ended, and EndSession returns ErrDriverBusy.
+// The bound keeps the operator path from killing a working driver without letting an unbounded wait hang the hub's land step; `--force` answers dirtiness only, never the wait.
 // Batten passes a zero wait without RefuseWhenBusy, since it already waited its own driver exit grace: a driver still busy is ended anyway, and SessionResult.DriverWasLive reports it.
 // A parked driver is ended without refusal, since its park command already committed its records.
+//
+// ErrPairNotFound is the done post-condition of both phases: the refusal probe raises it once nothing of the pair remains, and so does RemovePair.
+// A teardown re-entered after a completed removal therefore reports done instead of halting at session shutdown,
+// and one re-entered after an interruption relies on Remove finishing a half-removed pair instead of refusing it.
 package pairteardown

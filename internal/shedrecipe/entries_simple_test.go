@@ -236,7 +236,7 @@ func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
 
 // TestWebsterEntry_SeamFields covers websterEntry's four required WebsterDeps seams beyond the
 // shared under-filled-Env table: each nil in turn fails naming that field, and a WebsterDeps with
-// Batcher, Clock, and OpenBisector all nil (newTestEnv's own default) still constructs successfully.
+// Batcher nil (newTestEnv's own default) still constructs successfully.
 func TestWebsterEntry_SeamFields(t *testing.T) {
 	seamFields := []string{"WebsterDeps.Starter", "WebsterDeps.Reed", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"}
 	for _, field := range seamFields {
@@ -252,16 +252,10 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 		})
 	}
 
-	t.Run("BatcherClockOpenBisectorAllNil", func(t *testing.T) {
+	t.Run("BatcherNil", func(t *testing.T) {
 		env := newTestEnv(t)
 		if env.WebsterDeps.Batcher != nil {
 			t.Fatalf("newTestEnv(t).WebsterDeps.Batcher = %v; want nil by default", env.WebsterDeps.Batcher)
-		}
-		if env.WebsterDeps.Clock != nil {
-			t.Fatalf("newTestEnv(t).WebsterDeps.Clock = %v; want nil by default", env.WebsterDeps.Clock)
-		}
-		if env.WebsterDeps.OpenBisector != nil {
-			t.Fatalf("newTestEnv(t).WebsterDeps.OpenBisector is non-nil; want nil by default")
 		}
 		producer, err := websterEntry("Webster", Config{}, env)
 		if err != nil {

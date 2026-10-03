@@ -1317,3 +1317,53 @@ func TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes(t *testing.T
 		})
 	}
 }
+
+// TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand proves the default wait budget outlasts recovery_timeout_min:
+// a strand that never reports classifies dead/timeout inside one call, so the call returns a terminal digest and never a running snapshot.
+func TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand(t *testing.T) {
+	fx := newRecoverFixture(t)
+	fx.Deps.Config.RecoveryTimeoutMin = 1
+	budget := websterengine.RecoveryWaitBudget(fx.Deps.Config)
+	if budget <= time.Duration(fx.Deps.Config.RecoveryTimeoutMin)*time.Minute {
+		t.Fatalf("RecoveryWaitBudget() = %v; want more than recovery_timeout_min", budget)
+	}
+
+	result, err := driveRecoverBatch(fx.Deps, 1, budget, &recoverFakeClock{now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("driveRecoverBatch() error = %v; want nil", err)
+	}
+	if result.Running || result.Digest == nil {
+		t.Fatalf("result = %+v; want a terminal digest, never a running snapshot", result)
+	}
+	if result.Digest.Status != websterengine.DigestStatusDead || result.Digest.DeadReason != websterengine.DeadReasonTimeout {
+		t.Errorf("Digest = %+v; want dead/%s", result.Digest, websterengine.DeadReasonTimeout)
+	}
+}
+
+// TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout proves a report landing before the timeout ends the call at that terminal digest, without waiting out the budget.
+func TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	first, err := driveRecoverBatch(fx.Deps, 1, time.Nanosecond, clk)
+	if err != nil || !first.Running {
+		t.Fatalf("first call = %+v, %v; want a running spawn", first, err)
+	}
+	realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
+
+	before := clk.now
+	second, err := driveRecoverBatch(fx.Deps, 1, websterengine.RecoveryWaitBudget(fx.Deps.Config), clk)
+	if err != nil {
+		t.Fatalf("second call error = %v; want nil", err)
+	}
+	if second.Running || second.Digest == nil || second.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("second call = %+v; want a done digest", second)
+	}
+	if clk.now.Sub(before) >= time.Minute {
+		t.Errorf("call advanced the clock by %v; want it to return at the report, not wait out the budget", clk.now.Sub(before))
+	}
+}

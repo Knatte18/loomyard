@@ -38,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -110,10 +109,8 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 // new-file path (so path-missing never fires — a Create group's targets stay
 // exempt from on-disk existence checking exactly as Creates: entries were).
 // The overview carries NO plan-level "## verify:" section — deliberately,
-// so ShouldRunIntegration(plan) is false and the integration stage
-// (runlevel.go's runIntegrationStage) stays a no-op for every fixture built
-// on this helper; the dedicated integration-stage tests (integration_test.go)
-// instead call appendIntegrationVerify against an already-seeded plan dir.
+// so the verify gate passes without running anything for every fixture built on this helper;
+// a test that needs one calls appendIntegrationVerify against an already-seeded plan dir.
 // numCards == 0 yields a "## Card Index" section with no entries at all,
 // which ParsePlan's own parseCardIndex refuses loud ("no card index entries
 // found") — the vehicle for the zero-batch refusal test, which under the
@@ -214,7 +211,6 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		t.Fatalf("batcher.Select(\"\") error = %v", err)
 	}
 
-	bisectRepo := gitrepo.New(worktree)
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
@@ -223,13 +219,14 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		Roles:      roles,
 		Batcher:    activeBatcher,
 		Config: websterengine.Config{
-			SelfFixCap:       2,
-			MasterTimeoutMin: 480,
-			PollWaitS:        480,
+			SelfFixCap:         2,
+			MasterTimeoutMin:   480,
+			VerifyGateAttempts: 3,
 		},
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
+			VerifyDir:    t.TempDir(),
 			WebsterDir:   t.TempDir(),
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),
@@ -237,16 +234,30 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			PlanDir:      planDir,
 		},
-		RefMatcher:   websterengine.NeverMatches{},
-		OpenBisector: func() (websterengine.FabricBisector, error) { return bisectRepo, nil },
+		RefMatcher: websterengine.NeverMatches{},
 	}
 
 	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
 }
 
+// appendIntegrationVerify appends a plan-level "## verify:" section to the overview of the already-seeded plan dir at planDir,
+// so a fixture built without one can exercise the plan-level verify gate.
+func appendIntegrationVerify(t *testing.T, planDir, verify string) {
+	t.Helper()
+	path := filepath.Join(planDir, "00-overview.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read overview fixture: %v", err)
+	}
+	data = append(data, []byte("\n## verify:\n\n"+verify+"\n")...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write overview fixture with verify: %v", err)
+	}
+}
+
 // addCardUses rewrites an already-seeded card file under planDir — one of seedRunPlanDir's own
 // "%02d-batch%d.md" files — to carry a "**Uses:**" field naming ref, modelled on
-// integration_test.go's own appendIntegrationVerify: read the file, splice the field in, write it
+// appendIntegrationVerify: read the file, splice the field in, write it
 // back. Inserted ahead of the card's own "**Intent:**" line, which every seedRunPlanDir card
 // carries.
 // A path-shaped ref this points at another card's Create target is already satisfied by
@@ -598,62 +609,8 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 }
 
-// TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand proves a state recording a live integration-fix strand has it removed at Run entry.
-func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
-	fx := newRunFixture(t, 1)
-
-	seedMatchingState(t, fx, &websterengine.State{
-		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-	})
-	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
-	fx.Starter.startErr = fmt.Errorf("stop before spawn")
-
-	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
-		t.Fatalf("Run() error = nil; want the scripted starter error")
-	}
-
-	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.RemovedGUIDs)
-	}
-}
-
-// TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
-func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
-	cases := []struct {
-		name    string
-		fix     *websterengine.IntegrationFixState
-		strands []reedengine.StrandStatus
-	}{
-		{
-			name:    "dead strand",
-			fix:     &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-			strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}},
-		},
-		{
-			name: "empty guid",
-			fix:  &websterengine.IntegrationFixState{PreFixHead: "abc"},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			fx := newRunFixture(t, 1)
-			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
-			fx.Reed.Strands = tc.strands
-			fx.Starter.startErr = fmt.Errorf("stop before spawn")
-
-			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
-				t.Fatalf("Run() error = nil; want the scripted starter error")
-			}
-
-			if len(fx.Reed.RemovedGUIDs) != 0 {
-				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
-			}
-		})
-	}
-}
-
-// TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing proves a state without the record behaves as before.
-func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testing.T) {
+// TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing proves a state recording no strand removes nothing.
+func TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{})
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
@@ -734,6 +691,30 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 	}
 	if st.MasterSessionID != "master-session-x" {
 		t.Errorf("State.MasterSessionID = %q; want %q", st.MasterSessionID, "master-session-x")
+	}
+}
+
+// TestRun_MasterSpecCarriesWebsterStrandRole proves Merriam spawns under the strand role `webster`
+// while the model still resolves from RoleMaster.
+func TestRun_MasterSpecCarriesWebsterStrandRole(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-role", waitErr: fmt.Errorf("stop after spawn")}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-role", "master-session-role")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted wait error")
+	}
+
+	if len(fx.Starter.startCalls) != 1 {
+		t.Fatalf("StartMaster calls = %d; want 1", len(fx.Starter.startCalls))
+	}
+	spec := fx.Starter.startCalls[0]
+	if spec.Role != websterengine.MerriamStrandRole || spec.Role == string(websterengine.RoleMaster) {
+		t.Errorf("Spec.Role = %q; want %q, distinct from RoleMaster", spec.Role, websterengine.MerriamStrandRole)
+	}
+	if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
+		t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)
 	}
 }
 
@@ -1132,8 +1113,8 @@ func TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithNestedAgentInIntegrationForkWarns proves a policy finding in the integration fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
-func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
+// TestRun_DoneWithNestedAgentInFixerForkWarns proves a policy finding in the fixer fork's transcript leaves the run done, records one run-level warning in state.json, returns it on RunResult.Warnings, and lists it in summary.md's "Audit warnings" section.
+func TestRun_DoneWithNestedAgentInFixerForkWarns(t *testing.T) {
 	const session = "master-session-nested"
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -1144,15 +1125,9 @@ func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, AgentCalls: 1},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, AgentCalls: 1},
 	}
-	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-			t.Fatalf("write integration report: %v", err)
-		}
-	})
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -1206,15 +1181,9 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 			})
 			forks := []shuttleengine.ForkReport{
 				{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true, WritePaths: []string{tt.write(fx.Deps.Geom)}},
-				{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true},
+				{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true},
 			}
-			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-				head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-				report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-				if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-					t.Fatalf("write integration report: %v", err)
-				}
-			})
+			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 			result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -1241,9 +1210,71 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 	}
 }
 
-// TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
+// TestRun_FixerForkPlanWriteIsFlagged proves the run-exit fork audit covers the verify-gate fixer fork:
+// a fork outside every batch bracket that writes the plan directory leaves one pending fork-plan-write finding.
+func TestRun_FixerForkPlanWriteIsFlagged(t *testing.T) {
+	const session = "master-session-fixer"
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
+		},
+	})
+	planFile := filepath.Join(fx.Deps.Geom.PlanDir, "00-overview.md")
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, WritePaths: []string{planFile}},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || st.PendingAuditFindings[0].Class != "fork-plan-write" {
+		t.Errorf("PendingAuditFindings = %+v; want one fork-plan-write finding", st.PendingAuditFindings)
+	}
+}
+
+// TestRun_RendersVerifyFixPrompt proves Run writes the fixer prompt naming the gate report and Merriam's prompt names that file.
+func TestRun_RendersVerifyFixPrompt(t *testing.T) {
+	const session = "master-session-fixprompt"
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	prompt, err := os.ReadFile(filepath.Join(fx.Deps.Geom.PromptsDir, "verify-fix.md"))
+	if err != nil {
+		t.Fatalf("read verify-fix prompt: %v", err)
+	}
+	if !strings.Contains(string(prompt), websterengine.VerifyGateReportPath(fx.Deps.Geom.ReportsDir)) {
+		t.Errorf("verify-fix prompt does not name the gate report path")
+	}
+	if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "integration.md")); err == nil {
+		t.Errorf("integration.md exists; Run renders no integration prompt")
+	}
+}
+
+// TestRun_FabricReferenceInFixerForkIsStuck proves a fabric reference in the fixer fork's transcript is correctness whatever its command:
 // the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
-func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
+func TestRun_FabricReferenceInFixerForkIsStuck(t *testing.T) {
 	const session = "master-session-fabric"
 	const cmd = "cat FABRICREF/webster/state.json"
 	fx := newRunFixture(t, 1)
@@ -1256,15 +1287,9 @@ func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
 	})
 	forks := []shuttleengine.ForkReport{
 		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
 	}
-	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
-		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
-			t.Fatalf("write integration report: %v", err)
-		}
-	})
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
 
 	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -1417,153 +1442,166 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	}
 }
 
-// TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure pins the nil-bisector bypass: a
-// hub-shaped fixture always supplies a non-nil OpenBisector, so this is the one case a hub-only
-// fixture cannot exercise at all.
-// Two batches, each contributing its own CardSHA, accumulate at least two card SHAs — the minimum
-// that matters, since zero or one SHA both take bisect's own early-return shapes and would pass even
-// under a broken implementation that pushed the nil check down into bisect/BisectAndEscalate instead
-// of bypassing them at the call site; two or more is what would reach the branch call that
-// nil-pointer panics on a nil bisector if the bypass were ever removed.
-// Asserts the call does not panic, state.json and summary.md both carry the failure under
-// "unknown"/"unknown" for the offending SHA and card, and RunResult.Warnings carries the
-// standalone-mode explanation.
-func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
-	fx := newRunFixture(t, 2)
-	// The verify fails on rerun, so triage classifies a regression;
-	// with no bisector there is no baseline either.
-	appendIntegrationVerify(t, fx.PlanDir, "false")
-	fx.Deps.OpenBisector = nil
-
-	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	sha2 := gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "card2")
-
+// verifyGateFixture wires fx for a run whose plan carries verify, with one card commit touching internal/batch1 under a go.mod module, and returns the card commit.
+// The worktree is clean afterwards, so the gate's own verify is the only thing that can fail.
+func verifyGateFixture(t *testing.T, fx *runFixture, verify string) string {
+	t.Helper()
+	appendIntegrationVerify(t, fx.PlanDir, verify)
+	gitkit.CommitFile(t, fx.Worktree, "go.mod", "module example.com/m\n", "go.mod")
+	sha := gitkit.CommitFile(t, fx.Worktree, "internal/batch1/a.go", "package batch1\n", "card 1")
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
-			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha2}},
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha}},
 		},
 	})
+	return sha
+}
 
-	handle := &runFakeHandle{
-		strandGUID: "master-strand-nilbisector",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-nilbisector",
-			RunDir:    "/run/dir/nilbisector",
-			ForkAudit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{
-					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
-					{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
-				},
-			},
-		},
-		onWait: func() {
-			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
-			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha2+"\ndeviations: []\n"), 0o644); err != nil {
-				t.Fatalf("write integration report: %v", err)
-			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration suite failed\"\nbatches_done: 2\n"), 0o644); err != nil {
-				t.Fatalf("write outcome.yaml: %v", err)
-			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nBoth batches landed; integration failed.\n"), 0o644); err != nil {
-				t.Fatalf("write summary.md: %v", err)
-			}
-		},
-	}
-	fx.Starter.handle = handle
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-nilbisector", "master-session-nilbisector")
-
-	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil (a FAILED integration report under a nil OpenBisector is escalated as unlocalized, not a Run() error)", err)
-	}
-
-	st, loadErr := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
-	if loadErr != nil {
-		t.Fatalf("LoadState() error = %v", loadErr)
-	}
-	escalated, ok := st.Batches[-1]
-	if !ok || escalated == nil {
-		t.Fatalf("state.json carries no integration escalation record; want one at the reserved key")
-	}
-	if escalated.Slug != "unknown" {
-		t.Errorf("escalated record Slug = %q; want %q (no fabric repo to localize with)", escalated.Slug, "unknown")
-	}
-	if escalated.Digest == nil || escalated.Digest.HeadSHA != "unknown" {
-		t.Errorf("escalated record digest = %+v; want head_sha %q", escalated.Digest, "unknown")
-	}
-
-	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
-	if err != nil {
-		t.Fatalf("read summary.md: %v", err)
-	}
-	if !strings.Contains(string(summaryData), "unknown") {
-		t.Errorf("summary.md does not name the unlocalized \"unknown\" card; got:\n%s", summaryData)
-	}
-
-	found := false
-	baselineWarned := false
-	for _, w := range result.Warnings {
-		if strings.Contains(w, "no fabric repo to bisect against") {
-			found = true
-		}
-		if strings.Contains(w, "baseline comparison unavailable") {
-			baselineWarned = true
+// verifyGateOf returns the verify entry Run handed StartMaster.
+func verifyGateOf(t *testing.T, fx *runFixture) shuttleengine.GateEntry {
+	t.Helper()
+	for _, e := range fx.Starter.gateCalls[0] {
+		if e.Name == "verify" {
+			return e
 		}
 	}
-	if !found {
-		t.Errorf("RunResult.Warnings = %v; want one explaining the unlocalized failure (no fabric repo to bisect against)", result.Warnings)
-	}
-	if !baselineWarned {
-		t.Errorf("RunResult.Warnings = %v; want one stating the baseline comparison was unavailable", result.Warnings)
-	}
+	t.Fatalf("StartMaster's gate %+v has no verify entry", fx.Starter.gateCalls[0])
+	return shuttleengine.GateEntry{}
+}
 
-	report, err := websterengine.ParseIntegrationReport(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir))
-	if err != nil {
-		t.Fatalf("ParseIntegrationReport() error = %v", err)
+// writeDoneContract writes the two files Merriam's last action writes, outcome done.
+func writeDoneContract(t *testing.T, fx *runFixture) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outcome.yaml: %v", err)
 	}
-	if report.Triage == nil || report.Triage.Verdict != websterengine.TriageVerdictRegression {
-		t.Errorf("report triage = %+v; want verdict regression", report.Triage)
+	if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
+		t.Fatalf("write summary.md: %v", err)
 	}
 }
 
-// TestRun_NilOpenBisectorFlakyVerifyKeepsDone proves a nil-bisector run whose verify passes on rerun is classified flaky:
-// Master's done stands and the flaky warning is the only warning.
-func TestRun_NilOpenBisectorFlakyVerifyKeepsDone(t *testing.T) {
+// TestRun_VerifyGateFailsThenPassesEndsDone proves a fake Merriam whose first done arrival fails verify and whose second passes ends done with one re-prompt,
+// and that the findings name the failing identity and the card whose commit touched its package.
+func TestRun_VerifyGateFailsThenPassesEndsDone(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	appendIntegrationVerify(t, fx.PlanDir, "true")
-	fx.Deps.OpenBisector = nil
+	okFile := filepath.Join(t.TempDir(), "ok")
+	sha := verifyGateFixture(t, fx, "[ -f "+okFile+" ] || { printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1; }")
 
-	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
-		},
-	})
-
+	var findings string
+	var reprompts int
 	fx.Starter.handle = &runFakeHandle{
-		strandGUID: "master-strand-nilflaky",
+		strandGUID: "master-strand-gatepass",
 		result: shuttleengine.Result{
 			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-nilflaky",
-			RunDir:    "/run/dir/nilflaky",
-			ForkAudit: &shuttleengine.ForkAudit{
-				Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}},
-			},
+			SessionID: "master-session-gatepass",
+			RunDir:    "/run/dir/gatepass",
+			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
 		},
 		onWait: func() {
-			write := func(path, content string) {
-				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-					t.Fatalf("write %s: %v", path, err)
-				}
+			writeDoneContract(t, fx)
+			entry := verifyGateOf(t, fx)
+			first, err := entry.Gate()
+			if err != nil {
+				t.Fatalf("first gate evaluation error = %v; want nil", err)
 			}
-			write(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), "status: FAILED\nhead_sha: "+sha1+"\ndeviations: []\n")
-			write(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
-			write(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), "# Batch shipped\n\nLanded.\n")
+			if first.Passed {
+				t.Fatalf("first gate evaluation passed; want a verify failure")
+			}
+			reprompts++
+			findings = first.Findings
+			// Merriam's fixer makes its fix.
+			if err := os.WriteFile(okFile, nil, 0o644); err != nil {
+				t.Fatalf("write ok file: %v", err)
+			}
+			second, err := entry.Gate()
+			if err != nil || !second.Passed {
+				t.Fatalf("second gate evaluation = %+v, %v; want a pass", second, err)
+			}
 		},
 	}
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-nilflaky", "master-session-nilflaky")
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-gatepass", "master-session-gatepass")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "done" {
+		t.Errorf("Outcome = %q; want done", result.Outcome)
+	}
+	if reprompts != 1 {
+		t.Errorf("re-prompts = %d; want 1", reprompts)
+	}
+	if !strings.Contains(findings, "example.com/m/internal/batch1") {
+		t.Errorf("findings = %q; want the failing identity", findings)
+	}
+	if !strings.Contains(findings, "01-batch1") {
+		t.Errorf("findings = %q; want the card whose commit %s touched the failing package", findings, sha)
+	}
+	if _, err := os.Stat(websterengine.VerifyGateReportPath(fx.Deps.Geom.ReportsDir)); err != nil {
+		t.Errorf("verify-gate report: %v; want one written by the failed evaluation", err)
+	}
+}
+
+// TestRun_VerifyGateExhaustedEndsStuck proves a gate that never passes ends the run stuck with a reason naming the failing identities.
+func TestRun_VerifyGateExhaustedEndsStuck(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	verifyGateFixture(t, fx, "printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1")
+
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-gatestuck",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-gatestuck",
+			RunDir:    "/run/dir/gatestuck",
+			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
+			Gate:      &shuttleengine.GateOutcome{Passed: false, Attempts: 3},
+		},
+		onWait: func() {
+			writeDoneContract(t, fx)
+			if res, err := verifyGateOf(t, fx).Gate(); err != nil || res.Passed {
+				t.Fatalf("gate evaluation = %+v, %v; want a verify failure", res, err)
+			}
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-gatestuck", "master-session-gatestuck")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Errorf("Outcome = %q; want stuck", result.Outcome)
+	}
+	if !strings.Contains(result.StuckReason, "example.com/m/internal/batch1") {
+		t.Errorf("StuckReason = %q; want the failing identity", result.StuckReason)
+	}
+}
+
+// TestRun_FlakyVerifyKeepsDoneWithWarning proves a verify failure that passes on rerun keeps the run done and surfaces the flaky warning and summary section.
+func TestRun_FlakyVerifyKeepsDoneWithWarning(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	counter := filepath.Join(t.TempDir(), "runs")
+	// The first run records itself and fails.
+	// The rerun sees the record and passes.
+	verifyGateFixture(t, fx, "if [ -f "+counter+" ]; then exit 0; fi; : > "+counter+"; printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1")
+
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-flaky",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-flaky",
+			RunDir:    "/run/dir/flaky",
+			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
+			Gate:      &shuttleengine.GateOutcome{Passed: true},
+		},
+		onWait: func() {
+			writeDoneContract(t, fx)
+			if res, err := verifyGateOf(t, fx).Gate(); err != nil || !res.Passed {
+				t.Fatalf("gate evaluation = %+v, %v; want a pass on rerun", res, err)
+			}
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-flaky", "master-session-flaky")
 
 	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 	if err != nil {
@@ -1574,6 +1612,13 @@ func TestRun_NilOpenBisectorFlakyVerifyKeepsDone(t *testing.T) {
 	}
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "flaky") {
 		t.Errorf("Warnings = %v; want exactly the flaky warning", result.Warnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "example.com/m/internal/batch1") {
+		t.Errorf("summary.md = %q; want the flaky identity in its triage section", summary)
 	}
 }
 
@@ -1641,7 +1686,7 @@ func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
 	if fx.Starter.callCount() != 1 {
 		t.Fatalf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
 	}
-	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
+	prompt := fx.Starter.startCalls[0].Prompt
 	idx02 := strings.Index(prompt, "02 — batch2")
 	idx01 := strings.Index(prompt, "01 — batch1")
 	if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
@@ -1855,8 +1900,8 @@ func TestRun_GateReachesStartMaster(t *testing.T) {
 		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
 	}
 	got := fx.Starter.gateCalls[0]
-	if len(got) != 1 {
-		t.Fatalf("StartMaster received %d gate entries; want 1", len(got))
+	if len(got) != 2 {
+		t.Fatalf("StartMaster received %d gate entries; want the told one and the verify entry", len(got))
 	}
 	if got[0].Gate == nil {
 		t.Error("StartMaster received a nil Gate; want the told closure")
@@ -1864,14 +1909,32 @@ func TestRun_GateReachesStartMaster(t *testing.T) {
 	if got[0].Attempts != 7 {
 		t.Errorf("StartMaster received Attempts = %d; want 7", got[0].Attempts)
 	}
+	if got[1].Name != "verify" {
+		t.Errorf("StartMaster's last gate entry = %q; want the verify entry Run adds", got[1].Name)
+	}
 	if called {
 		t.Error("the gate closure was invoked by Run; want it spent only by shuttle's own Wait")
 	}
 }
 
-// TestRun_ZeroGateReachesStartMasterUngated proves the ungated path is unchanged:
-// a RunDeps that names no gate hands StartMaster the empty GateSpec, which shuttleengine reads as "ungated".
-func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
+// TestRun_GateNamingVerifyIsRefused proves a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry beside Run's own.
+func TestRun_GateNamingVerifyIsRefused(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Deps.Gate = shuttleengine.GateSpec{{
+		Name:     "verify",
+		Gate:     func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{Passed: true}, nil },
+		Attempts: 1,
+	}}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	requireWayForward(t, err, "verify", "drop the")
+	if fx.Starter.callCount() != 0 {
+		t.Errorf("Starter.callCount() = %d; want 0, since the refusal precedes the spawn", fx.Starter.callCount())
+	}
+}
+
+// TestRun_ZeroGateReachesStartMasterWithOnlyVerify proves a RunDeps that names no gate hands StartMaster exactly the verify entry Run adds, with the configured attempt budget.
+func TestRun_ZeroGateReachesStartMasterWithOnlyVerify(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	seedMatchingState(t, fx, &websterengine.State{
@@ -1885,8 +1948,15 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 	if len(fx.Starter.gateCalls) != 1 {
 		t.Fatalf("len(Starter.gateCalls) = %d; want 1", len(fx.Starter.gateCalls))
 	}
-	if got := fx.Starter.gateCalls[0]; len(got) != 0 {
-		t.Errorf("StartMaster received %d gate entries; want an empty list", len(got))
+	got := fx.Starter.gateCalls[0]
+	if len(got) != 1 || got[0].Name != "verify" {
+		t.Fatalf("StartMaster received gate %+v; want exactly the verify entry", got)
+	}
+	if got[0].Attempts != fx.Deps.Config.VerifyGateAttempts {
+		t.Errorf("verify entry Attempts = %d; want Config.VerifyGateAttempts %d", got[0].Attempts, fx.Deps.Config.VerifyGateAttempts)
+	}
+	if got[0].PassOnCap || got[0].MayHold {
+		t.Errorf("verify entry = %+v; want a plain must-pass entry", got[0])
 	}
 }
 
@@ -2243,49 +2313,6 @@ func TestRun_WayForward_RunExitRefusals(t *testing.T) {
 	}
 }
 
-// TestRun_WayForward_MissingIntegrationReport reaches the done-without-integration-report refusal and proves a re-run whose integration fork reports finishes.
-func TestRun_WayForward_MissingIntegrationReport(t *testing.T) {
-	fx := newRunFixture(t, 1)
-	appendIntegrationVerify(t, fx.PlanDir, "true")
-	fx.Deps.Clock = &recoverFakeClock{now: time.Unix(0, 0)}
-	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{"deadbeef"}, SessionID: "master-session-intwf"},
-		},
-	})
-
-	forks := &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}}
-	writeContract := func() {
-		if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
-			t.Fatalf("write outcome.yaml: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
-			t.Fatalf("write summary.md: %v", err)
-		}
-	}
-	result := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "master-session-intwf", RunDir: "/run/dir/intwf", ForkAudit: forks}
-	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-intwf", result: result, onWait: writeContract}
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intwf", "master-session-intwf")
-
-	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	requireWayForward(t, err, "lyx webster run", "re-drives every batch without a done record")
-
-	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-intwf", result: result, onWait: func() {
-		writeContract()
-		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte("status: OK\nhead_sha: "+head+"\ndeviations: []\n"), 0o644); err != nil {
-			t.Fatalf("write integration report: %v", err)
-		}
-	}}
-	got, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() after the integration fork reported error = %v; want nil", err)
-	}
-	if got.Outcome != "done" {
-		t.Errorf("RunResult.Outcome = %q; want done", got.Outcome)
-	}
-}
-
 // TestRun_FreshRunOverNewGenerationAfterArchive proves a rework generation gets a fresh run:
 // a finished two-card run is archived with ArchiveRunRecord, the plan is replaced by a generation whose first_card is 3,
 // and Run starts over that plan with no ErrFingerprintMismatch, recording and telling Master only the new generation's batches.
@@ -2342,7 +2369,7 @@ func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 		}
 	}
 
-	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
+	prompt := fx.Starter.startCalls[0].Prompt
 	for _, want := range []string{"03 — batch3", "04 — batch4"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("Master prompt lacks %q", want)
@@ -2747,21 +2774,22 @@ func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
 	}
 }
 
-// masterPromptText reads the rendered Master prompt from the file its launch pointer names.
-func masterPromptText(t *testing.T, pointer string) string {
-	t.Helper()
-	path := pointer[strings.LastIndex(pointer, " ")+1:]
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read master prompt named by %q: %v", pointer, err)
-	}
-	return string(data)
-}
+// TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile pins that Run hands the rendered Master prompt straight to the spawn (the provider engine writes its own prompt.md) and writes no master.md.
+func TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
 
-// TestMasterPromptPointer_StaysShort pins the launch prompt far under the provider's
-// command-line limit, whatever the plan's size.
-func TestMasterPromptPointer_StaysShort(t *testing.T) {
-	if got := len(websterengine.MasterPromptPointer(strings.Repeat("p", 400))); got > 1000 {
-		t.Errorf("pointer is %d bytes; want it short", got)
+	runToDone(t, fx, "master-strand-prompt", "master-session-prompt", nil, 1)
+
+	prompt := fx.Starter.startCalls[0].Prompt
+	if !strings.Contains(prompt, "01 — batch1") {
+		t.Errorf("Spec.Prompt = %q; want the rendered Master prompt listing batch 01", prompt)
+	}
+	if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "master.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("master.md stat err = %v; want it absent, since Run no longer writes it", err)
 	}
 }

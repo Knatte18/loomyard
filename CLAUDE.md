@@ -35,7 +35,8 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 
 ## Docs land in the same commit
 
-A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in `manifest/designs/`, `docs/overview.md` if the module table or execution stack changes, and `CONSTRAINTS.md` for a new invariant.
+A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `CONSTRAINTS.md` for a new invariant.
+`manifest/` holds only what is to be built or still under consideration, never what is built: a design whose code has landed moves into its package's `doc.go`.
 `manifest/roadmap.md` changes only when a planned item is completed or added.
 
 ## Markdown: semantic line breaks
@@ -47,7 +48,8 @@ Table cells and blockquotes stay on one line.
 
 These are conversational shorthands; never rename code, files or docs to them unless told to.
 
-- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`.
+- **Merriam**: webster's orchestrating session, named `Master` in `internal/websterengine`;
+  its strand is named `<shortname>:<slug>:webster`.
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
 

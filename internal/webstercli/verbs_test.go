@@ -169,7 +169,6 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 			SelfFixCap:         2,
 			MasterTimeoutMin:   480,
 			RecoveryTimeoutMin: 60,
-			PollWaitS:          1,
 		},
 		roles:   roles,
 		batcher: activeBatcher,

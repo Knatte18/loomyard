@@ -6,6 +6,7 @@ package standalonegeom
 
 import (
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -13,7 +14,7 @@ import (
 // already-absolute target directory and the stateDir the caller already derived via
 // standalonestate.Derive(target).
 //
-// Unlike ReedGeometry, WebsterGeometry takes no hash8: none of webster's nine values is
+// Unlike ReedGeometry, WebsterGeometry takes no hash8: none of webster's ten values is
 // hash-derived, so no unused parameter is added for symmetry with the reed builder.
 //
 // WebsterDir, ReportsDir, ScratchDir and PromptsDir come from the four websterengine accessors
@@ -25,6 +26,8 @@ import (
 // default comes from StencilsDir(stateDir), the sole construction site for the standalone stencils
 // directory. SpecsDir is NOT in that class — there is no flag for it, so it is never overridden
 // after this builder returns.
+//
+// VerifyDir is verifytree.Dir(stateDir), so the verified-tree record sits beside webster's other never-tracked state.
 //
 // WorktreeRoot is target, never stateDir: it is the fork-audit workdir and the {{.worktree_root}}
 // token's value in standalone, since target is the git repository an implementer's work happens
@@ -40,5 +43,6 @@ func WebsterGeometry(target, stateDir string) websterengine.Geometry {
 		PlanDir:      planparser.PlanDir(stateDir),
 		StencilsDir:  StencilsDir(stateDir),
 		SpecsDir:     SpecsDir(stateDir),
+		VerifyDir:    verifytree.Dir(stateDir),
 	}
 }

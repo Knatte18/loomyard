@@ -3,6 +3,7 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -106,6 +107,55 @@ func TestReviewWaiting_LatestRoundOnly(t *testing.T) {
 	}
 	if note := waitingNote(t, s); note != "" {
 		t.Errorf("superseded round leaked: %q", note)
+	}
+}
+
+// writeVerifyMarker writes a running marker held by pid and returns its path.
+func writeVerifyMarker(t *testing.T, pid int) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "running.yaml")
+	body := "site: Publish\nattempt: 2\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestVerifyWaiting_LiveMarkerAheadOfReview(t *testing.T) {
+	s := reviewStore(t)
+	openReview(t, s)
+	hook := verifyWaiting(writeVerifyMarker(t, os.Getpid()), reviewWaiting(s.Root, s.LockDir))
+	note, err := hook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(note, "verify Publish (attempt 2, since ") || strings.Contains(note, "parent review") {
+		t.Errorf("note = %q", note)
+	}
+}
+
+func TestVerifyWaiting_DeadMarkerFallsToReview(t *testing.T) {
+	s := reviewStore(t)
+	openReview(t, s)
+	hook := verifyWaiting(writeVerifyMarker(t, 2147483646), reviewWaiting(s.Root, s.LockDir))
+	note, err := hook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(note, "parent review: ") {
+		t.Errorf("note = %q", note)
+	}
+}
+
+func TestVerifyWaiting_NoMarkerNoReviewIsEmpty(t *testing.T) {
+	s := reviewStore(t)
+	hook := verifyWaiting(filepath.Join(t.TempDir(), "absent.yaml"), reviewWaiting(s.Root, s.LockDir))
+	note, err := hook()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note != "" {
+		t.Errorf("note = %q, want empty", note)
 	}
 }
 

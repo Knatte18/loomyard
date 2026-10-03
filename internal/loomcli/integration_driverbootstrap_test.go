@@ -42,10 +42,9 @@ import (
 )
 
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this
-// file's one spawn launches. The claude engine's own launch line expands the whole composed prompt
-// into ONE ARGUMENT via shell.ReadFile's "$(cat ...)" idiom rather than piping it over stdin (see
-// internal/shell/posix.go's own ReadFile), so the script reads the prompt from its first positional
-// argument, extracts the drive report path driverPrompt quoted into that text, prints
+// file's one spawn launches. The claude engine's own launch line passes ONE ARGUMENT, a pointer to
+// the run's prompt.md, so the script takes the prompt.md path from the second word of its first
+// positional argument, extracts the drive report path driverPrompt quoted into that file, prints
 // claudeengine's own ready-marker fixture -- shuttle's own startup step now blocks Start until this
 // (or the window closes), so a script that skipped it would make every call here time out at
 // startup_timeout_s instead of returning fast -- then sleeps settleDelay, giving the caller a window
@@ -55,7 +54,8 @@ func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) s
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
-report=$(printf '%%s' "$1" | grep -o '"[^"]*drive-report[^"]*"' | head -1 | tr -d '"')
+prompt_file=$(printf '%%s' "$1" | awk '{print $2}')
+report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 echo '%s'
 sleep %s
 if [ -n "$report" ]; then

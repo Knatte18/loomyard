@@ -21,7 +21,6 @@
 // (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master
 // spawn) -- because webster's three verbs each need a distinct narrow seam onto the same underlying
 // *shuttleengine.Runner, none of which the others expose.
-// A fourth view, fixStarter (websterengine.FixStarter, behind the runnerFixStarter adapter), serves run's integration-fix strand.
 package webstercli
 
 import (
@@ -50,8 +49,6 @@ type websterCLI struct {
 	starter       websterengine.Starter
 	injector      websterengine.Injector
 	masterStarter websterengine.MasterStarter
-	// fixStarter is the fourth seam: the integration stage's fix-strand spawn, over the same Runner.
-	fixStarter websterengine.FixStarter
 
 	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.
 	engine shuttleengine.Engine
@@ -112,10 +109,10 @@ type websterCLI struct {
 	// consult — a real *fabricengine.RefScanner in hub mode, built eagerly because NewRefScanner only
 	// compiles a regexp and cannot fail.
 	refMatcher websterengine.RefMatcher
-	// openFabric is the lazy fabric-handle opener RunDeps.OpenBisector is built from. It must NOT be
+	// openFabric is the lazy fabric-handle opener the verbs' fabric commits go through. It must NOT be
 	// opened during PersistentPreRunE: fabricengine.Open stat-checks the paired sibling and would fail
 	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
-	// which never reach the integration bisect.
+	// which never commit to the fabric.
 	openFabric func() (*fabricengine.Fabric, error)
 	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record, for record-batch's and recover-batch's clean-parent-merge rule.
 	// It is a closure for the same reason openFabric is, and stays nil in standalone, where no merge commit is accepted.
@@ -154,21 +151,6 @@ type runnerMasterStarter struct {
 // caller blocks on it; a zero gate makes StartGated behave exactly as Start.
 func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
 	run, err := s.runner.StartGated(spec, gate)
-	if err != nil {
-		return nil, err
-	}
-	return run, nil
-}
-
-// runnerFixStarter adapts *shuttleengine.Runner to websterengine.FixStarter.
-type runnerFixStarter struct {
-	runner *shuttleengine.Runner
-}
-
-// StartFix implements websterengine.FixStarter.
-// It spends Runner.Start, which returns once the strand is past its startup gates and never waits for the run to finish, so the caller can persist the GUID before blocking on the handle.
-func (s runnerFixStarter) StartFix(spec shuttleengine.Spec) (websterengine.MasterHandle, error) {
-	run, err := s.runner.Start(spec)
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +230,7 @@ Verbs:
   lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
   lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
+  lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
 
 Modes:
   webster runs in hub mode inside a lyx hub worktree, and in standalone
@@ -289,12 +272,13 @@ Example (standalone, outside any lyx hub):
 }
 
 // addVerbs registers every webster verb under parent.
-// Every verb but `validate` goes through noteRefusals, so a refusal it prints leaves a friction note.
-// `validate` is a lint an agent iterates against, so its findings are expected rather than friction.
+// Every verb but `validate` and `verify` goes through noteRefusals, so a refusal it prints leaves a friction note.
+// `validate` and `verify` are self-checks an agent iterates against, so their findings are expected rather than friction.
 // A refusal cobra raises before the verb's RunE stays unnoted, since it fires before the friction directory is resolved:
 // a flag-parse or argument-count error, and one raised in resolvePersistentPreRun.
 func (c *websterCLI) addVerbs(parent *cobra.Command) {
 	parent.AddCommand(c.validateCmd())
+	parent.AddCommand(c.verifyCmd())
 	for _, verb := range []*cobra.Command{
 		c.runCmd(),
 		c.statusCmd(),

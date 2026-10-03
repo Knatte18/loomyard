@@ -124,3 +124,43 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 
 	return StageResult{}, nil
 }
+
+// MergeStageTracked stages every tracked modification and deletion in the warp checkout of an in-progress fabric merge,
+// so edits a conflict session made to already-tracked files land in the merge commit MergeContinue writes.
+// Untracked files are never staged;
+// MergeUntrackedFiles lists them so a caller can halt on them.
+// Only the warp side is staged: weft content is never a merge participant for a caller's own edits.
+//
+// It refuses exactly as the guarded merge verbs do: with no fabric merge record it returns *ErrForeignMergeState when git-level merge state fabric did not start is present and *ErrNoMergeInProgress otherwise, staging nothing either way.
+// Like MergeStageResolved it takes no weft write lock, for the same reason: with a record present the guarded sibling verbs already refuse, so no other fabric writer can be in the index concurrently.
+func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return StageResult{}, err
+	}
+	if !recordExists {
+		return StageResult{}, f.mergeStateOrForeignErr()
+	}
+
+	if err := f.warp.StageTrackedChanges(); err != nil {
+		return StageResult{}, fmt.Errorf("fabricengine: stage tracked changes: %w", err)
+	}
+	rec.Append(KindMergeTrackedStaged, f.warpPath, "")
+	return StageResult{}, nil
+}
+
+// MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree's warp checkout, worktree-relative, so a caller never names a fabric side.
+// The weft is not read: it is no merge participant, so an untracked weft file can never enter the merge commit,
+// and listing one would only halt a merge that would have been right.
+// Junctioned `_lyx` and `.lyx` sit in `.git/info/exclude`, so they never appear.
+// It returns an empty, never nil, slice when there are none.
+func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
+	untracked, err := f.warp.UntrackedFiles()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
+	}
+	return untracked, nil
+}

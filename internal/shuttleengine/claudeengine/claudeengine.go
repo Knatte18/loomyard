@@ -59,16 +59,9 @@ func validateSessionID(id string) error {
 }
 
 // Prepare writes prompt.md and settings.json into runDir and returns the Launch command strings.
+// The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // It validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	// Reject oversized prompts before any artifact is written (failing now is immediate and self-describing).
-	if len(spec.Prompt) > maxLaunchPromptBytes {
-		return shuttleengine.Launch{}, fmt.Errorf(
-			"prompt is %d bytes, over the %d-byte launch limit: the pane launch expands the whole prompt into one command-line argument and Windows caps a process command line at 32,767 characters — move the long content into a file and make the prompt a short pointer to it",
-			len(spec.Prompt), maxLaunchPromptBytes,
-		)
-	}
-
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
@@ -100,7 +93,18 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	promptPath := filepath.Join(runDir, "prompt.md")
+	promptPath, err := filepath.Abs(filepath.Join(runDir, "prompt.md"))
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("resolve prompt path: %w", err)
+	}
+	// The launch argument is a pointer to prompt.md, so the prompt's own size never reaches the command line.
+	pointer := launchPointer(promptPath)
+	if len(pointer) > maxLaunchPromptBytes {
+		return shuttleengine.Launch{}, fmt.Errorf(
+			"launch pointer is %d bytes, over the %d-byte launch limit: the pane launch carries it as one command-line argument and Windows caps a process command line at 32,767 characters — shorten the run-directory path %q",
+			len(pointer), maxLaunchPromptBytes, promptPath,
+		)
+	}
 	if err := os.WriteFile(promptPath, []byte(spec.Prompt), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
 	}

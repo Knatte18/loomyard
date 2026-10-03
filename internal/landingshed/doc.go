@@ -7,8 +7,12 @@
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
-// After the merge-in, a merge that changed the task tree, or a pending-verify marker left by an earlier unverified merge,
-// runs the told verify command before the push.
+// Publish checks the task worktree is clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
+// A dirty tree at any of them is Stuck naming the paths, before anything is pushed;
+// a verify that dirties the tree is a non-hermetic test and halts rather than ships.
+//
+// After the merge-in, the told verify command runs through internal/verifytree before the push, unless its verified-tree record already names the tree and the command.
+// The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.
 //
@@ -21,8 +25,8 @@
 // of which branch Publish took -- the only sync in the no-pull-request case, a second one catching
 // whatever landed in the parent while a pull request sat out for review in the other case -- and then
 // merges the task branch into the parent pair itself.
-// Each catch-up merge-in runs the same post-merge verify gate as Publish before the parent-side merge,
-// and a failure is Stuck with the parent branch untouched.
+// Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Publish before the parent-side merge,
+// and a dirty tree or a failure is Stuck with the parent branch untouched.
 // The landing commit carries the change description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
 // After the parent-side merge and before the push, Finalize marks the board task done; after a
 // successful push it closes the open pull request with a comment naming the landing commit. A parent

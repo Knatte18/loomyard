@@ -14,9 +14,8 @@
 // contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
 // anywhere else re-derives that grammar; the one remaining plan-level-section
-// consumer here, RenderIntegrationPrompt (the integration-suite fork's own
-// prompt), reads plan.Verify only off the planparser.Plan model a caller
-// (internal/webstercli) hands in. Neither RenderForkPrompt nor
+// consumer here, the verify gate's command read (NewVerifyGate), reads plan.Verify
+// only off the planparser.Plan that planparser.ParsePlan returns. Neither RenderForkPrompt nor
 // RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
 // fork-context-hygiene Shared Decision, both render a card's content from its
 // SourcePath pointer, never from an inlined plan-level field.
@@ -87,8 +86,6 @@
 // and a warning names the walked merge SHAs.
 // Any non-merge movement — a plain commit, a fast-forward onto non-merge commits — is refused,
 // and so is any call made while a git merge is in progress, leaving the batch non-terminal and retryable.
-// Known limit: the integration stage's bisect over earlier CardSHAs runs on pre-merge trees.
-// Known limit: bisect and triage attribute a regression introduced by a mid-run parent merge to the first card after the merge.
 //
 // # every terminal batch runs the same mechanical pass
 //
@@ -207,7 +204,7 @@
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
-// It audits nothing while a later fork batch of the session is open or the integration report exists, since an unseen transcript may then be that fork's.
+// It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
@@ -287,19 +284,20 @@
 // # cold recovery is the only real model escalation
 //
 // The one place webster spawns a genuinely separate process is
-// recover-batch: a bounded, re-entrant long-poll verb that spawns a fresh
+// recover-batch: a blocking, re-entrant verb that spawns a fresh
 // implementer as its own shuttle/reed strand at the recovery role when a
 // fork reports stuck or writes no report, rendering the SEPARATE, full
 // cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
 // from a fork's own thin RenderForkPrompt, since the recovery strand
 // inherits no session context (see the fork-context-hygiene Shared
-// Decision). The call that spawns the recovery strand first waits for its
-// provider to come up (normally seconds, bounded by startup_timeout_s), and
-// every call then blocks for at most poll_wait_s and returns either a
-// terminal digest or a running snapshot; a re-entrant call finds the strand already recorded in state
-// and skips straight to the bounded wait. This mirrors classify.go's
-// dead/timeout/stuck classification but keeps any single Bash tool call
-// bounded rather than open for the whole recovery timeout.
+// Decision).
+// The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
+// and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
+// the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
+// A re-entrant call finds the strand already recorded in state and skips straight to the wait.
+// Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
+// Only an operator's shorter --wait can return a running snapshot.
+// This mirrors classify.go's dead/timeout/stuck classification.
 //
 // # digest persistence carries batch context forward
 //
@@ -319,8 +317,7 @@
 // onto is always supplied by the caller, per the Cwd Resolution Invariant.
 // This claim is now literally true, not aspirational: no production file in this package imports
 // internal/fabricengine, and the two seams that used to reach it are engine-declared interfaces the
-// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class, and
-// FabricBisector, reached through RunDeps.OpenBisector, for the integration-suite bisect.
+// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class.
 // internal/lyxcwd is likewise absent from this package's production imports: every path this package
 // consumes arrives already resolved, through a Geometry value (geometry.go), never through a
 // *lyxcwd.Location.
@@ -366,70 +363,45 @@
 // record-batch treats exactly as it treats a forged report:
 // it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 //
-// # Integration-suite fork + in-process bisect + terminal escalation
+// # The verify-gate fixer fork
 //
-// A plan carrying a plan-level "## verify:" section (ShouldRunIntegration)
-// drives one additional, dedicated integration-suite fork after every
-// batch has landed done — never per-card, never per-batch, run once. Its
-// prompt file is Go-rendered and Go-written by run at entry
-// (RenderIntegrationPrompt into the prompts dir), exactly like a batch's
-// own fork prompt, and its path is injected into the master template —
-// Master may write nothing but its two contract files, so a
-// Master-synthesized prompt file would itself be a parent-write audit
-// violation (found live in round fable-r1: with no pre-rendered prompt the
-// stage was unreachable). Master spawns the fork exactly like a batch
-// fork and waits for its completion notification the same way;
-// AwaitIntegration, Go's own bounded wait at run exit, mirrors await-batch's
-// idiom over the single fixed IntegrationReportPath rather than a per-batch
-// report path, and a missing integration report at run exit is
-// outcome-aware: fail-loud under Master's outcome: done (a done claim
-// requires a passing suite), consistent-and-preserved under stuck (the
-// fork died or the stage never started; Master's own judgment stands).
-// The fork redirects the verify command's output to a scratch log (IntegrationLogPath),
-// so Go can name every failing test and its output tail (parseVerifyFailures) without trusting the fork's own account.
-// On a FAILED integration report, webster reruns the verify once at head and compares the remaining failures against the plan's starting commit,
-// classifying each failing identity flaky (the rerun passes), pre-existing (it also fails at the baseline), or regression.
-// The baseline is the earliest of the batches' recorded start commits by ancestry, since begin-batch does not enforce execution order;
-// start commits with no single earliest member leave nothing excused as pre-existing.
-// A test identity is the deepest failing test or subtest path go test prints, so a failing TestX/a at baseline never excuses a new TestX/b.
-// Triage excuses only what it can attribute to a named test: a package identity (a build or setup failure, a panic or timeout, a TestMain failure, a test binary that exited before reporting) or an opaque one is never pre-existing,
-// though it is still flaky when the rerun passes cleanly.
-// For the same reason the verify command must be a plain "&&" chain whose rerun reached its last step (a marker echoed before that step proves it),
-// and must not run with -failfast;
-// otherwise a non-test step's failure, or a step left unrun behind a pre-existing failure, could hide behind it, and every failure is a regression.
-// A step that runs go test inside a script is outside this reach: its own non-test failures surface only as the step's exit status.
-// The report carries the result in its optional failures and triage fields.
-// A regression demotes a Master outcome: done to stuck;
-// flaky and pre-existing failures keep the outcome and are recorded as RunResult warnings, an "## Integration suite triage" section in summary.md (AppendIntegrationTriage), and a friction note.
-// A regression is then localized: bisect performs an in-process binary search over the accumulated per-card SHA trail (every terminal batch's own BatchState.CardSHAs) — checking out each candidate SHA detached and running the plan's verify command in-process via os/exec, never a fork per bisect candidate — to find the first offending card in logarithmic, not linear, re-runs.
-// A candidate passes when none of the regressing identities fails there, not when the whole command exits zero,
-// so an unrelated flaky or pre-existing failure cannot misdirect the search.
-// BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
-// and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
+// A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
+// Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
+// The waiting turn end in between is no arrival.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify.
+// Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
+// They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and Webster-Review, which reviews the committed range.
+// The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
+// forkOwnReport maps a fork transcript outside every batch bracket to the verify-gate report, and CheckFork audits the fixer fork as it audits a batch fork.
 //
-// # The integration-fix attempt
+// # The verify gate
 //
-// A regression under a Master outcome of done gets one automated fix attempt before it escalates (attemptIntegrationFix, in integrationfix.go);
-// a non-done Master outcome escalates with no attempt, since a fix cannot change it.
-// It runs after the triage and the localization, in two-phase steps that never hold the state-mutation lease across the strand's wait or a verify run:
-// a leased step records State.IntegrationFix with the pre-fix head before any spawn, so a resumed run never spends a second attempt;
-// the strand starts through RunDeps.FixStarter at the recovery role's model, with recovery_timeout_min as its timeout and a report under the reports directory as its output file;
-// a second leased step records its strand GUID, which run entry's reclaim stops if the run died while the strand was live;
-// after the wait the strand and its run directory are removed.
-// A nil FixStarter is a wiring error checked before anything is recorded, so a wiring fault never spends the attempt.
-// Go accepts the strand's work only when the plan fingerprint is unchanged (which catches an on-disk plan write no commit can show) and checkFixCommits passes:
-// non-merge commits outside the plan and `_lyx`, HEAD reconciled with the reported head, and a clean worktree.
-// A refusal there, a timeout or dead outcome, a missing or malformed report and a FAILED report each end the attempt as failed.
-// Success is decided by Go, never by the strand's report: the plan's verify runs once at HEAD, and a red run is triaged against the batches' start commits; no regression in that result means the regression is fixed.
-// A fixed regression keeps the run done and records the attempt in the integration report's Fix field and an "Integration suite fix" section of summary.md, with no -1 record;
-// any other result escalates as above, the pre-fix bisect result under the reserved -1 record, plus the same Fix record and section, and a stuck reason naming the pre-fix head and the fix commits.
-// Go never resets the branch: a failed attempt's commits stay on it for the operator to keep or drop.
-// A State.IntegrationFix with an empty Result, found when the stage next runs, is an attempt the run's end interrupted;
-// it is checked after the integration report loads and before the OK early return, ends as failed whatever the report says, and sets Result in the same save.
-// `run --fresh` builds a new State and so resets the record.
-// The bound is the single recorded attempt, the timeout, the commit check with the plan-fingerprint compare, the post-fix triage deciding success, and the later review rows seeing the fix commits like any other branch commit.
-// Triage sees only failures, so a test the strand deleted or skipped reads as cleared;
-// the strand's prompt forbids it and summary.md names the fix commits and cleared identities for review.
+// Run hands Merriam's spawn the plan-level verify as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
+// a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry.
+// Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
+// The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
+//
+// At each gated Done arrival the closure passes without verifying when outcome.yaml names an outcome other than done, so a stuck or paused outcome ends the run as before.
+// Otherwise it fails with the dirty paths when the tree is not clean, and runs no verify.
+// Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
+// any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
+// A plan with no `## verify:` section passes with a warning.
+// Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
+// A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
+// A failure that survives the rerun returns findings.
+// The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
+//
+// After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
+//
+// # The verify-gate report and findings
+//
+// Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
+// The report carries the attempt and the cap, the failing identities or the dirty paths, the verify log's path, the commits the fixer made since the pre-fix head, and a hint:
+// the cards, in trail order, whose commits changed a file directly in a failing package's directory (cardHint over accumulatedCardSHAs).
+// The hint claims only that a card touched a failing package;
+// Merriam judges it with the plan in hand.
+// The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
+// Run removes a stale report at entry.
 //
 // # No shared substrate or parser with any other batch-implementation loop
 //
