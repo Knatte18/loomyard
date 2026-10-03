@@ -55,6 +55,13 @@ func ledgerPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-bouncer-ledger.md", round))
 }
 
+// factsPath returns the path of the per-round facts file for round inside runDir.
+// The file is an input the judge reads and is regenerated before every judge call, so it is not one
+// of judgeOutputs.
+func factsPath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-facts.md", round))
+}
+
 // judgeOutputs returns the three files one judge pass for round declares as its shuttle run's
 // OutputFiles, in the fixed order the judge prompt's own markers are filled from: the verdict, the
 // ledger, and the NEXT round's focus file.
