@@ -188,10 +188,7 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	const slug = "gap3-untracked"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	target := fabricengine.WorktreePath(l, slug)
 	untracked := filepath.Join(target, "untracked-scratch.txt")
@@ -246,10 +243,7 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 			slug := "force-fallback-" + strings.ToLower(tt.name)
 			h := hubforge.NewHub(t, ".")
 			l := h.Location
-			topology := h.Topology
-			if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-				t.Fatalf("setup Add: %v", err)
-			}
+			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 			target := fabricengine.WorktreePath(l, slug)
 			const sentinel = "UNTRACKED-WORK-NOT-YET-COMMITTED"
@@ -296,10 +290,7 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	const slug = "ownership-registered"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
 
 	t.Run("AcceptsRegisteredLinkedWorktree", func(t *testing.T) {
@@ -360,10 +351,7 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 	const slug = "ownership-warpcheckout"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
 	linked := fabricengine.WorktreePath(l, slug)
 

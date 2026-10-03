@@ -35,9 +35,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	weftBranch := fabricengine.WeftBranchName(slug)
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	res, err := topology.Remove(l, slug, false, true)
 	if err != nil {
@@ -75,9 +73,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	weftBranch := fabricengine.WeftBranchName(slug)
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -105,9 +101,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	mustBreakOrigin(t, weftRoot)
 
@@ -135,9 +129,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	mustRemoveOrigin(t, weftRoot)
 

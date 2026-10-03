@@ -39,9 +39,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
 	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
@@ -161,9 +159,7 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	l := h.Location
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "lock", weftTarget)

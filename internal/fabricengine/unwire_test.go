@@ -47,10 +47,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	// wires the same junction name this test's explicit WireJunctions call retargets to,
 	// rather than wiring an extra, unrelated junction on top.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -98,10 +95,7 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	const slug = "unwire-preserves-lyx-and-extra"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -249,10 +243,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	}
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -289,11 +280,8 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
 	for _, slug := range []string{keptSlug, unwiredSlug} {
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add(%s): %v", slug, err)
-		}
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	}
 
 	keptLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, keptSlug))

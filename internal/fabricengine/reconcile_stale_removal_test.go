@@ -77,9 +77,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	}
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -145,9 +143,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -193,9 +189,7 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 
 	slugs := []string{"converge-all-a", "converge-all-b"}
 	for _, slug := range slugs {
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add(%s): %v", slug, err)
-		}
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	}
 
 	// First Reconcile: Add's own eager wiring (RepoWiredNames, card 20)
@@ -246,9 +240,7 @@ func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -289,9 +281,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -340,9 +330,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -420,9 +408,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	// Topology.Remove must still tear down a pair's junctions using the
 	// repo-wide name-set.
 	const removeSlug = "repo-wide-remove-target"
-	if _, err := topology.Add(l, removeSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%s): %v", removeSlug, err)
-	}
+	hubforge.AddPairWith(t, h, removeSlug, fabricengine.AddOptions{SkipPush: true})
 	removeWarpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, removeSlug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", removeSlug, err)
@@ -456,9 +442,7 @@ func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -505,10 +489,7 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	const slug = "unwire-user-symlink"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -566,9 +547,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 		t.Fatalf("seed repo-wide pathspec: %v", err)
 	}
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)

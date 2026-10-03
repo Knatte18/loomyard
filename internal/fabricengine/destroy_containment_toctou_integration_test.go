@@ -36,9 +36,7 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	l := h.Location
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Build an out-of-hub directory carrying the exact file names removeLaunchers targets, so any
 	// follow-through the removal does would delete them.

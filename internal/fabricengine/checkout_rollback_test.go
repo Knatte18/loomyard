@@ -146,9 +146,7 @@ func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {

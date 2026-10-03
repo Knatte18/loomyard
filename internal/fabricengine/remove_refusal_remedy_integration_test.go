@@ -31,9 +31,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// An uncommitted TRACKED change is what makes the no-force gate refuse. It must be tracked:
 	// Remove probes scopeAll, but a tracked change is the unambiguous case.
@@ -73,9 +71,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	gitFile := filepath.Join(fabricengine.WorktreePath(l, slug), ".git")
 	missing := filepath.Join(l.HubPath, "no-such-gitdir")

@@ -18,11 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newMergePairFixture builds a real hubforge pair anchored at anchor and the *fabricengine.Fabric
-// handle over its prime warp/weft worktrees (via lyxcwd.ResolveWorktree + fabricengine.Open), plus
+// handle over its prime warp/weft worktrees (via hubforge.OpenFabric), plus
 // two closures for building divergent commits directly on the prime warp and weft repos
 // (gitkit.MustRun): commitOnWarpBranch/commitOnWeftBranch each check out (creating if absent) the
 // named branch off whatever is currently checked out, write filename with content, commit msg, and
@@ -34,14 +33,7 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 	t.Helper()
 
 	h = hubforge.NewHub(t, anchor)
-	l, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
-	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
-	}
-	f, err = fabricengine.Open(l)
-	if err != nil {
-		t.Fatalf("fabricengine.Open: %v", err)
-	}
+	f = hubforge.OpenFabric(t, h)
 
 	warpDir, weftDir := h.PrimeWorktree(), h.PrimeWeft()
 	commitOnWarpBranch = func(branch, filename, content, msg string) {

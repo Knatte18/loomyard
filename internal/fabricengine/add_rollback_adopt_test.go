@@ -226,10 +226,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	// wires the junction name this test asserts against.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	for _, tc := range []struct {
 		name   string

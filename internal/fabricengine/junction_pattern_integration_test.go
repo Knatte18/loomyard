@@ -548,9 +548,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	// Reconcile's below) agrees with the junction name this test drifts.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
@@ -610,9 +608,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	// Status's below) agrees with the junction name this test drifts.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}

@@ -49,9 +49,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// The drift injection: delete the weft worktree directory out from under
 	// git, exactly as a stray rm would — the registration and branch survive.
@@ -197,9 +195,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
 	portalLink := fabricengine.PortalLink(l, slug)
@@ -252,9 +248,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		h := hubforge.NewHub(t, ".")
 		l := h.Location
 		topology := h.Topology
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add: %v", err)
-		}
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
 		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
@@ -295,9 +289,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		h := hubforge.NewHub(t, ".")
 		l := h.Location
 		topology := h.Topology
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add: %v", err)
-		}
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
 		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
@@ -403,9 +395,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Detach the warp worktree's HEAD so branch-space liveness cannot see the
 	// pair is live; only the checked-out protection stands between Cleanup
@@ -452,10 +442,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	const slug = "pairinsync-realdir"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
@@ -498,9 +485,7 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -547,9 +532,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -615,9 +598,7 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -681,9 +662,7 @@ func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
 	const slug = "portal-repair"
 
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q) error = %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	portalLink := fabricengine.PortalLink(l, slug)
 	launcherDir := fabricengine.LauncherDir(l, slug)

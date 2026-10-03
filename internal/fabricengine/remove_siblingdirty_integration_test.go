@@ -26,9 +26,7 @@ func TestRemove_UntrackedDriveReportRefusesWithSiblingDirty(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	reports := filepath.Join(fabricengine.WeftWorktreePath(l, slug), "_lyx", "shed", slug, "drive-reports")
 	if err := os.MkdirAll(reports, 0o755); err != nil {
@@ -56,9 +54,7 @@ func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
 	tracked := filepath.Join(warpPath, "tracked.md")

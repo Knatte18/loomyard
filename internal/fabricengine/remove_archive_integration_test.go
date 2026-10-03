@@ -40,9 +40,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
@@ -70,9 +68,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	// Plant the state an earlier archive leaves: a lightweight tag at the tip, as archiveWeftTip itself creates, pushed to the origin.
@@ -104,9 +100,7 @@ func TestRemove_WeftDirtyRefusalPushesNoTagAndResumeArchivesOnce(t *testing.T) {
 	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
 	dir := filepath.Join(weftWorktree, "_lyx")
@@ -182,9 +176,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	mustBreakOrigin(t, weftRoot)
 
 	if _, err := topology.Remove(l, slug, false, false); err == nil {
@@ -217,9 +209,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, true, false)
@@ -243,9 +233,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
@@ -270,9 +258,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	mustRemoveOrigin(t, weftRoot)
 
 	res, err := topology.Remove(l, slug, false, false)

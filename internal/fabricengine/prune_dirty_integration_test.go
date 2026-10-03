@@ -31,9 +31,7 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	tracked := filepath.Join(weftPath, "tracked.md")

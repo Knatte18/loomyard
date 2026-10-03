@@ -31,9 +31,7 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// An untracked file is enough: Remove's pre-flight dirty check reads scopeAll (tracked and
 	// untracked alike), so this alone trips the "worktree has uncommitted changes; use --force"

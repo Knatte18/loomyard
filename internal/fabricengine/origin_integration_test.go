@@ -56,9 +56,7 @@ func TestAdd_RecordsNonDefaultParentBranch(t *testing.T) {
 	// --abbrev-ref HEAD.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", parentBranch)
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Resolve a Location at the new pair's own warp worktree — the acting worktree ReadOrigin reads
 	// through, mirroring how an operator who cd's into the new pair would read it back.
@@ -88,9 +86,7 @@ func TestAdd_RecordsParentWorktree(t *testing.T) {
 	const first = "first-pair"
 	const second = "second-pair"
 
-	if _, err := h.Topology.Add(l, first, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", first, err)
-	}
+	hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
 	firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
@@ -127,9 +123,7 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 	l := h.Location
 	const slug = "subpath-parent"
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	wantPath := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, fabricengine.OriginRecordRel())
 	if _, err := os.Stat(wantPath); err != nil {
@@ -166,9 +160,7 @@ func TestAdd_CommitsOriginRecordOnWeftBranch(t *testing.T) {
 	l := h.Location
 	const slug = "record-committed"
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftBranch := fabricengine.WeftBranchName(slug)
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
@@ -191,9 +183,7 @@ func TestCommitWeftPaths_SerializesConcurrentCommits(t *testing.T) {
 	l := h.Location
 	const slug = "commit-lock-race"
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	before := gitkit.RevListCount(t, weftPath, "HEAD")
 
@@ -433,9 +423,7 @@ func TestAdd_RunLauncherLifecycle(t *testing.T) {
 	l := h.Location
 	const slug = "run-launcher-lifecycle"
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	ext := ".sh"
 	if runtime.GOOS == "windows" {
