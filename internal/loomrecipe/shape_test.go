@@ -7,7 +7,6 @@ package loomrecipe
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -22,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedcheck"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -70,99 +69,26 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
 }
 
-// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair whose every path field is an absolute
-// path derived from a single t.TempDir(), fills Landing via testLandingDeps, fills WebsterRun and
-// the four WebsterDeps seams the way buildSequenceFixture does, and fills Shuttle, DiscussionSpec,
-// CommitDiscussion, PlanSpec, and CommitPlan with the non-writing fakeLoomShuttle variant so the
-// discussion and plan paths this builder points at stay absent on disk.
+// testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are
+// absolute paths under one t.TempDir().
+// It seeds the bouncer stencils and swaps in the webster run fake, the non-writing loom shuttle and the loom burler, so the discussion and plan paths this builder points at stay absent on disk.
+// ApprovePlan stays FullEnv's non-nil no-op: this file's subject is the constructed producer table and its routing graph, never a driven run, so nothing here reads the plan's approval flag.
 func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	t.Helper()
-	dir := t.TempDir()
 
-	cwd := filepath.Join(dir, "cwd")
-	if err := os.MkdirAll(cwd, 0o755); err != nil {
-		t.Fatalf("mkdir cwd: %v", err)
-	}
-
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "status.json.lock")
-	decisionRecordPath := filepath.Join(dir, "discussion", "decision-record.md")
-	supportLogPath := filepath.Join(dir, "discussion", "support-log.md")
-	planOverviewPath := filepath.Join(dir, "plan", "00-overview.md")
-
-	runRoot := filepath.Join(dir, "reviews")
-	if err := os.MkdirAll(runRoot, 0o755); err != nil {
-		t.Fatalf("mkdir run root: %v", err)
-	}
-	stencilsDir := filepath.Join(dir, "stencils")
-	seedBouncerStencils(t, stencilsDir)
-	specsDir := filepath.Join(dir, "specs")
-	if err := os.MkdirAll(specsDir, 0o755); err != nil {
-		t.Fatalf("mkdir specs dir: %v", err)
-	}
-
-	env := shedrecipe.Env{
-		ParentReview:       testParentReviewConfig(dir, decisionRecordPath, supportLogPath),
-		Cwd:                cwd,
-		AnchorPath:         dir,
-		WorktreeRoot:       dir,
-		StatusPath:         statusPath,
-		StatusLockPath:     statusLockPath,
-		DecisionRecordPath: decisionRecordPath,
-		SupportLogPath:     supportLogPath,
-		WebsterRun:         (&fakeWebsterRun{}).run,
-		CommitWebster:      func() error { return nil },
-		ReflectFriction:    func() string { return "skipped" },
-		WebsterDeps: websterengine.RunDeps{
-			Starter:    fakeMasterStarter{},
-			Reed:       fakeReedOps{},
-			Engine:     fakeShuttleEngine{},
-			RefMatcher: fakeRefMatcher{},
-		},
-		Landing:     testLandingDeps(dir),
-		Shuttle:     &fakeLoomShuttle{writeOutputs: false},
-		RunRoot:     runRoot,
-		StencilsDir: stencilsDir,
-		SpecsDir:    specsDir,
-		Burler:      &fakeLoomBurler{},
-		Now:         func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) },
-		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "discussion prompt",
-				OutputFiles: []string{decisionRecordPath, supportLogPath},
-				Interactive: false,
-				Role:        "discussion",
-			}, nil
-		},
-		CommitDiscussion: func() error { return nil },
-		DescriptionPath:  filepath.Join(dir, "landing", "summary.md"),
-		DescribeSpec: func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{Prompt: "describe prompt", Role: "describe"}, nil
-		},
-		CommitDescription: func() error { return nil },
-		ReworkSpec:        testReworkSpec,
-		Rework:            testReworkDeps(dir),
-		PlanSpec: func() (shuttleengine.Spec, error) {
-			return shuttleengine.Spec{
-				Prompt:      "plan prompt",
-				OutputFiles: []string{planOverviewPath},
-				Interactive: false,
-				Role:        "plan",
-			}, nil
-		},
-		CommitPlan: func() error { return nil },
-		// ApprovePlan is a non-nil no-op closure, not a real planparser.SetApproved call: this
-		// file's subject is the constructed producer table and its routing graph, never a driven
-		// run, so nothing here reads the plan's approval flag -- card 25's dynamic negative case is
-		// where a deliberately non-writing closure is the thing under test.
-		ApprovePlan:    func() error { return nil },
-		SkipPlanReview: func() (bool, error) { return false, nil },
-	}
+	env := envkit.FullEnv(t)
+	dir := filepath.Dir(env.StatusPath)
+	seedBouncerStencils(t, env.StencilsDir)
+	env.ParentReview = testParentReviewConfig(dir, env.DecisionRecordPath, env.SupportLogPath)
+	env.WebsterRun = (&fakeWebsterRun{}).run
+	env.Shuttle = newLoomShuttle("", false)
+	env.Burler = newLoomBurler(t)
+	env.Now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 
 	paths := shedbuild.ShedPaths{
-		StatusPath:     statusPath,
+		StatusPath:     env.StatusPath,
 		LockPath:       filepath.Join(dir, "run.lock"),
-		StatusLockPath: statusLockPath,
+		StatusLockPath: env.StatusLockPath,
 		MaxBounces:     3,
 	}
 
@@ -318,7 +244,7 @@ func TestNew_PassesShedValidation(t *testing.T) {
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
 	// returning a non-nil error before it ever reads the status file. Row 3's fake shuttle
-	// deliberately writes nothing (env.Shuttle is a fakeLoomShuttle{writeOutputs: false}), so
+	// deliberately writes nothing (env.Shuttle is a non-writing newLoomShuttle), so
 	// Discussion-Write's own gate -- which reads exactly the two files the fake did not write --
 	// fails on its very first (and, per the "every test fake evaluates the gate once" decision,
 	// only) evaluation. Discussion-Write carries no on_stuck, so that single failed gate blocks the
