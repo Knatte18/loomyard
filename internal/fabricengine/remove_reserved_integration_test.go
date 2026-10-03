@@ -11,9 +11,9 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -22,8 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk walks the reserved set against a live hub and
-// asserts each name is refused with an "invalid slug" error and its directory survives.
 func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +51,8 @@ func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 		_, err := topology.Remove(l, slug, true, false)
 		if err == nil {
 			t.Errorf("Remove(%q) = nil error; want an invalid-slug refusal", slug)
-		} else if !strings.Contains(err.Error(), "invalid slug") {
-			t.Errorf("Remove(%q) error = %v; want error containing %q", slug, err, "invalid slug")
+		} else if !errors.Is(err, fabricengine.ErrInvalidSlug) {
+			t.Errorf("Remove(%q) error = %v; want errors.Is ErrInvalidSlug", slug, err)
 		}
 
 		if _, statErr := os.Stat(marker); statErr != nil {

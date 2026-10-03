@@ -7,11 +7,20 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// ErrNoWarpBinding matches, under errors.Is, the refusal of a weft that records no warp binding when
+// none was supplied: resolveEffectiveWarpURL's and CloneHub's one-argument form's.
+var ErrNoWarpBinding = errors.New("no recorded warp binding")
+
+// ErrWarpBindingMismatch matches, under errors.Is, resolveEffectiveWarpURL's refusal to re-point a
+// recorded binding at a different warp URL.
+var ErrWarpBindingMismatch = errors.New("warp binding mismatch")
 
 // WarpBindingFileName is the filename of the recorded warp-URL binding at the board root
 // (<boardDir>/.lyx-warp).
@@ -115,7 +124,10 @@ func warpURLTransportIdentity(raw string) string {
 // function's own message must not attempt to name it.
 func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effective string, writeRecord bool, err error) {
 	if !found && supplied == "" {
-		return "", false, fmt.Errorf("weft has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>")
+		return "", false, &sentinelError{
+			sentinel: ErrNoWarpBinding,
+			msg:      "weft has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>",
+		}
 	}
 	if !found && supplied != "" {
 		return supplied, true, nil
@@ -129,5 +141,9 @@ func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effe
 		// untouched either way.
 		return supplied, false, nil
 	}
-	return "", false, fmt.Errorf("recorded warp binding %s does not match %s; refusing to re-point. If the warp repo moved, edit %s in the hub's _board worktree and commit.", recorded, supplied, WarpBindingFileName)
+	return "", false, &sentinelError{
+		sentinel: ErrWarpBindingMismatch,
+		msg: fmt.Sprintf("recorded warp binding %s does not match %s; refusing to re-point. If the warp repo moved, edit %s in the hub's _board worktree and commit.",
+			recorded, supplied, WarpBindingFileName),
+	}
 }
