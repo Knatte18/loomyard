@@ -128,6 +128,12 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		}
 	}
 
+	// Step 3b: a dirty tree before the merge-in is Stuck, so nothing uncommitted is merged over or pushed.
+	reason, err := p.gate.clean(publishName, "before the merge-in")
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
+	}
+
 	// Step 4: catch the task worktree up with the parent branch first.
 	mergeResult, err := p.resolver.Resolve(ctx, p.deps.ParentBranch)
 	if err != nil {
@@ -141,17 +147,21 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	// Step 4a: verify the merged tree before anything leaves the worktree.
-	// A merge can compile cleanly and still break tests,
-	// and only a no-op merge leaves the tree the plan-level verify already passed.
-	reason, err := p.gate.check(ctx, publishName, p.deps.ParentBranch, !mergeResult.AlreadyUpToDate)
-	if err != nil {
-		if cerr := cancelErr(ctx, publishName); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", publishName, err)
+	// A merge can compile cleanly and still break tests;
+	// the verified-tree record decides whether this tree was already verified.
+	// The tree must be clean after the merge-in, so the verify runs on committed content,
+	// and clean after the verify, since a verify that dirties the tree is a non-hermetic test and halts rather than ships.
+	reason, err = p.gate.clean(publishName, "after the merge-in")
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
 	}
-	if reason != "" {
-		return p.stuckOrCancelled(ctx, reason)
+	reason, err = p.gate.check(ctx, publishName, p.deps.ParentBranch)
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
+	}
+	reason, err = p.gate.clean(publishName, "after the verify")
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
 	}
 
 	// Step 5: push the task branch. Mandatory and load-bearing: agents commit per fix and never
@@ -241,6 +251,23 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		// Closed and not merged: a human decision to stop, which must never read as proceed.
 		return p.stuckOrCancelled(ctx, withPRURL("the pull request was closed without being merged", pr.GetHTMLURL()))
 	}
+}
+
+// gateStop maps one gate call's result onto Call's return.
+// stop is false when the gate passed, so Call proceeds; otherwise the other values are what Call returns at once:
+// a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
+func (p *Publish) gateStop(ctx context.Context, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if err != nil {
+		if cerr := cancelErr(ctx, publishName); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr, true
+		}
+		return "", shedengine.OutputPointer{}, err, true
+	}
+	if reason != "" {
+		outcome, out, err := p.stuckOrCancelled(ctx, reason)
+		return outcome, out, err, true
+	}
+	return "", shedengine.OutputPointer{}, nil, false
 }
 
 // refreshPullRequest brings an open pull request's title and body in line with the change description, editing only when either differs, and returns Done.

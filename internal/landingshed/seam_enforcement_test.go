@@ -34,7 +34,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
-	"github.com/Knatte18/loomyard/internal/verifyrun",
+	"github.com/Knatte18/loomyard/internal/verifytree",
 	"github.com/google/go-github/v75/github",
 	"gopkg.in/yaml.v3",
 }

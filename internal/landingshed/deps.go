@@ -120,6 +120,7 @@ type Deps struct {
 	MarkTaskDone func() error
 
 	// VerifyCommand returns the verify command line the post-merge verify gate runs in the task worktree.
+	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,
 	// because the caller builds Deps before the command's source exists on a fresh run.
 	//
@@ -127,13 +128,10 @@ type Deps struct {
 	// the gate never runs and nothing is logged.
 	// An empty returned string means the source carries no verify command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
-	// VerifyPendingPath is the told path of the pending-verify marker:
-	// present while a merge-in has changed the task tree and the verify has not yet passed.
+	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
+	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
-	VerifyPendingPath string
-	// VerifyOutputPath is the told path the verify command's combined output is written to, overwritten on each run.
-	// Told, never derived, per the Told-Geometry Invariant.
-	VerifyOutputPath string
+	VerifyDir string
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

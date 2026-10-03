@@ -300,10 +300,14 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 // parent-side merge; otherwise it reports done=true along with the outcome/output/error Call should
 // return immediately.
 //
-// After a non-stuck merge-in it runs the post-merge verify gate,
-// so every merge-in, the first and the retry after the parent moved again, is verified before the parent-side merge.
-// A gate failure returns before the parent opener, the parent-side merge, the board update, the push and the pull-request close.
+// It checks the tree is clean before the merge-in and after it, then runs the post-merge verify gate and checks the tree is clean once more,
+// so every merge-in, the first and the retry after the parent moved again, is committed and verified before the parent-side merge.
+// A gate failure or a dirty tree returns before the parent opener, the parent-side merge, the board update, the push and the pull-request close.
 func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	reason, err := fz.gate.clean(finalizeName, "before the merge-in")
+	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+		return outcome, out, err, true
+	}
 	result, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch)
 	if err != nil {
 		if cerr := cancelErr(ctx, finalizeName); cerr != nil {
@@ -315,12 +319,30 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 		outcome, out, err := fz.stuckOrCancelled(ctx, result.Reason)
 		return outcome, out, err, true
 	}
-	reason, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch, !result.AlreadyUpToDate)
+	reason, err = fz.gate.clean(finalizeName, "after the merge-in")
+	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+		return outcome, out, err, true
+	}
+	reason, err = fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
+	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+		return outcome, out, err, true
+	}
+	reason, err = fz.gate.clean(finalizeName, "after the verify")
+	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+		return outcome, out, err, true
+	}
+	return "", shedengine.OutputPointer{}, nil, false
+}
+
+// gateStop maps one gate call's result onto mergeInStep's return.
+// stop is false when the gate passed; otherwise the other values are what mergeInStep returns at once:
+// a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
+func (fz *Finalize) gateStop(ctx context.Context, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if err != nil {
 		if cerr := cancelErr(ctx, finalizeName); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true
 		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
+		return "", shedengine.OutputPointer{}, err, true
 	}
 	if reason != "" {
 		outcome, out, err := fz.stuckOrCancelled(ctx, reason)

@@ -86,8 +86,6 @@ var pathRules = []pathRule{
 	{name: "loomengine.LoomApprovalPath", class: classTransient, path: loomengine.LoomApprovalPath},
 	{name: "loomengine.LoomRejectionPath", class: classTransient, path: loomengine.LoomRejectionPath},
 	{name: "loomengine.LoomReworkCoveragePath", class: classTransient, path: loomengine.LoomReworkCoveragePath},
-	{name: "loomengine.LoomVerifyPendingPath", class: classTransient, path: loomengine.LoomVerifyPendingPath},
-	{name: "loomengine.LoomVerifyOutputPath", class: classTransient, path: loomengine.LoomVerifyOutputPath},
 	{name: "loomengine.LoomFrictionLock", class: classTransient, path: loomengine.LoomFrictionLock},
 	{name: "logger.LogsDir", class: classTransient, path: logger.LogsDir},
 	{name: "treadleengine.PauseFlagPath", class: classTransient, path: func(l *lyxcwd.Location) string {
