@@ -13,12 +13,10 @@ package shedverbs
 import (
 	"go/ast"
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // shedverbsAllowedImports are the only non-stdlib import paths production code in this package may
@@ -26,13 +24,13 @@ import (
 //
 // logger is admitted for step-boundary logging and for logger.TraceFile/logger.TraceDir, the only
 // path sources admitted into this package, each returning the logger's own sink location verbatim.
-var shedverbsAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/clihelp":    true,
-	"github.com/Knatte18/loomyard/internal/logger":     true,
-	"github.com/Knatte18/loomyard/internal/output":     true,
-	"github.com/Knatte18/loomyard/internal/state":      true,
-	"github.com/Knatte18/loomyard/internal/shedengine": true,
-	"github.com/spf13/cobra":                           true,
+var shedverbsAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/clihelp",
+	"github.com/Knatte18/loomyard/internal/logger",
+	"github.com/Knatte18/loomyard/internal/output",
+	"github.com/Knatte18/loomyard/internal/state",
+	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/spf13/cobra",
 }
 
 // shedverbsDeniedLyxcwdImport is the exact import path the no-resolver clause excludes from this
@@ -59,68 +57,23 @@ func isModuleCLIImportPath(importPath string) bool {
 // package imports only stdlib or an entry in shedverbsAllowedImports, and separately asserts that no
 // production import path is shedverbsDeniedLyxcwdImport or matches the <module>cli shape.
 func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine shedverbs source directory location")
-	}
-	pkgDir := filepath.Dir(file)
+	scankit.AssertImportAllowlist(t, "internal/shedverbs", shedverbsAllowedImports...)
 
-	var failures []string
 	var deniedFound []string
 	var moduleCLIFound []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		relPath, _ := filepath.Rel(pkgDir, path)
-
-		for _, imp := range astFile.Imports {
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedverbs"}, Shallow: true}, func(f *scankit.File) {
+		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
-
 			if importPath == shedverbsDeniedLyxcwdImport {
-				deniedFound = append(deniedFound, relPath)
+				deniedFound = append(deniedFound, f.Rel)
 			}
 			if isModuleCLIImportPath(importPath) {
-				moduleCLIFound = append(moduleCLIFound, relPath+": "+importPath)
+				moduleCLIFound = append(moduleCLIFound, f.Rel+": "+importPath)
 			}
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || shedverbsAllowedImports[importPath] {
-				continue
-			}
-
-			failures = append(failures, relPath+": "+importPath)
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk shedverbs directory: %v", err)
-	}
+	scankit.RequireFloor(t, scanned, 1, "shedverbs denied-import scan")
 
-	if len(failures) > 0 {
-		t.Errorf("no-resolver/no-<module>cli seam violated; imports outside the allowlist found: %v", failures)
-	}
 	if len(deniedFound) > 0 {
 		t.Errorf("no-resolver seam violated; %s imported directly in: %v", shedverbsDeniedLyxcwdImport, deniedFound)
 	}
@@ -134,35 +87,10 @@ func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
 // selector-expression walk is enough, since the package imports no shell runner through which
 // `git rev-parse` could reach it.
 func TestNoResolverInvariant_NoOSGetwd(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine shedverbs source directory location")
-	}
-	pkgDir := filepath.Dir(file)
-
 	var found []string
 
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		relPath, _ := filepath.Rel(pkgDir, path)
-
-		ast.Inspect(astFile, func(n ast.Node) bool {
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedverbs"}, Shallow: true}, func(f *scankit.File) {
+		ast.Inspect(f.AST(t, parser.ParseComments), func(n ast.Node) bool {
 			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
 				return true
@@ -172,16 +100,12 @@ func TestNoResolverInvariant_NoOSGetwd(t *testing.T) {
 				return true
 			}
 			if pkgIdent.Name == "os" && sel.Sel.Name == "Getwd" {
-				found = append(found, relPath)
+				found = append(found, f.Rel)
 			}
 			return true
 		})
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk shedverbs directory: %v", err)
-	}
+	scankit.RequireFloor(t, scanned, 1, "shedverbs os.Getwd scan")
 
 	if len(found) > 0 {
 		t.Errorf("no-resolver seam violated; os.Getwd referenced in: %v", found)
