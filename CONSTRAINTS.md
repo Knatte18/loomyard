@@ -391,6 +391,16 @@ Every test package whose tests spawn git runs under the hermetic git test enviro
 - `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or is allowlisted (`internal/proc`).
 - A package is git-spawning when a test file references a gitkit spawn, by the same definition Test Tier Purity uses.
 
+## Tmux Test Isolation Invariant
+
+Every test package with an `integration`- or `smoke`-tagged test file runs its tests through `tmuxkit.Main`, so no test touches the operator's default tmux socket directory.
+
+- Under every tag set that compiles any of the package's test files (untagged, `integration`, `smoke`), a file declaring `TestMain` compiles, and every `TestMain` in the package calls `tmuxkit.Main`.
+- The rule keys on "has a tagged test file", not "starts tmux": starting tmux has no static shape, so a tagged package that never starts tmux still carries the one call, which costs one temp directory.
+- In an untagged run the entry point spawns nothing.
+- A package whose `TestMain` cannot call the entry point is admitted by an allowlist entry whose reason names that obstacle; "does not start tmux" is not a reason.
+- Enforced by `cmd/lyx/tmuxisolation_test.go`.
+
 ## Dev/Prod Binary Separation
 
 Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then PATH) — never a bare-PATH `lyx` lookup.
