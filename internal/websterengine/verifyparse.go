@@ -45,6 +45,12 @@ const (
 // subtestIndent is the number of spaces go test indents each subtest level's "--- FAIL:" header by.
 const subtestIndent = 4
 
+// ParseVerifyFailures returns the failure identities of a failed verify run's output, as the verify gate names them.
+// `lyx webster verify` calls it so the verb reports the identities the gate does.
+func ParseVerifyFailures(output string) []VerifyFailure {
+	return parseVerifyFailures(output, false)
+}
+
 // parseVerifyFailures returns the failure identities in output, in first-seen order and deduplicated by id.
 // It returns nil when passed is true.
 // A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it, so a failing TestX/a and a failing TestX/b are distinct identities.

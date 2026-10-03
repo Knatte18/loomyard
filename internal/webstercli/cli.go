@@ -230,6 +230,7 @@ Verbs:
   lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
   lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
+  lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
 
 Modes:
   webster runs in hub mode inside a lyx hub worktree, and in standalone
@@ -276,6 +277,7 @@ Example (standalone, outside any lyx hub):
 	parent.AddCommand(c.rebaselineCmd())
 	parent.AddCommand(c.acceptAuditCmd())
 	parent.AddCommand(c.restorePlanCmd())
+	parent.AddCommand(c.verifyCmd())
 
 	return parent
 }
