@@ -287,7 +287,7 @@
 // # cold recovery is the only real model escalation
 //
 // The one place webster spawns a genuinely separate process is
-// recover-batch: a bounded, re-entrant long-poll verb that spawns a fresh
+// recover-batch: a blocking, re-entrant verb that spawns a fresh
 // implementer as its own shuttle/reed strand at the recovery role when a
 // fork reports stuck or writes no report, rendering the SEPARATE, full
 // cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
@@ -295,11 +295,15 @@
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision). The call that spawns the recovery strand first waits for its
 // provider to come up (normally seconds, bounded by startup_timeout_s), and
-// every call then blocks for at most poll_wait_s and returns either a
-// terminal digest or a running snapshot; a re-entrant call finds the strand already recorded in state
-// and skips straight to the bounded wait. This mirrors classify.go's
-// dead/timeout/stuck classification but keeps any single Bash tool call
-// bounded rather than open for the whole recovery timeout.
+// every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus
+// one poll tick) and returns a terminal digest: the budget outlasts the
+// timeout measured from spawn, so a strand that never reports classifies dead
+// on its timeout and the call returns. A re-entrant call finds the strand
+// already recorded in state and skips straight to the wait. Merriam runs the
+// call as a backgrounded Bash command, ends its turn and acts on the
+// completion notification; only an operator's shorter --wait can return a
+// running snapshot. This mirrors classify.go's dead/timeout/stuck
+// classification.
 //
 // # digest persistence carries batch context forward
 //

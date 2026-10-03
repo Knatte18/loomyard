@@ -398,7 +398,7 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap, pollWaitS int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -425,7 +425,6 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		"plan_dir":                masterPlanDirDisplay(worktreeRoot, planDir),
 		"integration_report_path": integrationReportPath,
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
-		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
 		"pattern_directive":       directive,
 		friction.MarkerName:       frictionDirective,
 	}

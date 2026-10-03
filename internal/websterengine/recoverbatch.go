@@ -1,4 +1,4 @@
-// recoverbatch.go implements webster's re-entrant, bounded long-poll exception-path verb as three
+// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three
 // lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate
 // process — escalating a batch a fork reported stuck, or never reported at all, to a cold
 // implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt
@@ -9,9 +9,10 @@
 // digest merge into a freshly reloaded state).
 // First call spawns and records;
 // the call that spawns the recovery strand first waits for its provider to come up (normally
-// seconds, bounded by startup_timeout_s), and every call then blocks at most one wait window and
-// returns either the terminal digest or a running snapshot;
-// a caller (webstercli) re-calls until terminal.
+// seconds, bounded by startup_timeout_s), and every call then blocks for RecoveryWaitBudget and
+// returns the terminal digest;
+// recovery_timeout_min bounds every call, since the strand classifies dead on it.
+// A running snapshot comes back only when an operator passes a shorter --wait.
 //
 // The three-phase split exists for the state-mutation lease: the caller holds it across
 // spawn-or-attach — now including the spawn's startup window — and across the terminal persist,
@@ -320,6 +321,12 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	deps.State.Batches[batchNumber] = fresh
 	deps.State.CurrentBatch = batchNumber
 	return fresh, true, nil
+}
+
+// RecoveryWaitBudget is the wait one recover-batch call blocks for by default: recovery_timeout_min plus one poll tick.
+// The budget always outlasts the timeout measured from spawn, so a call returns at a terminal digest, or once Classify marks the strand dead on its timeout, and never as a running snapshot.
+func RecoveryWaitBudget(cfg Config) time.Duration {
+	return time.Duration(cfg.RecoveryTimeoutMin)*time.Minute + pollTick
 }
 
 // RecoverAwait drives the bounded wait for a recovery strand: the long-poll classification loop

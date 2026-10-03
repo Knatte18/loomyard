@@ -1,10 +1,10 @@
-// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, bounded long-poll
-// escalation call Master's own prompt makes when a fork reports stuck or never reports at all.
+// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, blocking
+// escalation call Master's own prompt makes, backgrounded, when a fork reports stuck or never reports at all.
 // It drives websterengine's three lease-scoped phases with a real, wall-clock Clock:
 // RecoverSpawnOrAttach under the state-mutation lease (saved and fabric-committed "...
 // spawn" when this call performed the spawn) -- the spawn phase under the lease now includes the
 // provider's startup window (bounded by startup_timeout_s) -- RecoverAwait with the lease RELEASED
-// (the wait phase that blocks up to poll_wait_s still runs with the lease released -- holding the
+// (the wait phase that blocks up to recovery_timeout_min still runs with the lease released -- holding the
 // lease across it would stall every concurrent verb and run entry for minutes, the exact hold
 // AcquireStateMutation's contract forbids), and, on a terminal
 // digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
@@ -121,7 +121,7 @@ Example:
 
 			waitBudget := wait
 			if waitBudget == 0 {
-				waitBudget = time.Duration(c.cfg.PollWaitS) * time.Second
+				waitBudget = websterengine.RecoveryWaitBudget(c.cfg)
 			}
 
 			// Standalone mode boots its own reed session here, idempotently, because nothing else
@@ -300,7 +300,7 @@ Example:
 		},
 	}
 
-	cmd.Flags().DurationVar(&wait, "wait", 0, "long-poll wait budget before returning a running snapshot; 0 defers to webster.yaml's poll_wait_s")
+	cmd.Flags().DurationVar(&wait, "wait", 0, "operator override of the wait budget; a shorter wait can return a running snapshot; 0 blocks until a terminal digest or recovery_timeout_min")
 
 	return cmd
 }

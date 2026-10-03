@@ -225,7 +225,6 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		Config: websterengine.Config{
 			SelfFixCap:       2,
 			MasterTimeoutMin: 480,
-			PollWaitS:        480,
 		},
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
