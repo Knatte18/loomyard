@@ -57,7 +57,7 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	}
 
 	want := websterengine.Config{
-		Master:             "sonnet",
+		Master:             "sonnet[medium]",
 		Recovery:           "opus[effort=high]",
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
@@ -175,8 +175,8 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Master != "sonnet" {
-		t.Errorf("Master = %q, want %q", cfg.Master, "sonnet")
+	if cfg.Master != "sonnet[medium]" {
+		t.Errorf("Master = %q, want %q", cfg.Master, "sonnet[medium]")
 	}
 	if cfg.SelfFixCap != 2 {
 		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 2)
