@@ -1,8 +1,4 @@
-// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-
-// judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every
-// non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the
-// clear's own failure degradation, and the cross-invocation and post-commit-failure cases the
-// trigger is intended to reach.
+// bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the clear's own failure degradation, and the cross-invocation and post-commit-failure cases the trigger is intended to reach.
 
 package shedadapters
 
@@ -22,10 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the
-// round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the
-// Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as
-// one unit.
+// layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
 func layoutApprovedGeneration(t *testing.T, cfg BouncerConfig, round int) {
 	t.Helper()
 
@@ -292,11 +285,9 @@ func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case: a
-// Commit failure surfaces from settle unchanged (the run directory is left CONVERGED, since settle
-// never archives on that path), and the next Call over that same still-CONVERGED directory clears
-// and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is
-// the subject.
+// TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case:
+// a Commit failure surfaces from settle unchanged (the run directory is left CONVERGED, since settle never archives on that path),
+// and the next Call over that same still-CONVERGED directory clears and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is the subject.
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
@@ -349,9 +340,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge CONTINUE,
-// judge CONVERGED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that
-// writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
+// TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge CONTINUE, judge CONVERGED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	// Round 1: seed.
 	seedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -372,7 +361,8 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 		t.Fatalf("Call() (seed) outcome = %q; want %q", outcome, shedengine.Stuck)
 	}
 
-	// Round 1: judge CONTINUE. The round producer writes its own report first.
+	// Round 1: judge CONTINUE.
+	// The round producer writes its own report first.
 	if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(bouncerReport(1)), 0o644); err != nil {
 		t.Fatalf("WriteFile(round-1 report) = %v; want nil", err)
 	}
@@ -444,10 +434,10 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line. The
-// clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1, costing a
-// fresh judge spawn plus a fresh round, and it can spend the leftover budget that halts the run
-// because the round producer's episode never resets. The failure branch beside it has always logged;
+// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line.
+// The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1, costing a fresh judge spawn plus a fresh round,
+// and it can spend the leftover budget that halts the run because the round producer's episode never resets.
+// The failure branch beside it has always logged;
 // the branch that actually fires did not, so an operator whose run suddenly cost a second generation
 // had nothing to read anywhere.
 func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
