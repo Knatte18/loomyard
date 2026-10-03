@@ -119,23 +119,19 @@ func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicol
 	}
 }
 
-// TestDriverPrompt_StaysWellUnderLaunchPromptCap is a bound check, not an exact-length pin: the
-// prompt must stay well under the Claude engine's maxLaunchPromptBytes for a realistic run-id and
-// report path, since a prompt that grew into a copy of the skill would fail only at launch, after a
-// bootstrap has already seeded and committed.
-func TestDriverPrompt_StaysWellUnderLaunchPromptCap(t *testing.T) {
+// TestDriverPrompt_StaysShort is a bound check, not an exact-length pin: the prompt must stay short
+// for a realistic run-id and report path, since a prompt that grew into a copy of the skill would go
+// stale against the skill it copies.
+func TestDriverPrompt_StaysShort(t *testing.T) {
 	runID := "some-realistic-worktree-name"
 	reportPath := "/hub/some-realistic-worktree-name/.lyx/shed/some-realistic-worktree-name/drive-report-20260920-120000-cafe.md"
 
 	got := driverPrompt(runID, reportPath)
 
-	// 30000 mirrors claudeengine's maxLaunchPromptBytes; this package must not import
-	// internal/shuttleengine/claudeengine (provider specifics stay there per the Shuttle
-	// Provider-Seam Invariant), so the bound is restated here rather than imported.
 	// The report path appears twice (report target and park command), so the bound leaves room for a long one;
 	// a copied-in skill runs to several kilobytes and still fails it.
-	const wellUnderLaunchPromptCap = 1500
-	if len(got) >= wellUnderLaunchPromptCap {
-		t.Errorf("driverPrompt() length = %d; want well under %d (the launch prompt cap is 30000)", len(got), wellUnderLaunchPromptCap)
+	const maxShortPromptLen = 1500
+	if len(got) >= maxShortPromptLen {
+		t.Errorf("driverPrompt() length = %d; want under %d", len(got), maxShortPromptLen)
 	}
 }

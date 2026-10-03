@@ -1641,7 +1641,7 @@ func TestRun_ReorderingIsObservableInMasterPrompt(t *testing.T) {
 	if fx.Starter.callCount() != 1 {
 		t.Fatalf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
 	}
-	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
+	prompt := fx.Starter.startCalls[0].Prompt
 	idx02 := strings.Index(prompt, "02 — batch2")
 	idx01 := strings.Index(prompt, "01 — batch1")
 	if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
@@ -2342,7 +2342,7 @@ func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 		}
 	}
 
-	prompt := masterPromptText(t, fx.Starter.startCalls[0].Prompt)
+	prompt := fx.Starter.startCalls[0].Prompt
 	for _, want := range []string{"03 — batch3", "04 — batch4"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("Master prompt lacks %q", want)
@@ -2747,21 +2747,23 @@ func TestRun_PendingPlanPathNamesRestorePlan(t *testing.T) {
 	}
 }
 
-// masterPromptText reads the rendered Master prompt from the file its launch pointer names.
-func masterPromptText(t *testing.T, pointer string) string {
-	t.Helper()
-	path := pointer[strings.LastIndex(pointer, " ")+1:]
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read master prompt named by %q: %v", pointer, err)
-	}
-	return string(data)
-}
+// TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile pins that Run hands the rendered Master
+// prompt straight to the spawn (the provider engine writes its own prompt.md) and writes no master.md.
+func TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
 
-// TestMasterPromptPointer_StaysShort pins the launch prompt far under the provider's
-// command-line limit, whatever the plan's size.
-func TestMasterPromptPointer_StaysShort(t *testing.T) {
-	if got := len(websterengine.MasterPromptPointer(strings.Repeat("p", 400))); got > 1000 {
-		t.Errorf("pointer is %d bytes; want it short", got)
+	runToDone(t, fx, "master-strand-prompt", "master-session-prompt", nil, 1)
+
+	prompt := fx.Starter.startCalls[0].Prompt
+	if !strings.Contains(prompt, "01 — batch1") {
+		t.Errorf("Spec.Prompt = %q; want the rendered Master prompt listing batch 01", prompt)
+	}
+	if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "master.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("master.md stat err = %v; want it absent, since Run no longer writes it", err)
 	}
 }

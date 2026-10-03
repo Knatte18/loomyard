@@ -665,26 +665,13 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	// The prompt goes to Master as a file: rendered in full it grows with the plan's batch index
-	// and progress, and a long plan outgrows the provider's command-line launch limit.
-	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
-		return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
-	}
-	masterPromptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, masterPromptFileName))
-	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: resolve master prompt path: %w", err)
-	}
-	if err := os.WriteFile(masterPromptPath, prompt, 0o644); err != nil {
-		return RunResult{}, fmt.Errorf("webster: write master prompt %s: %w", masterPromptPath, err)
-	}
-
 	resolved, ok := deps.Roles[RoleMaster]
 	if !ok {
 		return RunResult{}, fmt.Errorf("webster: no resolved model-spec for role %q", RoleMaster)
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt: MasterPromptPointer(masterPromptPath),
+		Prompt: string(prompt),
 		// Both output files: shuttle classifies this run done only once
 		// BOTH land, so a Master that writes outcome.yaml but never
 		// reaches its summary.md final action never falsely reads as

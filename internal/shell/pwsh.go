@@ -18,9 +18,9 @@ func (p pwshShell) Invoke(bin string) string {
 	return "& " + p.Quote(bin)
 }
 
-// ReadFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom, expanding path's contents
-// into a single argument.
-func (p pwshShell) ReadFile(path string) string {
+// readFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom, expanding path's contents
+// into a single argument; Source builds on it.
+func (p pwshShell) readFile(path string) string {
 	return "(Get-Content -Raw " + p.Quote(path) + ")"
 }
 
@@ -57,7 +57,7 @@ func (p pwshShell) PrependPathEntry(dir string) string {
 // so no ExecutionPolicy (Restricted, AllSigned, Windows PowerShell 5.1's client default) can refuse it,
 // and a refused launch line would fail the strand launch.
 func (p pwshShell) Source(path string) string {
-	return ". ([scriptblock]::Create(" + p.ReadFile(path) + "))"
+	return ". ([scriptblock]::Create(" + p.readFile(path) + "))"
 }
 
 // EnvRef returns the double-quoted `"$env:KEY"` expansion, which stays one argument whatever the value holds.

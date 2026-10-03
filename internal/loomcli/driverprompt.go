@@ -25,11 +25,8 @@ import (
 // finds whichever checkout happens to exist, so the run would follow an arbitrary version of the
 // skill's contract.
 //
-// It is kept short on purpose: the Claude engine caps a prompt at maxLaunchPromptBytes (declared in
-// internal/shuttleengine/claudeengine/command.go, enforced in claudeengine.go), because the whole
-// prompt expands into one command-line argument. A prompt that grew into a copy of the skill would
-// fail only at launch, after a bootstrap has already seeded and committed. This file composes prompt
-// text alone and names no Claude flag and no command line: the Shuttle Provider-Seam Invariant keeps
+// It is kept short on purpose: a prompt that grew into a copy of the skill would go stale against the
+// skill it copies. This file composes prompt text alone and names no Claude flag and no command line: the Shuttle Provider-Seam Invariant keeps
 // provider specifics under the claude engine package.
 func driverPrompt(runID string, reportPath string) string {
 	return fmt.Sprintf(
