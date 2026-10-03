@@ -20,24 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// newTestRunner returns a Runner over reed/engine scoped to a fresh temp
-// worktree, with tuning knobs small enough that any later Wait-driving test
-// built on top of it runs fast. anchorPath and worktreeRoot are distinct
-// values (never the same temp dir twice) so a swapped NewRunner argument
-// pair fails a test rather than passing. The fixture's paneCwd is anchorPath
-// by construction, since it is built through NewRunner rather than
-// NewDetachedRunner.
-func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (runner *Runner, anchorPath, worktreeRoot string) {
-	t.Helper()
-	worktreeRoot = t.TempDir()
-	anchorPath = filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
-	return NewRunner(reed, engine, anchorPath, worktreeRoot, cfg), anchorPath, worktreeRoot
-}
-
 // TestNewRunner_RefusesUnusableToldPaths pins the told-pair guard.
 // anchorPath and worktreeRoot are adjacent parameters of the same type with four semantically
 // distinct consumers, so a swap compiles cleanly and, in a subpath-anchored worktree, silently
@@ -209,7 +191,8 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 func TestRun_RunDir_ReturnsStartCreatedDirectory(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
-	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
 	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
@@ -233,7 +216,7 @@ func TestRun_RunDir_ReturnsStartCreatedDirectory(t *testing.T) {
 func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 	readyStart(reed, engine)
 
 	spec := Spec{
@@ -284,7 +267,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 func TestRunner_Start_ReadyStartProbesExactlyOnce(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
@@ -326,7 +309,7 @@ func TestRunner_Start_ReadyStartProbesExactlyOnce(t *testing.T) {
 func TestRunner_Start_PersistsRunningOutcome(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", SessionID: "session-1"}}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 	readyStart(reed, engine)
 
 	run, err := runner.Start(Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}})
@@ -352,7 +335,7 @@ func TestRunner_Start_PersistsRunningOutcome(t *testing.T) {
 func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 
 	if _, err := runner.Start(Spec{}); err == nil {
 		t.Fatal("Start() = nil error, want validation error for empty spec")
@@ -368,7 +351,8 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
-	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want AddStrand failure to propagate")
@@ -400,7 +384,8 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 			}
 		},
 	}
-	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want save-run-state failure to propagate")
@@ -451,7 +436,7 @@ func TestRunner_Start_StrandTeardownFailure_LogsThroughLogger(t *testing.T) {
 			}
 		},
 	}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 
 	buf := captureLoggerOutput(t)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
@@ -554,7 +539,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	// anchorPath is a real subpath of worktree, never the same value twice:
 	// passing one directory for both fields would let a swapped NewRunner
 	// argument pair pass this test, which is exactly the masking case
-	// newTestRunner's own contract exists to prevent.
+	// newFixture's own contract exists to prevent.
 	worktree := t.TempDir()
 	anchorPath := filepath.Join(worktree, "sub", "dir")
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
@@ -623,23 +608,6 @@ func TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState(t *testing.T) {
 	}
 }
 
-// newInterruptTestRun returns a bare Run handle wired to reed/engine, with
-// no Start/Wait machinery involved — Interrupt/Send only ever touch
-// runner.reed and runner.engine through run.state.StrandGUID.
-func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
-	t.Helper()
-	worktreeRoot := t.TempDir()
-	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, Config{})
-	return &Run{
-		runner: runner,
-		state:  RunState{StrandGUID: "strand-1"},
-	}
-}
-
 // liveStrandStatus scripts a fakeReed Status answer reporting strand-1 with
 // the given liveness — what the Interrupt/Send liveness guard consumes.
 // The pane id is part of the fixture rather than incidental: reed reports one for every strand whose
@@ -662,7 +630,7 @@ func readyAgentEngine() *fakeEngine {
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Interrupt(); err != nil {
 		t.Fatalf("Interrupt() error: %v", err)
@@ -679,7 +647,7 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 func TestRun_Send_RejectsNewlines(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Send("line one\nline two"); err == nil {
 		t.Fatal("Send() = nil error, want rejection for multiline text")
@@ -706,7 +674,7 @@ func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-			run := newInterruptTestRun(t, reed, &fakeEngine{})
+			run := newFixture(t, reed, &fakeEngine{}, withConfig(Config{})).newRun(Spec{})
 
 			if err := run.Send(tt.text); err == nil {
 				t.Fatalf("Send(%q) = nil error, want rejection for empty/whitespace text", tt.text)
@@ -737,7 +705,7 @@ func TestRun_Send_PlaysEscThenTextWithSubmit(t *testing.T) {
 	// delivery check to succeed without a replay.
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Send("updated instructions"); err != nil {
 		t.Fatalf("Send() error: %v", err)
@@ -775,7 +743,7 @@ func TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds(t *testing.T) {
 		),
 	}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Send("updated instructions"); err != nil {
 		t.Fatalf("Send() error: %v, want the replay to succeed", err)
@@ -795,7 +763,7 @@ func TestRun_Send_NeverDelivered_ReportsHonestFailure(t *testing.T) {
 		CaptureQueue: repeatCapture("❯ ", 2*sendVerifyAttempts+2),
 	}
 	engine := readyAgentEngine()
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	err := run.Send("updated instructions")
 	if err == nil {
@@ -825,7 +793,7 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: []string{"❯ do it again"},
 		}
-		run := newInterruptTestRun(t, reed, readyAgentEngine())
+		run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
 
 		if err := run.Send("do it again"); err == nil {
 			t.Fatal("Send() = nil error, want a delivery failure when the occurrence count never rises")
@@ -839,7 +807,7 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: []string{"❯ do it again", "❯ do it again", "do it again …\n❯ do it again"},
 		}
-		run := newInterruptTestRun(t, reed, readyAgentEngine())
+		run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
 
 		if err := run.Send("do it again"); err != nil {
 			t.Fatalf("Send() error: %v, want the risen occurrence count to verify delivery", err)
@@ -878,7 +846,7 @@ func TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery(t *testing
 			"❯ do it again",
 		},
 	}
-	run := newInterruptTestRun(t, reed, readyAgentEngine())
+	run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Send("do it again"); err != nil {
 		t.Fatalf("Send() error: %v; want the delivery recognised once the scrolled-away baseline is re-lowered", err)
@@ -920,7 +888,7 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: tt.status}
-			run := newInterruptTestRun(t, reed, &fakeEngine{})
+			run := newFixture(t, reed, &fakeEngine{}, withConfig(Config{})).newRun(Spec{})
 
 			if err := run.Interrupt(); err == nil {
 				t.Error("Interrupt() = nil error, want liveness refusal")
@@ -952,7 +920,7 @@ func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
 		CaptureQueue: []string{"PS C:\\Code\\hub> "},
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Interrupt(); err == nil || !strings.Contains(err.Error(), "no input-ready provider TUI") {
 		t.Errorf("Interrupt() error = %v, want the no-ready-TUI refusal", err)
@@ -982,7 +950,7 @@ func TestRun_Interrupt_ReadyProbeRetriesTransientBoot(t *testing.T) {
 	stubInputSleep(t)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupReady}}
-	run := newInterruptTestRun(t, reed, engine)
+	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Interrupt(); err != nil {
 		t.Fatalf("Interrupt() error: %v, want the retried probe to pass", err)
@@ -1037,7 +1005,7 @@ func TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay(t *tes
 			liveRecordedPaneFrame(t, "pane-scroll-delivered.txt"),
 		},
 	}
-	run := newInterruptTestRun(t, reed, readyAgentEngine())
+	run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
 
 	if err := run.Send(recordedScrollSendText); err != nil {
 		t.Fatalf("Send() error: %v; want the delivered copy's position to verify delivery when the count cannot", err)
@@ -1066,7 +1034,7 @@ func TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure(t *testing.
 			"❯ do it again\nline\nline\nline\nline\nstill working",
 		},
 	}
-	run := newInterruptTestRun(t, reed, readyAgentEngine())
+	run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
 
 	err := run.Send("do it again")
 	if err == nil {

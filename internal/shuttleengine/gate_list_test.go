@@ -41,7 +41,7 @@ func runGateList(t *testing.T, spec GateSpec, reprompts int) (Result, *fakeReed,
 		StatusQueue:  liveStrandStatus(true),
 		CaptureQueue: repromptCaptureSequence(findingsPath, reprompts),
 	}
-	runner := newWaitTestRunner(t, reed, readyAgentEngine(), Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -175,7 +175,7 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 			CaptureQueue: []string{"idle pane", "idle pane"},
 			SendTextErr:  errors.New("pane swallowed input"),
 		}
-		runner := newWaitTestRunner(t, reed, readyAgentEngine(), Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+		runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 		stubInputSleep(t)
 		spec, rCalls := newSpec()
 		fc := newFakeClock(time.Now())
@@ -215,7 +215,7 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 		}
-		runner := newWaitTestRunner(t, reed, readyAgentEngine(), Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+		runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 		stubInputSleep(t)
 		spec, rCalls := newSpec()
 		fc := newFakeClock(time.Now())
@@ -378,7 +378,7 @@ func TestGateList_SecondEntryClosureErrorStaysInfrastructureError(t *testing.T) 
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,

@@ -5,37 +5,12 @@
 package shuttleengine
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
-// newInjectTestRunner returns a Runner over reed/engine, with a run seeded
-// under its run-dir root (seedRun) so FindRun can resolve guid — Inject's
-// out-of-process entry point, unlike (*Run).Interrupt/Send, has no in-process
-// Run handle to draw StrandGUID from and must resolve it from run.json.
-// anchorPath is a real subpath of worktreeRoot, never an unrelated temp dir:
-// the two are distinct (so a swapped NewRunner argument pair fails a test) but
-// still in the geometric relation NewRunner validates, which two independent
-// t.TempDir() calls are not.
-func newInjectTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) *Runner {
-	t.Helper()
-	worktreeRoot := t.TempDir()
-	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-	if guid != "" {
-		seedRun(t, runDirRoot(cfg, anchorPath), "run-1", guid)
-	}
-	return runner
-}
-
 func TestRunner_Inject_HappyPath_PlaysEveryInputInOrder(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newInjectTestRunner(t, reed, &fakeEngine{}, "strand-1")
+	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
 	inputs := []PaneInput{
 		{Key: "Escape"},
@@ -66,7 +41,7 @@ func TestRunner_Inject_DeadStrand_Refuses(t *testing.T) {
 	// NOT require the pane to show an input-ready TUI — only that the strand
 	// is live at all (requireLiveStrand). A dead pane must still refuse.
 	reed := &fakeReed{StatusQueue: liveStrandStatus(false)}
-	runner := newInjectTestRunner(t, reed, &fakeEngine{}, "strand-1")
+	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
 	if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil {
 		t.Error("Inject() = nil error, want a dead-strand refusal")
@@ -80,7 +55,7 @@ func TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	// No run seeded at all: FindRun must fail before Status/SendKey/SendText
 	// are ever called.
-	runner := newInjectTestRunner(t, reed, &fakeEngine{}, "")
+	runner := newFixture(t, reed, &fakeEngine{}).Runner
 
 	if err := runner.Inject("does-not-exist", []PaneInput{{Key: "Escape"}}); err == nil {
 		t.Error("Inject() = nil error, want an unknown-guid refusal")
@@ -92,7 +67,7 @@ func TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed(t *testing.T) {
 
 func TestRunner_Inject_EmptyInputs_IsARejectedNoOp(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newInjectTestRunner(t, reed, &fakeEngine{}, "strand-1")
+	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
 	if err := runner.Inject("strand-1", nil); err == nil {
 		t.Error("Inject(nil) = nil error, want empty-inputs to be rejected as a no-op")

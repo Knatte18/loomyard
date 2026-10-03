@@ -1,5 +1,5 @@
 // gate_test.go covers the gate attempt loop end to end, driven over the package's existing
-// fakeReed/fakeEngine fakes, newWaitTestRunner, newAttachTestRunner, and the fakeClock/multiStepClock
+// fakeReed/fakeEngine fakes, newFixture, and the fakeClock/multiStepClock
 // seams — hermetic, untagged: it spawns no external process, builds no real fixture hub, and never
 // sleeps for real, per the Test Tier Purity Invariant.
 
@@ -62,7 +62,7 @@ func TestGate_PassesOnFirstDone(t *testing.T) {
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -125,7 +125,7 @@ func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
 		CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 	}
 	engine := readyAgentEngine()
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -200,7 +200,7 @@ func TestGate_FailsEveryAttempt_ExhaustsBudget(t *testing.T) {
 		CaptureQueue: repromptCaptureSequence(findingsPath, budget),
 	}
 	engine := readyAgentEngine()
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -255,7 +255,7 @@ func TestGate_ClosureError(t *testing.T) {
 	gate := func() (GateResult, error) { return GateResult{}, wantErr }
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -310,7 +310,7 @@ func TestGate_NoLiveSessionDonePaths(t *testing.T) {
 
 			reed := &fakeReed{StatusQueue: tt.statusQueue}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
-			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 0})
+			runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 0})).Runner
 			fc := newFakeClock(time.Now())
 			run := &Run{
 				runner:   runner,
@@ -360,7 +360,7 @@ func TestGate_RunDeadlineExpires_NoLiveSession(t *testing.T) {
 	}
 
 	reed := &fakeReed{}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner: runner,
@@ -413,7 +413,7 @@ func TestGate_FinishedDespiteMechanismFailure_NoLiveSession(t *testing.T) {
 
 	reed := &fakeReed{}
 	engine := &fakeEngine{ParseEventsErr: errors.New("events file unparseable")}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -492,7 +492,7 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 		SendTextErr:  errors.New("pane swallowed input"),
 	}
 	engine := readyAgentEngine()
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -550,7 +550,7 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 	engine := readyAgentEngine()
 	// PollIntervalMS's 5ms Sleep after the one successful re-prompt crosses the 2ms-out deadline
 	// below, so the SECOND tick's deadline check trips with no further event ever appended.
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	fc := newFakeClock(time.Now())
@@ -597,7 +597,7 @@ func TestGate_ZeroGateSpec_RegressionGuard(t *testing.T) {
 	}
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, &fakeEngine{}, withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	fc := newFakeClock(time.Now())
 	run := &Run{
 		runner:   runner,
@@ -628,7 +628,8 @@ func TestGate_ZeroGateSpec_RegressionGuard(t *testing.T) {
 // run is gated exactly as a fresh RunGated one is.
 func TestAttachGated_ThreadsGateThroughReconstructAndWait(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -666,7 +667,8 @@ func TestAttachGated_ThreadsGateThroughReconstructAndWait(t *testing.T) {
 // Attach entry point never carries a gate.
 func TestAttach_LeavesResultGateNil(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")

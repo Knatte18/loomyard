@@ -40,7 +40,7 @@ func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...
 		t.Fatalf("seed events: %v", err)
 	}
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: captures}
-	runner := newWaitTestRunner(t, reed, readyAgentEngine(), Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	runner := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})).Runner
 	stubInputSleep(t)
 
 	f := &pendingFixture{reed: reed, eventsPath: eventsPath, fc: newFakeClock(time.Now())}
@@ -253,7 +253,8 @@ func TestGatePending_ContractViolationsAreErrors(t *testing.T) {
 
 func TestAttachGated_PendingReplayedDoneThenPollTickReevaluates(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}, CaptureQueue: sendCaptures(pendingSendText)}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, readyAgentEngine(), Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, readyAgentEngine(), withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 	stubInputSleep(t)
 
@@ -291,7 +292,8 @@ func TestAttachGated_PendingReplayedDoneThenPollTickReevaluates(t *testing.T) {
 
 func TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
