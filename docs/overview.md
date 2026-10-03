@@ -572,6 +572,7 @@ See `internal/fabricengine`'s own package doc for the state matrix, the verb tab
 `internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
 `internal/testkit` holds the shared test kits, one package per kit, for test support (fakes, builders, fixtures and the scan harness) used by two or more packages; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
 `internal/testkit/scankit` is the harness every invariant scan runs on: module-root lookup, file walk, allowlists that report stale entries, a vacuity floor and an import-allowlist assertion.
+`internal/testkit/plankit` is the one test-side writer of valid plans, rendering through `planparser`'s format constant, with the file-tree fixture glyph resolution needs.
 
 ## Sandbox Hub
 

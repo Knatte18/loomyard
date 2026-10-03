@@ -395,9 +395,12 @@ Sandbox tooling resolves the dev binary via `resolveLyx` (`.dev-bin` first, then
 
 ## Planparser Sole-Parser Invariant
 
-`internal/planparser` is the SOLE parser and writer of the on-disk plan format (`_lyx/plan/`).
+`internal/planparser` is the SOLE production parser and writer of the on-disk plan format (`_lyx/plan/`).
 
 - Consumers read only from the `planparser.Plan` model. `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), and `AppendAmendment` (the append-only amendment log) are the three write paths — and no others.
+- In tests, `internal/testkit/plankit` is the one writer of valid plans, and a test may write raw plan bytes only to test rejection of a malformed plan.
+  This admits a second, test-only writer of the plan format, reachable only from `_test.go` files by the Testkit importer rule.
+  It renders through `planparser.RecognizedFormat`, so a format bump fails at one site, and `TestValidate_GoldenFixture_ZeroFindings` stays the parser-side anchor.
 
 ## Plan Generation Invariant
 
