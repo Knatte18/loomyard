@@ -1,7 +1,4 @@
-// bouncer_judge_test.go covers Bouncer.Call's judge mode: the happy paths (CONVERGED and CONTINUE),
-// the unconditional-OutputFiles guard against the conditional-output regression that would make
-// shedengine.Done unreachable, the previous-ledger marker's three cases, every judge-call
-// degradation, harvest, debris handling, and stale-output archival.
+// bouncer_judge_test.go covers Bouncer.Call's judge mode: the happy paths (CONVERGED and CONTINUE), the unconditional-OutputFiles guard against the conditional-output regression that would make shedengine.Done unreachable, the previous-ledger marker's three cases, every judge-call degradation, harvest, debris handling, and stale-output archival.
 // The seed call, the re-bounce, replay, focus synthesis, pointer discipline, and cancellation are
 // left to bouncer_seed_test.go (batch 3) and bouncer_replay_test.go (batch 4's own second file).
 
