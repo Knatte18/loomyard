@@ -1,5 +1,5 @@
-// shape_test.go carries the shape-and-identity assertions over New's built list: the literal
-// producer table, the real Publish/Finalize swap, order stability, told-field
+// shape_test.go carries the package's one row table and the shape-and-identity assertions over
+// New's built list: the real Publish/Finalize swap, told-field
 // threading, a missing-Landing-closure construction failure, and the routing-graph guard. It does
 // not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -25,18 +25,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// wantProducerRow is one row of the literal producer-table this file's tests assert New's output
-// against. producerType is the expected concrete Producer type, read via reflect.TypeOf -- consumed
-// by TestNew_ProducerTable (which ignores it) and by recipe_test.go's shape assertion (which is the
-// only reader of this column).
+// wantProducerRow is one row of the package's one row table.
+// engine is the backing engine name, which shedengine.ProducerDef cannot derive;
+// producerType is the expected concrete Producer type, read via reflect.TypeOf.
 type wantProducerRow struct {
 	name         string
-	onStuck      string
-	onDone       string
-	segment      string
-	maxBounces   int
+	engine       string
 	producerType reflect.Type
 }
+
+// rowEngines returns the row-to-engine mapping read off wantProducerTable.
+func rowEngines() map[string]string {
+	engines := make(map[string]string, len(wantProducerTable))
+	for _, row := range wantProducerTable {
+		engines[row.name] = row.engine
+	}
+	return engines
+}
+
+var (
+	bouncerType = reflect.TypeOf(&shedadapters.Bouncer{})
+	burlerType  = reflect.TypeOf(&shedadapters.BurlerProducer{})
+)
 
 // frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
 // builds, for the shape table's Friction-Reflect row.
@@ -49,24 +59,24 @@ func frictionReflectProducerType() reflect.Type {
 }
 
 var wantProducerTable = []wantProducerRow{
-	{loomshed.NamePreflight, "", loomshed.NameLoomPreflight, "", 0, reflect.TypeOf(preflightshed.NewPreflight("", ""))},
-	{loomshed.NameLoomPreflight, "", loomshed.NameDiscussionWrite, "", 0, reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
-	{loomshed.NameDiscussionWrite, "", loomshed.NameDiscussionBouncer, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurler, loomshed.NamePlanWrite, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
-	{loomshed.NameDiscussionBurler, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBouncer, "Discussion-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NamePlanWrite, "", loomshed.NamePlanBouncer, "", 0, reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
-	{loomshed.NamePlanBouncer, loomshed.NamePlanBurler, loomshed.NameBatchifier, "Plan-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
-	{loomshed.NamePlanBurler, loomshed.NamePlanBouncer, loomshed.NamePlanBouncer, "Plan-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NameBatchifier, "", loomshed.NameWebster, "", 0, reflect.TypeOf(loomshed.NewBatchifier("", ""))},
-	{loomshed.NameWebster, "", loomshed.NameWebsterBouncer, "", 0, reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
-	{loomshed.NameWebsterBouncer, loomshed.NameWebsterBurler, loomshed.NameDescribe, "Webster-Review", 5, reflect.TypeOf(&shedadapters.Bouncer{})},
-	{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer, loomshed.NameWebsterBouncer, "Webster-Review", 5, reflect.TypeOf(&shedadapters.BurlerProducer{})},
-	{loomshed.NameDescribe, "", loomshed.NamePublish, "", 0, reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NamePublish, "", loomshed.NamePRGate, "", 0, reflect.TypeOf(&landingshed.Publish{})},
-	{loomshed.NamePRGate, loomshed.NamePRRework, loomshed.NameFinalize, "PR-Review", 5, reflect.TypeOf(&landingshed.PRGate{})},
-	{loomshed.NamePRRework, "", loomshed.NamePlanBouncer, "PR-Review", 0, reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
-	{loomshed.NameFinalize, "", loomshed.NameFrictionReflect, "", 0, reflect.TypeOf(&landingshed.Finalize{})},
-	{loomshed.NameFrictionReflect, "", "", "", 0, frictionReflectProducerType()},
+	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NameLoomPreflight, "LoomPreflight", reflect.TypeOf(loomshed.NewLoomPreflight("", "", ""))},
+	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
+	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
+	{loomshed.NameDiscussionBurler, "BurlerRound", burlerType},
+	{loomshed.NamePlanWrite, "PlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
+	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
+	{loomshed.NamePlanBurler, "BurlerRound", burlerType},
+	{loomshed.NameBatchifier, "Batchifier", reflect.TypeOf(loomshed.NewBatchifier("", ""))},
+	{loomshed.NameWebster, "Webster", reflect.TypeOf(loomshed.NewWebsterProducer("", "", nil, websterengine.RunDeps{}, nil))},
+	{loomshed.NameWebsterBouncer, "Bouncer", bouncerType},
+	{loomshed.NameWebsterBurler, "BurlerRound", burlerType},
+	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
+	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
+	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
+	{loomshed.NamePRRework, "PRRework", reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
+	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
+	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
 
 // testEnv builds a shedrecipe.Env/shedbuild.ShedPaths pair from envkit.FullEnv, whose path fields are absolute paths under one t.TempDir().
@@ -92,39 +102,6 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	}
 
 	return env, paths
-}
-
-func TestNew_ProducerTable(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v; want nil", err)
-	}
-
-	if len(shed.Producers) != len(wantProducerTable) {
-		t.Fatalf("New() produced %d rows; want %d", len(shed.Producers), len(wantProducerTable))
-	}
-	for i, want := range wantProducerTable {
-		got := shed.Producers[i]
-		if got.Name != want.name {
-			t.Errorf("row %d name = %q; want %q", i, got.Name, want.name)
-		}
-		if got.OnStuck != want.onStuck {
-			t.Errorf("row %d (%s) OnStuck = %q; want %q", i, got.Name, got.OnStuck, want.onStuck)
-		}
-		if got.OnDone != want.onDone {
-			t.Errorf("row %d (%s) OnDone = %q; want %q", i, got.Name, got.OnDone, want.onDone)
-		}
-		if got.Segment != want.segment {
-			t.Errorf("row %d (%s) Segment = %q; want %q", i, got.Name, got.Segment, want.segment)
-		}
-		if got.MaxBounces != want.maxBounces {
-			t.Errorf("row %d (%s) MaxBounces = %d; want %d", i, got.Name, got.MaxBounces, want.maxBounces)
-		}
-		if got.Producer == nil {
-			t.Errorf("row %d (%s) Producer = nil; want non-nil", i, got.Name)
-		}
-	}
 }
 
 func TestNew_ToldShedFields(t *testing.T) {
@@ -185,26 +162,6 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 	}
 	if finalizeRow.OnStuck != "" {
 		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameFinalize, finalizeRow.OnStuck)
-	}
-}
-
-// TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
-// name coverage, now that the list's order is the recipe's own list order rather than a Go literal's:
-// every row stays in its existing table order with its existing name, regardless of what backs the
-// Publish and Finalize rows.
-func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v; want nil", err)
-	}
-	if len(shed.Producers) != len(wantProducerTable) {
-		t.Fatalf("New() produced %d rows; want %d", len(shed.Producers), len(wantProducerTable))
-	}
-	for i, want := range wantProducerTable {
-		if got := shed.Producers[i].Name; got != want.name {
-			t.Errorf("row %d name = %q; want %q", i, got, want.name)
-		}
 	}
 }
 

@@ -14,14 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestNew_ShapeMatchesRecipe is internal/shedbuild/equivalence_test.go's assertion loop with its
-// loomshed.New side replaced by wantProducerTable, the package's single authoritative row table
-// (declared in shape_test.go, extended there with a reflect.Type column for exactly this test): it
-// builds the embedded recipe through New from testEnv(t), asserts the built row count matches that
-// table's own length, and for each row asserts Name, OnDone, OnStuck, Segment, MaxBounces, and the
-// expected concrete Producer type.
+// TestNew_ShapeMatchesRecipe builds the embedded recipe through New from testEnv(t) and asserts row order and concrete Producer type against wantProducerTable.
+// It also asserts the perch shape over the built rows: every Bouncer's OnStuck names a Burler whose OnStuck names it back, with equal Segment and MaxBounces, and no row is unreachable through OnDone/OnStuck from the first row.
 func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -33,25 +30,50 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 		t.Fatalf("New() produced %d rows; want %d", len(shed.Producers), len(wantProducerTable))
 	}
 
+	byName := make(map[string]shedengine.ProducerDef, len(shed.Producers))
 	for i, want := range wantProducerTable {
 		got := shed.Producers[i]
+		byName[got.Name] = got
 		if got.Name != want.name {
 			t.Errorf("row %d Name = %q; want %q", i, got.Name, want.name)
 		}
-		if got.OnDone != want.onDone {
-			t.Errorf("row %d (%s) OnDone = %q; want %q", i, got.Name, got.OnDone, want.onDone)
-		}
-		if got.OnStuck != want.onStuck {
-			t.Errorf("row %d (%s) OnStuck = %q; want %q", i, got.Name, got.OnStuck, want.onStuck)
-		}
-		if got.Segment != want.segment {
-			t.Errorf("row %d (%s) Segment = %q; want %q", i, got.Name, got.Segment, want.segment)
-		}
-		if got.MaxBounces != want.maxBounces {
-			t.Errorf("row %d (%s) MaxBounces = %d; want %d", i, got.Name, got.MaxBounces, want.maxBounces)
-		}
 		if gotType := reflect.TypeOf(got.Producer); gotType != want.producerType {
 			t.Errorf("row %d (%s) Producer concrete type = %v; want %v", i, got.Name, gotType, want.producerType)
+		}
+	}
+
+	for _, row := range shed.Producers {
+		if reflect.TypeOf(row.Producer) != bouncerType {
+			continue
+		}
+		burler, ok := byName[row.OnStuck]
+		if !ok || reflect.TypeOf(burler.Producer) != burlerType {
+			t.Errorf("Bouncer %q OnStuck = %q; want a Burler row", row.Name, row.OnStuck)
+			continue
+		}
+		if burler.OnStuck != row.Name {
+			t.Errorf("Burler %q OnStuck = %q; want %q, the Bouncer naming it", burler.Name, burler.OnStuck, row.Name)
+		}
+		if burler.Segment != row.Segment || burler.MaxBounces != row.MaxBounces {
+			t.Errorf("perch %q/%q segment/max_bounces = %q/%d vs %q/%d; want equal", row.Name, burler.Name, row.Segment, row.MaxBounces, burler.Segment, burler.MaxBounces)
+		}
+	}
+
+	reached := map[string]bool{}
+	var visit func(name string)
+	visit = func(name string) {
+		row, ok := byName[name]
+		if !ok || reached[name] {
+			return
+		}
+		reached[name] = true
+		visit(row.OnDone)
+		visit(row.OnStuck)
+	}
+	visit(shed.Producers[0].Name)
+	for _, row := range shed.Producers {
+		if !reached[row.Name] {
+			t.Errorf("row %q is unreachable through OnDone/OnStuck from the first row", row.Name)
 		}
 	}
 }
@@ -182,9 +204,10 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	seen := make(map[string]bool, len(loomRowEngines))
+	seen := make(map[string]bool, len(wantProducerTable))
 	var want []string
-	for _, engine := range loomRowEngines {
+	for _, row := range wantProducerTable {
+		engine := row.engine
 		if seen[engine] {
 			continue
 		}

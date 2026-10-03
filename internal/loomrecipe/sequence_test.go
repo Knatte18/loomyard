@@ -18,9 +18,9 @@ type wantSequenceEntry struct {
 }
 
 // wantSequenceOrder is the row 1-through-Publish name/outcome sequence a clean Run over
-// buildSequenceFixture must produce. Asserted against this literal expected list rather than a
-// computed one, so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure
-// rather than a silently-agreeing derivation.
+// buildSequenceFixture must produce.
+// It follows wantProducerTable's row order, which TestNew_ShapeMatchesRecipe pins against New,
+// so a reordering in contracts/recipes/loom-recipe.yaml's row order is a test failure.
 //
 // Every entry but the three review segments and the trailing Publish carries a Done outcome by
 // rule; the segments themselves do not, so their entries are spelled out explicitly rather than
@@ -56,24 +56,31 @@ type wantSequenceEntry struct {
 // directory on its "plan"-role branch, and Plan-Write's own gate, run inside that same gated
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
-var wantSequenceOrder = []wantSequenceEntry{
-	{loomshed.NamePreflight, shedengine.Done},
-	{loomshed.NameLoomPreflight, shedengine.Done},
-	{loomshed.NameDiscussionWrite, shedengine.Done},
-	{loomshed.NameDiscussionBouncer, shedengine.Stuck},
-	{loomshed.NameDiscussionBurler, shedengine.Stuck},
-	{loomshed.NameDiscussionBouncer, shedengine.Done},
-	{loomshed.NamePlanWrite, shedengine.Done},
-	{loomshed.NamePlanBouncer, shedengine.Stuck},
-	{loomshed.NamePlanBurler, shedengine.Stuck},
-	{loomshed.NamePlanBouncer, shedengine.Done},
-	{loomshed.NameBatchifier, shedengine.Done},
-	{loomshed.NameWebster, shedengine.Done},
-	{loomshed.NameWebsterBouncer, shedengine.Stuck},
-	{loomshed.NameWebsterBurler, shedengine.Stuck},
-	{loomshed.NameWebsterBouncer, shedengine.Done},
-	{loomshed.NameDescribe, shedengine.Done},
-	{loomshed.NamePublish, shedengine.Stuck},
+//
+// It is derived from wantProducerTable's order and types: a Bouncer row expands to its three
+// entries (the Burler row follows it in the table), a Burler row contributes only through its
+// Bouncer, Publish is Stuck and ends the sequence, and every other row is Done.
+var wantSequenceOrder = deriveSequenceOrder()
+
+func deriveSequenceOrder() []wantSequenceEntry {
+	var order []wantSequenceEntry
+	for i, row := range wantProducerTable {
+		switch {
+		case row.producerType == bouncerType:
+			burler := wantProducerTable[i+1]
+			order = append(order,
+				wantSequenceEntry{row.name, shedengine.Stuck},
+				wantSequenceEntry{burler.name, shedengine.Stuck},
+				wantSequenceEntry{row.name, shedengine.Done},
+			)
+		case row.producerType == burlerType:
+		case row.name == loomshed.NamePublish:
+			return append(order, wantSequenceEntry{row.name, shedengine.Stuck})
+		default:
+			order = append(order, wantSequenceEntry{row.name, shedengine.Done})
+		}
+	}
+	return order
 }
 
 // TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the built row list
