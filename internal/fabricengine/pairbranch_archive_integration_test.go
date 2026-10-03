@@ -1,6 +1,6 @@
 //go:build integration
 
-// pairbranch_archive_integration_test.go covers the archive step of the two verbs that delete an existing pair's weft branch besides Remove: RemovePairBranch and Cleanup's apply loop each tag the branch tip under archive/<slug>/ and push the tag to the weft origin before deleting the branch.
+// pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
 //
 // Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -18,90 +18,6 @@ import (
 // wantArchiveTag returns the archive tag name archiveWeftTip derives for slug and tip.
 func wantArchiveTag(slug, tip string) string {
 	return "archive/" + slug + "/" + tip[:12]
-}
-
-// TestRemovePairBranch_ArchivesTipBeforeDeleting covers the happy path: the tag lands on the origin at the branch tip and the branch is then deleted locally and on the origin.
-func TestRemovePairBranch_ArchivesTipBeforeDeleting(t *testing.T) {
-	t.Parallel()
-
-	const slug = "pair-archive"
-	branch := fabricengine.WeftBranchName(slug)
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustPushBranch(t, weftRoot, branch)
-	tip := gitkit.RevParse(t, weftRoot, branch)
-
-	res, err := h.Topology.RemovePairBranch(l, slug)
-	if err != nil {
-		t.Fatalf("RemovePairBranch() error = %v", err)
-	}
-
-	wantTag := wantArchiveTag(slug, tip)
-	if res.ArchiveTag != wantTag {
-		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
-	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
-		t.Errorf("origin tag %s = %q; want the branch tip %s", wantTag, got, tip)
-	}
-	if !res.LocalDeleted || !res.RemoteDeleted {
-		t.Errorf("RemovePairBranch() = %+v; want LocalDeleted and RemoteDeleted", res)
-	}
-	if gitkit.BranchExists(t, weftRoot, branch) || gitkit.BranchExists(t, h.WeftBare, branch) {
-		t.Errorf("branch %q still present locally or on the origin", branch)
-	}
-}
-
-// TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains covers the already-gone arm: the local branch is deleted, so the tag is made from the origin's copy.
-func TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains(t *testing.T) {
-	t.Parallel()
-
-	const slug = "pair-archive-origin-only"
-	branch := fabricengine.WeftBranchName(slug)
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustPushBranch(t, weftRoot, branch)
-	tip := gitkit.RevParse(t, weftRoot, branch)
-	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", branch)
-
-	res, err := h.Topology.RemovePairBranch(l, slug)
-	if err != nil {
-		t.Fatalf("RemovePairBranch() error = %v", err)
-	}
-
-	wantTag := wantArchiveTag(slug, tip)
-	if res.ArchiveTag != wantTag {
-		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
-	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
-		t.Errorf("origin tag %s = %q; want the branch tip %s", wantTag, got, tip)
-	}
-	if !res.RemoteDeleted || gitkit.BranchExists(t, h.WeftBare, branch) {
-		t.Errorf("RemovePairBranch() = %+v; want the origin copy deleted", res)
-	}
-}
-
-// TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch covers the fail-closed shape: with the origin unreachable the call returns an error and the branch is still present.
-func TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch(t *testing.T) {
-	t.Parallel()
-
-	const slug = "pair-archive-unreachable"
-	branch := fabricengine.WeftBranchName(slug)
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
-	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	mustBreakOrigin(t, weftRoot)
-
-	if _, err := h.Topology.RemovePairBranch(l, slug); err == nil {
-		t.Fatal("RemovePairBranch() with an unreachable origin = nil error; want the archive failure")
-	}
-	if !gitkit.BranchExists(t, weftRoot, branch) {
-		t.Errorf("branch %q was deleted despite the failed archive", branch)
-	}
 }
 
 // TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop: every orphan weft branch is tagged on the origin at its tip and then deleted.

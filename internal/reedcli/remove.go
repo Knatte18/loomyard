@@ -82,6 +82,29 @@ func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 	return nil
 }
 
+// markAndSpawnDetachedRemove marks guid retiring, then starts the detached remover.
+// A failed spawn clears the mark again, so no strand is left marked with no remover behind it;
+// a failed clear is logged and named in the returned error.
+func (c *reedCLI) markAndSpawnDetachedRemove(guid string, recursive bool) error {
+	eng := c.strandEngine()
+	if err := eng.MarkRetiring(guid, true); err != nil {
+		return fmt.Errorf("mark strand retiring: %w", err)
+	}
+	spawn := c.spawnRemove
+	if spawn == nil {
+		spawn = c.spawnDetachedRemove
+	}
+	spawnErr := spawn(guid, recursive)
+	if spawnErr == nil {
+		return nil
+	}
+	if clearErr := eng.MarkRetiring(guid, false); clearErr != nil {
+		logger.Warn("reed: clearing the retiring mark after a failed detached remove spawn failed", "guid", guid, "err", clearErr)
+		return fmt.Errorf("%w; clearing the retiring mark also failed: %v", spawnErr, clearErr)
+	}
+	return spawnErr
+}
+
 // removeCmd builds the `remove` subcommand: deletes the strand identified by <guid> or --name.
 func (c *reedCLI) removeCmd() *cobra.Command {
 	var (
@@ -106,7 +129,11 @@ or ambiguous name. --detach (with --name) lets a strand remove itself: it
 resolves the guid, starts a detached "lyx reed remove <guid>" that waits for
 this process to exit before removing, prints {"detached": true, "guid",
 "name"} and returns at once, since reed kills the strand's pane before it
-re-applies the layout.
+re-applies the layout. --detach first marks the strand retiring (shown by
+"lyx reed status"), and clears the mark if the detached remover cannot be
+started. The detached remover is a no-op for a guid already gone, answering
+ok with an empty "removed" list; a positional <guid> typed by an operator
+still errors on an unknown guid.
 
 Example:
   lyx reed remove 3fae21ac9b1d4c0e --recursive
@@ -127,7 +154,7 @@ Example:
 			if len(args) == 1 {
 				guid = args[0]
 			} else {
-				resolved, err := c.eng.ResolveStrandGUID(name)
+				resolved, err := c.strandEngine().ResolveStrandGUID(name)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
@@ -136,7 +163,7 @@ Example:
 			}
 
 			if detach {
-				if err := c.spawnDetachedRemove(guid, recursive); err != nil {
+				if err := c.markAndSpawnDetachedRemove(guid, recursive); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
@@ -153,7 +180,15 @@ Example:
 				return nil
 			}
 
-			removed, err := c.eng.RemoveStrand(guid, recursive)
+			removed, err := c.strandEngine().RemoveStrand(guid, recursive)
+			if waitPID != 0 && errors.Is(err, reedengine.ErrUnknownStrand) {
+				// The detached remover found its strand already gone, as when `lyx loom start` replaced it under a new guid first: nothing left to remove.
+				logger.Info("reed: detached remove found its strand already gone", "guid", guid)
+				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+					"removed": []map[string]any{},
+				}))
+				return nil
+			}
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

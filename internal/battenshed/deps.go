@@ -169,6 +169,7 @@ type SeedChildDeps struct {
 // call Remove at all when Shutdown fails, must say which of the two failed in its stuck reason,
 // and must surface the abandoned-session value Shutdown returns on an otherwise-Done row -- none
 // of which a single combined closure could expose.
+// Both closures are expected to call the pair-teardown composite's two phases, EndSession and RemovePair.
 type TeardownDeps struct {
 	// Shutdown ends the loom session's own driving process, if one is still attached, reporting
 	// the name of any session it had to abandon rather than cleanly end.

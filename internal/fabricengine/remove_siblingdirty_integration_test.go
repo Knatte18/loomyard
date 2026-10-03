@@ -1,6 +1,6 @@
 //go:build integration
 
-// remove_siblingdirty_integration_test.go pins that Remove's no-force refusal of a pair whose other worktree is dirty satisfies errors.Is(err, fabricengine.ErrPairSiblingDirty), and that a pair dirty only on the task side does not.
+// remove_siblingdirty_integration_test.go pins that an uncommitted run record in a pair's other worktree is committed and archived rather than refused, and that a pair dirty only on the task side is refused without satisfying errors.Is(err, fabricengine.ErrPairSiblingDirty).
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestRemove_UntrackedDriveReportRefusesWithSiblingDirty leaves a new file inside a not-yet-tracked _lyx/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts the refusal satisfies ErrPairSiblingDirty.
-func TestRemove_UntrackedDriveReportRefusesWithSiblingDirty(t *testing.T) {
+// TestRemove_UntrackedDriveReportIsCommittedAndArchived leaves a new file inside a not-yet-tracked _lyx/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts a no-force Remove commits it and the archive tag contains it, with no sibling-dirty refusal.
+func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 	t.Parallel()
 
 	const slug = "sibling-dirty"
@@ -36,12 +36,16 @@ func TestRemove_UntrackedDriveReportRefusesWithSiblingDirty(t *testing.T) {
 		t.Fatalf("write stop report: %v", err)
 	}
 
-	_, err := topology.Remove(l, slug, false, false)
-	if err == nil {
-		t.Fatalf("Remove(force=false) on a pair with an uncommitted drive report returned nil error; want a refusal")
+	res, err := topology.Remove(l, slug, false, false)
+	if err != nil {
+		t.Fatalf("Remove(force=false) on a pair with an uncommitted drive report error = %v; want it committed and archived", err)
 	}
-	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
-		t.Errorf("refusal = %v; want errors.Is(err, ErrPairSiblingDirty)", err)
+	if res.ArchiveTag == "" {
+		t.Fatalf("ArchiveTag is empty; want the tag covering the committed report")
+	}
+	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
+	if got := showAtTag(t, h.WeftBare, res.ArchiveTag, rel); got != "stopped\n" {
+		t.Errorf("archived %s = %q; want the committed report", rel, got)
 	}
 }
 

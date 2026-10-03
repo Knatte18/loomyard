@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -97,10 +98,8 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 // taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
 // hub and resolvable as a worktree of its own.
 //
-// Worktree-Teardown's two halves use this for their own post-condition, "the task worktree is gone"
-// (see the Teardown field below): a bare directory check is the right question there, since fabric
-// removes the task worktree before its sibling and the mirror-image state (task worktree gone,
-// sibling remaining) is PairSiblingRemnant's own question to answer, not this one's.
+// DriverAlive and taskWorktreeComplete use it;
+// Worktree-Teardown does not, since the pair-teardown composite decides for itself whether the task worktree is gone.
 //
 // Worktree-Create uses the stronger taskWorktreeComplete instead, not this function: a bare
 // directory check cannot tell a pair Add finished from one a SIGKILL interrupted partway through
@@ -187,36 +186,60 @@ func createRefusal(err error) error {
 	)
 }
 
-// teardownRefusal rewords the teardown refusal for an uncommitted change in the pair's sibling, names the resume for a failed archive of the run records, and passes every other error through unchanged.
+// finishRemoval turns the composite's RemovePair outcome into the Worktree-Teardown row's verdict.
+// A pair of which nothing remains is the row's done post-condition, since shedengine persists the transition only after the producer returns and a process killed right after the removal re-enters the row.
+// Remove reports a failed remote deletion without failing; it is returned here so the row halts resumable, and the resumed row retries the deletion.
+func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error {
+	if errors.Is(err, fabricengine.ErrPairNotFound) {
+		logger.Info("battencli: teardown found nothing of the pair left, done", "slug", slug)
+		return nil
+	}
+	logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason, "archive_tag", res.ArchiveTag, "archive_skipped_reason", res.ArchiveSkippedReason)
+	if err != nil {
+		return teardownRefusal(err, slug)
+	}
+	if res.RemoteBranchError != "" {
+		return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; resume this run to retry the deletion", slug, res.RemoteBranchError)
+	}
+	return nil
+}
+
+// teardownRequest is the composite's request for a batten-driven teardown.
+// Remote is true: a batten-driven teardown is the task's own final removal, never a step toward re-adopting the pair, so nothing will ever need the pair's other-side branch again, and a remote copy left behind makes a later create of this slug refuse its push.
+// It never forces, and it neither waits for a quiet driver nor refuses a busy one, since the InnerRun done arm already waited its driver_exit_grace_s.
+func teardownRequest(slug string) pairteardown.Request {
+	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false}
+}
+
+// teardownRefusal rewords the teardown refusal for content in the pair's sibling the teardown could not commit, names the resume for a failed archive of the run records, and passes every other error through unchanged.
 //
 // fabric's own refusal for a dirty pair sibling leaves --force as the way out, and --force would discard exactly the records this task exists to keep.
-// The records are uncommitted when a driver ended before its end-of-session commit, so the remedy named here commits them first.
-// fabric's refusal covers any uncommitted content in the sibling, not only the paths "lyx loom commit-records" stages;
-// the remedy therefore also names what to do when a resume after that commit refuses again.
+// The teardown commits the run records itself, so this refusal means content outside the record paths in the pair's sibling worktree under the hub;
+// the remedy names inspecting it, committing or removing it by hand, and resuming.
 // A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
 // That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
-func teardownRefusal(err error, slug, taskAnchor string) error {
+func teardownRefusal(err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
 		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lyx batten run %s\"", slug, err, slug)
 	}
 	if !errors.Is(err, fabricengine.ErrPairSiblingDirty) {
 		return err
 	}
-	return fmt.Errorf(
-		"the task worktree's run records are uncommitted, most likely because a driver ended before its end-of-session commit; run \"lyx loom commit-records\" in %s to commit them, then resume this run with \"lyx batten run %s\". If the resumed teardown refuses again with this reason, what is still uncommitted is not a run record: inspect the pair from %s, commit or remove that content by hand, then resume again",
-		taskAnchor, slug, taskAnchor,
-	)
+	return siblingDirtyRefusal{
+		msg: fmt.Sprintf("the pair for %q was left in place because its sibling worktree under the hub holds content outside the run record paths, which the teardown cannot commit; inspect that sibling worktree, commit or remove that content by hand, then resume this run with \"lyx batten run %s\"", slug, slug),
+		err: err,
+	}
 }
 
-// taskTopology builds the topology holder over the hub's repo-wide fabric config, which every
-// create and teardown call here reads fresh rather than at wiring time.
-func taskTopology(prime *lyxcwd.Location) (*fabricengine.Topology, error) {
-	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(prime.HubPath))
-	if err != nil {
-		return nil, err
-	}
-	return fabricengine.NewTopology(cfg), nil
+// siblingDirtyRefusal carries batten's own remedy text and unwraps to fabric's refusal without repeating its text, which names --force.
+type siblingDirtyRefusal struct {
+	msg string
+	err error
 }
+
+func (r siblingDirtyRefusal) Error() string { return r.msg }
+
+func (r siblingDirtyRefusal) Unwrap() error { return r.err }
 
 // maxChildOutputInError caps the child output folded into a spawn error, so a misbehaving child
 // cannot push an unbounded string into a status file committed onto prime's own pair.
@@ -357,45 +380,24 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
 			return createRefusal(err)
 		},
-		// Both teardown halves are idempotent against their shared post-condition, "the pair is
-		// gone", mirroring CreateWorktree's already-present probe: shedengine persists the row's
-		// transition only after the producer returns, so a process killed right after Remove
-		// succeeded re-enters this row with no pair on disk. Without the probe Shutdown's own
-		// location resolution refuses the absence and the run halts at teardown for good.
-		// The post-condition is the pair's, not the task worktree's alone: fabric removes the task
-		// worktree before its sibling, so a removal interrupted between the two -- or one whose
-		// sibling half failed, which fabric reports and this row records as Stuck -- leaves the
-		// sibling, the portal and launcher entries, and both branches behind with the task worktree
-		// gone. Remove refuses that state by name rather than reporting done over it, and finishes
-		// the pair's other-side branch deletion once both worktrees are gone; Shutdown
-		// still skips it, since reed's config is resolved through the task worktree that is gone,
-		// and the per-hub watchdog reaps a session whose worktree has vanished.
+		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
+		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
+		// EndSession's refusal probe then reports ErrPairNotFound, which Shutdown takes as nothing left to shut down, and RemovePair reports it again as done.
+		// The composite finishes a half-removed pair itself -- sibling worktree, portal and launcher entries, both branches -- so no such state is refused by name here.
+		// EndSession ends the session by name when the task worktree is gone, and runs the refusal probe, so a refusal reaches the row before Remove and leaves the pair in place.
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(ctx context.Context) (abandonedSession string, err error) {
-				present, err := taskWorktreePresent(location, slug)
+				td, err := pairteardown.New(location)
 				if err != nil {
 					return "", err
 				}
-				if !present {
-					logger.Info("battencli: session shutdown skipped, the task worktree is already gone", "slug", slug)
+				res, err := td.EndSession(ctx, teardownRequest(slug))
+				if errors.Is(err, fabricengine.ErrPairNotFound) {
+					logger.Info("battencli: session shutdown found nothing of the pair left", "slug", slug)
 					return "", nil
 				}
-				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
-					return "", err
-				}
-				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
-				if err != nil {
-					return "", err
-				}
-				reedGeom, err := hubgeom.ReedGeometry(taskLocation)
-				if err != nil {
-					return "", err
-				}
-				reedEngine := reedengine.New(reedCfg, reedGeom)
-				res, err := reedEngine.Down()
-				if err != nil {
-					return "", err
+					return "", teardownRefusal(err, slug)
 				}
 				// Recorded onto the receiver, not only returned: the run verb reads it back after
 				// the Shed's own Run has returned, to surface it on the success envelope.
@@ -403,58 +405,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return res.AbandonedSession, nil
 			},
 			Remove: func(ctx context.Context) error {
-				present, err := taskWorktreePresent(location, slug)
+				td, err := pairteardown.New(location)
 				if err != nil {
 					return err
 				}
-				if !present {
-					remnant, remnantPresent, err := fabricengine.PairSiblingRemnant(location, slug)
-					if err != nil {
-						return err
-					}
-					if remnantPresent {
-						return fmt.Errorf(
-							"the task worktree for %q is gone but its pair's fabric sibling is still on disk at %s -- a removal interrupted between its two halves; run \"lyx fabric prune --apply\" from here to remove the sibling with its portal and launcher entries, then resume this run",
-							slug, remnant,
-						)
-					}
-					// The worktrees are gone, but a removal interrupted after them -- or one whose
-					// remote deletion failed -- can still have left the pair's other-side branch,
-					// locally or on the remote, where it makes a later create of this slug refuse.
-					top, err := taskTopology(location)
-					if err != nil {
-						return err
-					}
-					branchRes, err := top.RemovePairBranch(location, slug)
-					if err != nil {
-						return fmt.Errorf("the pair for %q is gone but deleting its other-side branch failed: %w; resume this run to retry the deletion", slug, err)
-					}
-					logger.Info("battencli: teardown finished the pair's branch deletion", "slug", slug, "mutations", branchRes.Mutated(), "remote_skipped_reason", branchRes.RemoteSkippedReason, "archive_tag", branchRes.ArchiveTag, "archive_skipped_reason", branchRes.ArchiveSkippedReason)
-					return nil
-				}
-				// remote: true -- a batten-driven teardown is the task's own final removal, never a
-				// step toward re-adopting the pair, so nothing will ever need the pair's other-side
-				// branch again, and a remote copy left behind makes a later create of this slug
-				// refuse its push.
-				top, err := taskTopology(location)
-				if err != nil {
-					return err
-				}
-				taskLocation, err := taskWorktreeLocation(location, slug)
-				if err != nil {
-					return err
-				}
-				res, err := top.Remove(location, slug, false, true)
-				logger.Info("battencli: teardown worktree", "slug", slug, "mutations", res.Mutated(), "remote_skipped_reason", res.RemoteSkippedReason, "archive_tag", res.ArchiveTag, "archive_skipped_reason", res.ArchiveSkippedReason)
-				if err != nil {
-					return teardownRefusal(err, slug, taskLocation.AnchorPath())
-				}
-				// Remove reports a failed remote deletion without failing; it is returned here so the
-				// row halts resumable, and the resumed row's already-gone arm above retries it.
-				if res.RemoteBranchError != "" {
-					return fmt.Errorf("the pair for %q was removed but its other-side branch's remote copy was not deleted: %s; resume this run to retry the deletion", slug, res.RemoteBranchError)
-				}
-				return nil
+				res, err := td.RemovePair(teardownRequest(slug))
+				return finishRemoval(res, err, slug)
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{

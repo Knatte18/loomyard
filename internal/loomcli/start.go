@@ -196,6 +196,15 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		return false
 	}
 	driverAction, driverGUID := resolveDriverStrandAction(strands)
+	if driverAction == driverStrandRetiring {
+		// The detached remover of the old strand no-ops against the fresh strand's new guid.
+		if err := c.driverPaneProbe.RemoveDriverStrand(driverGUID); err != nil {
+			_ = bootstrapLock.Release()
+			clihelp.SetExit(ctx, output.Err(out, err.Error()))
+			return false
+		}
+		driverAction, driverGUID = driverStrandNone, ""
+	}
 	mustSpawn := mustSpawnDriver(runLockHeld, driverAction == driverStrandLive)
 
 	// The resume branch reads only strand liveness and the park marker, never the seed's driver value a second time (Driver Choice Single-Site Invariant).
@@ -383,7 +392,10 @@ func (c *loomCLI) startCmd() *cobra.Command {
      a driver, start refuses with the kind "merge_in_progress" when the
      worktree carries an unfinished merge, naming the conflicted paths and the
      remedy (the fabric verbs for a fabric merge, git for one fabric did not
-     start), while a live driver that is working is left alone
+     start), while a live driver that is working is left alone; a live
+     ly-drive driver strand that reed marked retiring (some caller of
+     "reed remove --detach" already asked to remove it) is never adopted:
+     start removes it and spawns a fresh driver in its place
   4. hand the terminal over, by where the command runs: attach to the
      session when $TMUX is unset; when $TMUX names reed's own tmux server,
      print the success envelope if this terminal is already in the task's

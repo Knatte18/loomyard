@@ -85,6 +85,18 @@ func TestResolveDriverStrandAction(t *testing.T) {
 			wantGUID: "g0",
 		},
 		{
+			name:     "LiveRetiringDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "%0", Live: true, Retiring: true}},
+			want:     driverStrandRetiring,
+			wantGUID: "g0",
+		},
+		{
+			name:     "DeadRetiringDriverStrand",
+			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "", Live: false, Retiring: true}},
+			want:     driverStrandDead,
+			wantGUID: "g0",
+		},
+		{
 			name:     "LiveFullNameDriverStrand",
 			strands:  []reedengine.StrandStatus{{GUID: "g0", Name: "ly:task:driver", PaneID: "%0", Live: true}},
 			want:     driverStrandLive,

@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -416,16 +415,18 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}
 }
 
-// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts an uncommitted-run-records refusal is reworded to batten's own recovery -- commit the records in the task anchor, then resume -- and never names --force, that a failed archive names the resume, and that every other teardown error passes through unchanged.
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive names the resume, and that every other teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
-	const anchor = "/work/wts/some-slug"
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
 
-	got := teardownRefusal(dirty, "some-slug", anchor)
+	got := teardownRefusal(dirty, "some-slug")
 	if got == nil {
 		t.Fatal("teardownRefusal(sibling dirty) = nil; want a reworded refusal")
 	}
-	for _, want := range []string{"lyx loom commit-records", anchor, "lyx batten run some-slug", "not a run record", "commit or remove that content by hand"} {
+	if !errors.Is(got, fabricengine.ErrPairSiblingDirty) {
+		t.Errorf("teardownRefusal(sibling dirty) = %v; want it to still wrap ErrPairSiblingDirty", got)
+	}
+	for _, want := range []string{"some-slug", "sibling worktree under the hub", "outside the run record paths", "commit or remove that content by hand", "lyx batten run some-slug"} {
 		if !strings.Contains(got.Error(), want) {
 			t.Errorf("teardownRefusal(sibling dirty) = %q; want it to contain %q", got.Error(), want)
 		}
@@ -435,7 +436,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 
 	archiveFailed := fmt.Errorf("%w: push refused", fabricengine.ErrArchiveFailed)
-	got = teardownRefusal(archiveFailed, "some-slug", anchor)
+	got = teardownRefusal(archiveFailed, "some-slug")
 	if !errors.Is(got, fabricengine.ErrArchiveFailed) {
 		t.Errorf("teardownRefusal(archive failed) = %v; want it to still wrap ErrArchiveFailed", got)
 	}
@@ -449,7 +450,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 
 	other := errors.New("the task worktree has uncommitted changes")
-	if got := teardownRefusal(other, "some-slug", anchor); got != other {
+	if got := teardownRefusal(other, "some-slug"); got != other {
 		t.Errorf("teardownRefusal(other) = %v; want the same error passed through", got)
 	}
 }
@@ -473,67 +474,34 @@ func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
 	}
 }
 
-// TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree asserts session shutdown treats an
-// absent task worktree as its post-condition already met -- the state a process killed right
-// after Remove succeeded leaves, since shedengine persists the transition only after the producer
-// returns -- rather than refusing the absence and stranding the run at teardown.
-func TestWire_TeardownIsIdempotentAgainstAnAlreadyRemovedWorktree(t *testing.T) {
-	c := &battenCLI{}
-	location := &lyxcwd.Location{
-		RepoName:     "example",
-		HubPath:      t.TempDir(),
-		WorktreeName: "hub-repo",
-		AnchorRel:    ".",
-	}
-	if err := c.wire(location, "already-removed"); err != nil {
-		t.Fatalf("wire() error = %v; want nil", err)
-	}
+// TestFinishRemoval_NotFoundIsDone asserts a removal that finds nothing of the pair reports done -- the state a process killed right after Remove succeeded leaves, since shedengine persists the transition only after the producer returns -- rather than stranding the run at teardown.
+func TestFinishRemoval_NotFoundIsDone(t *testing.T) {
+	notFound := fmt.Errorf("remove: %w: nothing of %q remains", fabricengine.ErrPairNotFound, "already-removed")
 
-	abandoned, err := c.env.Teardown.Shutdown(context.Background())
-	if err != nil {
-		t.Errorf("Teardown.Shutdown() error = %v; want nil for an already-removed task worktree", err)
-	}
-	if abandoned != "" {
-		t.Errorf("Teardown.Shutdown() abandoned session = %q; want empty", abandoned)
+	if err := finishRemoval(fabricengine.RemoveResult{}, notFound, "already-removed"); err != nil {
+		t.Errorf("finishRemoval(not found) = %v; want nil", err)
 	}
 }
 
-// TestWire_TeardownRefusesAHalfTornPair asserts the removal half does not mistake a pair whose
-// task worktree is gone but whose fabric sibling is still on disk -- a removal interrupted between
-// its two halves -- for a pair that is gone: it refuses, naming the leftover and the fabric verb
-// that removes it, rather than reporting the row done over the debris.
-// Session shutdown still skips there, since it has no worktree left to resolve reed's config from.
-func TestWire_TeardownRefusesAHalfTornPair(t *testing.T) {
-	c := &battenCLI{}
-	location := &lyxcwd.Location{
-		RepoName:     "example",
-		HubPath:      t.TempDir(),
-		WorktreeName: "hub-repo",
-		AnchorRel:    ".",
-	}
+// TestFinishRemoval_HalfRemovedPairIsNoLongerRefusedByName asserts a finished half-removed pair reports done and a remote branch left behind halts the row resumable, with neither verdict naming the retired sibling-remnant refusal or its fabric prune remedy.
+// The real half-removed state is driven at the integration tier.
+func TestFinishRemoval_HalfRemovedPairIsNoLongerRefusedByName(t *testing.T) {
 	const slug = "half-torn"
-	if err := c.wire(location, slug); err != nil {
-		t.Fatalf("wire() error = %v; want nil", err)
-	}
-	remnant, present, err := fabricengine.PairSiblingRemnant(location, slug)
-	if err != nil || present {
-		t.Fatalf("precondition: PairSiblingRemnant = (present=%v, err=%v); want (false, nil)", present, err)
-	}
-	if err := os.MkdirAll(remnant, 0o755); err != nil {
-		t.Fatalf("create the leftover sibling: %v", err)
+
+	if err := finishRemoval(fabricengine.RemoveResult{Finished: true}, nil, slug); err != nil {
+		t.Errorf("finishRemoval(finished half-removed pair) = %v; want nil", err)
 	}
 
-	if _, err := c.env.Teardown.Shutdown(context.Background()); err != nil {
-		t.Errorf("Teardown.Shutdown() error = %v; want nil: no task worktree is left to shut a session down in", err)
-	}
-	err = c.env.Teardown.Remove(context.Background())
+	err := finishRemoval(fabricengine.RemoveResult{RemoteBranchError: "push refused"}, nil, slug)
 	if err == nil {
-		t.Fatal("Teardown.Remove() = nil; want a refusal naming the leftover sibling, not done over the debris")
+		t.Fatal("finishRemoval(remote branch error) = nil; want the row to halt resumable")
 	}
-	for _, want := range []string{slug, remnant, "lyx fabric prune --apply"} {
+	for _, want := range []string{slug, "push refused", "resume this run"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("Teardown.Remove() error = %q; want it to contain %q", err.Error(), want)
+			t.Errorf("finishRemoval(remote branch error) = %q; want it to contain %q", err.Error(), want)
 		}
 	}
-
+	if strings.Contains(err.Error(), "lyx fabric prune") {
+		t.Errorf("finishRemoval(remote branch error) = %q; want it to never name lyx fabric prune", err.Error())
+	}
 }

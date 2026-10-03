@@ -49,6 +49,7 @@
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).
+// `main-weft` does not advance on landing by design, since weft content is per-branch and never a merge participant, and a landed pair's records live in its archive tag.
 //
 // Every weft commit fabric makes carries a `Warp-SHA: <sha>` trailer recording the warp SHA it
 // corresponds to (see WarpSHATrailerKey),
@@ -480,6 +481,13 @@
 // After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
 // A failed archive returns its error with the worktrees, portal, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
+// Just before the archive, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
+// `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
+// A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
+// With `remote`, `Remove` also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is reported in `RemoteWarpBranchKeptReason` and does not fail the removal.
+//
+// `Cleanup` sweeps local leftovers.
+// `CleanupRemoteWarp` is the separate origin sweep: it classifies leftover task branches on origin against the open-PR heads its caller supplies and, with apply, deletes the landed ones; a nil open-PR set refuses every deletion.
 //
 // `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind.
 // Before its first mutation it probes both origins read-only (remoteleftover.go), refusing an unreplaceable leftover with an `*ErrRemoteLeftover`.
@@ -538,12 +546,8 @@
 // `gitrepo.ErrPushRejected` as a human-decidable condition rather than retrying. `MergeStateActive`
 // is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
 // distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
-// `PairSiblingRemnant(l, slug)` and `PairComplete(l)` are the same shape over `Add`'s and `Remove`'s
-// own post-conditions: a caller that must tell a genuinely finished pair transition from one a
-// SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery
-// itself to check either one by hand.
-// `Topology.RemovePairBranch(l, slug)` finishes `Remove`'s branch deletion, local and remote, for such
-// a caller once both worktrees are gone.
+// `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
+// `Remove` itself finishes a half-removed pair, so a teardown re-entered after an interruption calls it again.
 //
 // # The mutation record
 //

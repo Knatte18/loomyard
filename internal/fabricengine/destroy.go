@@ -453,13 +453,14 @@ const (
 	branchDirtinessCheckedOutBranch
 	branchDirtinessUnlandedWork
 	branchDirtinessArchivedOnRemote
+	branchDirtinessUnlandedRemoteTip
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
 // The zero value is invalid and is refused by the pipeline before any check runs.
 type branchDirtiness struct {
 	kind branchDirtinessKind
-	// parentBranch serves dirtyUnlandedWork only; empty when the pair has no origin record.
+	// parentBranch serves dirtyUnlandedWork and dirtyUnlandedRemoteTip; empty when the pair has no origin record.
 	parentBranch string
 	// archiveTag serves dirtyArchivedOnRemote only: the archive/<slug>/* tag the pre-flight proved covers the remote tip.
 	archiveTag string
@@ -478,6 +479,15 @@ func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 // already landed on parentBranch (empty when the pair has no origin record). See checkUnlandedWork.
 func dirtyUnlandedWork(parentBranch string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessUnlandedWork, parentBranch: parentBranch}
+}
+
+// dirtyUnlandedRemoteTip declares that the pipeline's dirtiness step refuses a remote branch whose leased tip carries work that would be lost:
+// every commit on the tip must be reachable from a ref other than a copy of the same branch, or merging the tip into parentBranch (empty when the pair has no origin record) must change nothing.
+// It answers a remote question only: checkRemoteBranchRequest accepts it and requires a non-empty leaseSHA, the tip under test,
+// and checkBranchDirtiness refuses it for a local delete.
+// See checkUnlandedRemoteTip.
+func dirtyUnlandedRemoteTip(parentBranch string) branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessUnlandedRemoteTip, parentBranch: parentBranch}
 }
 
 // dirtyCheckedOutBranch declares that the pipeline's dirtiness step asks whether branch is checked
@@ -829,10 +839,52 @@ func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessArchivedOnRemote {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "archived-on-remote dirtiness answers a remote question; a local branch delete has no remote tip to prove"}
 	}
+	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "unlanded-remote-tip dirtiness answers a remote question; a local branch delete has no remote tip to probe"}
+	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
+}
+
+// checkUnlandedRemoteTip is dirtyUnlandedRemoteTip's probe, all read-only git run from req.repoDir against the leased tip, which must already be fetched.
+// checkUnlandedWork's rule applies to the tip: it passes when every commit on it is reachable from another ref, otherwise, with a parent, when merging it into the parent changes nothing.
+// For a remote tip "another ref" excludes every copy of the same branch, local and remote-tracking, since a tracking ref always holds the tip and would make every pushed branch look held.
+// git clears accumulated --exclude patterns after each ref-selecting option, so the exclusion is repeated ahead of each.
+// req.force is never consulted.
+func checkUnlandedRemoteTip(req remoteBranchRequest) error {
+	refuse := func(reason string) error {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	tip := req.leaseSHA
+	out, err := gitexec.Run([]string{
+		"rev-list", "--count", tip, "--not",
+		"--exclude=refs/heads/" + req.branch, "--glob=refs/heads/*",
+		"--exclude=*/" + req.branch, "--remotes",
+		"--tags",
+	}, req.repoDir)
+	if err != nil {
+		return refuse(fmt.Sprintf("cannot count commits reachable from no other ref: %v", err))
+	}
+	count := strings.TrimSpace(out)
+	if count == "0" {
+		return nil
+	}
+
+	if parent := req.dirtiness.parentBranch; parent != "" {
+		merged, mergeErr := gitexec.Run([]string{"merge-tree", "--write-tree", parent, tip}, req.repoDir)
+		parentTree, treeErr := gitexec.Run([]string{"rev-parse", parent + "^{tree}"}, req.repoDir)
+		if mergeErr == nil && treeErr == nil {
+			mergedTree, _, _ := strings.Cut(strings.TrimSpace(merged), "\n")
+			if mergedTree != "" && mergedTree == strings.TrimSpace(parentTree) {
+				return nil
+			}
+		}
+	}
+
+	return refuse(fmt.Sprintf("%s commit(s) on the remote branch are reachable from no other ref and not landed on the parent; if the work is disposable, delete it by hand with: git push %s --delete %s", count, req.remote, req.branch))
 }
 
 // checkUnlandedWork is dirtyUnlandedWork's probe, all read-only git run from req.repoDir. In order:
@@ -926,6 +978,13 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
 		}
 		return nil
+	}
+
+	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
+		if req.leaseSHA == "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the landed-work probe holds only for the tip it is computed against"}
+		}
+		return checkUnlandedRemoteTip(req)
 	}
 
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)

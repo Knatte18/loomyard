@@ -18,8 +18,9 @@ func (c *reedCLI) statusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "show this worktree's tracked strands and their live/dead state",
 		Long: `status cross-references the live pane set and reports every strand
-tracked for this worktree's session: guid, name, pane id, and whether its
-pane is currently alive. It is read-only — it never kills dead panes,
+tracked for this worktree's session: guid, name, pane id, whether its
+pane is currently alive, and whether it is retiring (a "reed remove --detach"
+asked for its removal). It is read-only — it never kills dead panes,
 rewrites bindings, or re-applies the layout; the next mutating verb does.
 
 v1 reports only the current worktree's session — enumerating stray servers
@@ -33,7 +34,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 
-			result, err := c.eng.Status()
+			result, err := c.strandEngine().Status()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -42,10 +43,11 @@ Example:
 			strands := make([]map[string]any, len(result.Strands))
 			for i, s := range result.Strands {
 				strands[i] = map[string]any{
-					"guid":   s.GUID,
-					"name":   s.Name,
-					"paneId": s.PaneID,
-					"live":   s.Live,
+					"guid":     s.GUID,
+					"name":     s.Name,
+					"paneId":   s.PaneID,
+					"live":     s.Live,
+					"retiring": s.Retiring,
 				}
 			}
 

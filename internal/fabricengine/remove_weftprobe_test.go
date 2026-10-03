@@ -15,7 +15,7 @@ func TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal(t *testing.T) {
 	t.Parallel()
 
 	absent := filepath.Join(t.TempDir(), "no-such-weft")
-	if err := refuseDirtyWeftWorktree(absent); err != nil {
+	if err := refuseDirtyWeftWorktree(absent, ".", nil); err != nil {
 		t.Errorf("refuseDirtyWeftWorktree(%q) = %v; want nil for an absent weft worktree", absent, err)
 	}
 }
