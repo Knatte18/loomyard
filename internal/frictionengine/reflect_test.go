@@ -11,35 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the three markers
 // buildReflectionSpec fills.
 const reflectionStencilFixture = "# Reflection\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nNotes:\n{{.note_list}}\n"
-
-// fakeShuttle records every Spec it was handed and returns one scripted Result/error per call, in
-// order, following mergeresolve's own fakeShuttle pattern.
-type fakeShuttle struct {
-	results []shuttleengine.Result
-	errs    []error
-
-	specs []shuttleengine.Spec
-}
-
-func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.specs = append(f.specs, spec)
-	callNumber := len(f.specs)
-
-	var res shuttleengine.Result
-	if callNumber-1 < len(f.results) {
-		res = f.results[callNumber-1]
-	}
-	var err error
-	if callNumber-1 < len(f.errs) {
-		err = f.errs[callNumber-1]
-	}
-	return res, err
-}
 
 // fakeClock is the Clock seam a test injects to assert an exact archive directory name rather than a
 // pattern.
@@ -93,7 +70,7 @@ func writeNote(t *testing.T, deps Deps, name, content string) {
 }
 
 func TestReflect_MissingDirectory_Skipped(t *testing.T) {
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	deps := newTestDeps(t, shuttle, nil)
 	if err := os.RemoveAll(deps.FrictionDir); err != nil {
 		t.Fatalf("RemoveAll(frictionDir): %v", err)
@@ -106,13 +83,13 @@ func TestReflect_MissingDirectory_Skipped(t *testing.T) {
 	if report.Status != StatusSkipped {
 		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
 	}
 }
 
 func TestReflect_EmptyDirectory_Skipped(t *testing.T) {
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	deps := newTestDeps(t, shuttle, nil)
 
 	report, err := Reflect(deps)
@@ -122,13 +99,13 @@ func TestReflect_EmptyDirectory_Skipped(t *testing.T) {
 	if report.Status != StatusSkipped {
 		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
 	}
 }
 
 func TestReflect_OnlyNonMarkdownFiles_Skipped(t *testing.T) {
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	deps := newTestDeps(t, shuttle, nil)
 	if err := os.WriteFile(filepath.Join(deps.FrictionDir, "notes.txt"), []byte("hello"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -141,15 +118,15 @@ func TestReflect_OnlyNonMarkdownFiles_Skipped(t *testing.T) {
 	if report.Status != StatusSkipped {
 		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
 	}
 }
 
 // TestReflect_OnlyStaleReport_Skipped covers the stale-report-from-a-timed-out-run case: a directory
 // whose only .md entry is friction.ReportFileName must not be mistaken for one note.
 func TestReflect_OnlyStaleReport_Skipped(t *testing.T) {
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	deps := newTestDeps(t, shuttle, nil)
 	if err := os.WriteFile(filepath.Join(deps.FrictionDir, friction.ReportFileName), []byte("stale"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -162,15 +139,15 @@ func TestReflect_OnlyStaleReport_Skipped(t *testing.T) {
 	if report.Status != StatusSkipped {
 		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
 	}
 }
 
 // TestReflect_OneNote_SpawnsAndArchives covers the full happy path: exactly one spawn, the composed
 // Spec's shape, the prompt naming the friction directory, and the archive-and-recreate.
 func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
-	shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	shuttle := &shedfake.MergeShuttle{Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	clock := fakeClock{now: time.Date(2026, 9, 12, 10, 30, 0, 0, time.UTC)}
 	deps := newTestDeps(t, shuttle, clock)
 	writeNote(t, deps, "note-1", "something went wrong")
@@ -186,10 +163,10 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 		t.Errorf("Reflect() NoteCount = %d; want 1", report.NoteCount)
 	}
 
-	if len(shuttle.specs) != 1 {
-		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.specs))
+	if len(shuttle.Specs) != 1 {
+		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.Specs))
 	}
-	spec := shuttle.specs[0]
+	spec := shuttle.Specs[0]
 	if spec.Model != "sonnet" {
 		t.Errorf("Spec.Model = %q; want %q", spec.Model, "sonnet")
 	}
@@ -246,8 +223,8 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 	if report2.Status != StatusSkipped {
 		t.Errorf("second Reflect() status = %q; want %q", report2.Status, StatusSkipped)
 	}
-	if len(shuttle.specs) != 1 {
-		t.Errorf("Shuttle.Run called %d times after second Reflect; want still 1", len(shuttle.specs))
+	if len(shuttle.Specs) != 1 {
+		t.Errorf("Shuttle.Run called %d times after second Reflect; want still 1", len(shuttle.Specs))
 	}
 }
 
@@ -265,7 +242,7 @@ func TestReflect_ShuttleOutcomes_FailedNoArchive(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: tt.outcome}}}
+			shuttle := &shedfake.MergeShuttle{Results: []shuttleengine.Result{{Outcome: tt.outcome}}}
 			deps := newTestDeps(t, shuttle, nil)
 			writeNote(t, deps, "note-1", "something went wrong")
 
@@ -299,7 +276,7 @@ func TestReflect_ShuttleOutcomes_FailedNoArchive(t *testing.T) {
 // TestReflect_ShuttleRunError_FailedNoArchive covers a plain Shuttle.Run error: StatusFailed, a nil
 // Reflect error, and no archive.
 func TestReflect_ShuttleRunError_FailedNoArchive(t *testing.T) {
-	shuttle := &fakeShuttle{errs: []error{errors.New("run failed")}}
+	shuttle := &shedfake.MergeShuttle{Errs: []error{errors.New("run failed")}}
 	deps := newTestDeps(t, shuttle, nil)
 	writeNote(t, deps, "note-1", "something went wrong")
 
@@ -319,7 +296,7 @@ func TestReflect_ShuttleRunError_FailedNoArchive(t *testing.T) {
 // friction.ReportFileName present alongside a real note before Reflect runs is deleted before the
 // spec is composed, so the composed Spec.OutputFiles entry does not already exist.
 func TestReflect_StaleReportDeletedBeforeSpec(t *testing.T) {
-	shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	shuttle := &shedfake.MergeShuttle{Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	deps := newTestDeps(t, shuttle, fakeClock{now: time.Now().UTC()})
 	writeNote(t, deps, "note-1", "something went wrong")
 	stalePath := filepath.Join(deps.FrictionDir, friction.ReportFileName)
@@ -334,17 +311,17 @@ func TestReflect_StaleReportDeletedBeforeSpec(t *testing.T) {
 	if report.Status != StatusReflected {
 		t.Fatalf("Reflect() status = %q; want %q", report.Status, StatusReflected)
 	}
-	if len(shuttle.specs) != 1 {
-		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.specs))
+	if len(shuttle.Specs) != 1 {
+		t.Fatalf("Shuttle.Run called %d times; want 1", len(shuttle.Specs))
 	}
-	if len(shuttle.specs[0].OutputFiles) == 0 {
+	if len(shuttle.Specs[0].OutputFiles) == 0 {
 		t.Fatal("Spec.OutputFiles is empty")
 	}
 }
 
 func TestReflect_DepsValidation(t *testing.T) {
 	validDeps := func(t *testing.T) Deps {
-		return newTestDeps(t, &fakeShuttle{}, nil)
+		return newTestDeps(t, &shedfake.MergeShuttle{}, nil)
 	}
 
 	t.Run("NilShuttle", func(t *testing.T) {

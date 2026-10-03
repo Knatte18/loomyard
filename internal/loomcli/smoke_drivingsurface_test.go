@@ -31,7 +31,7 @@ const verbSmokeTimeout = 60 * time.Second
 
 func TestSmokeStep_AddsNoStatusStrandOnEitherDriver(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 
 	seeders := map[string]func(*testing.T, *lyxcwd.Location){
 		"go":  seedGoDriverRun,
@@ -67,7 +67,7 @@ func TestSmokeStep_AddsNoStatusStrandOnEitherDriver(t *testing.T) {
 
 func TestSmokeStep_LeavesAPreexistingStatusStrandUntouched(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -138,7 +138,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 }
 
 func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, worktree := newBadReedUpFixture(t, seedGoDriverRun)
 
 	out, exit, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "step")
@@ -164,7 +164,7 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 // The providerless shuttle config makes the driver launch fail, which the test ignores: the removal runs before the driver spawn.
 func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedLLMDriver(t, loc)
@@ -195,7 +195,7 @@ func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 // TestSmokeStart_FailedReedUpRefusesOnEitherDriver pins that a failed reed Up refuses start before the watchdog and driver spawn on both arms.
 // It needs no tmux.
 func TestSmokeStart_FailedReedUpRefusesOnEitherDriver(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 
 	seeders := map[string]func(*testing.T, *lyxcwd.Location){
 		"go":  seedGoDriverRun,

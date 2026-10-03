@@ -11,12 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fakeWebsterRunner records the RunDeps/RunOptions it was handed and returns a caller-configured
 // websterengine.RunResult/error. An optional duringRun hook lets a test cancel the context (or
-// otherwise act) as if it happened mid-run, mirroring fakeShuttle's own hook in singlellm_test.go.
+// otherwise act) as if it happened mid-run, mirroring shedfake.Shuttle's own hook.
 type fakeWebsterRunner struct {
 	result websterengine.RunResult
 	err    error
@@ -45,13 +46,7 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
 	wantPath := summaryparser.Path(dir)
 	if ptr.Path != wantPath {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
@@ -67,13 +62,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "stuck", StuckReason: "cards ran out", BatchesDone: 3}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != "" || ptr.Reason != "cards ran out" {
 		t.Errorf("Call() pointer = %+v; want empty Path and Reason %q", ptr, "cards ran out")
 	}
@@ -135,13 +124,7 @@ func TestWebsterProducer_MasterAskingError(t *testing.T) {
 			fake := &fakeWebsterRunner{err: tt.askingErr}
 			p := NewWebsterProducer("loom", fake.run, deps)
 
-			outcome, ptr, err := p.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil (asking maps to Stuck)", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if ptr.Path != "" {
 				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
 			}
@@ -195,13 +178,7 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 	fake := &fakeWebsterRunner{err: pendingAuditErr()}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if ptr.Path != "" {
 		t.Errorf("Call() path = %q; want empty", ptr.Path)
 	}
@@ -264,13 +241,7 @@ func TestWebsterProducer_MasterAskingMatchedViaErrorsIs(t *testing.T) {
 	fake := &fakeWebsterRunner{err: wrapped}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if !errors.Is(wrapped, websterengine.ErrMasterAsking) {
 		t.Fatalf("test setup: MasterAskingError does not satisfy errors.Is(_, ErrMasterAsking)")
 	}
@@ -284,9 +255,7 @@ func TestWebsterProducer_FreshIsAlwaysFalse(t *testing.T) {
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
-	if _, _, err := p.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, p)
 	if fake.gotOptions.Fresh {
 		t.Error("Call() invoked the run seam with RunOptions.Fresh = true; want false (a safety property, not a default)")
 	}

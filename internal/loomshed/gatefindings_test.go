@@ -17,27 +17,16 @@
 package loomshed
 
 import (
-	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// captureGateWarnings redirects logger output into a buffer for the duration of one test, restoring
-// os.Stderr via t.Cleanup -- the same pattern internal/shedadapters/bouncer_judge_test.go uses.
-func captureGateWarnings(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 // TestDiscussionGate_FailureSurfacesItsFindings replaces the deleted Discussion-Validate producer's
 // own findings-surfacing case: the gate closure now carries the same obligation the producer used
@@ -54,7 +43,7 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 		t.Fatalf("WriteFile(%s): %v", supportLog, err)
 	}
 
-	buf := captureGateWarnings(t)
+	buf := logcapture.Capture(t)
 	gate := NewDiscussionGate(decisionRecord, supportLog)
 
 	result, err := gate()
@@ -107,7 +96,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 		t.Fatalf("WriteFile(99-unindexed.md): %v", err)
 	}
 
-	buf := captureGateWarnings(t)
+	buf := logcapture.Capture(t)
 	gate := NewPlanGate(anchorPath, anchorPath)
 
 	result, err := gate()
@@ -145,16 +134,10 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 		t.Fatalf("WriteFile(%s): %v", statusPath, err)
 	}
 
-	buf := captureGateWarnings(t)
+	buf := logcapture.Capture(t)
 	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "seed is not a coherent fresh start") {
@@ -174,16 +157,10 @@ func TestBatchifier_StuckSurfacesTheBatcherError(t *testing.T) {
 	anchorPath := t.TempDir()
 	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
-	buf := captureGateWarnings(t)
+	buf := logcapture.Capture(t)
 	producer := NewBatchifier("Batchifier", anchorPath)
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	got := buf.String()
 	for _, want := range []string{"Batchifier", "no-such-batcher"} {
 		if !strings.Contains(got, want) {
@@ -196,16 +173,10 @@ func TestWebsterProducer_StuckSurfacesTheBatcherError(t *testing.T) {
 	anchorPath := t.TempDir()
 	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
-	buf := captureGateWarnings(t)
+	buf := logcapture.Capture(t)
 	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	got := buf.String()
 	for _, want := range []string{"Webster", "no-such-batcher"} {
 		if !strings.Contains(got, want) {

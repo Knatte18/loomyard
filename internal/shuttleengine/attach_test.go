@@ -16,28 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
-
-// newAttachTestRunner returns a Runner scoped to a fresh temp worktree, with its run-dir root
-// pointed at a separate temp directory (runRoot) via cfg.RunDir, so a test can seed run.json
-// fixtures without reasoning about the anchor-relative default layout. dotLyxDir is where reed's own
-// state file lives, derived the same way Attach derives it.
-func newAttachTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) (runner *Runner, anchorPath, dotLyxDir, runRoot string) {
-	t.Helper()
-	worktreeRoot := t.TempDir()
-	anchorPath = filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	runRoot = t.TempDir()
-	cfg.RunDir = runRoot
-	runner = NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-	dotLyxDir = filepath.Join(anchorPath, lyxdirs.DotLyxDirName)
-	return runner, anchorPath, dotLyxDir, runRoot
-}
 
 // seedPresentReedState writes a minimal, valid ReedState via the real SaveState/decoder path,
 // answering LoadState's "does reed have a state table at all" gate with "present". The strand
@@ -153,7 +134,8 @@ func TestAttach_NoCandidates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{}
-			runner, _, _, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, runRoot := fx.Runner, fx.RunRoot
 			if !tt.rootDoesExist {
 				if err := os.RemoveAll(runRoot); err != nil {
 					t.Fatalf("remove run root: %v", err)
@@ -199,7 +181,8 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -241,7 +224,8 @@ func TestAttach_Multiplicity(t *testing.T) {
 				{GUID: "strand-2", PaneID: "%2", Live: true},
 			},
 		}}}
-		runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+		fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
@@ -262,7 +246,8 @@ func TestAttach_Multiplicity(t *testing.T) {
 
 	t.Run("ErrorCandidateDominatesAttachableCandidate", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-2", "%2")}}
-		runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+		fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
@@ -288,7 +273,8 @@ func TestAttach_Multiplicity(t *testing.T) {
 				{GUID: "strand-2", PaneID: "%2", Live: true},
 			},
 		}}}
-		runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+		fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
@@ -323,7 +309,8 @@ func TestAttach_DeadPane(t *testing.T) {
 	} {
 		t.Run(age.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "%1")}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -348,7 +335,8 @@ func TestAttach_DeadPane(t *testing.T) {
 // never a candidate at all.
 func TestAttach_OutputFilesMismatch(t *testing.T) {
 	reed := &fakeReed{}
-	runner, _, _, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+	fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+	runner, runRoot := fx.Runner, fx.RunRoot
 	seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{filepath.Join(runRoot, "other.md")}, outcome: runOutcomeRunning, includeOutcome: true})
 
 	result, found, err := runner.Attach(Spec{OutputFiles: []string{filepath.Join(runRoot, "out.md")}, Timeout: time.Minute})
@@ -389,7 +377,8 @@ func TestAttach_UntrackedStrand_AgeRule(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// StartupTimeoutS 30 -> minAge = 60s.
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
@@ -428,7 +417,8 @@ func TestAttach_BindingClearedStrand_AgeRule(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
@@ -462,7 +452,8 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
-				runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+				runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 				seedPresentReedState(t, dotLyxDir)
 				fc := newFakeClock(time.Now())
 				runner.clock = fc
@@ -486,7 +477,8 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 		for _, outcome := range []string{"done", "asking", "died", "timeout"} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
-				runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+				runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 				seedPresentReedState(t, dotLyxDir)
 				fc := newFakeClock(time.Now())
 				runner.clock = fc
@@ -522,7 +514,8 @@ func TestAttach_ReedStateGate_AbsentOrUnreadable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			tt.seed(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -559,7 +552,8 @@ func TestAttach_StatusError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusErr: tt.wantErr}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -580,7 +574,8 @@ func TestAttach_StatusError(t *testing.T) {
 // reed read.
 func TestAttach_NegativeTimeout(t *testing.T) {
 	reed := &fakeReed{}
-	runner, _, _, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+	fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+	runner, runRoot := fx.Runner, fx.RunRoot
 	seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{filepath.Join(runRoot, "out.md")}, outcome: runOutcomeRunning, includeOutcome: true})
 
 	_, found, err := runner.Attach(Spec{OutputFiles: []string{filepath.Join(runRoot, "out.md")}, Timeout: -time.Second})
@@ -629,7 +624,8 @@ func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{tt.status}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
@@ -676,7 +672,8 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{tt.status}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 			fc := newFakeClock(time.Now())
 			runner.clock = fc
@@ -712,7 +709,8 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 func TestAttach_OutputFilesExistButLive_AttachesNotLeftover(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 	fc := newFakeClock(time.Now())
 	runner.clock = fc
@@ -754,7 +752,8 @@ func TestAttach_AnchorDefaulting(t *testing.T) {
 		liveStatus("strand-1", "%1"), // Attach's own dispositioning read: attachable.
 		{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}}}, // Wait's first tick.
 	}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md") // never created
@@ -789,7 +788,8 @@ func TestAttach_KeepPane(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 			engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			seedPresentReedState(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -831,7 +831,8 @@ func TestAttach_KeepPane(t *testing.T) {
 func TestAttach_WaitRunsAgainstPersistedEventsPath(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -858,7 +859,8 @@ func TestAttach_WaitRunsAgainstPersistedEventsPath(t *testing.T) {
 // run.json alongside a valid, matching one must not abort the whole scan.
 func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -891,7 +893,8 @@ func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
 func TestAttach_DeadlineRestartedAtAttachTime(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -934,7 +937,8 @@ func TestAttach_DeadlineRestartedAtAttachTime(t *testing.T) {
 func TestAttach_ZeroTimeoutUsesConfigDefault(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -973,7 +977,8 @@ func TestAttach_ZeroTimeoutUsesConfigDefault(t *testing.T) {
 // the same files in a different order still matches.
 func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	// NewRunner's worktreeRoot is the parent of anchorPath; resolve the same absolute files a caller
@@ -1006,7 +1011,8 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	t.Run("BacklogEndsInCompletion_ClassifiesDone", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+		fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
@@ -1028,7 +1034,8 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	t.Run("BacklogEndsInAsk_ClassifiesAsking", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+		fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md") // never created
@@ -1064,7 +1071,8 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	// StartupScript deliberately left empty: fakeEngine.Startup would return StartupPending for
 	// every call, and any call at all is the regression this test exists to catch.
 	engine := &fakeEngine{}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, engine, Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -1114,7 +1122,8 @@ func TestAttach_LaterGoesNotLive_StillClassifiesDone(t *testing.T) {
 		liveStatus("strand-1", "%1"), // Attach's own dispositioning read.
 		deadStatus("strand-1", ""),   // Wait's first liveness tick: pane gone.
 	}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")
@@ -1162,7 +1171,8 @@ func TestAttach_ReedStateUnavailable_HarvestsFinishedRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{StatusErr: tt.statusErr}
-			runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 			tt.seedState(t, dotLyxDir)
 
 			outputFile := filepath.Join(runRoot, "out.md")
@@ -1210,7 +1220,8 @@ func TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun(t *testing.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reed := &fakeReed{}
-			runner, _, _, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5})
+			fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
+			runner, runRoot := fx.Runner, fx.RunRoot
 			// reed.json deliberately not seeded: the absent-state-file gate.
 
 			outputFile := filepath.Join(runRoot, "out.md")

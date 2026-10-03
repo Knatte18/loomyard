@@ -4,7 +4,7 @@
 // branch goes when the destructive gate proves its work is pushed or landed on the parent recorded in
 // the pair's origin record, and is kept with a reason otherwise.
 //
-// Every hub is built through hubforge.NewHub (via newFabricFixture) with an empty branch_prefix, so
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so
 // the pair's warp branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -13,11 +13,11 @@ package fabricengine_test
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -25,20 +25,16 @@ import (
 func warpBranchCommit(t *testing.T, l *lyxcwd.Location, slug, name string) {
 	t.Helper()
 	dir := fabricengine.WorktreePath(l, slug)
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", name)
+	gitkit.CommitFile(t, dir, name, name, name)
 }
 
 func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-pushed"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
@@ -52,7 +48,7 @@ func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
 		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
 	}
-	if branchExistsAt(t, l.WorktreePath(), slug) {
+	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
 	}
 }
@@ -61,9 +57,9 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-landed"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
@@ -71,7 +67,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 
 	prime := l.WorktreePath()
 	gitkit.MustRun(t, prime, "git", "merge", "--squash", slug)
-	gitkit.MustRun(t, prime, "git", "commit", "-m", "land "+slug)
+	gitkit.Git(t, prime, "commit", "-m", "land "+slug)
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -80,7 +76,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
 		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
 	}
-	if branchExistsAt(t, prime, slug) {
+	if gitkit.BranchExists(t, prime, slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
 	}
 }
@@ -97,9 +93,9 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			t.Parallel()
 
 			slug := "wb-unlanded-" + name
-			fixture := newFabricFixture(t)
-			l := fixture.Layout
-			topology := fabricengine.NewTopology(fabricengine.Config{})
+			h := hubforge.NewHub(t, ".")
+			l := h.Location
+			topology := h.Topology
 			if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 				t.Fatalf("setup Add(%q): %v", slug, err)
 			}
@@ -115,7 +111,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			if res.WarpBranchKeptReason == "" {
 				t.Errorf("WarpBranchKeptReason is empty; want the gate's reason")
 			}
-			if !branchExistsAt(t, l.WorktreePath(), slug) {
+			if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 				t.Errorf("warp branch %q was deleted despite unlanded work", slug)
 			}
 		})
@@ -126,9 +122,9 @@ func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-noweft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
@@ -156,9 +152,9 @@ func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-readd"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}

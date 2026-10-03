@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -24,16 +25,17 @@ func TestCommitRecordsVerb_Real_CommitsAndPushesLateDriveReport(t *testing.T) {
 	}
 
 	want := filepath.ToSlash(filepath.Join(shedrun.DriveReportsRel(location, shedrun.SelfRunID), "report.md"))
-	if got := mustGitOut(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, want) {
+	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, want) {
 		t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
 	}
-	if got := mustGitOut(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
+	if got := gitkit.Git(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
 		t.Errorf("unpushed weft commits = %q; want none", got)
 	}
-	branch := mustGitOut(t, weftSibling, "rev-parse", "--abbrev-ref", "HEAD")
-	remote := mustGitOut(t, weftSibling, "ls-remote", "origin", "refs/heads/"+branch)
-	if !strings.HasPrefix(remote, headSHA(t, weftSibling)) {
-		t.Errorf("origin %s = %q; want it at the weft HEAD %s", branch, remote, headSHA(t, weftSibling))
+	branch := gitkit.CurrentBranch(t, weftSibling)
+	remote := gitkit.Git(t, weftSibling, "ls-remote", "origin", "refs/heads/"+branch)
+	head := gitkit.RevParse(t, weftSibling, "HEAD")
+	if !strings.HasPrefix(remote, head) {
+		t.Errorf("origin %s = %q; want it at the weft HEAD %s", branch, remote, head)
 	}
 }
 
@@ -47,13 +49,13 @@ func TestCommitRecordsVerb_Real_CleanTreeIsNoOpSuccess(t *testing.T) {
 	if code := commitRecordsVerb(&first, deps); code != 0 {
 		t.Fatalf("first exit = %d; want 0; output %s", code, first.String())
 	}
-	before := headSHA(t, weftSibling)
+	before := gitkit.RevParse(t, weftSibling, "HEAD")
 
 	var second bytes.Buffer
 	if code := commitRecordsVerb(&second, deps); code != 0 {
 		t.Fatalf("second exit = %d; want 0; output %s", code, second.String())
 	}
-	if got := headSHA(t, weftSibling); got != before {
+	if got := gitkit.RevParse(t, weftSibling, "HEAD"); got != before {
 		t.Errorf("weft HEAD = %q; want unchanged %q — a clean tree adds no commit", got, before)
 	}
 }

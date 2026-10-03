@@ -61,7 +61,7 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 // precisely because `step` spawns no driver: `start` delegates to `run`, which calls
 // friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
 func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -109,7 +109,7 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 // Like its siblings, this test spawns zero real LLM subprocesses: it dispatches at most the
 // pure-Go precondition rows.
 func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
@@ -150,7 +150,7 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 // The ly-drive skill's first move is a status read taken as its baseline, and on a brand-new task
 // that read must reach the verb's own remedy rather than a lock-directory error.
 func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	// arm.go's resolveRunID now refuses "status"/"pause" outright when no seed exists at all,
 	// before either verb's own absent-status-file check ever runs -- a seed must be present so this

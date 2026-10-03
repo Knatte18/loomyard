@@ -24,21 +24,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// lsFilesWeft returns `git ls-files`'s raw output for weftPath — the
-// currently-tracked (index) path set, read fresh after whatever the test
-// just did.
-func lsFilesWeft(t *testing.T, weftPath string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "ls-files")
-	cmd.Dir = weftPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git ls-files in %s: %v", weftPath, err)
-	}
-	return string(out)
-}
-
 // diffCachedQuietWeft reports whether `git diff --cached --quiet` exits 0 in
 // weftPath — true means nothing at all is staged.
 func diffCachedQuietWeft(t *testing.T, weftPath string) bool {
@@ -97,7 +82,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := lsFilesWeft(t, weftFixture.PrimeWeft())
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
 	if !strings.Contains(tracked, "newmodule/newfile.txt") {
 		t.Errorf("git ls-files = %q; want it to track newmodule/newfile.txt", tracked)
 	}
@@ -139,7 +124,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := lsFilesWeft(t, weftFixture.PrimeWeft())
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
 	if strings.Contains(tracked, "_lyx/trackedfile.txt") {
 		t.Errorf("git ls-files = %q; want _lyx/trackedfile.txt no longer tracked after the deletion commit", tracked)
 	}
@@ -172,7 +157,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := lsFilesWeft(t, weftFixture.PrimeWeft())
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
 	if !strings.Contains(tracked, "_lyx/durable.txt") {
 		t.Errorf("git ls-files = %q; want it to track _lyx/durable.txt", tracked)
 	}

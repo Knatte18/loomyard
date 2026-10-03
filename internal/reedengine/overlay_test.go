@@ -46,17 +46,16 @@ func TestListSessions(t *testing.T) {
 			// listSessionsVia is ListSessions' parsing half, factored out so a test can drive it
 			// through TmuxCmd's execHook seam directly rather than a real server.
 			cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-			cmd.execHook = func(capture bool, args ...string) (string, error) {
-				if !capture {
-					t.Fatalf("execHook called with capture=false, want true (list-sessions always captures)")
-				}
-				if len(args) < 1 || args[0] != "list-sessions" {
-					t.Fatalf("execHook args = %v, want first arg %q", args, "list-sessions")
-				}
-				return tt.out, tt.hookErr
-			}
+			fake := installFakeTmuxOn(t, &cmd)
+			fake.answer("list-sessions", tt.out, tt.hookErr)
 
 			got, err := listSessionsVia(cmd)
+			if seq := fake.Sequence(); len(seq) != 1 || seq[0] != "list-sessions" {
+				t.Fatalf("tmux calls = %v, want exactly one list-sessions", seq)
+			}
+			if captured := fake.CapturedFor("list-sessions"); !captured[0] {
+				t.Fatalf("list-sessions called with capture=false, want true (list-sessions always captures)")
+			}
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("listSessionsVia() error = nil, want non-nil")
@@ -84,21 +83,20 @@ func TestListSessions(t *testing.T) {
 const unreachablePaneLine = "%1 0 0 80 24 999999\n"
 
 func TestReapSessionKill(t *testing.T) {
-	var gotCapture bool
-	var gotArgs []string
 	cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-	cmd.execHook = func(capture bool, args ...string) (string, error) {
-		gotCapture = capture
-		gotArgs = args
-		return "", nil
-	}
+	fake := installFakeTmuxOn(t, &cmd)
 
 	if err := reapSessionKill(cmd, "myworktree"); err != nil {
 		t.Fatalf("reapSessionKill() unexpected error: %v", err)
 	}
-	if gotCapture {
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("reapSessionKill() made %d tmux calls; want 1: %v", len(calls), calls)
+	}
+	if fake.CapturedFor("kill-session")[0] {
 		t.Errorf("reapSessionKill() routed through output (capture=true); want run (capture=false)")
 	}
+	gotArgs := calls[0]
 	want := []string{"kill-session", "-t", "=myworktree"}
 	if len(gotArgs) != len(want) {
 		t.Fatalf("reapSessionKill() args = %v; want %v", gotArgs, want)
@@ -113,9 +111,7 @@ func TestReapSessionKill(t *testing.T) {
 func TestReapSessionPanes(t *testing.T) {
 	t.Run("successful listing", func(t *testing.T) {
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-		cmd.execHook = func(capture bool, args ...string) (string, error) {
-			return "%1 0 0 80 24 4242\n", nil
-		}
+		installFakeTmuxOn(t, &cmd).answer("list-panes", "%1 0 0 80 24 4242\n", nil)
 		got, err := reapSessionPanes(cmd, "myworktree")
 		if err != nil {
 			t.Fatalf("reapSessionPanes() unexpected error: %v", err)
@@ -129,9 +125,7 @@ func TestReapSessionPanes(t *testing.T) {
 	t.Run("scripted failure", func(t *testing.T) {
 		hookErr := errors.New("no server running on socket")
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-		cmd.execHook = func(capture bool, args ...string) (string, error) {
-			return "", hookErr
-		}
+		installFakeTmuxOn(t, &cmd).answer("list-panes", "", hookErr)
 		_, err := reapSessionPanes(cmd, "myworktree")
 		if err == nil {
 			t.Fatalf("reapSessionPanes() error = nil, want non-nil")
@@ -167,20 +161,9 @@ func TestReapSession_CallOrdering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var sequence []string
 			cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-			cmd.execHook = func(capture bool, args ...string) (string, error) {
-				sequence = append(sequence, args[0])
-				switch args[0] {
-				case "list-panes":
-					return tt.panesOut, tt.panesErr
-				case "kill-session":
-					return "", nil
-				default:
-					t.Fatalf("unexpected tmux subcommand %q", args[0])
-					return "", nil
-				}
-			}
+			fake := installFakeTmuxOn(t, &cmd)
+			fake.answer("list-panes", tt.panesOut, tt.panesErr)
 
 			// Step 1: reapSessionPanes, exactly as ReapSession calls it. A scripted listing
 			// failure is recorded but does not stop the reap — ReapSession logs and continues
@@ -210,6 +193,7 @@ func TestReapSession_CallOrdering(t *testing.T) {
 				t.Fatalf("reapSessionKill() unexpected error: %v", err)
 			}
 
+			sequence := fake.Sequence()
 			if len(sequence) != len(tt.wantSequence) {
 				t.Fatalf("call sequence = %v; want %v", sequence, tt.wantSequence)
 			}

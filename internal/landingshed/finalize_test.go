@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // recordingParentMerger is the in-package fake standing in for the unexported parentMerger seam. It
@@ -79,29 +80,6 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 
 func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
 
-// newFinalizeDeps returns a minimal Deps for a Finalize test, with a well-formed final-summary
-// artifact already written at DescriptionPath -- Call's own top-of-Call parse (see finalize.go's
-// step 1a) requires one to exist for every test that does not override this field itself.
-func newFinalizeDeps(t *testing.T) Deps {
-	t.Helper()
-	summaryPath := summaryparser.Path(t.TempDir())
-	writeSummary(t, summaryPath, "A landing title", "A landing body.")
-	return Deps{
-		WorktreeRoot:    t.TempDir(),
-		TaskBranch:      "task-branch",
-		ParentBranch:    "main",
-		DescriptionPath: summaryPath,
-		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
-		Config: Config{
-			RequirePRToBase:    []string{"main"},
-			Squash:             true,
-			Conflict:           "sonnet",
-			ConflictTimeoutMin: 30,
-			CoAuthoredBy:       "Test Author <test@example.com>",
-		},
-	}
-}
-
 // requireFinalizeReason returns the stuck reason carried on ptr, failing the test when it is empty.
 func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
 	t.Helper()
@@ -114,7 +92,7 @@ func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
 // --- NewFinalize construction ---
 
 func TestNewFinalize_RejectsNilOpenFabric(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	if _, err := NewFinalize(deps); err == nil {
 		t.Fatal("NewFinalize() error = nil; want an error naming Deps.OpenFabric")
@@ -122,7 +100,7 @@ func TestNewFinalize_RejectsNilOpenFabric(t *testing.T) {
 }
 
 func TestNewFinalize_RejectsNilOpenParentFabric(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	if _, err := NewFinalize(deps); err == nil {
 		t.Fatal("NewFinalize() error = nil; want an error naming Deps.OpenParentFabric")
@@ -130,7 +108,7 @@ func TestNewFinalize_RejectsNilOpenParentFabric(t *testing.T) {
 }
 
 func TestNewFinalize_RejectsEmptyDescriptionPath(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
 	deps.DescriptionPath = ""
@@ -156,7 +134,7 @@ func TestFinalize_PushesParentAfterMerge(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deps := newFinalizeDeps(t)
+			deps := newTestDeps(t)
 			deps.PushSkipped = tt.pushSkipped
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			merger := &recordingParentMerger{
@@ -165,13 +143,7 @@ func TestFinalize_PushesParentAfterMerge(t *testing.T) {
 			}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-			outcome, ptr, err := fz.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != tt.wantOutcome {
-				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
-			}
+			ptr := shedfake.RequireOutcome(t, fz, tt.wantOutcome)
 			if len(merger.pushCalls) != 1 {
 				t.Fatalf("PushBranch calls = %d; want 1", len(merger.pushCalls))
 			}
@@ -188,18 +160,12 @@ func TestFinalize_PushesParentAfterMerge(t *testing.T) {
 }
 
 func TestFinalize_HappyPath_MergeInThenParentMerge(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 	if !res.called {
 		t.Error("resolver.Resolve was not called; want merge-in to run first")
 	}
@@ -227,7 +193,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deps := newFinalizeDeps(t)
+			deps := newTestDeps(t)
 			deps.Config.Squash = tt.squash
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
@@ -237,13 +203,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-			outcome, _, err := fz.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Done {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-			}
+			shedfake.RequireOutcome(t, fz, shedengine.Done)
 			if len(merger.calls) != 1 {
 				t.Fatalf("parent-side merge calls = %d; want 1", len(merger.calls))
 			}
@@ -266,7 +226,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 // artifact makes Call return an error with no merge attempted and no status commit performed --
 // proving the top-of-Call parse runs before either.
 func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
 	committed := false
 	deps.CommitStatus = func() error { committed = true; return nil }
@@ -293,7 +253,7 @@ func TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) 
 // TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit's sibling case: a summary file exists
 // but fails Parse's own validation rather than being absent.
 func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
 	if err := os.WriteFile(deps.DescriptionPath, []byte("not a heading\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(malformed summary): %v", err)
@@ -320,7 +280,7 @@ func TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T
 }
 
 func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{
 		{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}},
@@ -328,13 +288,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 	}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, ptr, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	if len(merger.calls) != 2 {
 		t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
 	}
@@ -345,7 +299,7 @@ func TestFinalize_MergeInRequired_RetriesExactlyOnce(t *testing.T) {
 // same mergeOpts value as the first attempt, so the retry call's MergeOptions carries the same
 // composed message -- no second assignment happens between the first attempt and the retry.
 func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	summary, err := summaryparser.Parse(deps.DescriptionPath)
 	if err != nil {
 		t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
@@ -357,13 +311,7 @@ func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) 
 	}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 	if len(merger.calls) != 2 {
 		t.Fatalf("parent-side merge calls = %d; want exactly 2 (one attempt, one retry)", len(merger.calls))
 	}
@@ -377,17 +325,11 @@ func TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage(t *testing.T) 
 }
 
 func TestFinalize_ParentOpenerError_StuckNamesParentBranch(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return nil, errors.New("no such worktree") }}
 
-	outcome, ptr, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	got := requireFinalizeReason(t, ptr)
 	if !strings.Contains(got, deps.ParentBranch) {
 		t.Errorf("stuck reason %q does not name parent branch %q", got, deps.ParentBranch)
@@ -395,19 +337,13 @@ func TestFinalize_ParentOpenerError_StuckNamesParentBranch(t *testing.T) {
 }
 
 func TestFinalize_GuardErrorDirtyWorktree_StuckSurfacesReasonVerbatim(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	guardErr := &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{err: guardErr}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, ptr, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	if len(merger.calls) != 1 {
 		t.Errorf("parent-side merge calls = %d; want exactly 1 (no retry on a dirty-worktree guard error)", len(merger.calls))
 	}
@@ -418,18 +354,12 @@ func TestFinalize_GuardErrorDirtyWorktree_StuckSurfacesReasonVerbatim(t *testing
 }
 
 func TestFinalize_UnrecognizedMergeError_StuckWithErrorSurfaced(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("some unrecognized failure")}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, ptr, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	got := requireFinalizeReason(t, ptr)
 	if !strings.Contains(got, "some unrecognized failure") {
 		t.Errorf("stuck reason %q does not surface the underlying error", got)
@@ -437,18 +367,12 @@ func TestFinalize_UnrecognizedMergeError_StuckWithErrorSurfaced(t *testing.T) {
 }
 
 func TestFinalize_MergeInStuck(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"}}
 	merger := &recordingParentMerger{}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	if len(merger.calls) != 0 {
 		t.Errorf("parent-side merge calls = %d; want 0 (merge-in never resolved)", len(merger.calls))
 	}
@@ -457,23 +381,17 @@ func TestFinalize_MergeInStuck(t *testing.T) {
 // TestFinalize_StuckCausesProduceDifferentReasons pins that two different stuck causes leave
 // different reasons.
 func TestFinalize_StuckCausesProduceDifferentReasons(t *testing.T) {
-	deps1 := newFinalizeDeps(t)
+	deps1 := newTestDeps(t)
 	res1 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz1 := &Finalize{deps: deps1, resolver: res1, parentOpener: func() (parentMerger, error) { return nil, errors.New("no worktree") }}
-	_, ptr1, err := fz1.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	_, ptr1 := shedfake.CallOK(t, fz1)
 	reason1 := requireFinalizeReason(t, ptr1)
 
-	deps2 := newFinalizeDeps(t)
+	deps2 := newTestDeps(t)
 	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger2 := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("some other failure")}}}
 	fz2 := &Finalize{deps: deps2, resolver: res2, parentOpener: func() (parentMerger, error) { return merger2, nil }}
-	_, ptr2, err := fz2.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	_, ptr2 := shedfake.CallOK(t, fz2)
 	reason2 := requireFinalizeReason(t, ptr2)
 
 	if reason1 == reason2 {
@@ -482,7 +400,7 @@ func TestFinalize_StuckCausesProduceDifferentReasons(t *testing.T) {
 }
 
 func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{}
 	fz := &Finalize{deps: deps, resolver: res}
 
@@ -499,13 +417,10 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 }
 
 func TestFinalize_StuckWritesNoReasonFile(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return nil, errors.New("no worktree") }}
-	_, ptr, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	_, ptr := shedfake.CallOK(t, fz)
 	requireFinalizeReason(t, ptr)
 
 	matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
@@ -571,18 +486,16 @@ func runCloseFinalize(t *testing.T, deps Deps) shedengine.Outcome {
 		headSHA: "abc123landed",
 	}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	outcome, _ := shedfake.CallOK(t, fz)
 	return outcome
 }
 
 func TestFinalize_ClosesOpenPullRequestAfterLanding(t *testing.T) {
 	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	deps := newTestDeps(t)
 	installCloseServer(t, s)
 
-	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+	if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
 		t.Fatalf("outcome = %q; want Done", outcome)
 	}
 
@@ -604,9 +517,9 @@ func TestFinalize_ClosesOpenPullRequestAfterLanding(t *testing.T) {
 // closes the PR naming the head the parent reports.
 func TestFinalize_AlreadyUpToDateMergeProceedsAsLanded(t *testing.T) {
 	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
+	deps := newTestDeps(t)
 	installCloseServer(t, s)
 
-	deps := newFinalizeDeps(t)
 	deps.OriginURL = "https://github.com/acme/widgets.git"
 	markedDone := 0
 	deps.MarkTaskDone = func() error { markedDone++; return nil }
@@ -617,13 +530,7 @@ func TestFinalize_AlreadyUpToDateMergeProceedsAsLanded(t *testing.T) {
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("outcome = %q; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 	if markedDone != 1 {
 		t.Errorf("MarkTaskDone called %d time(s); want 1", markedDone)
 	}
@@ -641,9 +548,10 @@ func TestFinalize_AlreadyUpToDateMergeProceedsAsLanded(t *testing.T) {
 
 func TestFinalize_LeavesNonOpenPullRequestAlone(t *testing.T) {
 	s := &closeServer{listBody: `[{"number":7,"state":"closed"}]`}
+	deps := newTestDeps(t)
 	installCloseServer(t, s)
 
-	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+	if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
 		t.Fatalf("outcome = %q; want Done", outcome)
 	}
 	if len(s.requests) != 1 {
@@ -653,9 +561,10 @@ func TestFinalize_LeavesNonOpenPullRequestAlone(t *testing.T) {
 
 func TestFinalize_CloseFailureStillDone(t *testing.T) {
 	s := &closeServer{listBody: `[{"number":7,"state":"open"}]`, failClose: true}
+	deps := newTestDeps(t)
 	installCloseServer(t, s)
 
-	if outcome := runCloseFinalize(t, newFinalizeDeps(t)); outcome != shedengine.Done {
+	if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
 		t.Fatalf("outcome = %q; want Done despite the failed close", outcome)
 	}
 }
@@ -672,7 +581,7 @@ func TestFinalize_NoGitHubCallWhenNotRequiredOrPushSkipped(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &closeServer{listBody: `[{"number":7,"state":"open"}]`}
 			installCloseServer(t, s)
-			deps := newFinalizeDeps(t)
+			deps := newTestDeps(t)
 			tt.mutate(&deps)
 
 			if outcome := runCloseFinalize(t, deps); outcome != shedengine.Done {
@@ -703,7 +612,7 @@ func TestFinalize_MarkTaskDone_OrderAndVerdict(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
-			deps := newFinalizeDeps(t)
+			deps := newTestDeps(t)
 			deps.MarkTaskDone = func() error {
 				order = append(order, "mark")
 				return tt.markErr
@@ -716,13 +625,7 @@ func TestFinalize_MarkTaskDone_OrderAndVerdict(t *testing.T) {
 			}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-			outcome, _, err := fz.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != tt.wantOutcome {
-				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
-			}
+			shedfake.RequireOutcome(t, fz, tt.wantOutcome)
 			if got, want := strings.Join(order, ","), "merge,mark,push"; got != want {
 				t.Errorf("call order = %q; want %q", got, want)
 			}
@@ -734,7 +637,7 @@ func TestFinalize_MarkTaskDone_OrderAndVerdict(t *testing.T) {
 // parent-side merge that finally lands, not after the failed first attempt.
 func TestFinalize_MarkTaskDone_CalledAfterMergeInRetry(t *testing.T) {
 	var order []string
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{
@@ -746,10 +649,7 @@ func TestFinalize_MarkTaskDone_CalledAfterMergeInRetry(t *testing.T) {
 	}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 	if got, want := strings.Join(order, ","), "merge,merge,mark,push"; got != want {
 		t.Errorf("call order = %q; want %q", got, want)
 	}
@@ -759,36 +659,30 @@ func TestFinalize_MarkTaskDone_CalledAfterMergeInRetry(t *testing.T) {
 // task done, and that a nil seam is simply skipped.
 func TestFinalize_MarkTaskDone_NotCalledOnFailedMerge(t *testing.T) {
 	called := false
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { called = true; return nil }
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{err: errors.New("boom")}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 	if called {
 		t.Error("MarkTaskDone was called after a failed parent-side merge; want it never called")
 	}
 }
 
 func TestFinalize_MarkTaskDone_NilIsAbsent(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 }
 
 // TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
 func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{
 		results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},

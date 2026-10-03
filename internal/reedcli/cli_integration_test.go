@@ -8,7 +8,6 @@ package reedcli
 
 import (
 	"bytes"
-	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestRunCLI_ResolvesLayoutAndConfig builds a real fixture hub and verifies reed config resolution
@@ -34,15 +34,12 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 		t.Errorf("RunCLI(status) = %d; want 1 (no live tmux session)", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	if ok, _ := env["ok"].(bool); ok {
+	env := envelope.Decode(t, out.String())
+	if env.OK {
 		t.Errorf("RunCLI(status) ok = true; want false (no tmux session up)")
 	}
 
-	errMsg, _ := env["error"].(string)
+	errMsg := env.Error
 	if strings.Contains(errMsg, "not initialized") || strings.Contains(errMsg, "not a git repository") {
 		t.Errorf("RunCLI(status) error = %q; want a tmux/session error, not a config-resolution error", errMsg)
 	}
@@ -99,18 +96,12 @@ func TestRunCLI_AddNotUp_SelfHealsAndSucceeds(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(add) before up = %d; want 0 (add self-heals a cold worktree), output: %s", exitCode, out.String())
 	}
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(add) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Errorf("RunCLI(add) before up ok = false; want true, output: %s", out.String())
-	}
-	guid, _ := env["guid"].(string)
+	env := envelope.RequireOK(t, out.String())
+	guid, _ := env.Raw["guid"].(string)
 	if guid == "" {
 		t.Errorf("RunCLI(add) before up envelope = %s; want a non-empty guid", out.String())
 	}
-	if name, _ := env["name"].(string); name != "tst:"+strandName {
+	if name, _ := env.Raw["name"].(string); name != "tst:"+strandName {
 		t.Errorf("RunCLI(add) before up name = %q; want %q", name, "tst:"+strandName)
 	}
 
@@ -118,18 +109,15 @@ func TestRunCLI_AddNotUp_SelfHealsAndSucceeds(t *testing.T) {
 	if code := RunCLIIn(worktree, &out, []string{"status"}); code != 0 {
 		t.Fatalf("RunCLI(status) after a cold add = %d; want 0 (the session add booted must now exist), output: %s", code, out.String())
 	}
-	var status map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &status); err != nil {
-		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	if session, _ := status["session"].(string); session != reedengine.SessionName(worktree) {
+	status := envelope.Decode(t, out.String())
+	if session, _ := status.Raw["session"].(string); session != reedengine.SessionName(worktree) {
 		t.Errorf("RunCLI(status) after a cold add session = %q; want %q (this worktree's own session)", session, reedengine.SessionName(worktree))
 	}
-	if socket, _ := status["socket"].(string); socket != reedengine.ServerName(h.Path) {
+	if socket, _ := status.Raw["socket"].(string); socket != reedengine.ServerName(h.Path) {
 		t.Errorf("RunCLI(status) after a cold add socket = %q; want %q (this hub's own socket)", socket, reedengine.ServerName(h.Path))
 	}
 
-	strands, _ := status["strands"].([]any)
+	strands, _ := status.Raw["strands"].([]any)
 	found := false
 	for _, s := range strands {
 		strand, _ := s.(map[string]any)
@@ -164,11 +152,7 @@ func TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck(t *testing.T) {
 		t.Errorf("RunCLI(add --if-absent, no --name) = %d; want 1", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(add --if-absent, no --name) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	errMsg, _ := env["error"].(string)
+	errMsg := envelope.Decode(t, out.String()).Error
 	if !strings.Contains(errMsg, "--name") {
 		t.Errorf("RunCLI(add --if-absent, no --name) error = %q; want it to name the --name requirement", errMsg)
 	}
@@ -200,11 +184,7 @@ func TestRunCLI_AddIfAbsentNoCmd_StillRequiresCmd(t *testing.T) {
 		t.Errorf("RunCLI(add --if-absent, no --cmd) = %d; want 1", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(add --if-absent, no --cmd) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	errMsg, _ := env["error"].(string)
+	errMsg := envelope.Decode(t, out.String()).Error
 	if !strings.Contains(errMsg, `"cmd"`) {
 		t.Errorf("RunCLI(add --if-absent, no --cmd) error = %q; want it to name the missing required --cmd flag", errMsg)
 	}
@@ -224,12 +204,8 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 		t.Errorf("RunCLI(remove) before up = %d; want 1 (no live tmux session)", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(remove) output is not valid JSON: %v; got: %q", err, out.String())
-	}
 	wantErr := `no reed session; run "lyx reed up"`
-	if errMsg, _ := env["error"].(string); errMsg != wantErr {
+	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
 		t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
 	}
 }
@@ -260,12 +236,8 @@ func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 		t.Errorf("RunCLI(status) before up = %d; want 1 (no live tmux session)", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
-	}
 	wantErr := `no reed session (2 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`
-	if errMsg, _ := env["error"].(string); errMsg != wantErr {
+	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != wantErr {
 		t.Errorf("RunCLI(status) before up error = %q; want %q", errMsg, wantErr)
 	}
 }

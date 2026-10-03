@@ -90,6 +90,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -385,40 +386,6 @@ func primeWeftAdminPermittedRoot(slug string) string {
 	return filepath.ToSlash(filepath.Join("warp-bare-weft", ".git", "worktrees", weftname.SiblingPath("", slug)))
 }
 
-// currentBranchName returns the branch checked out at dir, via `git rev-parse --abbrev-ref HEAD`,
-// failing tb on any error.
-func currentBranchName(tb testing.TB, dir string) string {
-	tb.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		tb.Fatalf("git rev-parse --abbrev-ref HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// liveStateCurrentSHA returns dir's checked-out commit SHA, via `git rev-parse HEAD`, failing tb on any error.
-func liveStateCurrentSHA(tb testing.TB, dir string) string {
-	tb.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		tb.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// branchExists reports whether branch resolves in the repo at dir.
-func branchExists(dir, branch string) bool {
-	cmd := exec.Command("git", "rev-parse", "--verify", "refs/heads/"+branch)
-	cmd.Dir = dir
-	return cmd.Run() == nil
-}
-
 // assertGone fails tb unless path does not exist (via os.Lstat, so a dangling link still counts as
 // present).
 func assertGone(tb testing.TB, path string) {
@@ -508,7 +475,7 @@ func addCase() VerbCase {
 					Substring: "already exists",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						if branchExists(h.PrimeWorktree(), f.Slug) {
+						if gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
 							tb.Errorf("Add unexpectedly created branch %q despite refusing at worktree creation", f.Slug)
 						}
 					},
@@ -534,7 +501,7 @@ func addCase() VerbCase {
 						assertGone(tb, h.PairWeftSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
-						if !branchExists(h.PrimeWorktree(), f.Slug) {
+						if !gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
 							tb.Errorf("Add's rollback unexpectedly deleted branch %q despite the empty-BranchPrefix ownership gap", f.Slug)
 						}
 						if got := mustGitRemoteURL(tb, h.PrimeWorktree()); got != f.BrokenOriginURL {
@@ -715,7 +682,7 @@ func cleanupCase() VerbCase {
 		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
-			original := currentBranchName(tb, h.PrimeWorktree())
+			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
 
 			slug := "verb-cleanup-owner"
 			hubforge.AddPair(tb, h, slug)
@@ -753,7 +720,7 @@ func cleanupCase() VerbCase {
 				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					orphan := fabricengine.WeftBranchName(f.Slug)
-					if branchExists(h.PairWeftSibling(f.Slug), orphan) {
+					if gitkit.BranchExists(tb, h.PrimeWeft(), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
 					// Card 16's clean-state effect: "orphan managed branches gone, primary weft
@@ -761,7 +728,7 @@ func cleanupCase() VerbCase {
 					// this assertion is independently provable here rather than only in
 					// fabricengine_test's hermetic TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout.
 					primary := fabricengine.WeftBranchName(f.OriginalBranch)
-					if !branchExists(h.PrimeWeft(), primary) {
+					if !gitkit.BranchExists(tb, h.PrimeWeft(), primary) {
 						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
 					}
 				},
@@ -789,7 +756,7 @@ func checkoutCase() VerbCase {
 			// same Arrange just created.
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairWarpWorktree(slug))
 			mustGit(h.PrimeWeft(), "worktree", "remove", "--force", h.PairWeftSibling(slug))
-			original := currentBranchName(tb, h.PrimeWorktree())
+			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
 
 			return VerbFixture{
 				Slug:           slug,
@@ -816,10 +783,10 @@ func checkoutCase() VerbCase {
 					Substring: "weft worktree has uncommitted changes",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.OriginalBranch {
+						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
 						}
-						if got := currentBranchName(tb, h.PrimeWeft()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
+						if got := gitkit.CurrentBranch(tb, h.PrimeWeft()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
 							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.WeftBranchName(f.OriginalBranch))
 						}
 					},
@@ -835,8 +802,8 @@ func checkoutCase() VerbCase {
 					Substring: "warp switch",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						warpBranch := currentBranchName(tb, h.PrimeWorktree())
-						weftBranch := currentBranchName(tb, h.PrimeWeft())
+						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
+						weftBranch := gitkit.CurrentBranch(tb, h.PrimeWeft())
 						switched := warpBranch == f.CheckoutBranch
 						weftSwitched := weftBranch == fabricengine.WeftBranchName(f.CheckoutBranch)
 						if switched != weftSwitched {
@@ -857,11 +824,11 @@ func checkoutCase() VerbCase {
 					Kind: KindProceeds,
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
+						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
 							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
 						}
 						wantWeft := fabricengine.WeftBranchName(f.CheckoutBranch)
-						if got := currentBranchName(tb, h.PrimeWeft()); got != wantWeft {
+						if got := gitkit.CurrentBranch(tb, h.PrimeWeft()); got != wantWeft {
 							tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
 						}
 						if f.CheckoutBranch == f.OriginalBranch {
@@ -1002,18 +969,13 @@ func pullCase() VerbCase {
 		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
-			from := liveStateCurrentSHA(tb, h.PrimeWorktree())
+			from := gitkit.RevParse(tb, h.PrimeWorktree(), "HEAD")
 
 			scratch := tb.TempDir()
 			mustGit(filepath.Dir(scratch), "clone", h.WarpBare, filepath.Base(scratch))
-			advanceFile := filepath.Join(scratch, "pull-advance.txt")
-			if err := os.WriteFile(advanceFile, []byte("livestate: pull advance\n"), 0o644); err != nil {
-				tb.Fatalf("write %s: %v", advanceFile, err)
-			}
-			mustGit(scratch, "add", "pull-advance.txt")
-			mustGit(scratch, "commit", "-m", "livestate: advance warp bare for Pull")
-			mustGit(scratch, "push", "origin", "HEAD:"+currentBranchName(tb, h.PrimeWorktree()))
-			to := liveStateCurrentSHA(tb, scratch)
+			gitkit.CommitFile(tb, scratch, "pull-advance.txt", "livestate: pull advance\n", "livestate: advance warp bare for Pull")
+			mustGit(scratch, "push", "origin", "HEAD:"+gitkit.CurrentBranch(tb, h.PrimeWorktree()))
+			to := gitkit.RevParse(tb, scratch, "HEAD")
 
 			return VerbFixture{
 				AdvancedFromSHA: from,
@@ -1049,7 +1011,7 @@ func pullCase() VerbCase {
 						// has already moved past AdvancedFromSHA by the time Run executes. What a
 						// refused Pull must guarantee is that it never reached ResetHard at all, i.e.
 						// HEAD never advances all the way to the (unrelated, unreachable) upstream tip.
-						if got := liveStateCurrentSHA(tb, h.PrimeWorktree()); got == f.AdvancedToSHA {
+						if got := gitkit.RevParse(tb, h.PrimeWorktree(), "HEAD"); got == f.AdvancedToSHA {
 							tb.Errorf("prime warp HEAD after refused Pull = %s; want anything but the upstream tip %s", got, f.AdvancedToSHA)
 						}
 					},
@@ -1062,7 +1024,7 @@ func pullCase() VerbCase {
 						if f.AdvancedFromSHA == f.AdvancedToSHA {
 							tb.Errorf("Pull's Arrange did not advance the warp bare: from == to == %s", f.AdvancedFromSHA)
 						}
-						if got := liveStateCurrentSHA(tb, h.PrimeWorktree()); got != f.AdvancedToSHA {
+						if got := gitkit.RevParse(tb, h.PrimeWorktree(), "HEAD"); got != f.AdvancedToSHA {
 							tb.Errorf("prime warp HEAD after Pull = %s; want %s", got, f.AdvancedToSHA)
 						}
 					},
@@ -1291,7 +1253,7 @@ func checkoutHostileCases() []VerbCase {
 			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				tb.Helper()
 				return VerbFixture{
-					OriginalBranch: currentBranchName(tb, h.PrimeWorktree()),
+					OriginalBranch: gitkit.CurrentBranch(tb, h.PrimeWorktree()),
 					CheckoutBranch: in.input,
 				}
 			},
@@ -1306,7 +1268,7 @@ func checkoutHostileCases() []VerbCase {
 					Substring: "warp switch",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.OriginalBranch {
+						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
 						}
 					},

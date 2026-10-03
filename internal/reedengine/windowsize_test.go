@@ -69,12 +69,7 @@ func TestLiveBoxLocked(t *testing.T) {
 			// Distinct from the scripted live pair (220x50) so a fallback
 			// cannot pass by coincidence.
 			e.cfg.Width, e.cfg.Height = 999, 111
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				if args[0] == "display-message" {
-					return tt.answer, tt.err
-				}
-				return "", nil
-			}
+			installFakeTmux(t, e).answer("display-message", tt.answer, tt.err)
 
 			got, ok := e.liveBoxLocked()
 			want := render.Box{X: 0, Y: 0, W: tt.wantW, H: tt.wantH}
@@ -197,12 +192,7 @@ func TestStatusLeftLength_EscapeThenMeasureOrderMatters(t *testing.T) {
 func TestReadStatusRowsLocked(t *testing.T) {
 	t.Run("ScriptedAnswer", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] == "display-message" {
-				return "on", nil
-			}
-			return "", nil
-		}
+		installFakeTmux(t, e).answer("display-message", "on", nil)
 		rows, ok := e.readStatusRowsLocked()
 		if !ok || rows != 1 {
 			t.Errorf("readStatusRowsLocked() = (%d, %v), want (1, true)", rows, ok)
@@ -211,9 +201,7 @@ func TestReadStatusRowsLocked(t *testing.T) {
 
 	t.Run("RoundTripError", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", errors.New("boom")
-		}
+		installFakeTmux(t, e).answer("display-message", "", errors.New("boom"))
 		rows, ok := e.readStatusRowsLocked()
 		if ok || rows != 0 {
 			t.Errorf("readStatusRowsLocked() = (%d, %v), want (0, false)", rows, ok)
@@ -224,12 +212,7 @@ func TestReadStatusRowsLocked(t *testing.T) {
 func TestReadWindowSizeLatestLocked(t *testing.T) {
 	t.Run("ScriptedAnswer", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] == "display-message" {
-				return "latest", nil
-			}
-			return "", nil
-		}
+		installFakeTmux(t, e).answer("display-message", "latest", nil)
 		if got := e.readWindowSizeLatestLocked(); !got {
 			t.Errorf("readWindowSizeLatestLocked() = %v, want true", got)
 		}
@@ -237,16 +220,14 @@ func TestReadWindowSizeLatestLocked(t *testing.T) {
 
 	t.Run("RoundTripError", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", errors.New("boom")
-		}
+		installFakeTmux(t, e).answer("display-message", "", errors.New("boom"))
 		if got := e.readWindowSizeLatestLocked(); got {
 			t.Errorf("readWindowSizeLatestLocked() = %v, want false", got)
 		}
 	})
 }
 
-// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against TmuxCmd's execHook seam,
+// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux,
 // recording every set-option argv issued. It asserts the seven status-line options plus the
 // pre-existing window-size pin are all issued with the expected target/value, that status-left carries
 // the escaped rendered text, that a StatusLineText render error skips only status-left and
@@ -258,14 +239,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
 		// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds.
 		e.geom.WorktreeName = "test-worktree"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] != "set-option" {
-				return "", nil
-			}
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		wantText, err := e.StatusLineText()
 		if err != nil {
@@ -274,6 +248,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		wantEscaped := escapeStatusText(strings.TrimRight(wantText, "\r\n"))
 
 		e.pinGeometryOptionsLocked()
+		calls := fake.ArgvFor("set-option")
 
 		target := exactSessionWindowTarget(e.SessionName())
 		wantOptions := [][]string{
@@ -307,16 +282,10 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		// An unknown top-level token forces StatusLineText() to error, the same shape
 		// TestValidateStatusLine_UnknownTopLevelTokenErrors pins.
 		e.cfg.StatusLine.Template = "{{.slug}}"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] != "set-option" {
-				return "", nil
-			}
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		e.pinGeometryOptionsLocked()
+		calls := fake.ArgvFor("set-option")
 
 		for _, c := range calls {
 			if containsArg(c, "status-left") || containsArg(c, "status-left-length") {
@@ -332,19 +301,16 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.geom.WorktreeName = "test-worktree"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] != "set-option" {
-				return "", nil
-			}
-			calls = append(calls, append([]string{}, args...))
-			if len(calls) == 1 {
+		fake := installFakeTmux(t, e)
+		fake.answerFunc("set-option", func([]string) (string, error) {
+			if fake.Count("set-option") == 1 {
 				return "", errors.New("boom")
 			}
 			return "", nil
-		}
+		})
 
 		e.pinGeometryOptionsLocked()
+		calls := fake.ArgvFor("set-option")
 
 		const wantCalls = 8
 		if len(calls) != wantCalls {
@@ -360,13 +326,10 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 		e := newTestEngine(t)
 		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "on"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		e.pinGeometryOptionsLocked()
+		calls := fake.Calls()
 
 		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
 		// window-resized hook — that is now the job of installResizePinsLocked, called from
@@ -403,13 +366,10 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		e.pinGeometryOptionsLocked()
+		calls := fake.Calls()
 
 		wantTarget := exactSessionWindowTarget(e.SessionName())
 		want := []string{"set-hook", "-u", "-t", wantTarget, windowResizedHookName}
@@ -438,9 +398,7 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 	t.Run("InvalidWatchdogBehavesLikeOff", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "bogus"
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
+		installFakeTmux(t, e)
 		// Must not panic and pinGeometryOptionsLocked returns nothing, so simply calling it and
 		// returning normally is the assertion.
 		e.pinGeometryOptionsLocked()
@@ -450,26 +408,15 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 		e := newTestEngine(t)
 		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "off"
-		var setOptionCalls int
-		var setHookErrors int
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] == "set-option" {
-				setOptionCalls++
-				return "", nil
-			}
-			if args[0] == "set-hook" {
-				setHookErrors++
-				return "", errors.New("boom")
-			}
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
+		fake.answer("set-hook", "", errors.New("boom"))
 
 		e.pinGeometryOptionsLocked()
 
-		if setOptionCalls != 8 {
+		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
 			t.Errorf("set-option calls = %d, want 8 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
-		if setHookErrors != 1 {
+		if setHookErrors := fake.Count("set-hook"); setHookErrors != 1 {
 			t.Errorf("set-hook errors = %d, want 1", setHookErrors)
 		}
 	})
@@ -477,9 +424,7 @@ func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 	t.Run("RemovingAnAbsentSignalFileIsSilent", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "off"
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
+		installFakeTmux(t, e)
 		// The signal file's parent dir may not even exist yet; removeResizeSignalFileLocked must not
 		// panic or log anything above Warn-worthy for a genuinely absent file.
 		e.pinGeometryOptionsLocked()
@@ -798,13 +743,10 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 	t.Run("WatchdogOn", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "on"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+		calls := fake.Calls()
 
 		if len(calls) != 3 {
 			t.Fatalf("installResizePinsLocked calls = %v, want 3 (clear + 1 pin + signal)", calls)
@@ -819,13 +761,10 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 	t.Run("WatchdogOff", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "off"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, append([]string{}, args...))
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
 
 		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+		calls := fake.Calls()
 
 		if len(calls) != 2 {
 			t.Fatalf("installResizePinsLocked calls = %v, want 2 (clear + 1 pin, no signal entry)", calls)
@@ -841,17 +780,14 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 	t.Run("SignalEntryFailureIsNonFatal", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.cfg.Watchdog = "on"
-		var calls [][]string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, append([]string{}, args...))
-			return "", errors.New("boom")
-		}
+		fake := installFakeTmux(t, e)
+		fake.answer("set-hook", "", errors.New("boom"))
 
 		// Every call errors; the contract is that each one is still attempted and nothing panics or
 		// propagates (Shared Decision hook-failure-is-non-fatal-everywhere).
 		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
 
-		if len(calls) != 3 {
+		if calls := fake.Calls(); len(calls) != 3 {
 			t.Fatalf("installResizePinsLocked calls = %v, want all 3 attempted despite every one erroring", calls)
 		}
 	})

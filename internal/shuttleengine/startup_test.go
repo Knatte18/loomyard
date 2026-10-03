@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // frozenClock never advances on its own: Now always returns the same fixed instant and Sleep is a
@@ -67,45 +68,15 @@ func (e *undismissableEngine) TrustDismissSequence(capture string) []PaneInput {
 
 var _ Engine = (*undismissableEngine)(nil)
 
-// defaultStartupConfig is the tuning knob set most startup tests use: fast enough that a scripted
-// probe sequence runs at zero real wall-clock cost, and a RunTimeoutMin generous enough that
-// Spec.validate's zero-Timeout default never binds the run deadline before a test's own scripted
-// startup outcome does — a zero result would put run.deadline at start time, which the startup
-// step's own run-deadline check would then hit after the very first pending probe (only the
-// run-deadline tests below deliberately let that binding happen, via an explicit small Spec.Timeout).
-func defaultStartupConfig() Config {
-	return Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30, RunTimeoutMin: 5}
-}
-
-// newStartupWorktree creates a fresh temp worktree/anchor pair, matching newTestRunner's shape
-// (run_test.go): anchorPath a real subdirectory of worktreeRoot, never the same value.
-func newStartupWorktree(t *testing.T) (anchorPath, worktreeRoot string) {
-	t.Helper()
-	worktreeRoot = t.TempDir()
-	anchorPath = filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	return anchorPath, worktreeRoot
-}
-
-// newStartupTestRunner builds a real *Runner via NewRunner over a fresh temp worktree and anchor
-// (newStartupWorktree's shape) with cfg, sets the runner's clock field to clk so no test sleeps on
-// the real one, and seeds reed.AddStrandResult and engine.PrepareLaunch when they are still zero, so
-// a test that has already scripted its own values is left alone.
-func newStartupTestRunner(t *testing.T, reed *fakeReed, engine *fakeEngine, cfg Config, clk clock) (runner *Runner, anchorPath string) {
-	t.Helper()
+// seedStartupFakes seeds reed.AddStrandResult and engine.PrepareLaunch when they are still zero,
+// so a test that has already scripted its own values is left alone.
+func seedStartupFakes(reed *fakeReed, engine *fakeEngine) {
 	if reed.AddStrandResult == (reedengine.Strand{}) {
 		reed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
 	}
 	if engine.PrepareLaunch == (Launch{}) {
 		engine.PrepareLaunch = Launch{Cmd: "cmd", SessionID: "session-1"}
 	}
-	var wt string
-	anchorPath, wt = newStartupWorktree(t)
-	runner = NewRunner(reed, engine, anchorPath, wt, cfg)
-	runner.clock = clk
-	return runner, anchorPath
 }
 
 // soleStartupRunDir returns the one run directory under cfg/anchorPath's run-dir root, failing the
@@ -136,10 +107,11 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupTrustPrompt, StartupReady}}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
 	if err != nil {
 		t.Fatalf("StartGated() error = %v; want nil", err)
@@ -183,7 +155,8 @@ func TestStartup_ReadyOnFirstProbe(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 	start := fc.Now()
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
@@ -216,8 +189,10 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
 	fc := newFakeClock(time.Now())
-	cfg := defaultStartupConfig()
-	runner, anchorPath := newStartupTestRunner(t, reed, engine, cfg, fc)
+	cfg := fastConfig
+	seedStartupFakes(reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -261,15 +236,14 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 		CaptureQueue: []string{"❯ No, exit\n  Yes, I trust this folder"},
 	}
 	engine := &undismissableEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt}}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
-	anchorPath, worktreeRoot := newStartupWorktree(t)
 	innerReed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
-	runner := NewRunner(innerReed, engine, anchorPath, worktreeRoot, cfg)
-	runner.clock = fc
+	fx := newFixture(t, innerReed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
 	if run != nil {
 		t.Errorf("StartGated() run = %+v; want nil", run)
@@ -304,11 +278,10 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 func TestStartup_FileContractSatisfiedWhilePending(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
-	anchorPath, worktreeRoot := newStartupWorktree(t)
 	reed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
+	runner := newFixture(t, reed, engine, withConfig(cfg)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	mc := &multiStepClock{fakeClock: fc, steps: []func(){
@@ -336,9 +309,7 @@ func TestStartup_OneTransientStatusErrorThenReady(t *testing.T) {
 	inner.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	anchorPath, worktreeRoot := newStartupWorktree(t)
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, defaultStartupConfig())
-	runner.clock = fc
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -358,10 +329,9 @@ func TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles(t *testing.T) {
 	reed := &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries, err: scriptedErr}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	cfg := defaultStartupConfig()
-	anchorPath, worktreeRoot := newStartupWorktree(t)
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-	runner.clock = fc
+	cfg := fastConfig
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -401,8 +371,7 @@ func TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent(t *testing.T) {
 	reed := &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries + 5, err: scriptedErr}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	anchorPath, worktreeRoot := newStartupWorktree(t)
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, defaultStartupConfig())
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	mc := &multiStepClock{fakeClock: fc, steps: []func(){
@@ -427,8 +396,10 @@ func TestStartup_ReedNeverTracksStrand(t *testing.T) {
 	}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	cfg := defaultStartupConfig()
-	runner, anchorPath := newStartupTestRunner(t, reed, engine, cfg, fc)
+	cfg := fastConfig
+	seedStartupFakes(reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -453,7 +424,7 @@ func TestStartup_ReedNeverTracksStrand(t *testing.T) {
 // TestStartup_TickCap covers the tick-count cap under a frozen clock, with a subtest for the
 // file-contract-satisfied variant.
 func TestStartup_TickCap(t *testing.T) {
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 
 	t.Run("NoOutputFiles_ErrNotStartedWithTeardown", func(t *testing.T) {
 		reed := &fakeReed{
@@ -462,9 +433,8 @@ func TestStartup_TickCap(t *testing.T) {
 		}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 		fc := &frozenClock{now: time.Now()}
-		anchorPath, worktreeRoot := newStartupWorktree(t)
-		runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-		runner.clock = fc
+		fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+		runner, anchorPath := fx.Runner, fx.Anchor
 
 		outputFile := filepath.Join(t.TempDir(), "out.md")
 		run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute}, GateSpec{})
@@ -506,9 +476,7 @@ func TestStartup_TickCap(t *testing.T) {
 		}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 		fc := &frozenClock{now: time.Now()}
-		anchorPath, worktreeRoot := newStartupWorktree(t)
-		runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-		runner.clock = fc
+		runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
 
 		outputFile := filepath.Join(t.TempDir(), "out.md")
 		// A frozen clock never advances via Sleep, and the run dir cannot be predicted before Start
@@ -565,7 +533,8 @@ func TestStartup_ProbeCadenceMatchesWait(t *testing.T) {
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupPending, StartupReady}}
 	cfg := Config{PollIntervalMS: 100, LivenessEveryNPolls: 10, StartupTimeoutS: 30, RunTimeoutMin: 5}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, cfg, fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
 	start := fc.Now()
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
@@ -601,11 +570,10 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 		CaptureErr:      errors.New("tmux: capture-pane failed"),
 	}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	cfg := Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1, RunTimeoutMin: 5}
+	cfg := shortStartupConfig
 	fc := newFakeClock(time.Now())
-	anchorPath, worktreeRoot := newStartupWorktree(t)
-	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-	runner.clock = fc
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -640,8 +608,10 @@ func TestStartup_RemoveStrandFailureDuringTeardown(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	cfg := defaultStartupConfig()
-	runner, anchorPath := newStartupTestRunner(t, reed, engine, cfg, fc)
+	cfg := fastConfig
+	seedStartupFakes(reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -678,7 +648,8 @@ func TestStartup_KeepPaneOnNotReadyStart(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}, KeepPane: true}, GateSpec{})
@@ -707,7 +678,8 @@ func TestStartup_RunGated_NotReady(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	gateCalls := 0
 	gate := GateSpec{{Attempts: 3, Gate: func() (GateResult, error) {
@@ -744,7 +716,8 @@ func TestStartup_RunGated_MechanismFailure(t *testing.T) {
 	}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	runner, _ := newStartupTestRunner(t, reed, engine, defaultStartupConfig(), fc)
+	seedStartupFakes(reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -777,9 +750,7 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 		cfg := Config{PollIntervalMS: 500, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
 		fc := newFakeClock(time.Now())
-		anchorPath, worktreeRoot := newStartupWorktree(t)
-		runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-		runner.clock = fc
+		runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
 		return runner, reed, fc.Now()
 	}
 
@@ -838,13 +809,10 @@ func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *tes
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 		cfg := Config{PollIntervalMS: 500, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
 		fc := newFakeClock(time.Now())
-		anchorPath, worktreeRoot := newStartupWorktree(t)
-		runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
 		mc := &multiStepClock{fakeClock: fc, steps: []func(){
 			func() { touchOutputFile(t, outputFile) },
 		}}
-		runner.clock = mc
-		return runner
+		return newFixture(t, reed, engine, withConfig(cfg), withClock(mc)).Runner
 	}
 
 	t.Run("StartGated_HandleReturned", func(t *testing.T) {
@@ -888,8 +856,10 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	fc := newFakeClock(time.Now())
-	cfg := defaultStartupConfig()
-	runner, anchorPath := newStartupTestRunner(t, reed, engine, cfg, fc)
+	cfg := fastConfig
+	seedStartupFakes(reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})

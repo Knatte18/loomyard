@@ -9,12 +9,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
@@ -43,18 +43,7 @@ func TestRunUnknownModule(t *testing.T) {
 	if code := run([]string{"bogus", "list"}, &out); code != 1 {
 		t.Fatalf("expected exit 1 for unknown module, got %d", code)
 	}
-	got := out.String()
-	if !strings.Contains(got, "unknown command") {
-		t.Errorf("expected %q in output for unknown module; got: %q", "unknown command", got)
-	}
-
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &env); err != nil {
-		t.Fatalf("run([bogus list]) output is not valid JSON: %v; output: %q", err, got)
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("run([bogus list]) envelope ok = true; want false")
-	}
+	envelope.RequireErr(t, out.String(), "unknown command")
 }
 
 func TestRunDispatchesToIDE(t *testing.T) {

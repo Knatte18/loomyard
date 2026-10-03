@@ -11,16 +11,15 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// TestRunCLI_AddLeftoverWeftIsBarePreflightError re-adds a removed slug whose remote weft branch has moved on, and expects a bare error envelope naming the branch.
 func TestRunCLI_AddLeftoverWeftIsBarePreflightError(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	const slug = "leftover-slug"
@@ -50,17 +49,11 @@ func TestRunCLI_AddLeftoverWeftIsBarePreflightError(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("second add exit = 0; want non-zero; output: %s", out.String())
 	}
-	envelope := remoteEnvelopeDecode(t, &out)
-	if ok, _ := envelope["ok"].(bool); ok {
-		t.Errorf("ok = true; want false")
+	env := envelope.RequireErr(t, out.String(), weftBranch)
+	if _, present := env.Raw["mutations"]; present {
+		t.Errorf("envelope carries \"mutations\"; a pre-flight failure must not")
 	}
-	msg, _ := envelope["error"].(string)
-	if !strings.Contains(msg, weftBranch) {
-		t.Errorf("error %q does not name %q", msg, weftBranch)
-	}
-	for _, key := range []string{"mutations", "partial"} {
-		if _, present := envelope[key]; present {
-			t.Errorf("envelope carries %q; a pre-flight failure must not", key)
-		}
+	if env.Partial != nil {
+		t.Errorf("envelope carries \"partial\"; a pre-flight failure must not")
 	}
 }

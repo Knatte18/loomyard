@@ -9,9 +9,10 @@ package reedcli
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all nine registered verbs
@@ -64,11 +65,7 @@ func TestRunCLI_Watchdog_SkipsLocationResolution(t *testing.T) {
 		t.Fatalf("RunCLI(watchdog) with no --hub-path = 0; want non-zero (missing required flag)")
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(watchdog) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	errMsg, _ := env["error"].(string)
+	errMsg := envelope.Decode(t, out.String()).Error
 	if errMsg == "not a git repository" {
 		t.Errorf("RunCLI(watchdog) error = %q; want the --hub-path validation error, not lyxcwd.Resolve's not-a-git-repository error", errMsg)
 	}
@@ -96,11 +93,7 @@ func TestRunCLI_Watchdog_RefusesAbsentAndRelativeHubPath(t *testing.T) {
 			if exitCode == 0 {
 				t.Fatalf("RunCLI(%v) = 0; want non-zero", tt.args)
 			}
-			var env map[string]any
-			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-				t.Fatalf("RunCLI(%v) output is not valid JSON: %v; got: %q", tt.args, err, out.String())
-			}
-			errMsg, _ := env["error"].(string)
+			errMsg := envelope.Decode(t, out.String()).Error
 			if !strings.Contains(errMsg, "--hub-path") {
 				t.Errorf("RunCLI(%v) error = %q; want it to name --hub-path", tt.args, errMsg)
 			}
@@ -120,16 +113,7 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(bogus) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("RunCLI(bogus) ok = true; want false")
-	}
-	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "unknown") {
-		t.Errorf("RunCLI(bogus) error = %q; want \"unknown\" substring", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "unknown")
 }
 
 // TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the
@@ -144,11 +128,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 		t.Errorf("RunCLI(status) in non-git dir = %d; want 1", exitCode)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("RunCLI(status) output is not valid JSON: %v; got: %q", err, out.String())
-	}
-	if errMsg, _ := env["error"].(string); errMsg != "not a git repository" {
+	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != "not a git repository" {
 		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\"", errMsg)
 	}
 }

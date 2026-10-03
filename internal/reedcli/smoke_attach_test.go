@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestSmokeAttachRendersInsideHarnessPane drives the interactive terminal handover of `lyx reed
@@ -18,7 +19,7 @@ import (
 func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	shellPath := harnessShellBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

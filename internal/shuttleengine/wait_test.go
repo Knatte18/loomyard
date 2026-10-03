@@ -6,7 +6,6 @@
 package shuttleengine
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
@@ -66,20 +65,6 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 
 var _ clock = (*scriptedClock)(nil)
 
-// newWaitTestRunner returns a Runner over reed/engine scoped to a fresh temp
-// worktree, matching newTestRunner in run_test.go but kept local to this
-// file since wait tests construct their Run handles directly rather than
-// through Start.
-func newWaitTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) *Runner {
-	t.Helper()
-	worktreeRoot := t.TempDir()
-	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path: %v", err)
-	}
-	return NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
-}
-
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
 // or below must fall back to the template default rather than making Wait tick with a zero sleep.
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
@@ -102,22 +87,6 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 	}
 }
 
-// captureLoggerOutput redirects internal/logger's stderr half into a buffer at Info verbosity for
-// the duration of the calling test, restoring both when it ends.
-// It is the seam the teardown-observability assertion below needs: Info is gated on verbosity for
-// that half, and the durable trace file is not readable from a test.
-func captureLoggerOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetVerbosity(0)
-		logger.SetOutput(os.Stderr)
-	})
-	return &buf
-}
-
 // TestRun_Wait_MechanismFailure_KeepsRunIdentity pins that a Wait which reaches no classification
 // still hands its caller the run's identity.
 // A mechanism failure is exactly when those handles matter: finalize never ran, so the run
@@ -128,17 +97,13 @@ func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 	// A permanently failing reed.Status is the live shape (a torn-down session answers every
 	// Status the same way), so Wait gives up after maxStatusRetries consecutive failures.
 	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lyx reed up"`)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	runDir := t.TempDir()
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{filepath.Join(runDir, "out.md")}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(runDir, "out.md")}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: filepath.Join(runDir, "events.jsonl")}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err == nil {
@@ -185,18 +150,14 @@ func TestRun_Wait_LogsTeardownThroughLogger(t *testing.T) {
 			}
 
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-			runner := newWaitTestRunner(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: tt.keepPane},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: tt.keepPane},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Minute)))
 
-			buf := captureLoggerOutput(t)
+			buf := logcapture.CaptureVerbose(t)
 			if _, err := run.Wait(); err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
@@ -224,16 +185,12 @@ func TestRun_Wait_DoneHappyPath_CleansUp(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -270,16 +227,12 @@ func TestRun_Wait_DoneWithKeepPane_SkipsCleanup(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -307,16 +260,12 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -372,16 +321,12 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: false},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: false},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -403,7 +348,7 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 		fc := newFakeClock(time.Now())
 		mc := &multiStepClock{fakeClock: fc, steps: []func(){
 			func() {
@@ -423,14 +368,10 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 			},
 		}}
 
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    mc,
-			deadline: mc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(mc, mc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -465,7 +406,7 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 		fc := newFakeClock(time.Now())
 		mc := &multiStepClock{fakeClock: fc, steps: []func(){
 			appendEvent("STOP:question batch two\n"),
@@ -478,14 +419,10 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 			},
 		}}
 
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    mc,
-			deadline: mc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(mc, mc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -507,16 +444,12 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Second, AwaitOperator: true},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Second),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Second, AwaitOperator: true},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Second)))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -534,16 +467,12 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
 		engine := &fakeEngine{}
-		runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, engine, withConfig(fastConfig))
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err != nil {
@@ -560,16 +489,12 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 		outputFile := filepath.Join(runDir, "out.md")       // never created
 
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}}}
-		runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err == nil {
@@ -591,16 +516,12 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 			Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
 		}}}
-		runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+		fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 		fc := newFakeClock(time.Now())
-		run := &Run{
-			runner:   runner,
-			spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-			runDir:   runDir,
-			state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-			clock:    fc,
-			deadline: fc.Now().Add(time.Minute),
-		}
+		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
+			withRunDir(runDir),
+			withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+			withRunClock(fc, fc.Now().Add(time.Minute)))
 
 		result, err := run.Wait()
 		if err == nil {
@@ -630,16 +551,12 @@ func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -675,16 +592,12 @@ func TestRun_Wait_LiveAsk_DoneFirstStillWins(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -702,16 +615,12 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -762,16 +671,12 @@ func TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied(t *testing.T) {
 			outputFile := filepath.Join(runDir, "out.md")       // never created
 
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: tt.strands}}}
-			runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Minute)))
 
 			result, err := run.Wait()
 			if tt.wantErr {
@@ -817,16 +722,12 @@ func TestRun_Wait_UntrackedStrand_OutputFilesStillWin(t *testing.T) {
 	}
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -853,16 +754,12 @@ func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -915,16 +812,12 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 				CaptureErr:  tt.captureErr,
 			}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
-			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(10 * time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 			result, err := run.Wait()
 			if err != nil {
@@ -973,18 +866,14 @@ func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
 	// re-runs the startup probe classifies OutcomeDied at the 1s startup deadline; a run that
 	// wrongly skips the probe (the pre-fix bug) falls through to the 10-minute run deadline instead.
 	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner: runner,
-		spec:   Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-		runDir: runDir,
-		// state.Started is the zero value (false): a persisted run.json whose provider never
-		// reached StartupReady, exactly what a driver killed pre-first-liveness-tick leaves behind.
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false},
-		clock:    fc,
-		deadline: fc.Now().Add(10 * time.Minute),
-	}
+	// state.Started is the zero value (false): a persisted run.json whose provider never
+	// reached StartupReady, exactly what a driver killed pre-first-liveness-tick leaves behind.
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false}),
+		withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1048,16 +937,12 @@ func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T
 				CaptureErr:  tt.captureErr,
 			}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
-			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(10 * time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 			result, err := run.Wait()
 			if err != nil {
@@ -1101,16 +986,12 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	// StartupScript deliberately left empty: with started seeded true the startup probe must never
 	// run, so any Startup call at all would mean this test is measuring the wrong deadline.
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 300})
+	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 300}))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: true},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: true}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1133,9 +1014,8 @@ func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	readyStart(reed, engine)
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30, RunTimeoutMin: 5})
 	fc := newFakeClock(time.Now())
-	runner.clock = fc
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
@@ -1198,16 +1078,12 @@ func TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins(t *testing.T) {
 	touchOutputFile(t, outputFile)
 
 	reed := &fakeReed{StatusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`)}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1238,16 +1114,12 @@ func TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}}
 	engine := &fakeEngine{ParseEventsErr: errors.New("parse events: malformed")}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1273,16 +1145,12 @@ func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	// after that sees a still-booting pane, so the run never becomes ready
 	// and eventually fast-fails once the startup deadline passes.
 	engine := &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt, StartupPending}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(10 * time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1321,16 +1189,12 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Second},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Second),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Second},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Second)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1374,16 +1238,12 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 			cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 			engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
-			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fx := newFixture(t, reed, engine, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.forkSubagents},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.forkSubagents},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Minute)))
 
 			result, err := run.Wait()
 			if err != nil {
@@ -1398,8 +1258,8 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 					t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
 				}
 				call := engine.AuditForksCalls[0]
-				if call.SessionID != "session-1" || call.Workdir != runner.anchorPath {
-					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.anchorPath)
+				if call.SessionID != "session-1" || call.Workdir != fx.Runner.anchorPath {
+					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", fx.Runner.anchorPath)
 				}
 				if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
 					t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)
@@ -1437,18 +1297,14 @@ func TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath(t *testing.T) {
 	cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	// Detach paneCwd from anchorPath, exactly as NewDetachedRunner will for the standalone shape.
-	runner.paneCwd = t.TempDir()
+	fx.Runner.paneCwd = t.TempDir()
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1462,10 +1318,10 @@ func TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath(t *testing.T) {
 		t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
 	}
 	call := engine.AuditForksCalls[0]
-	if call.Workdir != runner.paneCwd {
-		t.Errorf("AuditForks called with workdir %q; want paneCwd %q", call.Workdir, runner.paneCwd)
+	if call.Workdir != fx.Runner.paneCwd {
+		t.Errorf("AuditForks called with workdir %q; want paneCwd %q", call.Workdir, fx.Runner.paneCwd)
 	}
-	if call.Workdir == runner.anchorPath {
+	if call.Workdir == fx.Runner.anchorPath {
 		t.Errorf("AuditForks called with workdir %q == anchorPath; want it to differ, proving the fix moved off anchorPath", call.Workdir)
 	}
 }
@@ -1494,16 +1350,12 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 		StartupScript: []StartupState{StartupReady},
 		AuditForksErr: errors.New("read parent transcript: no such file or directory"),
 	}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err == nil {
@@ -1543,16 +1395,12 @@ func TestRun_Wait_MultiStopOffsetTracking(t *testing.T) {
 
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1589,16 +1437,12 @@ func TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry(t *testing.T) {
 	// unconsumed bytes) succeeds. maxEventsReadRetries is 3, so this must
 	// stay under that budget to prove a retry recovers rather than erroring.
 	engine := &fakeEngine{ParseEventsFailCount: 2}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1625,7 +1469,7 @@ func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
 
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 100, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
 
 	fc := newFakeClock(time.Now())
 	sc := &scriptedClock{fakeClock: fc, onSleep: func() {
@@ -1641,14 +1485,10 @@ func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
 		}
 	}}
 
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
-		clock:    sc,
-		deadline: sc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+		withRunClock(sc, sc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1704,16 +1544,12 @@ func TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 				Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
 			}}}
-			runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: tt.anchor}},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-				clock:    fc,
-				deadline: fc.Now().Add(time.Minute),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: tt.anchor}},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Minute)))
 
 			result, err := run.Wait()
 			if tt.wantErr {
@@ -1755,16 +1591,12 @@ func TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 		Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
 	}}}
-	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1841,16 +1673,12 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 			if tt.name == "timeout" {
 				pollMS = 600
 			}
-			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
 			fc := newFakeClock(time.Now())
-			run := &Run{
-				runner:   runner,
-				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
-				runDir:   runDir,
-				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
-				clock:    fc,
-				deadline: fc.Now().Add(tt.timeout),
-			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
+				withRunClock(fc, fc.Now().Add(tt.timeout)))
 
 			result, err := run.Wait()
 			if err != nil {
@@ -1899,16 +1727,12 @@ func TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup(t *testing.T) {
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
 	result, err := run.Wait()
 	if err != nil {
@@ -1951,18 +1775,14 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning},
-		clock:    fc,
-		deadline: fc.Now().Add(time.Minute),
-	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
+		withRunClock(fc, fc.Now().Add(time.Minute)))
 
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	result, err := run.Wait()
 	if err != nil {
 		t.Fatalf("Wait() error: %v, want the classified Result returned despite the failed Outcome write", err)

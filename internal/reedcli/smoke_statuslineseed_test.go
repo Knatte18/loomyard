@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestSmokeStatuslineDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs
@@ -32,7 +33,9 @@ import (
 // enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run
 // at all for an opted-out command.
 func TestSmokeStatuslineDeclinesStencilSeedPass(t *testing.T) {
-	lyxExe := buildLyxBinaryWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
+	// The dev channel stamp makes stencilstore.ModeFor(buildinfo.IsDev()) return ModeDev;
+	// an unstamped binary is production mode and never emits the dev-refusal warn.
+	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

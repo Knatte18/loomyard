@@ -69,7 +69,8 @@ func TestCollectAttachCandidates_RecordsEventsSize(t *testing.T) {
 // checks the reconstructed run read only the new events: the old ask is not re-classified.
 func TestAttach_AskingReentryStartsAtRecordedOffset(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")

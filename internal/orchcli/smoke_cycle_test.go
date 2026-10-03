@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
@@ -179,12 +180,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 		}
 	}
 
-	exe := filepath.Join(t.TempDir(), "lyx")
-	build := exec.Command("go", "build", "-o", exe, "./cmd/lyx")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
-	}
+	exe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	// The soft threshold sits above the hard one, so the manual cycle stays the only trigger.

@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // TestRunCLI_NoArgs verifies that "lyx shuttle" with no subcommand lists the run verb and exits 0 —
@@ -214,80 +215,15 @@ func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Send_ArgValidation verifies that "lyx shuttle send" enforces
-// exactly two positional arguments (<guid> <text>) via cobra's Args
-// validation, for the same reason as TestRunCLI_Interrupt_ArgValidation.
-// specCapturingEngine is a hermetic shuttleengine.Engine double whose only
-// job is to record the Spec it was handed and then fail Prepare — the test
-// only needs to inspect the flag-to-Spec mapping run.go's RunE builds, never
-// a live pane launch, so failing fast at Prepare (before Runner.Start ever
-// touches reed.AddStrand) keeps the test hermetic without needing a working
-// fakeReed beyond satisfying the interface.
-type specCapturingEngine struct {
-	gotSpec shuttleengine.Spec
-}
-
-func (e *specCapturingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	e.gotSpec = spec
-	return shuttleengine.Launch{}, errSpecCaptured
-}
-func (e *specCapturingEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
-	return nil, nil
-}
-func (e *specCapturingEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupPending
-}
-func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *specCapturingEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput     { return nil }
-
-// AuditForks is never reached: Prepare always fails before Runner.Start could ever run this spec to
-// a fork-mode done classification.
-func (e *specCapturingEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-// AuditForksIncremental is never reached, for the same reason as AuditForks.
-func (e *specCapturingEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-// ModelSwitchSequence is never reached: Prepare always fails before any model-switch choreography
-// could ever be driven.
-func (e *specCapturingEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*specCapturingEngine)(nil)
-
-// errSpecCaptured is the sentinel specCapturingEngine.Prepare always
-// returns, so the test can tell "Prepare ran and recorded the spec" apart
-// from any other failure mode.
+// errSpecCaptured is the sentinel the spec-capturing engine's Prepare returns,
+// so the test can tell "Prepare ran and recorded the spec" apart from any other failure mode.
 var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
 
-// noopReed is a hermetic shuttleengine.ReedOps double whose methods are never
-// actually reached in TestRunCmd_EffortFlag (specCapturingEngine.Prepare
-// fails before Runner.Start ever calls AddStrand) — it exists only to
-// satisfy the ReedOps interface Runner requires.
-type noopReed struct{}
+// startupPending answers every capture as a pane that never becomes ready.
+func startupPending(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
 
-func (noopReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	return reedengine.Strand{}, nil
-}
-func (noopReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	return reedengine.Removed{}, nil
-}
-func (noopReed) Status() (reedengine.StatusResult, error)      { return reedengine.StatusResult{}, nil }
-func (noopReed) SendText(guid, text string, submit bool) error { return nil }
-func (noopReed) SendKey(guid, key string) error                { return nil }
-func (noopReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = noopReed{}
-
-// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how
-// --model is wired: a fake Runner (a real *shuttleengine.Runner over a spec-capturing Engine fake
-// and a no-op reed fake) lets the test drive runCmd()'s RunE directly and inspect the Spec the
-// engine's Prepare was actually called with, without a live tmux/claude session.
+// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
+// Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
 func TestRunCmd_EffortFlag(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -308,7 +244,7 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := &specCapturingEngine{}
+			engine := &shuttlefake.Engine{PrepareErr: errSpecCaptured, StartupFn: startupPending}
 			// Distinct, but in the geometric relation NewRunner validates: the
 			// anchor is always the worktree root or a subdirectory of it.
 			worktreeRoot := t.TempDir()
@@ -316,7 +252,7 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 			if err := os.MkdirAll(anchorPath, 0o755); err != nil {
 				t.Fatalf("mkdir anchor path: %v", err)
 			}
-			runner := shuttleengine.NewRunner(noopReed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
 			cmd := c.runCmd()
@@ -331,11 +267,11 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
 			}
 
-			if engine.gotSpec.Prompt == "" {
-				t.Fatalf("specCapturingEngine.Prepare was never called; want it invoked with the built Spec; output: %s", out.String())
+			if engine.LastSpec.Prompt == "" {
+				t.Fatalf("Engine.Prepare was never called; want it invoked with the built Spec; output: %s", out.String())
 			}
-			if engine.gotSpec.Effort != tt.wantEffort {
-				t.Errorf("Spec.Effort = %q; want %q", engine.gotSpec.Effort, tt.wantEffort)
+			if engine.LastSpec.Effort != tt.wantEffort {
+				t.Errorf("Spec.Effort = %q; want %q", engine.LastSpec.Effort, tt.wantEffort)
 			}
 		})
 	}
@@ -368,28 +304,6 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 	}
 }
 
-// preparingEngine is a hermetic Engine double that Prepares successfully and never becomes ready,
-// so a Runner built over it surfaces the mechanism failure from inside its startup step in
-// start() — driven by statusFailingReed's error — the identity envelope below is about.
-type preparingEngine struct{ specCapturingEngine }
-
-func (e *preparingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	e.gotSpec = spec
-	return shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"}, nil
-}
-
-// statusFailingReed registers a strand, then fails every Status the way a torn-down reed session
-// does — the live shape that produced this finding.
-type statusFailingReed struct{ noopReed }
-
-func (statusFailingReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	return reedengine.Strand{GUID: "strand-1"}, nil
-}
-
-func (statusFailingReed) Status() (reedengine.StatusResult, error) {
-	return reedengine.StatusResult{}, errors.New(`no reed session; run "lyx reed up"`)
-}
-
 // TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity pins that a run which fails after its
 // strand registered still names the strand, session, and run directory in its error envelope.
 // Reproduced live before this: tearing the reed session down under an in-flight run answered with
@@ -398,7 +312,20 @@ func (statusFailingReed) Status() (reedengine.StatusResult, error) {
 func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Dir(anchorPath)
-	runner := shuttleengine.NewRunner(statusFailingReed{}, &preparingEngine{}, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+	// The engine Prepares successfully and never becomes ready,
+	// so the Runner surfaces the mechanism failure from inside its startup step.
+	// The reed registers a strand, then fails every Status the way a torn-down reed session does.
+	engine := &shuttlefake.Engine{
+		PrepareLaunch: &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},
+		StartupFn:     startupPending,
+	}
+	reed := &shuttlefake.Reed{
+		AddStrandFn: func(reedengine.AddSpec) (reedengine.Strand, error) {
+			return reedengine.Strand{GUID: "strand-1"}, nil
+		},
+		StatusErr: errors.New(`no reed session; run "lyx reed up"`),
+	}
+	runner := shuttleengine.NewRunner(reed, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
 
 	c := &shuttleCLI{runner: runner}
 	cmd := c.runCmd()

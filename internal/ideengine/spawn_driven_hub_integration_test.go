@@ -10,12 +10,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -23,22 +23,10 @@ import (
 
 const drivenSlug = "some-task"
 
-// gitOut runs git in dir and returns its trimmed stdout, failing the test on error.
-func gitOut(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // sharedExcludePath resolves the shared info/exclude of the task worktree's repo.
 func sharedExcludePath(t *testing.T, worktreeDir string) string {
 	t.Helper()
-	p := gitOut(t, worktreeDir, "rev-parse", "--git-path", "info/exclude")
+	p := gitkit.Git(t, worktreeDir, "rev-parse", "--git-path", "info/exclude")
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(worktreeDir, p)
 	}
@@ -108,14 +96,14 @@ func TestSpawnDrivenWritesAttachOnlyAndExcludes(t *testing.T) {
 				t.Errorf("launched %s, ResolveWorktree AnchorPath = %s", want, resolved.AnchorPath())
 			}
 			assertSingleAttachTask(t, want)
-			if status := gitOut(t, worktreeDir, "status", "--porcelain"); status != "" {
+			if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
 				t.Errorf("git status --porcelain not empty:\n%s", status)
 			}
 			ignored := filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode")) + "/"
 			if l.AnchorRel == "." {
 				ignored = ".vscode/"
 			}
-			if out := gitOut(t, worktreeDir, "check-ignore", ignored); out == "" {
+			if out := gitkit.Git(t, worktreeDir, "check-ignore", ignored); out == "" {
 				t.Errorf("check-ignore reported %s not ignored", ignored)
 			}
 			got, err := os.ReadFile(excludePath)
@@ -178,8 +166,8 @@ func TestSpawnDrivenSkipsTrackedVSCode(t *testing.T) {
 	if err := os.WriteFile(tasksPath, committed, 0o644); err != nil {
 		t.Fatalf("write tasks: %v", err)
 	}
-	gitOut(t, worktreeDir, "add", "-f", ".vscode/tasks.json")
-	gitOut(t, worktreeDir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "track vscode")
+	gitkit.Git(t, worktreeDir, "add", "-f", ".vscode/tasks.json")
+	gitkit.Git(t, worktreeDir, "commit", "-m", "track vscode")
 	excludePath := sharedExcludePath(t, worktreeDir)
 	excludeBefore, _ := os.ReadFile(excludePath)
 

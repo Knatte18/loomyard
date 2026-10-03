@@ -106,7 +106,7 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 
 	// While MergeAbort waits: the concurrent winner concludes the warp side and retires the record —
 	// what a raced MergeContinue holding this same lock does.
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	warpConcluded := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
 		t.Fatalf("DeleteMergeStateForTest() error = %v", err)
@@ -138,7 +138,7 @@ func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress
 		return contErr
 	})
 
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
 		t.Fatalf("DeleteMergeStateForTest() error = %v", err)
 	}
@@ -243,8 +243,8 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 
 	// The lock's holder lands a commit on each side's current branch — what a concurrent Commit does —
 	// before this MergeIn gets its turn.
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
-	commitOnCurrentBranch(t, h.PrimeWeft(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
+	gitkit.CommitFile(t, h.PrimeWeft(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
 	landedWarpSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
 
@@ -359,7 +359,7 @@ func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 // strictly sequential MergeIn over a dirty pair reports, and the edit survives.
 func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
 	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
 
@@ -394,7 +394,7 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 // recorded anything — the re-check sits between the acquisition and the sync.
 func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
 	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
 

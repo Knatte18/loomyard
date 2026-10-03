@@ -9,7 +9,7 @@
 // lands outside. The leaf vector is already refused by fslink's refuse-to-clobber guard and is covered by
 // existing portal tests, so this test targets the container vector specifically.
 //
-// Package fabricengine_test to reuse newFabricFixture and the shared TestMain.
+// Package fabricengine_test to reuse the shared TestMain.
 
 package fabricengine_test
 
@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink pre-plants <hub>/_portals as a symlink
@@ -28,8 +29,8 @@ func TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink(t *testing.T) 
 	t.Parallel()
 
 	const slug = "toctou-portal"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	outside := t.TempDir()
 	portalsContainer := fabricengine.PortalsDir(l)
@@ -37,7 +38,7 @@ func TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink(t *testing.T) 
 		t.Fatalf("plant escaping _portals symlink: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
 		t.Fatalf("Add(%q) succeeded through an escaping _portals symlink; want a fail-closed error", slug)
 	}

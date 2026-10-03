@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -27,9 +27,7 @@ import (
 // existence beside it.
 func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 	repoDir := t.TempDir()
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, repoDir); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, repoDir, "init")
 
 	ctx := lyxcwd.WithCwd(t.Context(), repoDir)
 	hub, worktree, ok := stencilSeedTarget(ctx)

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice, so a test
@@ -45,19 +46,13 @@ func commitStatusRecorder(events *[]string, err error) func() error {
 
 func TestFinalize_CommitStatus_RunsBeforeTheMergeIn(t *testing.T) {
 	var events []string
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.CommitStatus = commitStatusRecorder(&events, nil)
 	res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 	want := []string{"commit", "merge"}
 	if !slices.Equal(events, want) {
 		t.Errorf("call order = %v; want %v (a commit after the merge is the same as no commit at all)", events, want)
@@ -67,7 +62,7 @@ func TestFinalize_CommitStatus_RunsBeforeTheMergeIn(t *testing.T) {
 func TestFinalize_CommitStatus_FailureIsAnErrorAndNeverMerges(t *testing.T) {
 	sentinel := errors.New("git index locked")
 	var events []string
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.CommitStatus = commitStatusRecorder(&events, sentinel)
 	res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
@@ -92,19 +87,13 @@ func TestFinalize_CommitStatus_FailureIsAnErrorAndNeverMerges(t *testing.T) {
 }
 
 func TestFinalize_CommitStatus_NilIsNotAnError(t *testing.T) {
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.CommitStatus = nil
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
 	fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
 
-	outcome, _, err := fz.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil (a nil seam means \"no status file to commit\")", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, fz, shedengine.Done)
 }
 
 func TestPublish_CommitStatus_RunsBeforeTheMergeIn(t *testing.T) {
@@ -118,13 +107,7 @@ func TestPublish_CommitStatus_RunsBeforeTheMergeIn(t *testing.T) {
 	res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict"}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	want := []string{"commit", "merge"}
 	if !slices.Equal(events, want) {
 		t.Errorf("call order = %v; want %v", events, want)
@@ -139,13 +122,7 @@ func TestPublish_CommitStatus_NotCalledWhenNoPullRequestIsRequired(t *testing.T)
 	res := &orderRecordingResolver{events: &events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	p := &Publish{deps: deps, resolver: res}
 
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 	if len(events) != 0 {
 		t.Errorf("recorded calls = %v; want none -- a run that never merges has nothing to commit for", events)
 	}

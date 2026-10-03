@@ -6,8 +6,7 @@
 // rejection — a bare "already exists" left the operator stuck without
 // out-of-band git knowledge.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
+// Package fabricengine_test; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim, calls Add with
@@ -26,9 +26,9 @@ import (
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	const slug = "leftover-pair"
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", slug)
@@ -51,9 +51,9 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	const slug = "stranded-leftover"
 	// Plant only the directory — no branch — so the branch-exists guard passes and Add reaches the

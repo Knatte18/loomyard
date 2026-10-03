@@ -13,14 +13,15 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestCommittedAnchoredFile_ReturnsCommittedBytes commits an anchored file, edits the working-tree copy, and asserts the committed bytes come back.
 func TestCommittedAnchoredFile_ReturnsCommittedBytes(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	const rel = "_lyx/committedfile-probe.txt"
 	onDisk := filepath.Join(fabricengine.WeftWorktree(l), l.AnchorRel, rel)
 
@@ -48,9 +49,9 @@ func TestCommittedAnchoredFile_ReturnsCommittedBytes(t *testing.T) {
 func TestCommittedAnchoredFile_NeverCommitted(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
+	h := hubforge.NewHub(t, ".")
 
-	data, found, err := fabricengine.CommittedAnchoredFile(fixture.Layout, "_lyx/never-committed.txt")
+	data, found, err := fabricengine.CommittedAnchoredFile(h.Location, "_lyx/never-committed.txt")
 	if err != nil {
 		t.Fatalf("CommittedAnchoredFile error = %v", err)
 	}

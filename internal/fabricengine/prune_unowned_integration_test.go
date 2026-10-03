@@ -7,8 +7,7 @@
 // os.RemoveAll it, and `prune --apply` destroyed an ordinary operator directory (and a wholly
 // unrelated git clone) reporting removed:true, ok:true, exit 0, with no --force and no warning.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -20,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named
@@ -29,9 +29,9 @@ import (
 func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	// An ordinary operator directory that is not a git checkout at all and was never fabric's.
 	// WeftWarpSlug("notes-weft") yields ("notes", true), so prune's orphan pass enumerates it.
@@ -86,23 +86,19 @@ func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	clone := filepath.Join(l.HubPath, "proj-weft")
 	if err := os.MkdirAll(clone, 0o755); err != nil {
 		t.Fatalf("create unrelated clone directory: %v", err)
 	}
-	gitkit.MustRun(t, clone, "git", "init", "-b", "main", ".")
+	gitkit.Git(t, clone, "init", "-b", "main", ".")
 
 	code := filepath.Join(clone, "code.txt")
 	const sentinel = "UNRELATED-PROJECT-SOURCE"
-	if err := os.WriteFile(code, []byte(sentinel+"\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", code, err)
-	}
-	gitkit.MustRun(t, clone, "git", "add", "code.txt")
-	gitkit.MustRun(t, clone, "git", "commit", "-m", "unrelated project commit")
+	gitkit.CommitFile(t, clone, "code.txt", sentinel+"\n", "unrelated project commit")
 
 	result, err := topology.Prune(l, true, true)
 	if err != nil {
@@ -136,13 +132,11 @@ func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-owned"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 

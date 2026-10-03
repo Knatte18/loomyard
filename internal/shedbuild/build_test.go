@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
 func TestBuild_SingleStubRow(t *testing.T) {
@@ -84,7 +85,7 @@ func TestBuild_ConstructorErrorWrapsRowIndexAndName(t *testing.T) {
 	})
 
 	t.Run("SingleLLMMissingStencilKey", func(t *testing.T) {
-		env := newTestEnv(t)
+		env := envkit.FullEnv(t)
 		r := Recipe{
 			Producers: []Row{
 				{Name: "LLM-Row", Engine: "SingleLLM", Config: map[string]any{
@@ -108,7 +109,7 @@ func TestBuild_ConstructorErrorWrapsRowIndexAndName(t *testing.T) {
 // than dropped: a non-empty config block on one of the nine engines that accept no config keys
 // errors, because that constructor's own configRejectUnknown call rejects it.
 func TestBuild_NonEmptyConfigOnNoConfigEngineErrors(t *testing.T) {
-	env := newTestEnv(t)
+	env := envkit.FullEnv(t)
 	r := Recipe{
 		Producers: []Row{
 			{Name: "Stub-Row", Engine: "Stub", Config: map[string]any{"bogus": "value"}},

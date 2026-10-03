@@ -568,8 +568,9 @@ Fabric's own cross-cutting suite follows the same black-box convention but keeps
 It is the **live-state integration harness**: it drives real cloned hubs, built by really cloning rather than hand-assembling a fixture, into dirty and hostile on-disk states and asserts what a destructive verb is and is not permitted to touch.
 See `internal/fabricengine`'s own package doc for the state matrix, the verb table, and the sabotage-proof table recording that each of the crucible campaign's eight data-loss defects still fails on demand when its guarding check is neutered.
 
-`internal/gitkit` is the below-fabric leaf holding git primitives — `MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
+`internal/gitkit` is the below-fabric leaf and the home of test git plumbing — spawn, query and commit helpers, the hermetic git environment, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
 `internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
+`internal/testkit` holds the shared test kits, one package per kit, for seams faked in more than one package; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
 
 ## Sandbox Hub
 

@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // writeReedConfigWithOverride seeds worktree's reed config the way the engine's own integration
@@ -64,7 +65,7 @@ func writeReedConfigWithOverride(t *testing.T, worktree, key, value string) {
 // which adds every live non-exempt pane to its kill list the moment the header is alive.
 func TestSmokeWarmAttachDoesNotReapAnOperatorsPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
@@ -114,7 +115,7 @@ func TestSmokeWarmAttachDoesNotReapAnOperatorsPane(t *testing.T) {
 // config error must still fire -- together the two pin that EnsureSession's early return is what
 // skips validation, not a weakened check.
 func TestSmokeWarmAttachSurvivesAConfigErrorButColdStillRefuses(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
@@ -154,7 +155,7 @@ func TestSmokeWarmAttachSurvivesAConfigErrorButColdStillRefuses(t *testing.T) {
 // TestSmokeWarmAttachWritesNoState pins the third additive-only assertion: the modification time and
 // bytes of .lyx/reed.json before a warm attach must be identical afterward.
 func TestSmokeWarmAttachWritesNoState(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()

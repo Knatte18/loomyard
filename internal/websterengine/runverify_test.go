@@ -7,33 +7,18 @@
 package websterengine
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// runverifyCapture redirects logger output into a buffer for the duration of one test at Info
-// verbosity, restoring both the output sink and the default verbosity via t.Cleanup.
-func runverifyCapture(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
-		logger.SetVerbosity(0)
-	})
-	return &buf
-}
 
 // TestRunVerifyCapture covers the non-zero-exit path (expect Passed false, nil error and a captured INFO teardown line carrying exitCode), the spawn-failure path (expect a non-nil error and a captured WARN line carrying cause), and output capture with and without a log path.
 func TestRunVerifyCapture(t *testing.T) {
 	t.Run("NonZeroExit", func(t *testing.T) {
-		buf := runverifyCapture(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		run, err := runVerifyCapture("exit 1", t.TempDir(), "")
 		if err != nil {
@@ -56,7 +41,7 @@ func TestRunVerifyCapture(t *testing.T) {
 	})
 
 	t.Run("SpawnFailure", func(t *testing.T) {
-		buf := runverifyCapture(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		// Clearing PATH makes the shell binary itself unresolvable, so cmd.Run()
 		// fails to start the process at all -- a genuine spawn failure, distinct
@@ -79,7 +64,7 @@ func TestRunVerifyCapture(t *testing.T) {
 	})
 
 	t.Run("FailingCommandCapturesOutputAndLog", func(t *testing.T) {
-		runverifyCapture(t)
+		logcapture.CaptureVerbose(t)
 		logPath := filepath.Join(t.TempDir(), "nested", "verify.log")
 
 		run, err := runVerifyCapture("echo to-stdout; echo to-stderr 1>&2; exit 1", t.TempDir(), logPath)
@@ -105,7 +90,7 @@ func TestRunVerifyCapture(t *testing.T) {
 	})
 
 	t.Run("PassingCommandEmptyLogPathWritesNoFile", func(t *testing.T) {
-		runverifyCapture(t)
+		logcapture.CaptureVerbose(t)
 		worktree := t.TempDir()
 
 		run, err := runVerifyCapture("echo ok", worktree, "")

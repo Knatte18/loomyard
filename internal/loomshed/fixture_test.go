@@ -124,8 +124,7 @@ func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 
 // writeGlyphRepoFixture writes files (keyed by repository-relative path) under a fresh t.TempDir()
 // and returns that directory's absolute path, ready to hand to NewPlanGate as worktreeRoot --
-// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo per the
-// duplicate-test-helpers-rather-than-share-them Shared Decision.
+// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo.
 func writeGlyphRepoFixture(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()

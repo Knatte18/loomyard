@@ -322,16 +322,38 @@ func registerTeardown(tb testing.TB, hubPath string) {
 	})
 }
 
-// AddPair drives h.Topology.Add for slug against h, fataling on error.
+// AddPair drives h.Topology.Add for slug against h with zero AddOptions, fataling on error.
 // Several verbs' Arrange funcs need a pair to exist before the verb under test runs.
 func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 	tb.Helper()
 
-	res, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{})
+	return AddPairWith(tb, h, slug, fabricengine.AddOptions{})
+}
+
+// AddPairWith drives h.Topology.Add for slug against h with opts, fataling on error.
+func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
+	tb.Helper()
+
+	res, err := h.Topology.Add(h.Location, slug, opts)
 	if err != nil {
-		tb.Fatalf("AddPair(%s): %v", slug, err)
+		tb.Fatalf("AddPairWith(%s): %v", slug, err)
 	}
 	return res
+}
+
+// OpenFabric opens the fabric handle on h's prime worktree, fataling on error.
+func OpenFabric(tb testing.TB, h *Hub) *fabricengine.Fabric {
+	tb.Helper()
+
+	loc, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		tb.Fatalf("OpenFabric: ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+	}
+	f, err := fabricengine.Open(loc)
+	if err != nil {
+		tb.Fatalf("OpenFabric: Open(%s): %v", h.PrimeWorktree(), err)
+	}
+	return f
 }
 
 // initScratchRepo initializes a git repository at dir on branch main, disabling fsmonitor and

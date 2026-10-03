@@ -18,11 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newMergePairFixture builds a real hubforge pair anchored at anchor and the *fabricengine.Fabric
-// handle over its prime warp/weft worktrees (via lyxcwd.ResolveWorktree + fabricengine.Open), plus
+// handle over its prime warp/weft worktrees (via hubforge.OpenFabric), plus
 // two closures for building divergent commits directly on the prime warp and weft repos
 // (gitkit.MustRun): commitOnWarpBranch/commitOnWeftBranch each check out (creating if absent) the
 // named branch off whatever is currently checked out, write filename with content, commit msg, and
@@ -34,14 +33,7 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 	t.Helper()
 
 	h = hubforge.NewHub(t, anchor)
-	l, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
-	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
-	}
-	f, err = fabricengine.Open(l)
-	if err != nil {
-		t.Fatalf("fabricengine.Open: %v", err)
-	}
+	f = hubforge.OpenFabric(t, h)
 
 	warpDir, weftDir := h.PrimeWorktree(), h.PrimeWeft()
 	commitOnWarpBranch = func(branch, filename, content, msg string) {
@@ -51,10 +43,10 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 		commitOnBranch(t, weftDir, branch, filename, content, msg)
 	}
 	commitOnWarpCurrent = func(filename, content, msg string) {
-		commitOnCurrentBranch(t, warpDir, filename, content, msg)
+		gitkit.CommitFile(t, warpDir, filename, content, msg)
 	}
 	commitOnWeftCurrent = func(filename, content, msg string) {
-		commitOnCurrentBranch(t, weftDir, filename, content, msg)
+		gitkit.CommitFile(t, weftDir, filename, content, msg)
 	}
 	return h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent
 }
@@ -65,14 +57,14 @@ func newMergePairFixture(t *testing.T, anchor string) (h *hubforge.Hub, f *fabri
 func commitOnBranch(t *testing.T, dir, branch, filename, content, msg string) {
 	t.Helper()
 
-	current := currentBranchName(t, dir)
-	if branchExistsLocally(t, dir, branch) {
+	current := gitkit.CurrentBranch(t, dir)
+	if gitkit.BranchExists(t, dir, branch) {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
 	} else {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
 	}
 
-	commitOnCurrentBranch(t, dir, filename, content, msg)
+	gitkit.CommitFile(t, dir, filename, content, msg)
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
 }
@@ -84,39 +76,15 @@ func branchAtCurrentHEAD(t *testing.T, dir, branch string) {
 	gitkit.MustRun(t, dir, "git", "branch", branch)
 }
 
-// commitOnCurrentBranch writes filename with content in dir, stages it, and commits msg on whatever
-// branch is currently checked out.
-func commitOnCurrentBranch(t *testing.T, dir, filename, content, msg string) {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", filename, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", filename)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", msg)
-}
-
-// currentBranchName (dir's currently checked-out branch name) is livestate_verbs_test.go's own
-// helper, reused unqualified since both files share package fabricengine_test.
-
-// branchExistsLocally reports whether branch already exists as a local ref in dir.
-func branchExistsLocally(t *testing.T, dir, branch string) bool {
-	t.Helper()
-
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = dir
-	return cmd.Run() == nil
-}
-
 // setupConflictingDivergence seeds filename on dir's current branch, branches off, diverges the
 // branch's copy, then diverges the current branch's own copy again — so merging branch into the
 // current branch conflicts on filename.
 func setupConflictingDivergence(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
-	commitOnCurrentBranch(t, dir, filename, "seed content\n", "seed "+filename)
+	gitkit.CommitFile(t, dir, filename, "seed content\n", "seed "+filename)
 	commitOnBranch(t, dir, branch, filename, "branch content\n", "diverge "+filename+" on "+branch)
-	commitOnCurrentBranch(t, dir, filename, "current content\n", "diverge "+filename+" on current")
+	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
 // setupCleanFastForward creates branch off dir's current HEAD with one new-file commit — a
@@ -132,7 +100,7 @@ func setupCleanFastForward(t *testing.T, dir, branch, filename string) {
 func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile string) {
 	t.Helper()
 	commitOnBranch(t, dir, branch, branchFile, "clean branch content\n", "clean "+branchFile+" on "+branch)
-	commitOnCurrentBranch(t, dir, currentFile, "current progress\n", "progress current past "+branch)
+	gitkit.CommitFile(t, dir, currentFile, "current progress\n", "progress current past "+branch)
 }
 
 // TestMergeIn_BothSidesClean covers the both-sides-clean scenario: Committed true, both sides

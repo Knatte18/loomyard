@@ -2,30 +2,18 @@
 
 // pairbranch_archive_integration_test.go covers the archive step of the two verbs that delete an existing pair's weft branch besides Remove: RemovePairBranch and Cleanup's apply loop each tag the branch tip under archive/<slug>/ and push the tag to the weft origin before deleting the branch.
 //
-// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
+// Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
-
-// branchTip returns the full SHA of branch in the repo at repoRoot.
-func branchTip(t *testing.T, repoRoot, branch string) string {
-	t.Helper()
-
-	out, err := gitexec.Run([]string{"rev-parse", "refs/heads/" + branch}, repoRoot)
-	if err != nil {
-		t.Fatalf("rev-parse %s in %s: %v", branch, repoRoot, err)
-	}
-	return strings.TrimSpace(out)
-}
 
 // wantArchiveTag returns the archive tag name archiveWeftTip derives for slug and tip.
 func wantArchiveTag(slug, tip string) string {
@@ -38,14 +26,14 @@ func TestRemovePairBranch_ArchivesTipBeforeDeleting(t *testing.T) {
 
 	const slug = "pair-archive"
 	branch := fabricengine.WeftBranchName(slug)
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	tip := branchTip(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 
-	res, err := fabricengine.NewTopology(fabricengine.Config{}).RemovePairBranch(l, slug)
+	res, err := h.Topology.RemovePairBranch(l, slug)
 	if err != nil {
 		t.Fatalf("RemovePairBranch() error = %v", err)
 	}
@@ -54,13 +42,13 @@ func TestRemovePairBranch_ArchivesTipBeforeDeleting(t *testing.T) {
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
 		t.Errorf("origin tag %s = %q; want the branch tip %s", wantTag, got, tip)
 	}
 	if !res.LocalDeleted || !res.RemoteDeleted {
 		t.Errorf("RemovePairBranch() = %+v; want LocalDeleted and RemoteDeleted", res)
 	}
-	if branchExistsAt(t, weftRoot, branch) || branchExistsAt(t, fixture.WeftBare, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) || gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q still present locally or on the origin", branch)
 	}
 }
@@ -71,15 +59,15 @@ func TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains(t *testing
 
 	const slug = "pair-archive-origin-only"
 	branch := fabricengine.WeftBranchName(slug)
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	tip := branchTip(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", branch)
 
-	res, err := fabricengine.NewTopology(fabricengine.Config{}).RemovePairBranch(l, slug)
+	res, err := h.Topology.RemovePairBranch(l, slug)
 	if err != nil {
 		t.Fatalf("RemovePairBranch() error = %v", err)
 	}
@@ -88,10 +76,10 @@ func TestRemovePairBranch_ArchivesFromOriginWhenOnlyOriginCopyRemains(t *testing
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
 		t.Errorf("origin tag %s = %q; want the branch tip %s", wantTag, got, tip)
 	}
-	if !res.RemoteDeleted || branchExistsAt(t, fixture.WeftBare, branch) {
+	if !res.RemoteDeleted || gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("RemovePairBranch() = %+v; want the origin copy deleted", res)
 	}
 }
@@ -102,16 +90,16 @@ func TestRemovePairBranch_UnreachableOriginErrorsAndKeepsBranch(t *testing.T) {
 
 	const slug = "pair-archive-unreachable"
 	branch := fabricengine.WeftBranchName(slug)
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
-	if _, err := fabricengine.NewTopology(fabricengine.Config{}).RemovePairBranch(l, slug); err == nil {
+	if _, err := h.Topology.RemovePairBranch(l, slug); err == nil {
 		t.Fatal("RemovePairBranch() with an unreachable origin = nil error; want the archive failure")
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was deleted despite the failed archive", branch)
 	}
 }
@@ -121,17 +109,17 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	t.Parallel()
 
 	slugs := []string{"cleanup-archive-a", "cleanup-archive-b"}
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	tips := make(map[string]string, len(slugs))
 	for _, slug := range slugs {
 		branch := fabricengine.WeftBranchName(slug)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
-		tips[slug] = branchTip(t, weftRoot, branch)
+		tips[slug] = gitkit.RevParse(t, weftRoot, branch)
 	}
 
-	res, err := fabricengine.NewTopology(fabricengine.Config{}).Cleanup(l, true, false, false)
+	res, err := h.Topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true) error = %v", err)
 	}
@@ -143,10 +131,10 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		if !entry.Deleted || entry.ArchiveTag != wantTag {
 			t.Errorf("entry %s = %+v; want Deleted with ArchiveTag %q", branch, *entry, wantTag)
 		}
-		if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != tips[slug] {
+		if got := tagTargetAt(t, h.WeftBare, wantTag); got != tips[slug] {
 			t.Errorf("origin tag %s = %q; want %s", wantTag, got, tips[slug])
 		}
-		if branchExistsAt(t, weftRoot, branch) {
+		if gitkit.BranchExists(t, weftRoot, branch) {
 			t.Errorf("branch %q still present after Cleanup", branch)
 		}
 	}
@@ -160,13 +148,13 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-archive-fail-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
-	res, err := fabricengine.NewTopology(fabricengine.Config{}).Cleanup(l, true, false, true)
+	res, err := h.Topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true) error = %v; want the failure on the entry only", err)
 	}
@@ -175,7 +163,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	if entry.Error == "" || entry.Deleted {
 		t.Errorf("entry = %+v; want Error set and Deleted false", *entry)
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was deleted despite the failed archive", branch)
 	}
 }
@@ -185,13 +173,13 @@ func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-archive-noorigin-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 
-	res, err := fabricengine.NewTopology(fabricengine.Config{}).Cleanup(l, true, false, false)
+	res, err := h.Topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true) error = %v", err)
 	}
@@ -203,7 +191,7 @@ func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	if res.ArchiveSkippedReason == "" {
 		t.Error("ArchiveSkippedReason is empty; want the no-origin skip reported")
 	}
-	if branchExistsAt(t, weftRoot, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still present after Cleanup", branch)
 	}
 }

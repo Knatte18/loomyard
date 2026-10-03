@@ -36,21 +36,6 @@ func addWarpBareRemote(t *testing.T, dir, warpPath string) string {
 	return bare
 }
 
-// commitPlain writes name inside dir with content and commits it directly,
-// with no trailer — the weft-side counterpart of commitWarp for tests that
-// only need a plain, unpushed commit and do not care about Fabric.Commit's
-// trailer/correspondence machinery. Returns the new HEAD SHA.
-func commitPlain(t *testing.T, dir, name, content string) string {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", content)
-	return fabricengine.CurrentSHAForTest(t, dir)
-}
-
 // runWithDeadline runs fn in a goroutine and fails the test if it has not
 // returned within the given deadline — the promptness assertion the
 // diverged-remote test needs: a spinning CoalescePushBothAt call would never
@@ -78,10 +63,10 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
-	warpSHA := commitPlain(t, warpPath, "warp-file.txt", "warp change")
+	warpSHA := gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
 
 	weftFixture := hubforge.NewHub(t, ".")
-	weftSHA := commitPlain(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change")
+	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
 
 	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil", err)
@@ -114,14 +99,14 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	// has, setting up the divergence: warpPath's next push will be rejected.
 	warpClone2 := filepath.Join(fixtures, "warp-clone-2")
 	gitkit.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
-	gitkit.MustRun(t, warpClone2, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, warpClone2, "git", "config", "user.name", "Test")
-	commitPlain(t, warpClone2, "other.txt", "from second clone")
+	gitkit.Git(t, warpClone2, "config", "user.email", "test@test.com")
+	gitkit.Git(t, warpClone2, "config", "user.name", "Test")
+	gitkit.CommitFile(t, warpClone2, "other.txt", "from second clone", "from second clone")
 	gitkit.MustRun(t, warpClone2, "git", "push")
 
 	// warpPath now commits locally too, without ever having fetched the
 	// second clone's commit — its next push is a genuine non-fast-forward.
-	commitPlain(t, warpPath, "warp-file.txt", "warp change that will be rejected")
+	gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change that will be rejected", "warp change that will be rejected")
 
 	weftFixture := hubforge.NewHub(t, ".")
 
@@ -181,7 +166,7 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 	})
 
 	weftFixture := hubforge.NewHub(t, ".")
-	weftSHA := commitPlain(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change, no warp")
+	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change, no warp", "weft change, no warp")
 
 	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)

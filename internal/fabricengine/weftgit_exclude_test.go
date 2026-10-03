@@ -22,7 +22,6 @@ package fabricengine_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,21 +179,6 @@ func mustWriteFile(t *testing.T, path, content string) {
 	}
 }
 
-// gitLsFiles returns `git ls-files`'s raw output for repoPath — the tracked
-// (committed-or-staged) file set, as opposed to gitkit.GitStatusPorcelain's
-// untracked/dirty view.
-func gitLsFiles(t *testing.T, repoPath string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "ls-files")
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git ls-files in %s: %v", repoPath, err)
-	}
-	return string(out)
-}
-
 // TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the structural
 // replacement for F-B's fix (formerly CONSTRAINTS.md's Weft Git Invariant, "Cross-module
 // exclusions"): fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath,
@@ -237,7 +221,7 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 				t.Fatalf("Commit(anchor=%q, pathspec=%v): %v", anchor, pathspec, err)
 			}
 
-			tracked := gitLsFiles(t, weftPath)
+			tracked := strings.Join(gitkit.LsFiles(t, weftPath), "\n")
 			lyxRel := filepath.ToSlash(filepath.Join(anchorRel, lyxdirs.LyxDirName))
 			durable := lyxRel + "/webster/state.json"
 			if !strings.Contains(tracked, durable) {

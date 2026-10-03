@@ -15,6 +15,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,8 +248,8 @@ func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 	if !strings.Contains(err.Error(), recordedURL) || !strings.Contains(err.Error(), suppliedURL) {
 		t.Errorf("CloneHub() error = %q; want it to contain both %q and %q", err.Error(), recordedURL, suppliedURL)
 	}
-	if !strings.Contains(err.Error(), "refusing to re-point") {
-		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "refusing to re-point")
+	if !errors.Is(err, fabricengine.ErrWarpBindingMismatch) {
+		t.Errorf("CloneHub() error = %v; want errors.Is ErrWarpBindingMismatch", err)
 	}
 
 	noProbeResidueInParent(t, cloneParent,
@@ -271,8 +272,8 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CloneHub() against an unbound weft with no warp URL should have failed")
 	}
-	if !strings.Contains(err.Error(), "has no recorded warp binding") {
-		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "has no recorded warp binding")
+	if !errors.Is(err, fabricengine.ErrNoWarpBinding) {
+		t.Errorf("CloneHub() error = %v; want errors.Is ErrNoWarpBinding", err)
 	}
 	if !strings.Contains(err.Error(), "lyx fabric clone <weft-url> <warp-url>") {
 		t.Errorf("CloneHub() error = %q; want it to contain the two-argument remedy", err.Error())
@@ -303,8 +304,8 @@ func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 		if err == nil {
 			t.Fatalf("CloneHub() against an empty weft with no warp URL should have failed")
 		}
-		if !strings.Contains(err.Error(), "has no recorded warp binding") {
-			t.Errorf("CloneHub() error = %q; want it to report unbound, not a git error", err.Error())
+		if !errors.Is(err, fabricengine.ErrNoWarpBinding) {
+			t.Errorf("CloneHub() error = %v; want it to report unbound, not a git error", err)
 		}
 	})
 
@@ -352,8 +353,8 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 		if !strings.Contains(err.Error(), "probe weft ") {
 			t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "probe weft ")
 		}
-		if strings.Contains(err.Error(), "has no recorded warp binding") {
-			t.Errorf("CloneHub() error = %q; want it not to report unbound", err.Error())
+		if errors.Is(err, fabricengine.ErrNoWarpBinding) {
+			t.Errorf("CloneHub() error = %v; want it not to report unbound", err)
 		}
 		if _, statErr := os.Stat(cloneParent); statErr != nil {
 			t.Fatalf("stat clone parent: %v", statErr)
@@ -383,8 +384,8 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 		if !strings.Contains(err.Error(), "probe weft ") {
 			t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "probe weft ")
 		}
-		if strings.Contains(err.Error(), "has no recorded warp binding") {
-			t.Errorf("CloneHub() error = %q; want it not to report unbound", err.Error())
+		if errors.Is(err, fabricengine.ErrNoWarpBinding) {
+			t.Errorf("CloneHub() error = %v; want it not to report unbound", err)
 		}
 		noProbeResidueInParent(t, cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 	})
@@ -406,8 +407,8 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 		if err == nil {
 			t.Fatalf("CloneHub() against a weft with no record should have failed")
 		}
-		if !strings.Contains(err.Error(), "has no recorded warp binding") {
-			t.Errorf("CloneHub() error = %q; want it to report unbound", err.Error())
+		if !errors.Is(err, fabricengine.ErrNoWarpBinding) {
+			t.Errorf("CloneHub() error = %v; want it to report unbound", err)
 		}
 	})
 
@@ -442,8 +443,8 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 		if !strings.Contains(err.Error(), "probe weft ") {
 			t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "probe weft ")
 		}
-		if strings.Contains(err.Error(), "has no recorded warp binding") {
-			t.Errorf("CloneHub() error = %q; want it not to report unbound", err.Error())
+		if errors.Is(err, fabricengine.ErrNoWarpBinding) {
+			t.Errorf("CloneHub() error = %v; want it not to report unbound", err)
 		}
 	})
 }

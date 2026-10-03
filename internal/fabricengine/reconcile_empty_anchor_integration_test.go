@@ -8,7 +8,7 @@
 // damage the stale-marker guard exists to prevent for the pre-rename spelling.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go. Builds its own
-// hubforge.Hub at anchor "backend" rather than reusing newFabricFixture/hubforge.NewHub(t, "."): this
+// hubforge.Hub at anchor "backend" rather than at the default "." anchor: this
 // test's whole premise is a warp worktree root with zero junctions wired, and a "."-anchored real hub
 // already wires _lyx, .lyx, and the _board convenience link at its own root via CloneAndWire. Anchoring
 // the hub at "backend" instead moves that pre-existing wiring to <worktree>/backend, leaving the root
@@ -73,8 +73,7 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 		t.Fatalf("AnchorRel after truncation = %q; want %q (the empty-is-absent fallback must stay)", rootLayout.AnchorRel, ".")
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	_, reconcileErr := topology.Reconcile(rootLayout)
+	_, reconcileErr := h.Topology.Reconcile(rootLayout)
 	if reconcileErr == nil {
 		t.Fatal("Reconcile() = nil error against an empty anchor marker; want a refusal")
 	}

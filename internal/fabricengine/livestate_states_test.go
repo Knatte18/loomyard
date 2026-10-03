@@ -92,11 +92,7 @@ func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
 
 	name := sentinelFileName(stateName)
 	path := filepath.Join(checkout, name)
-	if err := os.WriteFile(path, []byte("livestate sentinel seed\n"), 0o644); err != nil {
-		tb.Fatalf("plantTrackedDirt(%s): write %s: %v", stateName, path, err)
-	}
-	mustGit(checkout, "add", name)
-	mustGit(checkout, "commit", "-m", "livestate: seed "+name)
+	gitkit.CommitFile(tb, checkout, name, "livestate sentinel seed\n", "livestate: seed "+name)
 	if err := os.WriteFile(path, []byte("livestate sentinel seed\n"+trackedDirtMarker+"\n"), 0o644); err != nil {
 		tb.Fatalf("plantTrackedDirt(%s): modify %s: %v", stateName, path, err)
 	}
@@ -314,8 +310,8 @@ func trackedSymlinkAtWiredPathState() State {
 			// WireJunctions seeded this exact path into .git/info/exclude so fabric's OWN junction
 			// never shows as untracked; "-f" is what an operator committing a link of their own at that
 			// same path would need too, and is exactly the shape this state models.
-			mustGit(target.WarpCheckout, "add", "-f", rel)
-			mustGit(target.WarpCheckout, "commit", "-m", "livestate: track operator-owned link at wired path")
+			gitkit.Git(tb, target.WarpCheckout, "add", "-f", rel)
+			gitkit.Git(tb, target.WarpCheckout, "commit", "-m", "livestate: track operator-owned link at wired path")
 
 			assertLinkTarget(tb, target.StructuralPath, operatorOwned)
 		},
@@ -404,16 +400,10 @@ func unrelatedGitCloneAtWeftNamedPathState() State {
 			if err := os.MkdirAll(target.StructuralPath, 0o755); err != nil {
 				tb.Fatalf("unrelatedGitCloneAtWeftNamedPath: mkdir %s: %v", target.StructuralPath, err)
 			}
-			mustGit(target.StructuralPath, "init", "-b", "main")
-			mustGit(target.StructuralPath, "config", "user.email", "test@test.com")
-			mustGit(target.StructuralPath, "config", "user.name", "Test")
-
-			contentPath := filepath.Join(target.StructuralPath, sentinelFileName("unrelatedGitCloneAtWeftNamedPath"))
-			if err := os.WriteFile(contentPath, []byte("livestate: unrelated repository content\n"), 0o644); err != nil {
-				tb.Fatalf("unrelatedGitCloneAtWeftNamedPath: write %s: %v", contentPath, err)
-			}
-			mustGit(target.StructuralPath, "add", ".")
-			mustGit(target.StructuralPath, "commit", "-m", "livestate: seed unrelated clone")
+			gitkit.Git(tb, target.StructuralPath, "init", "-b", "main")
+			gitkit.Git(tb, target.StructuralPath, "config", "user.email", "test@test.com")
+			gitkit.Git(tb, target.StructuralPath, "config", "user.name", "Test")
+			gitkit.CommitFile(tb, target.StructuralPath, sentinelFileName("unrelatedGitCloneAtWeftNamedPath"), "livestate: unrelated repository content\n", "livestate: seed unrelated clone")
 
 			status := gitkit.GitStatusPorcelain(tb, target.StructuralPath)
 			if status != "" {

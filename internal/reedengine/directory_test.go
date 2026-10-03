@@ -42,12 +42,12 @@ func TestDirectory_DoesNotRepairOrPersist(t *testing.T) {
 	t.Parallel()
 
 	strands := []Strand{{GUID: "g1", Name: "tc:tslug:worker", PaneID: "%1"}}
-	e, calls := newRepairTestEngine(t, strands, []LivePane{{ID: "%1", Title: "drifted"}})
+	e, fake := newRepairTestEngine(t, strands, []LivePane{{ID: "%1", Title: "drifted"}})
 
 	if _, err := e.Directory(); err != nil {
 		t.Fatalf("Directory: %v", err)
 	}
-	if n := len(callsNamed(*calls, "select-pane")); n != 0 {
+	if n := fake.Count("select-pane"); n != 0 {
 		t.Errorf("Directory issued %d select-pane calls; want none", n)
 	}
 }

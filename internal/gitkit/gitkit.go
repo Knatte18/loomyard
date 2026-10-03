@@ -4,6 +4,7 @@
 package gitkit
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,6 +42,37 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		tb.Fatalf("command failed: %v; output: %s", err, output)
 	}
+}
+
+// Git runs `git <args>` in dir and returns its trimmed stdout, calling tb.Fatalf on a spawn error or non-zero exit.
+// It is the one spawning primitive behind the query helpers in query.go, which stay spawn-free.
+func Git(tb testing.TB, dir string, args ...string) string {
+	tb.Helper()
+
+	out, code, err := gitExit(dir, args...)
+	if err != nil {
+		tb.Fatalf("git %s in %s: %v", strings.Join(args, " "), dir, err)
+	}
+	if code != 0 {
+		tb.Fatalf("git %s in %s: exit %d; output: %s", strings.Join(args, " "), dir, code, out)
+	}
+	return strings.TrimSpace(out)
+}
+
+// gitExit runs `git <args>` in dir and returns its stdout and exit code.
+// A non-zero exit is reported through the code, not err; err is set only when git could not be run.
+func gitExit(dir string, args ...string) (stdout string, code int, err error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, runErr := cmd.Output()
+	if runErr == nil {
+		return string(out), 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		return string(out) + string(exitErr.Stderr), exitErr.ExitCode(), nil
+	}
+	return "", -1, runErr
 }
 
 // SeedConfig seeds real configuration into a git repository: creates _lyx/config, writes each

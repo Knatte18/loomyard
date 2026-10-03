@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -37,33 +38,6 @@ func nonFabricModuleNames() []string {
 	return names
 }
 
-// gitLsFiles runs `git ls-files` in dir and returns the slash-separated paths it reports.
-func gitLsFiles(t *testing.T, dir string) []string {
-	t.Helper()
-
-	cmd := exec.Command("git", "ls-files")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git ls-files in %s: %v", dir, err)
-	}
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		return nil
-	}
-	return strings.Split(trimmed, "\n")
-}
-
-// containsPath reports whether want is present in got.
-func containsPath(got []string, want string) bool {
-	for _, g := range got {
-		if g == want {
-			return true
-		}
-	}
-	return false
-}
-
 // TestCloneConfigCommit_WeftPrimeCleanAfterClone asserts a freshly-built hub's weft prime worktree
 // is clean, and that git ls-files reports every non-fabric module's config file, proving the
 // symptom's "reported dirty, untracked configs" half is fixed.
@@ -74,10 +48,10 @@ func TestCloneConfigCommit_WeftPrimeCleanAfterClone(t *testing.T) {
 		t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 	}
 
-	tracked := gitLsFiles(t, h.PrimeWeft())
+	tracked := gitkit.LsFiles(t, h.PrimeWeft())
 	for _, name := range nonFabricModuleNames() {
 		want := configengine.ConfigFileRel(name)
-		if !containsPath(tracked, want) {
+		if !slices.Contains(tracked, want) {
 			t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
 		}
 	}
@@ -109,10 +83,10 @@ func TestCloneConfigCommit_AnchorScoped(t *testing.T) {
 		t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 	}
 
-	tracked := gitLsFiles(t, h.PrimeWeft())
+	tracked := gitkit.LsFiles(t, h.PrimeWeft())
 	for _, name := range nonFabricModuleNames() {
 		want := "backend/" + configengine.ConfigFileRel(name)
-		if !containsPath(tracked, want) {
+		if !slices.Contains(tracked, want) {
 			t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
 		}
 	}

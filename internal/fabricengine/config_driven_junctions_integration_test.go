@@ -23,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
@@ -57,7 +58,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 		}
 	}
 
-	lines := readExcludeLines(t, l, slug)
+	lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
 	for _, name := range names {
 		pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, name)
 		if !containsLine(lines, pattern) {

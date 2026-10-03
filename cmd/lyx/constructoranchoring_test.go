@@ -44,29 +44,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// anchoringFixture builds a synthetic *lyxcwd.Location by hand, mirroring
-// the field derivation Resolve performs, without spawning git.
-func anchoringFixture(hubPath, worktreeName, anchorRel string) *lyxcwd.Location {
-	return &lyxcwd.Location{
-		HubPath:      hubPath,
-		WorktreeName: worktreeName,
-		AnchorRel:    anchorRel,
-	}
-}
-
-// TestConstructorAnchoring_Unanchored asserts every relocated constructor at AnchorRel == "."
-// against a plain filepath.Join computed independently here, for both anchoring groups.
 func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	hub := filepath.Join("home", "user", "repo-LYXHUB")
-	l := anchoringFixture(hub, "repo", ".")
+	l := locationkit.Location(hub, "repo", ".")
 
 	worktree := l.WorktreePath()
 	anchor := l.AnchorPath()
@@ -127,7 +115,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	hub := filepath.Join("home", "user", "repo-LYXHUB")
 	anchorRel := "backend"
-	l := anchoringFixture(hub, "repo", anchorRel)
+	l := locationkit.Location(hub, "repo", anchorRel)
 
 	worktree := l.WorktreePath()
 	anchor := l.AnchorPath()

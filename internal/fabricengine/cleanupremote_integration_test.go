@@ -6,14 +6,11 @@
 // remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
 // remote -- plus RemovePairBranch, which deletes through the same gated helpers.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant (via
-// newFabricFixture), using the hub's own WeftBare field as the weft remote to assert against — this
-// hub's private copy of the weft bare remote, so a test can push an orphan branch to it and then
-// assert the ref is gone.
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
+// so a test can push an orphan branch to it and then assert the ref is gone.
 //
-// Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go) and
-// mustWeftRepoRoot/branchExistsAt (add_rollback_adopt_test.go / reconcile_stale_registration_test.go)
-// — every assertion here goes through exported API; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse mustWeftRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go) — every assertion here goes through exported API;
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -23,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // mustCreateOrphanWeftBranch creates branch in the weft repo at weftRoot, pointed at HEAD, with no
@@ -58,14 +56,14 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-both-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
@@ -81,10 +79,10 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	if entry.RemoteError != "" {
 		t.Errorf("entry.RemoteError = %q; want empty", entry.RemoteError)
 	}
-	if branchExistsAt(t, weftRoot, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
 	}
-	if branchExistsAt(t, fixture.WeftBare, branch) {
+	if gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q still exists on the remote after Cleanup(apply=true, remote=true)", branch)
 	}
 }
@@ -95,14 +93,14 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-off-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=false) error = %v", err)
@@ -115,7 +113,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	if entry.RemoteDeleted {
 		t.Errorf("entry.RemoteDeleted = true; want false — remote is opt-in")
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q no longer exists on the remote after Cleanup(apply=true, remote=false); remote must be opt-in", branch)
 	}
 }
@@ -126,14 +124,14 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-dry-remote-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, false, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=false, remote=true) error = %v", err)
@@ -143,10 +141,10 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	if entry.Deleted || entry.RemoteDeleted {
 		t.Errorf("entry = %+v; want no deletion on a dry run", entry)
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed locally on a dry run", branch)
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q was removed on the remote on a dry run", branch)
 	}
 }
@@ -158,14 +156,14 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-never-pushed-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	// Deliberately never pushed: the remote never had this ref to begin with.
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
@@ -195,15 +193,15 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-unmanaged-legacy"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	// No "-weft" suffix: unmanaged, reported but never deletable — WeftWarpSlug rejects it.
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
@@ -216,10 +214,10 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	if entry.Deleted || entry.RemoteDeleted {
 		t.Errorf("entry = %+v; want neither local nor remote deletion of a protected entry", entry)
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("protected branch %q was removed locally", branch)
 	}
-	if !branchExistsAt(t, fixture.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("protected branch %q was removed on the remote", branch)
 	}
 }
@@ -230,15 +228,15 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-remote-fail-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	gitkit.MustRun(t, fixture.WeftBare, "git", "config", "receive.denyDeletes", "true")
+	gitkit.MustRun(t, h.WeftBare, "git", "config", "receive.denyDeletes", "true")
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=true) error = %v; want nil — a remote failure is non-fatal", err)
@@ -251,7 +249,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 	if entry.RemoteError == "" {
 		t.Errorf("entry.RemoteError is empty; want a reason naming the remote deletion failure")
 	}
-	if branchExistsAt(t, weftRoot, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
 	}
 }
@@ -263,8 +261,8 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	branches := []string{"cleanup-no-origin-one-weft", "cleanup-no-origin-two-weft"}
@@ -273,7 +271,7 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 	}
 	mustRemoveOrigin(t, weftRoot)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
@@ -291,7 +289,7 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 		if entry.RemoteError != "" {
 			t.Errorf("entry for %q: RemoteError = %q; want empty — the reason lives on the verb-level field, not here", b, entry.RemoteError)
 		}
-		if branchExistsAt(t, weftRoot, b) {
+		if gitkit.BranchExists(t, weftRoot, b) {
 			t.Errorf("branch %q still exists locally after Cleanup(apply=true)", b)
 		}
 	}
@@ -303,14 +301,14 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-dry-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, false, false, true)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=false, remote=true) error = %v", err)
@@ -324,7 +322,7 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 	if entry.Deleted {
 		t.Errorf("entry.Deleted = true; want false — apply is false")
 	}
-	if !branchExistsAt(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed on a dry run", branch)
 	}
 }
@@ -336,14 +334,14 @@ func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-remote-off-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, remote=false) error = %v", err)
@@ -362,12 +360,12 @@ func TestRemovePairBranch_DeletesLocalAndRemoteAndRefusesALivePair(t *testing.T)
 
 	const slug = "remove-pair-branch"
 	branch := fabricengine.WeftBranchName(slug)
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 
 	sibling, _, err := fabricengine.PairSiblingRemnant(l, slug)
 	if err != nil {
@@ -386,7 +384,7 @@ func TestRemovePairBranch_DeletesLocalAndRemoteAndRefusesALivePair(t *testing.T)
 	if !res.LocalDeleted || !res.RemoteDeleted {
 		t.Errorf("RemovePairBranch() = %+v; want LocalDeleted and RemoteDeleted", res)
 	}
-	if branchExistsAt(t, weftRoot, branch) || branchExistsAt(t, fixture.WeftBare, branch) {
+	if gitkit.BranchExists(t, weftRoot, branch) || gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q still present locally or on the remote", branch)
 	}
 	if _, err := topology.RemovePairBranch(l, slug); err != nil {

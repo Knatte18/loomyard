@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -18,9 +19,9 @@ func TestClassifyViolation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n_lyx/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitwrapCommitFile(t, root, "tracked.txt", "x", "add tracked")
-	gitwrapMustGit(t, root, "add", ".gitignore")
-	gitwrapMustGit(t, root, "commit", "-m", "ignore")
+	gitkit.CommitFile(t, root, "tracked.txt", "x", "add tracked")
+	gitkit.Git(t, root, "add", ".gitignore")
+	gitkit.Git(t, root, "commit", "-m", "ignore")
 
 	geom := Geometry{
 		AnchorRoot:   root,
@@ -52,7 +53,7 @@ func TestClassifyViolation(t *testing.T) {
 
 	// A second worktree of root, with a _lyx link pointing to a temp directory.
 	second := filepath.Join(t.TempDir(), "second")
-	gitwrapMustGit(t, root, "worktree", "add", second)
+	gitkit.Git(t, root, "worktree", "add", second)
 	secondLyx := t.TempDir()
 	if err := fslink.CreateDirLink(filepath.Join(second, "_lyx"), secondLyx); err != nil {
 		t.Fatal(err)
@@ -60,7 +61,7 @@ func TestClassifyViolation(t *testing.T) {
 
 	// A third worktree of root, nested inside root's own checkout, with its own geometry.
 	nested := filepath.Join(root, "wts", "nested")
-	gitwrapMustGit(t, root, "worktree", "add", nested)
+	gitkit.Git(t, root, "worktree", "add", nested)
 	nestedGeom := Geometry{
 		AnchorRoot:   nested,
 		WorktreeRoot: nested,

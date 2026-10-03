@@ -13,7 +13,6 @@ package fabricengine_test
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,14 +28,8 @@ import (
 func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) string {
 	t.Helper()
 
-	configPath := filepath.Join(weftPath, "_lyx", "config.yaml")
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, weftPath, "git", "add", ".")
 	msg := fabricengine.AppendWarpSHATrailerForTest("weft sync", warpSHA)
-	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
-	return fabricengine.CurrentSHAForTest(t, weftPath)
+	return gitkit.CommitFile(t, weftPath, filepath.Join("_lyx", "config.yaml"), content, msg)
 }
 
 // TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a path genuinely inside

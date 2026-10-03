@@ -1,7 +1,7 @@
 //go:build integration
 
 // main_integration_test.go holds the module-dispatcher tests that spawn
-// gitexec.RunGit(["init"], …) to seed a real git repo so lyxcwd.Resolve
+// gitkit.Git(t, cwd, "init") to seed a real git repo so lyxcwd.Resolve
 // succeeds, so this file is integration-tagged per the Test Tier Purity
 // Invariant.
 
@@ -9,21 +9,21 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -32,9 +32,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -59,13 +57,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse board output: %v; output: %s", err, out.String())
-	}
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true from dispatched board command, got %v", result)
-	}
+	envelope.RequireOK(t, out.String())
 }
 
 func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
@@ -74,9 +66,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -104,37 +94,16 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 }
 
-// integrationTestFile is this source file's absolute path, captured at compile time.
-var _, integrationTestFile, _, _ = runtime.Caller(0)
-
 // traceFilenamePattern matches the durable sink's trace-file naming: "trace-<UTC timestamp>-<TraceID>-<PID>.log".
 var traceFilenamePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-\d+\.log$`)
 
-// buildLyxBinary compiles cmd/lyx into a temp dir for spawning a real lyx process.
-func buildLyxBinary(t *testing.T) string {
-	t.Helper()
-	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(integrationTestFile), "..", ".."))
-	if err != nil {
-		t.Fatalf("resolve repo root: %v", err)
-	}
-	lyxExe := filepath.Join(t.TempDir(), "lyx.exe")
-	cmd := exec.Command("go", "build", "-o", lyxExe, "./cmd/lyx")
-	cmd.Dir = repoRoot
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/lyx: %v\n%s", err, out)
-	}
-	return lyxExe
-}
-
 // TestRootHookWritesTraceFileOnNonZeroExit verifies the root hook writes trace files on failure.
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	// Initialize a git repo so the spawned process's lyxcwd.Resolve succeeds.
 	cwd := t.TempDir()
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	// Mark cwd as a worktree lyx owns (presence of the durable _lyx tree) so the
 	// durable sink's cwd-anchored fallback is allowed to arm per isLyxWorktree
@@ -200,10 +169,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize git repo so lyxcwd.Resolve succeeds.
-	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -221,13 +187,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 		t.Fatalf("expected exit 0 for config reconcile, got %d; output: %s", code, out.String())
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse config reconcile output: %v; output: %s", err, out.String())
-	}
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true from config reconcile command, got %v", result)
-	}
+	envelope.RequireOK(t, out.String())
 }
 
 // exitSweepFixture is a git repo carrying _lyx/ (so the cwd-anchored sink may arm) and a .lyx/logs directory pre-seeded with dead-pid traces.
@@ -241,9 +201,7 @@ type exitSweepFixture struct {
 func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
 	t.Helper()
 	cwd := t.TempDir()
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
@@ -303,7 +261,7 @@ func (fx exitSweepFixture) logNames(t *testing.T) map[string]bool {
 }
 
 func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	fx := newExitSweepFixture(t, "trace_retention_count: 2\ntrace_retention_days: 14\n")
 
 	code, out := fx.run(t, lyxExe, "bogus-subcommand")
@@ -328,7 +286,7 @@ func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
 }
 
 func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	baseline := newExitSweepFixture(t, "")
 	wantCode, _ := baseline.run(t, lyxExe, "bogus-subcommand")
 
@@ -356,7 +314,7 @@ func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
 }
 
 func TestExitSweep_QuietZeroExitNeitherArmsNorSweeps(t *testing.T) {
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 	for name, loggerYAML := range map[string]string{
 		"absent":  "",
 		"invalid": "trace_retention_count: 0\ntrace_retention_days: 14\n",

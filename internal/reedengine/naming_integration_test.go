@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // addEnvProbeStrand adds a role strand whose command writes $LYX_STRAND_NAME and $LYX_PARENT to a file and returns the strand with the file's path.
@@ -95,7 +96,7 @@ func TestNaming_EmptySlugGivesShortnameAndRole(t *testing.T) {
 }
 
 func TestNaming_RepairNamesRestoresAHandChangedTitle(t *testing.T) {
-	logs := captureLogOutput(t)
+	logs := logcapture.CaptureVerbose(t)
 	e := newColdScratchEngine(t)
 	strand, _ := addEnvProbeStrand(t, e, "worker")
 

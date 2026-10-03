@@ -7,8 +7,7 @@
 // deletable orphan, and `--apply --force` then deleted it together with any weft commit it alone
 // carried.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real _board worktree on the
@@ -26,19 +26,17 @@ import (
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	primaryWeftBranch := fabricengine.WeftBranchName("main")
 
 	// Move the prime pair off the default branch, exactly as `lyx fabric checkout` does.
 	// The fixture's <Hub>/_board worktree stays on "main", which is what records the repo's
 	// primary warp branch.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-
-	result, err := topology.Cleanup(l, true, true, false)
+	result, err := h.Topology.Cleanup(l, true, true, false)
 	if err != nil {
 		t.Fatalf("Cleanup(apply=true, force=true) error = %v", err)
 	}
@@ -60,7 +58,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 		t.Fatalf("Cleanup reported no entry for %q; want it reported and protected", primaryWeftBranch)
 	}
 
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), primaryWeftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), primaryWeftBranch) {
 		t.Fatalf("primary weft branch %q no longer exists after cleanup --apply --force", primaryWeftBranch)
 	}
 }
@@ -71,13 +69,12 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	if err := os.RemoveAll(fabricengine.BoardDir(fixture.Layout.HubPath)); err != nil {
+	h := hubforge.NewHub(t, ".")
+	if err := os.RemoveAll(fabricengine.BoardDir(h.Location.HubPath)); err != nil {
 		t.Fatalf("remove board worktree: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Cleanup(fixture.Layout, true, true, false); err == nil {
+	if _, err := h.Topology.Cleanup(h.Location, true, true, false); err == nil {
 		t.Fatal("Cleanup() = nil error; want a refusal when the primary weft branch cannot be determined")
 	}
 }

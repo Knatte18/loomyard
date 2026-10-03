@@ -7,7 +7,6 @@
 package fabricengine_test
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -184,14 +183,10 @@ func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
 	warpPath := h.PrimeWorktree()
 	gitkit.MustRun(t, warpPath, "git", "checkout", "-q", "-b", "conflict-branch")
 	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "--allow-empty", "-m", "branch commit")
-	writeConflictFile(t, warpPath, "conflict-target.txt", "branch content")
-	gitkit.MustRun(t, warpPath, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", "branch content commit")
+	gitkit.CommitFile(t, warpPath, "conflict-target.txt", "branch content", "branch content commit")
 
 	gitkit.MustRun(t, warpPath, "git", "checkout", "-q", "-")
-	writeConflictFile(t, warpPath, "conflict-target.txt", "main content")
-	gitkit.MustRun(t, warpPath, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", "main content commit")
+	gitkit.CommitFile(t, warpPath, "conflict-target.txt", "main content", "main content commit")
 
 	mergeCmd := exec.Command("git", "merge", "conflict-branch")
 	mergeCmd.Dir = warpPath
@@ -213,15 +208,6 @@ func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
 	}
 }
 
-// writeConflictFile overwrites name inside dir with content, for
-// TestMergeState_ForeignMergeStatePresent's hand-built conflicting-branch fixture.
-func writeConflictFile(t *testing.T, dir, name, content string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", name, err)
-	}
-}
-
 // driveConflictedMergeStart builds a divergent "conflict-branch" in dir off the current HEAD and
 // runs repo.MergeStart against it, leaving dir with conflict markers present and the tracked
 // worktree dirty — the state resetMergeSides' abort exists to discard. It fails the test unless the
@@ -231,14 +217,10 @@ func driveConflictedMergeStart(t *testing.T, dir string, repo *gitrepo.Repo) {
 	t.Helper()
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", "conflict-branch")
-	writeConflictFile(t, dir, "conflict-target.txt", "branch content")
-	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "branch content commit")
+	gitkit.CommitFile(t, dir, "conflict-target.txt", "branch content", "branch content commit")
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-")
-	writeConflictFile(t, dir, "conflict-target.txt", "main content")
-	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "main content commit")
+	gitkit.CommitFile(t, dir, "conflict-target.txt", "main content", "main content commit")
 
 	outcome, err := repo.MergeStart("conflict-branch", false)
 	if err != nil {

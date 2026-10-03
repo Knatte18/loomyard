@@ -9,8 +9,7 @@
 // and Fabric.Diff bridged against such an answer via weftAnchorForWarpSHA
 // would graft the current branches onto the other branch's history.
 //
-// Package fabricengine_test to reuse newFabricFixture/currentBranchOf from
-// reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
+// Package fabricengine_test; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -22,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
@@ -31,9 +31,9 @@ import (
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	top := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	top := h.Topology
 
 	// Healthy junction so Checkout's wiring step succeeds.
 	slug := filepath.Base(l.WorktreePath())
@@ -48,10 +48,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.Open(l)
-	if err != nil {
-		t.Fatalf("fabricengine.Open: %v", err)
-	}
+	f := hubforge.OpenFabric(t, h)
 
 	// Record one correspondence on the original branch via a real scoped commit.
 	if err := os.WriteFile(filepath.Join(fabricengine.WeftWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
@@ -76,7 +73,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if _, err := top.Checkout(l, targetBranch); err != nil {
 		t.Fatalf("Checkout(%q): %v", targetBranch, err)
 	}
-	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
+	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
 		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.WeftBranchName(targetBranch))
 	}
 

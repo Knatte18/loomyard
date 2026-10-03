@@ -6,8 +6,7 @@
 // worktree of the repo) fell through to an unconditional os.RemoveAll, so removing the prime slug
 // deleted the whole warp clone — gitdir included — on a clean hub with no --force.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -17,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug and
@@ -26,10 +25,10 @@ import (
 func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	primeSlug := filepath.Base(l.WorktreePath())
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 
 	_, err := topology.Remove(l, primeSlug, false, false)
 	if err == nil {
@@ -58,21 +57,17 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	const slug = "sidecar"
 	foreign := filepath.Join(l.HubPath, slug)
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", "--detach", foreign)
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "add", "--detach", foreign)
 
 	marker := filepath.Join(foreign, "content-marker")
-	if err := os.WriteFile(marker, []byte("keep me\n"), 0o644); err != nil {
-		t.Fatalf("seed marker: %v", err)
-	}
-	gitkit.MustRun(t, foreign, "git", "add", "content-marker")
-	gitkit.MustRun(t, foreign, "git", "commit", "-m", "seed marker")
+	gitkit.CommitFile(t, foreign, "content-marker", "keep me\n", "seed marker")
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	_, err := topology.Remove(l, slug, false, false)
 	if err == nil {
 		t.Fatalf("Remove(%q) = nil error; want a refusal naming git's own reason", slug)

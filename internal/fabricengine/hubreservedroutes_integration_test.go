@@ -4,8 +4,7 @@
 // hub-reserved name (_board, _portals, _launchers) must never appear in the routes that drive
 // junction wiring or the weft commit pathspec, over the repo's real loaded config.
 //
-// Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go);
-// shares the single TestMain in testmain_test.go — no new TestMain is added here.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go — no new TestMain is added here.
 package fabricengine_test
 
 import (
@@ -14,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestHubReserved_BoardExcludedFromPathspecRoutes guards the wiring guard's live surface against a
@@ -25,8 +25,8 @@ import (
 func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	boardDir := fabricengine.BoardDir(l.HubPath)
 
 	names, err := fabricengine.WiredNames(boardDir)

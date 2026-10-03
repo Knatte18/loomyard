@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // fakeInnerProducer is a caller-settable shedengine.ShedProducer stand-in for the wrapped
@@ -48,13 +49,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		commit := &commitRecorder{}
 
 		p := NewDiscussionWrite("Discussion-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Done)
 		if pointer != inner.pointer {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
@@ -74,13 +69,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		commit := &commitRecorder{}
 
 		p := NewDiscussionWrite("Discussion-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if pointer != (shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
@@ -98,13 +87,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		commit := &commitRecorder{}
 
 		p := NewDiscussionWrite("Discussion-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if pointer != inner.pointer {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
@@ -231,13 +214,7 @@ func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {
 				pointer: shedengine.OutputPointer{Path: tt.path, Reason: "the inner cause"},
 			}
 			p := NewDiscussionWrite("Discussion-Write", inner, (&commitRecorder{}).Commit)
-			outcome, pointer, err := p.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if pointer.Reason != "the inner cause" {
 				t.Errorf("Call() Reason = %q; want %q", pointer.Reason, "the inner cause")
 			}

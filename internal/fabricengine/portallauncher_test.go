@@ -13,18 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
-
-// newPortalLauncherTestLocation builds a Location by hand for join-arithmetic
-// assertions, mirroring the field derivation lyxcwd.Resolve performs,
-// without spawning git.
-func newPortalLauncherTestLocation(hub, worktreeRoot, relPath string) *lyxcwd.Location {
-	return &lyxcwd.Location{
-		HubPath:      hub,
-		WorktreeName: filepath.Base(worktreeRoot),
-		AnchorRel:    relPath,
-	}
-}
 
 // wantMenuLauncherName returns the expected menu launcher filename for the
 // current runtime.GOOS, mirroring the GOOS-aware selection in launchers.go
@@ -70,7 +60,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 	t.Parallel()
 
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	worktreeRoot := filepath.Join(hub, "loomyard")
+	const worktreeName = "loomyard"
 
 	t.Run("PortalLink", func(t *testing.T) {
 		t.Parallel()
@@ -78,7 +68,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
+			l := locationkit.Location(hub, worktreeName, ".")
 			slug := "test-slug"
 			got := PortalLink(l, slug)
 			want := filepath.Join(l.HubPath, "_portals", slug)
@@ -90,7 +80,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
+			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
 			slug := "test-slug"
 			got := PortalLink(l, slug)
 			want := filepath.Join(l.HubPath, "_portals", "services", "api", slug)
@@ -102,8 +92,8 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("no collision between different subpaths", func(t *testing.T) {
 			t.Parallel()
 
-			l1 := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
-			l2 := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "web"))
+			l1 := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
+			l2 := locationkit.Location(hub, worktreeName, filepath.Join("services", "web"))
 			slug := "test-slug"
 			link1 := PortalLink(l1, slug)
 			link2 := PortalLink(l2, slug)
@@ -119,7 +109,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at root (backward compat)", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
+			l := locationkit.Location(hub, worktreeName, ".")
 			slug := "test-slug"
 			got := LauncherDir(l, slug)
 			// At root, should still equal Join(launchersDir(), slug)
@@ -132,7 +122,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
+			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
 			slug := "test-slug"
 			got := LauncherDir(l, slug)
 			want := filepath.Join(l.HubPath, "_launchers", "services", "api", slug)
@@ -144,8 +134,8 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("no collision between different subpaths", func(t *testing.T) {
 			t.Parallel()
 
-			l1 := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
-			l2 := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "web"))
+			l1 := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
+			l2 := locationkit.Location(hub, worktreeName, filepath.Join("services", "web"))
 			slug := "test-slug"
 			dir1 := LauncherDir(l1, slug)
 			dir2 := LauncherDir(l2, slug)
@@ -161,7 +151,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
+			l := locationkit.Location(hub, worktreeName, ".")
 			got := menuLauncherPath(l)
 			want := filepath.Join(l.HubPath, "_launchers", wantMenuLauncherName())
 			if got != want {
@@ -172,7 +162,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
+			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
 			got := menuLauncherPath(l)
 			want := filepath.Join(l.HubPath, "_launchers", "services", "api", wantMenuLauncherName())
 			if got != want {
@@ -187,7 +177,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
+			l := locationkit.Location(hub, worktreeName, ".")
 			slug := "test-slug"
 			got, err := launcherSpawnRel(l, slug)
 			if err != nil {
@@ -206,7 +196,7 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
+			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
 			slug := "test-slug"
 			got, err := launcherSpawnRel(l, slug)
 			if err != nil {
@@ -229,8 +219,8 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
-			primeName := filepath.Base(worktreeRoot)
+			l := locationkit.Location(hub, worktreeName, ".")
+			primeName := worktreeName
 			got, err := menuLauncherRel(l, primeName)
 			if err != nil {
 				t.Fatalf("menuLauncherRel returned an unexpected error: %v", err)
@@ -248,8 +238,8 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
-			primeName := filepath.Base(worktreeRoot)
+			l := locationkit.Location(hub, worktreeName, filepath.Join("services", "api"))
+			primeName := worktreeName
 			got, err := menuLauncherRel(l, primeName)
 			if err != nil {
 				t.Fatalf("menuLauncherRel returned an unexpected error: %v", err)
@@ -275,7 +265,7 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), ".")
+	l := locationkit.Location(hub, "prime", ".")
 	const slug = "my-task"
 
 	launcherDir := LauncherDir(l, slug)
@@ -330,7 +320,7 @@ func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 
 	hub := t.TempDir()
 	outside := t.TempDir()
-	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), "escapes")
+	l := locationkit.Location(hub, "prime", "escapes")
 	const slug = "my-task"
 
 	// The victim the escaping link points at: an EMPTY directory, so a nominal os.Remove would
@@ -368,7 +358,7 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), ".")
+	l := locationkit.Location(hub, "prime", ".")
 	const slug = "my-task"
 
 	launcherDir := LauncherDir(l, slug)
@@ -416,7 +406,7 @@ func TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal(t *te
 
 	hub := t.TempDir()
 	outside := t.TempDir()
-	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), "escapes")
+	l := locationkit.Location(hub, "prime", "escapes")
 	const slug = "my-task"
 
 	for _, dir := range []string{launchersDir(l), PortalsDir(l)} {

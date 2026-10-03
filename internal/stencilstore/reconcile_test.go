@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -69,19 +70,9 @@ func TestReconcile_SeedsAbsentFile(t *testing.T) {
 	if !ok || stamp != BodyHash(onDisk) {
 		t.Fatalf("seeded file's stamp = (%q, %v); want it to equal its own BodyHash", stamp, ok)
 	}
-	if !containsPath(written, RelPath("family-one")) {
+	if !slices.Contains(written, RelPath("family-one")) {
 		t.Errorf("Reconcile(...) written = %v; want it to include %q", written, RelPath("family-one"))
 	}
-}
-
-// containsPath reports whether paths contains want.
-func containsPath(paths []string, want string) bool {
-	for _, path := range paths {
-		if path == want {
-			return true
-		}
-	}
-	return false
 }
 
 // seedGitattributesForTest pre-creates baseDir/.gitattributes so a test's own Reconcile call can

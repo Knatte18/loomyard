@@ -42,7 +42,7 @@ type parentNoticeEngine struct {
 }
 
 // Prepare writes the launch script: a valid discussion and support log first, a turn-end event, then a blocking read of the delivery prompt.
-func (e parentNoticeEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+func (e *parentNoticeEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	if len(spec.OutputFiles) != 2 {
 		return shuttleengine.Launch{}, fmt.Errorf("parentNoticeEngine: want exactly 2 output files (decision record, support log), got %d", len(spec.OutputFiles))
 	}
@@ -122,7 +122,7 @@ func TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, parentNoticeEngine{gateRepromptReadEngine: gateRepromptReadEngine{quietSeconds: 3}, noticePath: noticePath}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, &parentNoticeEngine{gateRepromptReadEngine: gateRepromptReadEngine{quietSeconds: 3}, noticePath: noticePath}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	// The same two closures resolveGateSpec builds for the row's "gates" list.
 	reedCfg, err := reedengine.LoadConfig(loc.AnchorPath(), "reed")

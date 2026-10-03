@@ -10,7 +10,6 @@
 package configengine_test
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -66,19 +65,6 @@ func TestLoad_HappyPath(t *testing.T) {
 	}
 }
 
-// captureLog redirects the logger's stderr half into a buffer at Info verbosity for the test and restores the defaults in t.Cleanup.
-func captureLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
-		logger.SetVerbosity(0)
-	})
-	return &buf
-}
-
 // writeConfig creates _lyx/config/ under a fresh temp dir, writes content as module's config file and returns the base dir and the file path.
 func writeConfig(t *testing.T, module, content string) (baseDir, path string) {
 	t.Helper()
@@ -106,7 +92,7 @@ func assertFileUnchanged(t *testing.T, path, want string) {
 }
 
 // assertOneFillLine fails unless the captured log holds exactly one fill line naming the module and the key-path.
-func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) {
+func assertOneFillLine(t *testing.T, buf *logcapture.Buffer, module, keyPath string) {
 	t.Helper()
 	log := buf.String()
 	if n := strings.Count(log, "filled missing keys from template"); n != 1 {
@@ -122,7 +108,7 @@ func assertOneFillLine(t *testing.T, buf *bytes.Buffer, module, keyPath string) 
 
 // TestLoad_MissingKey tests that a template key the file lacks loads at its template default, the file stays byte-identical and one fill line is logged.
 func TestLoad_MissingKey(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	content := "path: custom_path\n"
 	tmpDir, yamlFile := writeConfig(t, "board", content)
 
@@ -147,7 +133,7 @@ func TestLoad_MissingKey(t *testing.T) {
 
 // TestLoad_CompleteFileLogsNoFill tests that a file holding every template key logs no fill line.
 func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	tmpDir, _ := writeConfig(t, "board", "path: a\nhome: b\n")
 
 	if _, err := configengine.Load(tmpDir, "board", []byte("path: _board\nhome: Home.md\n")); err != nil {
@@ -160,7 +146,7 @@ func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
 
 // TestLoad_FillKeepsExtraAndEmptyValues tests that an extra file key survives beside a filled one and that a present empty string and an emptied list are kept rather than refilled.
 func TestLoad_FillKeepsExtraAndEmptyValues(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	template := []byte("name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n")
 	content := "extra_key: extra\nname: \"\"\nlabel: x\nrequire_pr_to_base: []\n"
 	tmpDir, yamlFile := writeConfig(t, "board", content)
@@ -631,7 +617,7 @@ func TestLoadOrTemplate_BothPresent_MatchesLoad(t *testing.T) {
 
 // TestLoadOrTemplate_PresentMissingKey tests that a config file present but missing a template key loads that key at its template default, leaves the file byte-identical and logs one fill line.
 func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	content := "path: custom_path\n"
 	tmpDir, yamlFile := writeConfig(t, "board", content)
 
@@ -653,7 +639,7 @@ func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
 
 // TestLoadOrTemplate_PresentEmpty tests that a present but empty config file loads as the template, is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	tmpDir, yamlFile := writeConfig(t, "board", "")
 
 	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
@@ -674,7 +660,7 @@ func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
 
 // TestLoadOrTemplate_PresentCommentsOnly tests that a present comments-only config file loads as the template, is left untouched and logs one fill line.
 func TestLoadOrTemplate_PresentCommentsOnly(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	content := "# just a comment\n"
 	tmpDir, yamlFile := writeConfig(t, "board", content)
 

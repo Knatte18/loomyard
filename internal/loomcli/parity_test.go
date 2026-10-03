@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -57,12 +58,11 @@ func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
 // false with a "findings" key present is verdictStuck; ok == false without a "findings" key is
 // verdictError. The findings-key presence check is structural, per the envelope-and-exit-contract
 // Shared Decision, never a matter of message wording.
-func cliVerdict(env map[string]any) parityVerdict {
-	ok, _ := env["ok"].(bool)
-	if ok {
+func cliVerdict(env envelope.Envelope) parityVerdict {
+	if env.OK {
 		return verdictDone
 	}
-	if _, hasFindings := env["findings"]; hasFindings {
+	if _, hasFindings := env.Raw["findings"]; hasFindings {
 		return verdictStuck
 	}
 	return verdictError
@@ -138,8 +138,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateDiscussionCmd(), &out, nil)
-			env := decodeSingleEnvelope(t, out.String())
-			cv := cliVerdict(env)
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf(
@@ -198,7 +197,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 // <anchorPath>/_lyx/plan/ whose sole card's Create group targets createTarget and, when useTarget
 // is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with
 // anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own
-// glyphPlanFixture per the duplicate-test-helpers-rather-than-share-them Shared Decision, extended
+// glyphPlanFixture, extended
 // with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the
 // resolve-backed half without the Uses target also tripping the Create-side inversion.
 func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
@@ -240,8 +239,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 }
 
 // writeGlyphRepoForParityTest writes files (keyed by repository-relative path) under dir --
-// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo per the
-// duplicate-test-helpers-rather-than-share-them Shared Decision.
+// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo.
 func writeGlyphRepoForParityTest(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 	for rel, content := range files {
@@ -383,8 +381,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
-			env := decodeSingleEnvelope(t, out.String())
-			cv := cliVerdict(env)
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if tc.wantGate == tc.wantCLI {
 				if pv != cv {
@@ -480,7 +477,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)
-			cv := cliVerdict(decodeSingleEnvelope(t, out.String()))
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf(
@@ -497,7 +494,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 
 // reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
-// It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan per the duplicate-test-helpers-rather-than-share-them Shared Decision.
+// It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {
 	t.Helper()
 	planDir := planparser.PlanDir(anchorPath)
@@ -569,7 +566,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"})
-			cv := cliVerdict(decodeSingleEnvelope(t, out.String()))
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf("parity mismatch: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)", pv, result, err, cv, exitCode, out.String())

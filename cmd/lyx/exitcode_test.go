@@ -6,7 +6,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // setupBoardConfig creates a minimal board.yaml in a temp directory and changes cwd.
@@ -77,13 +77,7 @@ func TestExitCode_UnknownModule(t *testing.T) {
 		t.Fatalf("expected 'unknown command' in output for unknown module; got:\n%s", out.String())
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("run([bogus]) output is not valid JSON: %v; output:\n%s", err, out.String())
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Fatalf("run([bogus]) envelope ok = true; want false")
-	}
+	envelope.RequireErr(t, out.String(), "unknown command")
 }
 
 // TestExitCode_HandlerFailure asserts handler failures exit 1 with JSON {"ok":false} envelope.
@@ -102,8 +96,5 @@ func TestExitCode_HandlerFailure(t *testing.T) {
 		t.Fatalf("expected JSON error envelope; got:\n%s", got)
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &env); err != nil {
-		t.Fatalf("error envelope is not valid JSON: %v\noutput:\n%s", err, got)
-	}
+	envelope.Decode(t, got)
 }

@@ -6,9 +6,10 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestMountedUnknownSubcommand verifies "lyx <group> bogus" exits 1 with "unknown subcommand" in
@@ -30,17 +31,7 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 				t.Errorf("run([%s bogus]) = %d; want 1\noutput: %s", tt.group, code, out.String())
 			}
 
-			var env map[string]any
-			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-				t.Fatalf("run([%s bogus]) output is not valid JSON: %v; output: %q", tt.group, err, out.String())
-			}
-			if ok, _ := env["ok"].(bool); ok {
-				t.Errorf("run([%s bogus]) ok = true; want false", tt.group)
-			}
-			errMsg, _ := env["error"].(string)
-			if !strings.Contains(errMsg, "unknown subcommand") {
-				t.Errorf("run([%s bogus]) error = %q; want \"unknown subcommand\" substring", tt.group, errMsg)
-			}
+			envelope.RequireErr(t, out.String(), "unknown subcommand")
 		})
 	}
 }
@@ -92,11 +83,5 @@ func TestUpdateCommandRemoved(t *testing.T) {
 		t.Errorf("run([update]) = %d; want 1 (update should be unknown)\noutput: %s", code, out.String())
 	}
 
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("run([update]) output is not valid JSON: %v; output: %q", err, out.String())
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("run([update]) ok = true; want false")
-	}
+	envelope.RequireErr(t, out.String(), "")
 }

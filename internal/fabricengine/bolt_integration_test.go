@@ -10,10 +10,8 @@
 // newPlainWeftRepo, whose fixture carries its bare remote nested inside the
 // copied worktree — fine for that fixture's own explicit-pathspec callers, but not for Bolt's
 // wildcard-stage commit, which would otherwise stage that untracked
-// directory and defeat the clean-repo no-op assertion. Reuses this
-// package's own bareBranchSHA helper (defined in
-// coalesce_integration_test.go). Relies on testmain_test.go's package-wide
-// TestMain for HermeticGitEnv(); no new TestMain is added here.
+// directory and defeat the clean-repo no-op assertion.
+// Relies on testmain_test.go's package-wide TestMain for HermeticGitEnv(); no new TestMain is added here.
 
 package fabricengine
 
@@ -83,7 +81,7 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	if err := b.Push(SyncOptions{}); err != nil {
 		t.Fatalf("Push() error = %v; want nil", err)
 	}
-	if got := bareBranchSHA(t, bareRemote, "main"); got != sha {
+	if got := gitkit.RevParse(t, bareRemote, "main"); got != sha {
 		t.Errorf("bare remote main = %q; want it advanced to %q", got, sha)
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -20,7 +21,7 @@ func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 	t.Helper()
 	fx.CLI.geom.WorktreeRoot = fx.Worktree
 	st := fx.initState(t, "master-model")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done", Digest: &websterengine.Digest{Status: "done", HeadSHA: head}}
 	st.PendingAuditFindings = []websterengine.PendingAuditFinding{{ID: "sess/parent-write-1", Class: "parent-write", Detail: "wrote outside the contract", Paths: []string{"base.txt"}}}
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -108,11 +109,11 @@ func TestAcceptAuditCmd_RefusesCommitPastHead(t *testing.T) {
 	if err := os.WriteFile(basePath, []byte("suspect write"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mustGit(t, fx.Worktree, "commit", "-am", "master write")
+	gitkit.Git(t, fx.Worktree, "commit", "-am", "master write")
 	if err := os.WriteFile(basePath, original, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mustGit(t, fx.Worktree, "commit", "-am", "restore content")
+	gitkit.Git(t, fx.Worktree, "commit", "-am", "restore content")
 	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
 	before, err := os.ReadFile(statePath)
 	if err != nil {

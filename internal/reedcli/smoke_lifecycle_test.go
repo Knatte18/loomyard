@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestSmokeUpAddStatusDown boots the substrate, adds a strand, checks status, and tears down.
@@ -303,7 +304,7 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 // clamp against.
 func TestSmokeStatusLineDisplaysRenderedText(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // minimalBurlerConfig returns a Config carrying only the required BurlerRound keys: a run_subdir
@@ -40,8 +41,8 @@ func TestBurlerRoundEntry_HappyPath(t *testing.T) {
 }
 
 // callAndCaptureProfile constructs a BurlerRound entry from cfg and env, drives one Call so
-// env.Burler's fakeBurlerRunner records the Profile and RunOpts it was handed, and returns them.
-// Call's own return values are ignored: fakeBurlerRunner always returns a zero burlerengine.Result
+// env.Burler's shedfake.BurlerRunner records the Profile and RunOpts it was handed, and returns them.
+// Call's own return values are ignored: the unscripted shedfake.BurlerRunner returns a zero burlerengine.Result
 // with a nil error, which BurlerProducer.Call's own outcome switch does not recognise, so Call
 // itself returns a non-nil error on every path here -- that error is not this helper's concern, only
 // what the runner recorded is.
@@ -54,11 +55,11 @@ func callAndCaptureProfile(t *testing.T, name string, cfg Config, env Env) (burl
 
 	_, _, _ = producer.Call(context.Background())
 
-	fake := env.Burler.(*fakeBurlerRunner)
-	if len(fake.profiles) != 1 || len(fake.opts) != 1 {
-		t.Fatalf("fakeBurlerRunner recorded %d profiles and %d opts; want 1 and 1", len(fake.profiles), len(fake.opts))
+	fake := env.Burler.(*shedfake.BurlerRunner)
+	if len(fake.GotProfiles) != 1 || len(fake.GotOpts) != 1 {
+		t.Fatalf("BurlerRunner recorded %d profiles and %d opts; want 1 and 1", len(fake.GotProfiles), len(fake.GotOpts))
 	}
-	return fake.profiles[0], fake.opts[0]
+	return fake.GotProfiles[0], fake.GotOpts[0]
 }
 
 func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {

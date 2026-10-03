@@ -4,22 +4,20 @@
 // HealthCause, asserting Healthy returns the typed cause and its fabric-worded Detail — the
 // equivalence loomengine/preflight.go now switches on instead of substring-matching a reason string.
 //
-// Package fabricengine_test to reuse the external-test-package fixture idiom of
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestHealthy_ReasonCauses exercises all five HealthCause values against a real paired fixture, one
@@ -28,14 +26,14 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("BranchMismatch", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		slug := filepath.Base(fixture.Hub)
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		slug := filepath.Base(h.PrimeWorktree())
 
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		gitkit.MustRun(t, fixture.Hub, "git", "checkout", "-b", "off-branch")
+		gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "off-branch")
 
 		ok, reason, err := fabricengine.Healthy(l)
 		if err != nil {
@@ -53,9 +51,9 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("ConfigLoadFailed", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		slug := filepath.Base(fixture.Hub)
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		slug := filepath.Base(h.PrimeWorktree())
 
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
@@ -84,9 +82,9 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("JunctionMissing", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		slug := filepath.Base(fixture.Hub)
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		slug := filepath.Base(h.PrimeWorktree())
 
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
@@ -112,9 +110,9 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("NotAJunction", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		slug := filepath.Base(fixture.Hub)
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		slug := filepath.Base(h.PrimeWorktree())
 
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
@@ -143,9 +141,9 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 	t.Run("JunctionPointsElsewhere", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		slug := filepath.Base(fixture.Hub)
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		slug := filepath.Base(h.PrimeWorktree())
 
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
@@ -184,14 +182,11 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	weftWorktree := fabricengine.WeftWorktree(l)
-	warpBranch, err := readBranchForTest(t, l.WorktreePath())
-	if err != nil {
-		t.Fatalf("read warp branch: %v", err)
-	}
+	warpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	weftBranch := fabricengine.WeftBranchName(warpBranch)
 
 	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
@@ -218,17 +213,4 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	if !ok {
 		t.Errorf("Healthy = false (reason %+v); want true — the pair is correctly wired and paired", reason)
 	}
-}
-
-// readBranchForTest reads the current branch of the worktree at path for test setup.
-func readBranchForTest(t *testing.T, path string) (string, error) {
-	t.Helper()
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, path)
-	if err != nil {
-		return "", err
-	}
-	if exitCode != 0 {
-		return "", os.ErrInvalid
-	}
-	return strings.TrimSpace(stdout), nil
 }

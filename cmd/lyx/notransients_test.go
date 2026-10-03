@@ -9,8 +9,7 @@
 // It stays untagged: every constructor exercised here is pure filepath.Join arithmetic over a
 // hand-built *lyxcwd.Location, so no process is spawned and no fixture tree is copied, per the
 // Test Tier Purity Invariant.
-// It builds its own fixture locally rather than reaching for constructoranchoring_test.go's
-// unexported anchoringFixture, so neither file constrains the other.
+// Its locations come from locationkit.Location, the same builder constructoranchoring_test.go uses.
 package main
 
 import (
@@ -25,19 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// notransientsFixture builds a synthetic *lyxcwd.Location by hand, mirroring the field
-// derivation Resolve performs, without spawning git.
-func notransientsFixture(hubPath, worktreeName, anchorRel string) *lyxcwd.Location {
-	return &lyxcwd.Location{
-		HubPath:      hubPath,
-		WorktreeName: worktreeName,
-		AnchorRel:    anchorRel,
-	}
-}
 
 // namedPath pairs a constructor's name (for failure messages) with its resolved path.
 type namedPath struct {
@@ -122,7 +112,7 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 
 	for _, fx := range fixtures {
 		t.Run(fx.name, func(t *testing.T) {
-			l := notransientsFixture(hub, "repo", fx.anchorRel)
+			l := locationkit.Location(hub, "repo", fx.anchorRel)
 			lyxRoot := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName)
 			dotLyxRoot := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName)
 

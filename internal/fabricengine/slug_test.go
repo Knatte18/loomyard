@@ -5,12 +5,11 @@
 package fabricengine
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
-// TestValidateWorktreeSlug covers every rejection class plus the accepting case, so a slug that can
-// create a booby-trapped pair can never be handed to a teardown verb either.
 func TestValidateWorktreeSlug(t *testing.T) {
 	t.Parallel()
 
@@ -57,8 +56,8 @@ func TestValidateWorktreeSlug(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErrSubstr) {
 				t.Errorf("validateWorktreeSlug(%q) = %v; want error containing %q", tt.slug, err, tt.wantErrSubstr)
 			}
-			if !strings.Contains(err.Error(), "invalid slug") {
-				t.Errorf("validateWorktreeSlug(%q) = %v; want error containing %q", tt.slug, err, "invalid slug")
+			if !errors.Is(err, ErrInvalidSlug) {
+				t.Errorf("validateWorktreeSlug(%q) = %v; want errors.Is ErrInvalidSlug", tt.slug, err)
 			}
 		})
 	}

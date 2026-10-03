@@ -15,9 +15,7 @@
 // two halves of one rule, merge a dir/dir collision and refuse every other kind.
 //
 // Package fabricengine_test to reuse gitkit.GitStatusPorcelain; shares the single TestMain in
-// testmain_test.go. readWeftExcludeLines resolves the weft-side exclude file the same way
-// seedWeftArtifactExcludes does, mirroring junction_pattern_integration_test.go's readExcludeLines
-// for the warp side.
+// testmain_test.go.
 //
 // Every case in this file builds its hub via hubforge.NewHub, whose CloneAndWire call already wires
 // the prime pair's .lyx junction (and seeds both sides' git-exclude) before any test body runs —
@@ -35,7 +33,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -54,32 +51,6 @@ func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
 		t.Fatalf("reset .lyx junction at %s: %v", link, err)
 	}
 	return link
-}
-
-// readWeftExcludeLines resolves and reads a weft worktree's .git/info/exclude file, mirroring the
-// resolution logic seedWeftArtifactExcludes uses (git rev-parse --git-path info/exclude, joined with
-// the weft path if relative).
-func readWeftExcludeLines(t *testing.T, weftPath string) []string {
-	t.Helper()
-
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, weftPath)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("git rev-parse --git-path info/exclude in %s failed: %v (exit %d)", weftPath, err, exitCode)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(weftPath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		t.Fatalf("read weft exclude file: %v", err)
-	}
-	return strings.Split(string(content), "\n")
 }
 
 // TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires covers (a): wiring creates the .lyx
@@ -130,12 +101,12 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 	}
 
 	warpPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lyxdirs.DotLyxDirName)
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, warpPattern) {
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); !containsLine(lines, warpPattern) {
 		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", warpPattern, lines)
 	}
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	if lines := readWeftExcludeLines(t, weftPath); !containsLine(lines, lyxdirs.DotLyxDirName+"/") {
+	if lines := gitkit.ExcludeLines(t, weftPath); !containsLine(lines, lyxdirs.DotLyxDirName+"/") {
 		t.Fatalf("weft .git/info/exclude does not contain %q after WireJunctions: %v", lyxdirs.DotLyxDirName+"/", lines)
 	}
 
@@ -149,7 +120,7 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 	if _, statErr := os.Lstat(dotLyx.Link); !os.IsNotExist(statErr) {
 		t.Errorf(".lyx junction %s still exists after UnwireJunctions", dotLyx.Link)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, lyxdirs.DotLyxDirName) {
+	if lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)); containsLine(lines, lyxdirs.DotLyxDirName) {
 		t.Errorf("warp .git/info/exclude still contains %q after UnwireJunctions: %v", lyxdirs.DotLyxDirName, lines)
 	}
 }

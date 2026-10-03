@@ -12,12 +12,22 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
+
+// ErrInvalidSlug matches, under errors.Is, every refusal validateWorktreeSlug returns.
+// The refusal's own text still carries the specific reason.
+var ErrInvalidSlug = errors.New("invalid slug")
+
+// invalidSlug builds a validateWorktreeSlug refusal that renders the formatted reason and matches ErrInvalidSlug.
+func invalidSlug(format string, args ...any) error {
+	return &sentinelError{sentinel: ErrInvalidSlug, msg: fmt.Sprintf(format, args...)}
+}
 
 // validateWorktreeSlug reports whether slug may name a warp↔weft worktree pair, returning a
 // specific error when it may not.
@@ -31,11 +41,11 @@ import (
 // Both separators are rejected on every platform — a slash-free contract must not depend on GOOS.
 func validateWorktreeSlug(slug string, junctionNames []string) error {
 	if strings.TrimSpace(slug) == "" {
-		return fmt.Errorf("invalid slug %q: a slug must not be empty", slug)
+		return invalidSlug("invalid slug %q: a slug must not be empty", slug)
 	}
 
 	if strings.ContainsAny(slug, `/\`) {
-		return fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
+		return invalidSlug("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
 	}
 
 	// "." and ".." carry no separator and name no reserved directory, so every check around this one
@@ -45,15 +55,15 @@ func validateWorktreeSlug(slug string, junctionNames []string) error {
 	// A slug must denote a directory BELOW its parent, never the parent or the parent's parent, so the
 	// rule is that joining it must not move anywhere: filepath.Clean must leave it untouched.
 	if slug != filepath.Clean(slug) || slug == "." || slug == ".." {
-		return fmt.Errorf("invalid slug %q: a slug must name a directory, not a relative path element like \".\" or \"..\"", slug)
+		return invalidSlug("invalid slug %q: a slug must name a directory, not a relative path element like \".\" or \"..\"", slug)
 	}
 
 	if strings.HasSuffix(slug, weftname.Suffix) {
-		return fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
+		return invalidSlug("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
 	}
 
 	if IsReservedHubName(slug, junctionNames) {
-		return fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
+		return invalidSlug("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 
 	return nil

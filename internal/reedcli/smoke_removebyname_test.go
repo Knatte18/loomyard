@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestSmokeRemoveByNameDetachedFromInsideStrand runs `lyx reed remove --name <n> --detach` from
@@ -19,7 +20,7 @@ import (
 // pane is laid out at full height.
 func TestSmokeRemoveByNameDetachedFromInsideStrand(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

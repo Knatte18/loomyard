@@ -16,10 +16,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
+// planCollapsedRows and planMinFullRows are the layout parameters the planLayout tests pin on the engine and hand render.Rules as the expectation,
+// so the two sides cannot drift apart silently.
+const (
+	planCollapsedRows = 2
+	planMinFullRows   = 3
+)
+
 func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = planCollapsedRows, planMinFullRows
 
 	// The same root->mid->active below-parent chain rules_test.go's
 	// belowParentChain fixture uses: root stays full, mid collapses
@@ -35,7 +41,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 		{GUID: "root", PaneID: "%1", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "mid", Parent: "root", PaneID: "%2", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "active", Parent: "mid", PaneID: "%3", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 100, H: 21}, render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -55,7 +61,7 @@ func TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable(t *testing.T) {
 func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 80, 12
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = planCollapsedRows, planMinFullRows
 
 	st := &ReedState{Strands: []Strand{
 		{GUID: "only", PaneID: "%7", Display: render.Display{Anchor: render.AnchorBelowParent}},
@@ -70,7 +76,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	wantLayout, wantFocus, err := render.Rules([]render.Strand{
 		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
 		{GUID: "hid", PaneID: "%8", Live: true, Display: render.Display{Anchor: render.AnchorHidden}},
-	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{CollapsedRows: 2, MinFullRows: 3}, nil)
+	}, render.Box{X: 0, Y: 0, W: 80, H: 12}, render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows}, nil)
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -83,8 +89,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 // filter: a stale absent Selvage must render as if no Selvage existed.
 func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = planCollapsedRows, planMinFullRows
 	e.cfg.Selvage.HeightRows = 1
 
 	strands := []Strand{
@@ -106,7 +111,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	wantLayout, wantFocus, err := render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
-		render.Params{CollapsedRows: 2, MinFullRows: 3},
+		render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows},
 		[]string{"%1", "%2"})
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
@@ -124,7 +129,7 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	}
 	wantLayout, _, err = render.Rules(renderStrands,
 		render.Box{X: 0, Y: 0, W: 100, H: 21},
-		render.Params{CollapsedRows: 2, MinFullRows: 3, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
+		render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows, Selvage: render.Selvage{PaneID: "%9", HeightRows: 1}},
 		[]string{"%9", "%1", "%2"})
 	if err != nil {
 		t.Fatalf("render.Rules() with Selvage unexpected error: %v", err)
@@ -140,13 +145,9 @@ func TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 func TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 999, 111
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
+	e.cfg.CollapsedRows, e.cfg.MinFullRows = planCollapsedRows, planMinFullRows
 
-	hookCalled := false
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		hookCalled = true
-		return "", errors.New("planLayout must never touch tmux")
-	}
+	fake := installFakeTmux(t, e)
 
 	toldBox := render.Box{X: 0, Y: 0, W: 80, H: 12}
 	st := &ReedState{Strands: []Strand{
@@ -158,13 +159,13 @@ func TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
-	if hookCalled {
-		t.Error("planLayout() invoked the tmux hook; want zero tmux round trips")
+	if calls := fake.Calls(); len(calls) != 0 {
+		t.Errorf("planLayout() issued tmux calls %v; want zero tmux round trips", calls)
 	}
 
 	wantLayout, _, err := render.Rules([]render.Strand{
 		{GUID: "only", PaneID: "%7", Live: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}, toldBox, render.Params{CollapsedRows: 2, MinFullRows: 3}, []string{"%7"})
+	}, toldBox, render.Params{CollapsedRows: planCollapsedRows, MinFullRows: planMinFullRows}, []string{"%7"})
 	if err != nil {
 		t.Fatalf("render.Rules() unexpected error: %v", err)
 	}
@@ -227,14 +228,9 @@ func TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane(t *testing.T) {
 // select-layout, and return nil — exactly like applyLayoutLocked did before this batch.
 func TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult(t *testing.T) {
 	e := newTestEngine(t)
-	hookCalled := false
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		hookCalled = true
-		return "", errors.New("must not be called")
-	}
+	fake := installFakeTmux(t, e)
 
 	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		hookCalled = false
 		st := &ReedState{Strands: []Strand{
 			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		}}
@@ -245,13 +241,12 @@ func TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult(t *testing.T) {
 		if got != (applyResult{}) {
 			t.Errorf("applyLayoutLockedOpts() = %+v, want the zero applyResult", got)
 		}
-		if hookCalled {
-			t.Error("applyLayoutLockedOpts() issued a tmux call, want none")
+		if calls := fake.Calls(); len(calls) != 0 {
+			t.Errorf("applyLayoutLockedOpts() issued tmux calls %v, want none", calls)
 		}
 	})
 
 	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		hookCalled = false
 		st := &ReedState{}
 		got, err := e.applyLayoutLockedOpts(st, []LivePane{{ID: "%1"}, {ID: "%2"}}, applyOpts{})
 		if err != nil {
@@ -260,8 +255,8 @@ func TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult(t *testing.T) {
 		if got != (applyResult{}) {
 			t.Errorf("applyLayoutLockedOpts() = %+v, want the zero applyResult", got)
 		}
-		if hookCalled {
-			t.Error("applyLayoutLockedOpts() issued a tmux call, want none")
+		if calls := fake.Calls(); len(calls) != 0 {
+			t.Errorf("applyLayoutLockedOpts() issued tmux calls %v, want none", calls)
 		}
 	})
 }
@@ -270,26 +265,19 @@ func TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult(t *testing.T) {
 // SkipFocus issues select-layout and no select-pane, while the zero applyOpts on the same fixture
 // issues both.
 func TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane(t *testing.T) {
-	newFixture := func(t *testing.T) (*Engine, *ReedState, []LivePane, *[]string) {
+	newFixture := func(t *testing.T) (*Engine, *ReedState, []LivePane, *fakeTmux) {
 		e := newTestEngine(t)
-		e.cfg.Width, e.cfg.Height = 100, 21
-		var calls []string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, args[0])
-			if args[0] == "display-message" {
-				return "100 21", nil
-			}
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
+		fake.answer("display-message", "100 21", nil)
 		st := &ReedState{Strands: []Strand{
 			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
 		}}
 		live := []LivePane{{ID: "%1"}, {ID: "%2"}}
-		return e, st, live, &calls
+		return e, st, live, fake
 	}
 
 	t.Run("SkipFocusTrue", func(t *testing.T) {
-		e, st, live, calls := newFixture(t)
+		e, st, live, fake := newFixture(t)
 		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true})
 		if err != nil {
 			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
@@ -297,16 +285,16 @@ func TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane(t *testing.T) {
 		if !got.Applied {
 			t.Errorf("applyLayoutLockedOpts() Applied = false, want true")
 		}
-		if !containsArg(*calls, "select-layout") {
-			t.Errorf("calls = %v, want select-layout", *calls)
+		if !containsArg(fake.Sequence(), "select-layout") {
+			t.Errorf("calls = %v, want select-layout", fake.Sequence())
 		}
-		if containsArg(*calls, "select-pane") {
-			t.Errorf("calls = %v, want no select-pane", *calls)
+		if containsArg(fake.Sequence(), "select-pane") {
+			t.Errorf("calls = %v, want no select-pane", fake.Sequence())
 		}
 	})
 
 	t.Run("ZeroOptsIssuesBoth", func(t *testing.T) {
-		e, st, live, calls := newFixture(t)
+		e, st, live, fake := newFixture(t)
 		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{})
 		if err != nil {
 			t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
@@ -314,11 +302,11 @@ func TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane(t *testing.T) {
 		if !got.Applied {
 			t.Errorf("applyLayoutLockedOpts() Applied = false, want true")
 		}
-		if !containsArg(*calls, "select-layout") {
-			t.Errorf("calls = %v, want select-layout", *calls)
+		if !containsArg(fake.Sequence(), "select-layout") {
+			t.Errorf("calls = %v, want select-layout", fake.Sequence())
 		}
-		if !containsArg(*calls, "select-pane") {
-			t.Errorf("calls = %v, want select-pane", *calls)
+		if !containsArg(fake.Sequence(), "select-pane") {
+			t.Errorf("calls = %v, want select-pane", fake.Sequence())
 		}
 	})
 }
@@ -327,26 +315,20 @@ func TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane(t *testing.T) {
 // box suppresses select-layout and reports Applied: false with the observed box; a differing box
 // still applies.
 func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
-	newFixture := func(t *testing.T, answer string) (*Engine, *ReedState, []LivePane, *[]string) {
+	newFixture := func(t *testing.T, answer string) (*Engine, *ReedState, []LivePane, *fakeTmux) {
 		e := newTestEngine(t)
 		e.cfg.Width, e.cfg.Height = 999, 111
-		var calls []string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, args[0])
-			if args[0] == "display-message" {
-				return answer, nil
-			}
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
+		fake.answer("display-message", answer, nil)
 		st := &ReedState{Strands: []Strand{
 			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		}}
 		live := []LivePane{{ID: "%1"}, {ID: "%2"}}
-		return e, st, live, &calls
+		return e, st, live, fake
 	}
 
 	t.Run("EqualBoxSkips", func(t *testing.T) {
-		e, st, live, calls := newFixture(t, "100 21")
+		e, st, live, fake := newFixture(t, "100 21")
 		box := render.Box{X: 0, Y: 0, W: 100, H: 21}
 		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipWhenBoxEquals: &box})
 		if err != nil {
@@ -358,13 +340,13 @@ func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
 		if !got.BoxIsLive || got.Box != box {
 			t.Errorf("applyLayoutLockedOpts() = %+v, want BoxIsLive true and Box %+v", got, box)
 		}
-		if containsArg(*calls, "select-layout") {
-			t.Errorf("calls = %v, want no select-layout", *calls)
+		if containsArg(fake.Sequence(), "select-layout") {
+			t.Errorf("calls = %v, want no select-layout", fake.Sequence())
 		}
 	})
 
 	t.Run("DifferingBoxApplies", func(t *testing.T) {
-		e, st, live, calls := newFixture(t, "80 24")
+		e, st, live, fake := newFixture(t, "80 24")
 		box := render.Box{X: 0, Y: 0, W: 100, H: 21}
 		got, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipWhenBoxEquals: &box})
 		if err != nil {
@@ -373,8 +355,8 @@ func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
 		if !got.Applied || !got.BoxIsLive {
 			t.Errorf("applyLayoutLockedOpts() = %+v, want Applied true and BoxIsLive true", got)
 		}
-		if !containsArg(*calls, "select-layout") {
-			t.Errorf("calls = %v, want select-layout", *calls)
+		if !containsArg(fake.Sequence(), "select-layout") {
+			t.Errorf("calls = %v, want select-layout", fake.Sequence())
 		}
 	})
 
@@ -382,15 +364,8 @@ func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
 	// when it happens to equal SkipWhenBoxEquals.
 	t.Run("DegradedFallbackBoxNeverSatisfiesGuard", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.cfg.Width, e.cfg.Height = 100, 21
-		var calls []string
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			calls = append(calls, args[0])
-			if args[0] == "display-message" {
-				return "", errors.New("boom")
-			}
-			return "", nil
-		}
+		fake := installFakeTmux(t, e)
+		fake.answer("display-message", "", errors.New("boom"))
 		st := &ReedState{Strands: []Strand{
 			{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
 		}}
@@ -404,8 +379,8 @@ func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
 		if got.BoxIsLive {
 			t.Errorf("applyLayoutLockedOpts() BoxIsLive = true, want false (a fallback box is not an observation)")
 		}
-		if !containsArg(calls, "select-layout") {
-			t.Errorf("calls = %v, want select-layout still issued (the guard must not fire on a degraded box)", calls)
+		if !containsArg(fake.Sequence(), "select-layout") {
+			t.Errorf("calls = %v, want select-layout still issued (the guard must not fire on a degraded box)", fake.Sequence())
 		}
 	})
 }
@@ -415,16 +390,8 @@ func TestApplyLayoutLockedOpts_SkipWhenBoxEquals(t *testing.T) {
 // focus half, unabbreviated.
 func TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane(t *testing.T) {
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-
-	var calls []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		calls = append(calls, args[0])
-		if args[0] == "display-message" {
-			return "100 21", nil
-		}
-		return "", nil
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "100 21", nil)
 
 	st := &ReedState{Strands: []Strand{
 		{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
@@ -435,11 +402,11 @@ func TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane(t *te
 		t.Fatalf("applyLayoutLocked() = %v, want nil", err)
 	}
 
-	if !containsArg(calls, "select-layout") {
-		t.Errorf("applyLayoutLocked() calls = %v, want select-layout", calls)
+	if !containsArg(fake.Sequence(), "select-layout") {
+		t.Errorf("applyLayoutLocked() calls = %v, want select-layout", fake.Sequence())
 	}
-	if !containsArg(calls, "select-pane") {
-		t.Errorf("applyLayoutLocked() calls = %v, want select-pane", calls)
+	if !containsArg(fake.Sequence(), "select-pane") {
+		t.Errorf("applyLayoutLocked() calls = %v, want select-pane", fake.Sequence())
 	}
 }
 
@@ -465,48 +432,14 @@ func TestAnyPlacedStrand(t *testing.T) {
 	}
 }
 
-// applyHookRecorder captures every call applyLayoutLocked issues through the execHook seam, in order,
-// so a test can discriminate on the recorded call sequence rather than on call count alone. setHookArgvs
-// holds the full argv of every set-hook call, in call order, alongside sequence's "set-hook" entries.
-type applyHookRecorder struct {
-	sequence     []string
-	setHookArgvs [][]string
-}
-
-// newApplyRecordingHook builds the execHook closure a test installs on e.tmux, recording every call
-// into rec and answering select-layout/select-pane/set-hook with success — the fixture apply_test.go
-// lacked before this card, built from scratch rather than extending an existing single-purpose
-// closure.
-func newApplyRecordingHook(rec *applyHookRecorder) func(capture bool, args ...string) (string, error) {
-	return func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "select-layout":
-			rec.sequence = append(rec.sequence, "select-layout")
-			return "", nil
-		case "select-pane":
-			rec.sequence = append(rec.sequence, "select-pane")
-			return "", nil
-		case "set-hook":
-			rec.sequence = append(rec.sequence, "set-hook")
-			rec.setHookArgvs = append(rec.setHookArgvs, append([]string{}, args...))
-			return "", nil
-		default:
-			return "", nil
-		}
-	}
-}
-
 // TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout pins the install statement's position: a
 // successful apply issues the set-hook clear and pin rebuild after select-layout and before
 // select-pane, discriminated on the recorded call sequence.
 func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 	e.cfg.Selvage.HeightRows = 1
 
-	rec := &applyHookRecorder{}
-	e.tmux.execHook = newApplyRecordingHook(rec)
+	fake := installFakeTmux(t, e)
 
 	st := &ReedState{
 		SelvagePaneID: "%9",
@@ -521,31 +454,32 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 		t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
 	}
 
+	sequence := fake.Sequence("select-layout", "select-pane", "set-hook")
 	wantMinLen := 3 // select-layout, at least the set-hook clear, select-pane
-	if len(rec.sequence) < wantMinLen {
-		t.Fatalf("sequence = %v, want at least %d entries", rec.sequence, wantMinLen)
+	if len(sequence) < wantMinLen {
+		t.Fatalf("sequence = %v, want at least %d entries", sequence, wantMinLen)
 	}
-	if rec.sequence[0] != "select-layout" {
-		t.Fatalf("sequence[0] = %q, want select-layout", rec.sequence[0])
+	if sequence[0] != "select-layout" {
+		t.Fatalf("sequence[0] = %q, want select-layout", sequence[0])
 	}
-	if rec.sequence[1] != "set-hook" {
-		t.Fatalf("sequence[1] = %q, want set-hook (the install statement right after select-layout)", rec.sequence[1])
+	if sequence[1] != "set-hook" {
+		t.Fatalf("sequence[1] = %q, want set-hook (the install statement right after select-layout)", sequence[1])
 	}
-	if rec.sequence[len(rec.sequence)-1] != "select-pane" {
-		t.Fatalf("sequence tail = %q, want select-pane after every set-hook call", rec.sequence[len(rec.sequence)-1])
+	if sequence[len(sequence)-1] != "select-pane" {
+		t.Fatalf("sequence tail = %q, want select-pane after every set-hook call", sequence[len(sequence)-1])
 	}
-	for _, step := range rec.sequence[1 : len(rec.sequence)-1] {
+	for _, step := range sequence[1 : len(sequence)-1] {
 		if step != "set-hook" {
-			t.Errorf("sequence = %v, want only set-hook calls between select-layout and select-pane", rec.sequence)
+			t.Errorf("sequence = %v, want only set-hook calls between select-layout and select-pane", sequence)
 		}
 	}
 
-	if len(rec.setHookArgvs) == 0 {
+	setHooks := fake.ArgvFor("set-hook")
+	if len(setHooks) == 0 {
 		t.Fatal("no set-hook calls recorded, want at least the clear")
 	}
-	clear := rec.setHookArgvs[0]
-	if containsArg(clear, "-u") == false {
-		t.Errorf("first set-hook argv = %v, want the -u clear", clear)
+	if !containsArg(setHooks[0], "-u") {
+		t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
 	}
 }
 
@@ -556,16 +490,13 @@ func TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout(t *testing.T) {
 // unconditional, while the watchdog's touch entry rides watchdog on/off, so a watchdog: on session
 // with nothing to pin still gets told about a resize.
 func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
-	newZeroPinApply := func(t *testing.T, watchdog string) (*Engine, *applyHookRecorder) {
+	newZeroPinApply := func(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
 		t.Helper()
 		e := newTestEngine(t)
-		e.cfg.Width, e.cfg.Height = 100, 21
-		e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
 		e.cfg.Selvage.HeightRows = 1
 		e.cfg.Watchdog = watchdog
 
-		rec := &applyHookRecorder{}
-		e.tmux.execHook = newApplyRecordingHook(rec)
+		fake := installFakeTmux(t, e)
 
 		st := &ReedState{
 			SelvagePaneID: "%9", // absent from live below, so the mapping blanks it
@@ -580,18 +511,19 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 		if err := e.applyLayoutLocked(st, live); err != nil {
 			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
 		}
-		return e, rec
+		return e, fake
 	}
 
-	assertClearFirstAndNoPin := func(t *testing.T, rec *applyHookRecorder) {
+	assertClearFirstAndNoPin := func(t *testing.T, fake *fakeTmux) {
 		t.Helper()
-		if len(rec.setHookArgvs) == 0 {
+		setHooks := fake.ArgvFor("set-hook")
+		if len(setHooks) == 0 {
 			t.Fatal("no set-hook calls recorded, want at least the unconditional clear")
 		}
-		if !containsArg(rec.setHookArgvs[0], "-u") {
-			t.Errorf("first set-hook argv = %v, want the -u clear", rec.setHookArgvs[0])
+		if !containsArg(setHooks[0], "-u") {
+			t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
 		}
-		for i, argv := range rec.setHookArgvs {
+		for i, argv := range setHooks {
 			if strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
 				t.Errorf("set-hook argv[%d] = %v, want no resize-pane entry on a zero-pin plan", i, argv)
 			}
@@ -599,10 +531,10 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 	}
 
 	t.Run("WatchdogOffIsTheClearAlone", func(t *testing.T) {
-		_, rec := newZeroPinApply(t, "off")
-		assertClearFirstAndNoPin(t, rec)
-		if len(rec.setHookArgvs) != 1 {
-			t.Fatalf("recorded %d set-hook calls, want exactly 1 (the unconditional clear): %v", len(rec.setHookArgvs), rec.setHookArgvs)
+		_, fake := newZeroPinApply(t, "off")
+		assertClearFirstAndNoPin(t, fake)
+		if setHooks := fake.ArgvFor("set-hook"); len(setHooks) != 1 {
+			t.Fatalf("recorded %d set-hook calls, want exactly 1 (the unconditional clear): %v", len(setHooks), setHooks)
 		}
 	})
 
@@ -610,12 +542,13 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("the hook is never installed on Windows")
 		}
-		e, rec := newZeroPinApply(t, "on")
-		assertClearFirstAndNoPin(t, rec)
-		if len(rec.setHookArgvs) != 2 {
-			t.Fatalf("recorded %d set-hook calls, want exactly 2 (the clear plus the resize-signal entry): %v", len(rec.setHookArgvs), rec.setHookArgvs)
+		e, fake := newZeroPinApply(t, "on")
+		assertClearFirstAndNoPin(t, fake)
+		setHooks := fake.ArgvFor("set-hook")
+		if len(setHooks) != 2 {
+			t.Fatalf("recorded %d set-hook calls, want exactly 2 (the clear plus the resize-signal entry): %v", len(setHooks), setHooks)
 		}
-		signal := rec.setHookArgvs[1]
+		signal := setHooks[1]
 		want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 		if signal[len(signal)-1] != want {
 			t.Errorf("second set-hook body = %q, want reed's own touch command %q", signal[len(signal)-1], want)
@@ -628,47 +561,29 @@ func TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear(t *testing.T) {
 // previously installed array survives a guard-skip.
 func TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall(t *testing.T) {
 	e := newTestEngine(t)
+	fake := installFakeTmux(t, e)
+	fake.mustNotCall("select-layout", "select-pane", "set-hook")
 
 	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		rec := &applyHookRecorder{}
-		e.tmux.execHook = newApplyRecordingHook(rec)
 		st := &ReedState{Strands: []Strand{{GUID: "only", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}}
 
 		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}}); err != nil {
 			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
 		}
-		if len(rec.sequence) != 0 {
-			t.Errorf("sequence = %v, want zero calls (including no clear)", rec.sequence)
-		}
 	})
 
 	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		rec := &applyHookRecorder{}
-		e.tmux.execHook = newApplyRecordingHook(rec)
 		st := &ReedState{}
 
 		if err := e.applyLayoutLocked(st, []LivePane{{ID: "%1"}, {ID: "%2"}}); err != nil {
 			t.Fatalf("applyLayoutLocked() unexpected error: %v", err)
 		}
-		if len(rec.sequence) != 0 {
-			t.Errorf("sequence = %v, want zero calls (including no clear)", rec.sequence)
-		}
 	})
 }
 
-// TestApplyLayoutLocked_SetHookErrorDoesNotFailApply pins hook-failure-is-non-fatal-everywhere: a
-// set-hook returning an error does not make applyLayoutLocked return an error.
 func TestApplyLayoutLocked_SetHookErrorDoesNotFailApply(t *testing.T) {
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
-	e.cfg.CollapsedRows, e.cfg.MinFullRows = 2, 3
-
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		if args[0] == "set-hook" {
-			return "", errors.New("boom")
-		}
-		return "", nil
-	}
+	installFakeTmux(t, e).answer("set-hook", "", errors.New("boom"))
 
 	st := &ReedState{Strands: []Strand{
 		{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},

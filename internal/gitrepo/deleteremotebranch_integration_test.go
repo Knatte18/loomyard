@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
@@ -30,26 +31,15 @@ func TestDeleteRemoteBranch_ExistingBranch_DeletesAndReportsTrue(t *testing.T) {
 	}
 
 	const branch = "feature-x"
-	if _, _, code, err := runGit(t, cloneAPath, "checkout", "-b", branch); err != nil || code != 0 {
-		t.Fatalf("git checkout -b %s error = %v, code = %d", branch, err, code)
-	}
-	writeFile(t, cloneAPath, "feature.txt", "from feature-x")
-	commitAll(t, cloneAPath, "commit on feature-x")
-	if _, _, code, err := runGit(t, cloneAPath, "push", "origin", branch); err != nil || code != 0 {
-		t.Fatalf("git push origin %s error = %v, code = %d", branch, err, code)
-	}
+	gitkit.Git(t, cloneAPath, "checkout", "-b", branch)
+	gitkit.CommitFile(t, cloneAPath, "feature.txt", "from feature-x", "commit on feature-x")
+	gitkit.Git(t, cloneAPath, "push", "origin", branch)
 
 	// Confirm the bare remote holds the branch before the call, so the
 	// assertion below actually proves deletion rather than absence. The bare
 	// remote path is passed as ls-remote's explicit target since a bare repo
 	// has no "origin" of its own to default to.
-	lsOut, _, code, err := runGit(t, container, "ls-remote", "--heads", bareRemote)
-	if err != nil {
-		t.Fatalf("git ls-remote --heads error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git ls-remote --heads exited %d", code)
-	}
+	lsOut := remoteHeads(t, container, bareRemote)
 	if !strings.Contains(lsOut, "refs/heads/"+branch) {
 		t.Fatalf("bare remote heads before delete = %q; want it to contain refs/heads/%s", lsOut, branch)
 	}
@@ -62,13 +52,7 @@ func TestDeleteRemoteBranch_ExistingBranch_DeletesAndReportsTrue(t *testing.T) {
 		t.Errorf("DeleteRemoteBranch(%q) deleted = false; want true", branch)
 	}
 
-	lsOut, _, code, err = runGit(t, container, "ls-remote", "--heads", bareRemote)
-	if err != nil {
-		t.Fatalf("git ls-remote --heads error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git ls-remote --heads exited %d", code)
-	}
+	lsOut = remoteHeads(t, container, bareRemote)
 	if strings.Contains(lsOut, "refs/heads/"+branch) {
 		t.Errorf("bare remote heads after delete = %q; want it to no longer contain refs/heads/%s", lsOut, branch)
 	}
@@ -119,9 +103,7 @@ func TestDeleteRemoteBranch_UnreachableRemote_ReturnsError(t *testing.T) {
 	}
 
 	missing := filepath.Join(container, "does-not-exist.git")
-	if _, _, code, err := runGit(t, cloneAPath, "remote", "set-url", "origin", missing); err != nil || code != 0 {
-		t.Fatalf("git remote set-url origin error = %v, code = %d", err, code)
-	}
+	gitkit.Git(t, cloneAPath, "remote", "set-url", "origin", missing)
 
 	deleted, err := repoA.DeleteRemoteBranch("origin", "feature-x")
 	if err == nil {
@@ -136,30 +118,17 @@ func TestDeleteRemoteBranch_UnreachableRemote_ReturnsError(t *testing.T) {
 func pushFeatureBranch(t *testing.T, clonePath, branch string) string {
 	t.Helper()
 
-	if _, _, code, err := runGit(t, clonePath, "checkout", "-b", branch); err != nil || code != 0 {
-		t.Fatalf("git checkout -b %s error = %v, code = %d", branch, err, code)
-	}
-	writeFile(t, clonePath, "feature.txt", "from "+branch)
-	commitAll(t, clonePath, "commit on "+branch)
-	if _, _, code, err := runGit(t, clonePath, "push", "origin", branch); err != nil || code != 0 {
-		t.Fatalf("git push origin %s error = %v, code = %d", branch, err, code)
-	}
-	stdout, _, code, err := runGit(t, clonePath, "rev-parse", "HEAD")
-	if err != nil || code != 0 {
-		t.Fatalf("git rev-parse HEAD error = %v, code = %d", err, code)
-	}
-	return strings.TrimSpace(stdout)
+	gitkit.Git(t, clonePath, "checkout", "-b", branch)
+	gitkit.CommitFile(t, clonePath, "feature.txt", "from "+branch, "commit on "+branch)
+	gitkit.Git(t, clonePath, "push", "origin", branch)
+	return gitkit.RevParse(t, clonePath, "HEAD")
 }
 
 // remoteHeads returns `git ls-remote --heads` output for the bare remote.
 func remoteHeads(t *testing.T, container, bareRemote string) string {
 	t.Helper()
 
-	out, _, code, err := runGit(t, container, "ls-remote", "--heads", bareRemote)
-	if err != nil || code != 0 {
-		t.Fatalf("git ls-remote --heads error = %v, code = %d", err, code)
-	}
-	return out
+	return gitkit.Git(t, container, "ls-remote", "--heads", bareRemote)
 }
 
 // TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes asserts a lease at the remote's current tip deletes the branch.
@@ -201,16 +170,9 @@ func TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch(t *testing.T) 
 	staleTip := pushFeatureBranch(t, cloneAPath, branch)
 
 	cloneBPath, _ := cloneFromBare(t, container, "cloneB", bareRemote)
-	if _, _, code, err := runGit(t, cloneBPath, "checkout", branch); err != nil || code != 0 {
-		t.Fatalf("git checkout %s in cloneB error = %v, code = %d", branch, err, code)
-	}
-	writeFile(t, cloneBPath, "advance.txt", "advanced")
-	commitAll(t, cloneBPath, "advance "+branch)
-	if _, _, code, err := runGit(t, cloneBPath, "push", "origin", branch); err != nil || code != 0 {
-		t.Fatalf("git push origin %s from cloneB error = %v, code = %d", branch, err, code)
-	}
-	advancedOut, _, _, _ := runGit(t, cloneBPath, "rev-parse", "HEAD")
-	advanced := strings.TrimSpace(advancedOut)
+	gitkit.Git(t, cloneBPath, "checkout", branch)
+	advanced := gitkit.CommitFile(t, cloneBPath, "advance.txt", "advanced", "advance "+branch)
+	gitkit.Git(t, cloneBPath, "push", "origin", branch)
 
 	if err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip); err == nil {
 		t.Fatal("DeleteRemoteBranchLeased() with a stale lease error = nil; want an error")
@@ -232,9 +194,9 @@ func TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError(t *testing.T) {
 	if err := repoA.Push(); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
-	tipOut, _, _, _ := runGit(t, cloneAPath, "rev-parse", "HEAD")
+	tip := gitkit.RevParse(t, cloneAPath, "HEAD")
 
-	if err := repoA.DeleteRemoteBranchLeased("origin", "gone-branch", strings.TrimSpace(tipOut)); err == nil {
+	if err := repoA.DeleteRemoteBranchLeased("origin", "gone-branch", tip); err == nil {
 		t.Fatal("DeleteRemoteBranchLeased() against an absent branch error = nil; want an error")
 	}
 }

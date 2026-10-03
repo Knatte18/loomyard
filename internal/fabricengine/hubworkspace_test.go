@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
 // TestHubWorkspacePathAndFolders pins the workspace file path and folder geometry for a root anchor and a nested one.
@@ -17,7 +19,7 @@ func TestHubWorkspacePathAndFolders(t *testing.T) {
 		anchor := anchor
 		t.Run(anchor, func(t *testing.T) {
 			t.Parallel()
-			l := newPortalLauncherTestLocation(hub, filepath.Join(hub, prime), anchor)
+			l := locationkit.Location(hub, prime, anchor)
 
 			file := HubWorkspacePath(l, prime)
 			wantFile := filepath.Join(hub, "_launchers", anchor, prime+".code-workspace")

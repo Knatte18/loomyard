@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -33,13 +34,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, func() error { return nil })
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) {
 			t.Errorf("Call() Reason = %q; want the batchifier prefix", pointer.Reason)
 		}
@@ -54,13 +49,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, func() error { return nil })
-		outcome, _, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
+		shedfake.RequireOutcome(t, p, shedengine.Done)
 		if len(fake.receivedDeps) != 1 {
 			t.Fatalf("fake runner was called %d time(s); want 1", len(fake.receivedDeps))
 		}
@@ -79,13 +68,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 		fake := &fakeWebsterRun{}
 		p := NewWebsterProducer("Webster", anchorPath, fake.run, websterengine.RunDeps{}, func() error { return nil })
 
-		outcome1, _, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("first Call() error = %v; want nil", err)
-		}
-		if outcome1 != shedengine.Done {
-			t.Fatalf("first Call() outcome = %q; want %q", outcome1, shedengine.Done)
-		}
+		shedfake.RequireOutcome(t, p, shedengine.Done)
 
 		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
@@ -179,13 +162,7 @@ func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
 		return websterengine.RunResult{Outcome: "stuck", StuckReason: "batch 03 exhausted recovery"}, nil
 	}
 	p := NewWebsterProducer("Webster", anchorPath, run, websterengine.RunDeps{}, func() error { return nil })
-	outcome, pointer, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if pointer.Reason != "batch 03 exhausted recovery" {
 		t.Errorf("Call() Reason = %q; want the run's StuckReason", pointer.Reason)
 	}

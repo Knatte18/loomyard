@@ -166,7 +166,7 @@ func TestManifestGitAllowlist(t *testing.T) {
 		// An ordinary status probe followed by an empty commit only ever touches index/logs/refs/
 		// objects churn inside .git — nothing this harness's allowlist should ever surface.
 		gitkit.GitStatusPorcelain(t, repoDir)
-		mustGit(repoDir, "commit", "--allow-empty", "-m", "livestate: manifest git-allowlist probe")
+		gitkit.Git(t, repoDir, "commit", "--allow-empty", "-m", "livestate: manifest git-allowlist probe")
 
 		after := CaptureManifest(t, h.Path)
 		AssertNoUnpermittedChange(t, before, after, nil)

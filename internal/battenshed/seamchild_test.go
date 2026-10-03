@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // seedChildCalls records what each closure of a SeedChildDeps received, so a test can assert the
@@ -61,13 +62,7 @@ func TestSeedChild_TwoSourceSplit(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if calls.writeRecipe != "batten" {
 		t.Errorf("WriteSeed recipe = %q; want %q (the Board's own type)", calls.writeRecipe, "batten")
 	}
@@ -107,13 +102,7 @@ func TestSeedChild_BoardTypeReadFreshAtCallTime(t *testing.T) {
 	// Simulate the Board's type being corrected after prime was seeded but before this Call.
 	currentType = "batten"
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
 func TestSeedChild_EmptyBoardTypeDefaultsToLoom(t *testing.T) {
@@ -121,13 +110,7 @@ func TestSeedChild_EmptyBoardTypeDefaultsToLoom(t *testing.T) {
 	calls, deps := newSeedChildDeps("", nil, "claude", nil, nil, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Fatalf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if calls.writeRecipe != defaultChildRecipe {
 		t.Errorf("WriteSeed recipe = %q; want %q", calls.writeRecipe, defaultChildRecipe)
 	}
@@ -139,13 +122,7 @@ func TestSeedChild_UnreadableBoardIsStuck(t *testing.T) {
 	_, deps := newSeedChildDeps("", boardErr, "claude", nil, nil, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "Board") {
 		t.Errorf("stuck-reason file = %q; want it to name the Board read failure", reason)
@@ -158,13 +135,7 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 	_, deps := newSeedChildDeps("bogus", nil, "claude", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	reason := readStuckFile(t, scratchDir, "seedchild", ptr)
 	if !strings.Contains(reason, "unknown recipe") {
 		t.Errorf("stuck-reason file = %q; want it to name the unknown recipe", reason)
@@ -180,13 +151,7 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "go", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if calls.commitCalled || calls.pushCalled {
 		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
 	}
@@ -207,13 +172,7 @@ func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("loom", nil, "go", nil, writeErr, nil, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if calls.commitCalled || calls.pushCalled {
 		t.Errorf("commitCalled=%v pushCalled=%v; want neither -- nothing was written to commit", calls.commitCalled, calls.pushCalled)
 	}
@@ -250,13 +209,7 @@ func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, commitErr, nil)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if calls.pushCalled {
 		t.Error("PushSeed was called after a failed commit; want it skipped")
 	}
@@ -275,13 +228,7 @@ func TestSeedChild_FailedPushWarnsAndStillReturnsDone(t *testing.T) {
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, pushErr)
 
 	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done even though push failed", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 	if !calls.commitCalled {
 		t.Error("CommitSeed was not called")
 	}

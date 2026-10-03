@@ -59,14 +59,8 @@ func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, 
 func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) string {
 	t.Helper()
 
-	configPath := filepath.Join(weftPath, "_lyx", "config.yaml")
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, weftPath, "git", "add", ".")
 	msg := "weft sync\n\n" + fabricengine.SnapshotTrailerKey + ": " + tag
-	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
-	return fabricengine.CurrentSHAForTest(t, weftPath)
+	return gitkit.CommitFile(t, weftPath, filepath.Join("_lyx", "config.yaml"), content, msg)
 }
 
 // TestSnapshotWarpSHA_Miss is the TDD candidate for this card: a tag never recorded anywhere in
@@ -182,7 +176,7 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftPath := t.TempDir()
-	gitkit.MustRun(t, weftPath, "git", "init", "-q", "-b", "main")
+	gitkit.Git(t, weftPath, "init", "-q", "-b", "main")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftPath)
 
 	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
@@ -331,7 +325,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftPath, "git", "add", ".")
+	gitkit.Git(t, weftPath, "add", ".")
 
 	msg := fabricengine.AppendWarpSHATrailerForTest(fabricengine.DefaultCommitMessage, warpSHA)
 	msg, err := fabricengine.AppendSnapshotTrailersForTest(msg, tags)

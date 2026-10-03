@@ -1,16 +1,8 @@
 //go:build integration
 
-// recoverbatch_test.go exercises RecoverBatch end to end (Tier 2 — see
-// docs/benchmarks/running-tests.md): a real scratch git repo backs
-// WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real
-// *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/
-// shuttleengine.Engine doubles is the Starter, webster's own
-// established fake-starter approach, and a fake Clock replays the whole
-// bounded-wait sequence with no real sleeps, webster's own fakeClock. The
-// re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-
-// calls) is this file's test centre, per the batch's own "Batch Tests"
-// note. This package's testmain_test.go already wires
-// gitkit.HermeticGitEnv() for the whole test binary.
+// recoverbatch_test.go exercises RecoverBatch end to end (Tier 2 — see docs/benchmarks/running-tests.md): a real scratch git repo backs WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real *shuttleengine.Runner wired over the shuttlefake Reed/Engine is the Starter, webster's own established fake-starter approach, and a fake Clock replays the whole bounded-wait sequence with no real sleeps, webster's own fakeClock.
+// The re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-calls) is this file's test centre, per the batch's own "Batch Tests" note.
+// This package's testmain_test.go already wires gitkit.HermeticGitEnv() for the whole test binary.
 
 package websterengine_test
 
@@ -21,139 +13,22 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// recoverFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints
-// a distinct GUID per call and registers it live in the scripted Status
-// result (a spawned strand is live until explicitly removed or the test
-// overrides Status directly), RemoveStrand records every call and retires
-// the guid from Status, and the send/capture methods stay inert since
-// RecoverBatch's own path never exercises them.
-type recoverFakeReed struct {
-	mu             sync.Mutex
-	counter        int
-	status         reedengine.StatusResult
-	statusErr      error
-	removedStrands []string
-}
-
-func (m *recoverFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.counter++
-	guid := fmt.Sprintf("recover-test-strand-%d", m.counter)
-	m.status.Strands = append(m.status.Strands, reedengine.StrandStatus{GUID: guid, Live: true})
-	return reedengine.Strand{GUID: guid}, nil
-}
-
-func (m *recoverFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removedStrands = append(m.removedStrands, guid)
-	for i, s := range m.status.Strands {
-		if s.GUID == guid {
-			m.status.Strands = append(m.status.Strands[:i], m.status.Strands[i+1:]...)
-			break
-		}
-	}
-	return reedengine.Removed{}, nil
-}
-
-func (m *recoverFakeReed) Status() (reedengine.StatusResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.statusErr != nil {
-		return reedengine.StatusResult{}, m.statusErr
-	}
-	return m.status, nil
-}
-
-func (m *recoverFakeReed) SendText(guid, text string, submit bool) error { return nil }
-func (m *recoverFakeReed) SendKey(guid, key string) error                { return nil }
-func (m *recoverFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = (*recoverFakeReed)(nil)
-
-// recoverFakeEngine is a hermetic shuttleengine.Engine double: Prepare
-// counts every call (so a test can prove an ATTACH call never re-spawns)
-// without writing any real provider artifacts; ParseEvents is scripted per
-// test (a canned Events slice, defaulting to none — no Stop event, i.e.
-// TurnEnded reports false) since it is the only method RecoverBatch's own
-// TurnEnded call reaches. Every other method returns a fixed, inert value.
-type recoverFakeEngine struct {
-	mu           sync.Mutex
-	prepareCalls int
-	lastPrompt   string
-	events       []shuttleengine.Event
-	eventsErr    error
-}
-
-func (e *recoverFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.prepareCalls++
-	e.lastPrompt = spec.Prompt
-	return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: "fake-session"}, nil
-}
-
-func (e *recoverFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.eventsErr != nil {
-		return nil, e.eventsErr
-	}
-	return e.events, nil
-}
-
-func (e *recoverFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *recoverFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *recoverFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *recoverFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *recoverFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *recoverFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *recoverFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*recoverFakeEngine)(nil)
-
-// prepareCallCount reports how many times e.Prepare has been called so far.
-func (e *recoverFakeEngine) prepareCallCount() int {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.prepareCalls
-}
-
-// lastPromptText returns the Spec.Prompt text of the most recent Prepare call, the recovery
-// prompt RecoverSpawnOrAttach rendered and handed to the (fake) provider — the only place this
-// fixture ever sees that prompt's bytes, since the fake Prepare never writes prompt.md to disk.
-func (e *recoverFakeEngine) lastPromptText() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.lastPrompt
-}
 
 // recoverFakeClock is a package-local, scriptable clock double: Now starts
 // at a fixed base and only advances when Sleep is called or a test directly
@@ -173,12 +48,12 @@ var _ websterengine.Clock = (*recoverFakeClock)(nil)
 // recoverFixture is a fully-wired set of RecoverBatch dependencies: a real
 // scratch git repo (one base commit) as WorktreeRoot, a one-batch plan backed
 // by a seeded plan dir and its corresponding execution-batch list, a real
-// *shuttleengine.Runner over recoverFakeReed/recoverFakeEngine as the Starter,
+// *shuttleengine.Runner over shuttlefake.Reed/shuttlefake.Engine as the Starter,
 // and webster's two roles pre-resolved.
 type recoverFixture struct {
 	Deps       websterengine.RecoverDeps
-	Reed       *recoverFakeReed
-	Engine     *recoverFakeEngine
+	Reed       *shuttlefake.Reed
+	Engine     *shuttlefake.Engine
 	Worktree   string
 	ReportsDir string
 }
@@ -192,10 +67,10 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	}
 
 	worktree := newScratchRepo(t)
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
-	reed := &recoverFakeReed{}
-	engine := &recoverFakeEngine{}
+	reed := &shuttlefake.Reed{}
+	engine := &shuttlefake.Engine{}
 	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
 	// hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
@@ -314,7 +189,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "orphan-1",
 	}
-	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "orphan-1", Live: true}}}
+	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "orphan-1", Live: true}}
 
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	result, err := driveRecoverBatch(fx.Deps, 1, 3*time.Second, clk)
@@ -356,13 +231,13 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 
 	// The prior orphan's live strand was stopped before the fresh spawn.
 	found := false
-	for _, guid := range fx.Reed.removedStrands {
+	for _, guid := range fx.Reed.RemovedGUIDs {
 		if guid == "orphan-1" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("RemoveStrand calls = %v; want the prior live strand %q stopped", fx.Reed.removedStrands, "orphan-1")
+		t.Errorf("RemoveStrand calls = %v; want the prior live strand %q stopped", fx.Reed.RemovedGUIDs, "orphan-1")
 	}
 
 	// The fresh BatchState's strand fields are recorded.
@@ -393,8 +268,8 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 		t.Errorf("BatchState.StartSHA = %q; want the fresh HeadSHA %q", bs.StartSHA, wantHead)
 	}
 
-	if fx.Engine.prepareCallCount() != 1 {
-		t.Errorf("Engine.prepareCalls = %d; want exactly 1", fx.Engine.prepareCallCount())
+	if fx.Engine.PrepareCalls != 1 {
+		t.Errorf("Engine.prepareCalls = %d; want exactly 1", fx.Engine.PrepareCalls)
 	}
 }
 
@@ -423,8 +298,8 @@ func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 		if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, "01-json-flag.yaml")); statErr != nil {
 			t.Errorf("stat(done report) = %v; want the report left in place", statErr)
 		}
-		if fx.Engine.prepareCallCount() != 0 {
-			t.Errorf("Engine.prepareCalls = %d; want 0 (no spawn on refusal)", fx.Engine.prepareCallCount())
+		if fx.Engine.PrepareCalls != 0 {
+			t.Errorf("Engine.prepareCalls = %d; want 0 (no spawn on refusal)", fx.Engine.PrepareCalls)
 		}
 	})
 
@@ -520,8 +395,8 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	if len(second.Warnings) != 0 {
 		t.Errorf("second call Warnings = %v; want none", second.Warnings)
 	}
-	if fx.Engine.prepareCallCount() != 1 {
-		t.Errorf("Engine.prepareCalls = %d; want exactly 1 (no second spawn on ATTACH)", fx.Engine.prepareCallCount())
+	if fx.Engine.PrepareCalls != 1 {
+		t.Errorf("Engine.prepareCalls = %d; want exactly 1 (no second spawn on ATTACH)", fx.Engine.PrepareCalls)
 	}
 
 	bs := fx.Deps.State.Batches[1]
@@ -546,13 +421,13 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 
 	// done-substrate release: strand removed, run dir removed.
 	foundRemoved := false
-	for _, guid := range fx.Reed.removedStrands {
+	for _, guid := range fx.Reed.RemovedGUIDs {
 		if guid == strandGUID {
 			foundRemoved = true
 		}
 	}
 	if !foundRemoved {
-		t.Errorf("RemoveStrand calls = %v; want the done strand %q removed", fx.Reed.removedStrands, strandGUID)
+		t.Errorf("RemoveStrand calls = %v; want the done strand %q removed", fx.Reed.RemovedGUIDs, strandGUID)
 	}
 	if _, statErr := os.Stat(runDir); !os.IsNotExist(statErr) {
 		t.Errorf("stat(%s) = %v; want the done run dir removed", runDir, statErr)
@@ -602,7 +477,7 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 	if !first.Running {
 		t.Fatalf("first call = %+v; want Running=true", first)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	return head
 }
@@ -616,11 +491,11 @@ func TestRecoverBatch_ParentMergeAfterReportHead(t *testing.T) {
 	head := recoverAtReportHead(t, fx, clk)
 	fx.Deps.ParentBranch = func() (string, error) { return "parent1", nil }
 
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
-	commitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
-	mustGit(t, fx.Worktree, "checkout", "-")
-	mustGit(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent1", "parent1")
-	merge := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	gitkit.CommitFile(t, fx.Worktree, "parent1.txt", "p1", "parent1 commit")
+	gitkit.Git(t, fx.Worktree, "checkout", "-")
+	gitkit.Git(t, fx.Worktree, "merge", "--no-ff", "-m", "merge parent1", "parent1")
+	merge := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	result, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if err != nil {
@@ -653,8 +528,8 @@ func TestRecoverBatch_NonMergeCommitAfterReportHeadRefused(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	head := recoverAtReportHead(t, fx, clk)
 
-	commitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
-	newHead := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "extra.txt", "x", "extra commit")
+	newHead := gitkit.RevParse(t, fx.Worktree, "HEAD")
 
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if err == nil {
@@ -676,11 +551,11 @@ func TestRecoverBatch_MergeInProgressRefused(t *testing.T) {
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	head := recoverAtReportHead(t, fx, clk)
 
-	base := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	mustGit(t, fx.Worktree, "checkout", "-b", "parent1", head)
-	commitFile(t, fx.Worktree, "base.txt", "parent side", "parent side edit")
-	mustGit(t, fx.Worktree, "checkout", base)
-	commitFile(t, fx.Worktree, "base.txt", "our side", "our side edit")
+	base := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", "--abbrev-ref", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "-b", "parent1", head)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "parent side", "parent side edit")
+	gitkit.Git(t, fx.Worktree, "checkout", base)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "our side", "our side edit")
 	if _, _, exitCode, err := gitexec.RunGit([]string{"merge", "--no-ff", "-m", "merge parent1", "parent1"}, fx.Worktree); err != nil || exitCode == 0 {
 		t.Fatalf("conflicting merge: exit=%d err=%v; want a conflict", exitCode, err)
 	}
@@ -740,9 +615,9 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	}
 
 	// dead classification keeps both the strand and the run dir.
-	for _, guid := range fx.Reed.removedStrands {
+	for _, guid := range fx.Reed.RemovedGUIDs {
 		if guid == strandGUID {
-			t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q kept", fx.Reed.removedStrands, strandGUID)
+			t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q kept", fx.Reed.RemovedGUIDs, strandGUID)
 		}
 	}
 	if _, statErr := os.Stat(runDir); statErr != nil {
@@ -784,7 +659,7 @@ func TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder(t *testing.
 			t.Fatal("RecoverSpawnOrAttach() spawned = false; want true")
 		}
 
-		prompt := fx.Engine.lastPromptText()
+		prompt := fx.Engine.LastPrompt
 		for _, want := range []string{"02-list-tests", "head_sha=cafef00d"} {
 			if !strings.Contains(prompt, want) {
 				t.Errorf("recovery prompt does not contain %q; got:\n%s", want, prompt)
@@ -808,7 +683,7 @@ func TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder(t *testing.
 			t.Fatal("RecoverSpawnOrAttach() spawned = false; want true")
 		}
 
-		prompt := fx.Engine.lastPromptText()
+		prompt := fx.Engine.LastPrompt
 		if !strings.Contains(prompt, "none (first batch)") {
 			t.Errorf("recovery prompt does not contain the first-batch sentinel; got:\n%s", prompt)
 		}
@@ -841,7 +716,7 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 			if tt.prior != nil {
 				fx.Deps.State.Batches[1] = tt.prior
 				if tt.prior.StrandGUID != "" {
-					fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: tt.prior.StrandGUID, Live: true}}}
+					fx.Reed.Strands = []reedengine.StrandStatus{{GUID: tt.prior.StrandGUID, Live: true}}
 				}
 			}
 
@@ -851,9 +726,9 @@ func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 				t.Fatalf("RecoverBatch() error = %v; want nil", err)
 			}
 
-			gotSpawn := fx.Engine.prepareCallCount() == 1
+			gotSpawn := fx.Engine.PrepareCalls == 1
 			if gotSpawn != tt.spawns {
-				t.Errorf("Engine.prepareCalls = %d (spawned=%v); want spawned=%v", fx.Engine.prepareCallCount(), gotSpawn, tt.spawns)
+				t.Errorf("Engine.prepareCalls = %d (spawned=%v); want spawned=%v", fx.Engine.PrepareCalls, gotSpawn, tt.spawns)
 			}
 		})
 	}
@@ -957,7 +832,7 @@ func TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest(t *testing.T) {
 			if !spawned {
 				t.Fatal("spawned = false; want a fresh recovery strand")
 			}
-			prompt := fx.Engine.lastPromptText()
+			prompt := fx.Engine.LastPrompt
 			for _, r := range tt.reasons {
 				if !strings.Contains(prompt, r) {
 					t.Errorf("recovery prompt lacks reason %q", r)
@@ -1000,7 +875,7 @@ func TestRecoverSpawnOrAttach_RefusesUncheckableFindings(t *testing.T) {
 			if fx.Deps.State.Batches[1] != rec || !rec.Terminal || rec.Status != websterengine.DigestStatusFailed || rec.StrandGUID != "" {
 				t.Errorf("record changed: %+v", rec)
 			}
-			if got := fx.Engine.lastPromptText(); got != "" {
+			if got := fx.Engine.LastPrompt; got != "" {
 				t.Errorf("a recovery prompt was rendered: %q", got)
 			}
 		})
@@ -1042,7 +917,7 @@ func TestRecoverSpawn_InheritsTheStuckForksStartSHA(t *testing.T) {
 	}
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", StartSHA: bracketStart, Kind: "fork"}
 	// The stuck fork committed part of its work before reporting stuck.
-	commitFile(t, fx.Worktree, "internal/partial/impl.go", "package partial\n", "01.1: partial work")
+	gitkit.CommitFile(t, fx.Worktree, "internal/partial/impl.go", "package partial\n", "01.1: partial work")
 
 	if _, _, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk); err != nil {
 		t.Fatalf("RecoverSpawnOrAttach() error = %v; want nil", err)
@@ -1074,11 +949,7 @@ func TestRecoverSpawn_RecordsCardSet(t *testing.T) {
 	}
 }
 
-// erroringStarter is a websterengine.Starter double whose Start always fails wrapping
-// shuttleengine.ErrNotStarted — the not-ready-start error shuttle now returns from Start itself
-// (per the shuttle-start-guarantees-readiness discussion), which recoverFixture's real
-// *shuttleengine.Runner over recoverFakeEngine/recoverFakeReed never reaches on its own, since
-// recoverFakeEngine.Startup always reports StartupReady.
+// erroringStarter is a websterengine.Starter double whose Start always fails wrapping shuttleengine.ErrNotStarted — the not-ready-start error shuttle now returns from Start itself (per the shuttle-start-guarantees-readiness discussion), which recoverFixture's real *shuttleengine.Runner over shuttlefake.Engine/shuttlefake.Reed never reaches on its own, since shuttlefake.Engine.Startup reports StartupReady by default.
 type erroringStarter struct{}
 
 func (erroringStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, error) {
@@ -1186,12 +1057,12 @@ func TestRecoverBatch_WayForward_DoneReportRecordsInstead(t *testing.T) {
 func suspectRecovery(t *testing.T) (*recoverFixture, string, string) {
 	t.Helper()
 	fx := newRecoverFixture(t)
-	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	start := gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "hash-object", "internal/x.go"))
-	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	blob := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "hash-object", "internal/x.go"))
+	gitkit.Git(t, fx.Worktree, "checkout", "--", "internal/x.go")
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
 		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
@@ -1212,8 +1083,8 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1236,11 +1107,11 @@ func TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
 	if err := os.Remove(filepath.Join(fx.Worktree, "internal", "x.go")); err != nil {
 		t.Fatal(err)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); !errors.Is(err, websterengine.ErrBatchFailed) {
 		t.Fatalf("first recovery error = %v; want ErrBatchFailed", err)
@@ -1252,9 +1123,9 @@ func TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	mustGit(t, fx.Worktree, "checkout", "--", "internal/x.go")
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
-	head = strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, fx.Worktree, "checkout", "--", "internal/x.go")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head = gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) || !strings.Contains(err.Error(), "revert it to "+start) {
@@ -1267,8 +1138,8 @@ func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("forged"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	_, err := recoverSuspect(t, fx)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
 		t.Fatalf("error = %v; want ErrBatchFailed", err)
@@ -1280,7 +1151,7 @@ func TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath(t *testing.T) {
 
 func TestPersistRecoveryTerminal_PassesReverted(t *testing.T) {
 	fx, _, _ := suspectRecovery(t)
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
@@ -1292,7 +1163,7 @@ func TestPersistRecoveryTerminal_PassesReverted(t *testing.T) {
 
 func TestPersistRecoveryTerminal_PassesRederived(t *testing.T) {
 	fx, _, _ := suspectRecovery(t)
-	commitFile(t, fx.Worktree, "internal/x.go", "derived", "strand re-derives")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "derived", "strand re-derives")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
@@ -1308,10 +1179,10 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
-	mustGit(t, fx.Worktree, "commit", "-m", "strand moves forged")
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.Git(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "strand moves forged")
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1329,13 +1200,17 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved(t *testing.T)
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	commitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
-	mustGit(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
-	commitFile(t, fx.Worktree, ".gitignore", "internal/x.go\n", "strand moves forged and ignores x")
+	gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "forged", "strand keeps forged")
+	gitkit.Git(t, fx.Worktree, "mv", "internal/x.go", "internal/y.go")
+	if err := os.WriteFile(filepath.Join(fx.Worktree, ".gitignore"), []byte("internal/x.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitkit.Git(t, fx.Worktree, "add", ".gitignore")
+	gitkit.Git(t, fx.Worktree, "commit", "-m", "strand moves forged and ignores x")
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "internal", "x.go"), []byte("ignored"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1348,14 +1223,14 @@ func TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved(t *testing.T)
 
 func TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent(t *testing.T) {
 	fx := newRecoverFixture(t)
-	commitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")
-	start := commitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
-	blob := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", start+":internal/z.go"))
+	gitkit.CommitFile(t, fx.Worktree, "internal/z.go", "forged", "z holds forged")
+	start := gitkit.CommitFile(t, fx.Worktree, "internal/x.go", "orig", "orig")
+	blob := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "rev-parse", start+":internal/z.go"))
 	fx.Deps.State.Batches[1] = &websterengine.BatchState{
 		Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: start,
 		SuspectPaths: []websterengine.SuspectPath{{Path: "internal/x.go", Blob: blob}},
 	}
-	commitFile(t, fx.Worktree, "other.txt", "o", "other work")
+	gitkit.CommitFile(t, fx.Worktree, "other.txt", "o", "other work")
 	result, err := recoverSuspect(t, fx)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)

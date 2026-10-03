@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // TestDiscussionWriteEntry_ConstructionFailures covers the three seams discussionWriteEntry
@@ -87,7 +88,7 @@ func TestDiscussionWriteEntry_HappyPath(t *testing.T) {
 }
 
 // TestDiscussionWriteEntry_CallDone drives the happy-path producer's Call once against a
-// fakeShuttle reporting Done, and asserts the injected SpecSource was evaluated, the returned
+// shedfake.Shuttle reporting Done, and asserts the injected SpecSource was evaluated, the returned
 // OutputPointer.Path equals the Spec's first OutputFiles entry, and the injected commit closure
 // fired exactly once.
 func TestDiscussionWriteEntry_CallDone(t *testing.T) {
@@ -113,18 +114,12 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
-	outcome, pointer, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want %v", outcome, shedengine.Done)
-	}
-	if len(fake.specs) != 1 {
-		t.Fatalf("fake.specs has %d entries; want 1 -- the injected SpecSource must have been evaluated", len(fake.specs))
+	pointer := shedfake.RequireOutcome(t, producer, shedengine.Done)
+	if len(fake.Specs) != 1 {
+		t.Fatalf("fake.Specs has %d entries; want 1 -- the injected SpecSource must have been evaluated", len(fake.Specs))
 	}
 	if pointer.Path != gotSpec.OutputFiles[0] {
 		t.Errorf("Call() OutputPointer.Path = %q; want %q", pointer.Path, gotSpec.OutputFiles[0])
@@ -203,26 +198,13 @@ func TestDiscussionWriteEntry_CallAsking(t *testing.T) {
 		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
 
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want %v", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if commitCalls != 0 {
 		t.Errorf("commit closure invoked %d times; want 0 for an Asking outcome", commitCalls)
 	}
-}
-
-// attachingShuttle reports a live matching run on the attach probe, so the producer takes its attach branch.
-type attachingShuttle struct{ *fakeShuttle }
-
-func (a attachingShuttle) AttachGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, true, nil
 }
 
 // hasRound reports whether the parent-review store holds a round.
@@ -243,7 +225,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
-		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		env.Shuttle.(*shedfake.Shuttle).Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v", err)
 		}
@@ -275,7 +257,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
-		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		env.Shuttle.(*shedfake.Shuttle).Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 		_, _, _ = p.Call(context.Background())
 		latest, ok, err := env.ParentReview.Store.Latest()
 		if err != nil || !ok {
@@ -287,7 +269,10 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 	})
 	t.Run("AttachDoesNotBeginRound", func(t *testing.T) {
 		env := parentReviewEnv(t)
-		env.Shuttle = attachingShuttle{env.Shuttle.(*fakeShuttle)}
+		attached := env.Shuttle.(*shedfake.Shuttle)
+		attached.AttachFound = true
+		// shedfake.Shuttle evaluates the gate on an attached Done run, and the parent-review gate opens a round; an Asking run takes the attach branch without evaluating it.
+		attached.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
 		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
@@ -303,7 +288,7 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)
 		}
-		env.Shuttle.(*fakeShuttle).result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+		env.Shuttle.(*shedfake.Shuttle).Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 		if _, _, err := p.Call(context.Background()); err != nil {
 			t.Fatalf("Call() error = %v", err)
 		}

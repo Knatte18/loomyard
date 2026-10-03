@@ -6,9 +6,11 @@ package reedcli
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"testing"
 )
@@ -65,28 +67,14 @@ func TestPlanSessionDiff(t *testing.T) {
 			gotAppeared, gotDeparted := planSessionDiff(tt.live, tt.known)
 			sort.Strings(gotAppeared)
 			sort.Strings(gotDeparted)
-			if !equalStringSlices(gotAppeared, tt.wantAppeared) {
+			if !slices.Equal(gotAppeared, tt.wantAppeared) {
 				t.Errorf("planSessionDiff() appeared = %v; want %v", gotAppeared, tt.wantAppeared)
 			}
-			if !equalStringSlices(gotDeparted, tt.wantDeparted) {
+			if !slices.Equal(gotDeparted, tt.wantDeparted) {
 				t.Errorf("planSessionDiff() departed = %v; want %v", gotDeparted, tt.wantDeparted)
 			}
 		})
 	}
-}
-
-// equalStringSlices treats a nil slice and an empty slice as equal, since planSessionDiff never
-// distinguishes "no names" from "an empty allocated slice of names".
-func equalStringSlices(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func TestSessionsAreIdle(t *testing.T) {
@@ -132,213 +120,165 @@ func TestSessionsAreIdle(t *testing.T) {
 	}
 }
 
-// TestPlanReapCycle_LiveDirectoryNeverReaps pins that a name never marked gone never reaps, and its
-// counter entry stays at zero (i.e. absent from counters) across repeated cycles.
-func TestPlanReapCycle_LiveDirectoryNeverReaps(t *testing.T) {
-	counters := map[string]int{}
-	for i := 0; i < 5; i++ {
-		reap, remaining := planReapCycle([]string{"alpha"}, true, map[string]bool{}, counters, map[string]bool{}, 3)
-		if len(reap) != 0 {
-			t.Fatalf("cycle %d: reap = %v, want none", i, reap)
-		}
-		if !equalStringSlices(remaining, []string{"alpha"}) {
-			t.Fatalf("cycle %d: remaining = %v, want [alpha]", i, remaining)
-		}
-		if got, ok := counters["alpha"]; ok && got != 0 {
-			t.Fatalf("cycle %d: counters[alpha] = %d, want 0 or absent", i, got)
-		}
-	}
+// reapCycle is one planReapCycle call and the state it must leave behind.
+// A nil inFlight means no name is in flight,
+// and a nil wantCounters means the counter map ends empty.
+// wantReap and wantRemaining are compared after sorting, since planReapCycle returns them in live order.
+type reapCycle struct {
+	live          []string
+	hubDown       bool
+	gone          map[string]bool
+	inFlight      map[string]bool
+	wantReap      []string
+	wantRemaining []string
+	wantCounters  map[string]int
 }
 
-// TestPlanReapCycle_MissingFewerThanThresholdCyclesDoesNotReapYet pins that a name gone for fewer
-// than threshold consecutive cycles is not reaped, with its counter advancing each cycle.
-func TestPlanReapCycle_MissingFewerThanThresholdCyclesDoesNotReapYet(t *testing.T) {
-	counters := map[string]int{}
-	threshold := 3
-	for i := 1; i < threshold; i++ {
-		reap, remaining := planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-		if len(reap) != 0 {
-			t.Fatalf("cycle %d: reap = %v, want none before threshold", i, reap)
-		}
-		if !equalStringSlices(remaining, []string{"alpha"}) {
-			t.Fatalf("cycle %d: remaining = %v, want [alpha]", i, remaining)
-		}
-		if counters["alpha"] != i {
-			t.Fatalf("cycle %d: counters[alpha] = %d, want %d", i, counters["alpha"], i)
-		}
-	}
-}
+func TestPlanReapCycle(t *testing.T) {
+	alpha := []string{"alpha"}
+	alphaGone := map[string]bool{"alpha": true}
+	alphaPresent := map[string]bool{"alpha": false}
 
-// TestPlanReapCycle_MissingExactlyThresholdCyclesReaps pins that a name gone for exactly threshold
-// consecutive cycles reaps, and its counter entry is deleted rather than left at threshold.
-func TestPlanReapCycle_MissingExactlyThresholdCyclesReaps(t *testing.T) {
-	counters := map[string]int{}
-	threshold := 3
-	var reap, remaining []string
-	for i := 1; i <= threshold; i++ {
-		reap, remaining = planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
+	tests := []struct {
+		name      string
+		threshold int
+		counters  map[string]int
+		cycles    []reapCycle
+	}{
+		{
+			name:      "live directory never reaps",
+			threshold: 3,
+			cycles: slices.Repeat([]reapCycle{{
+				live:          alpha,
+				gone:          map[string]bool{},
+				wantRemaining: alpha,
+			}}, 5),
+		},
+		{
+			name:      "missing fewer than threshold cycles does not reap yet",
+			threshold: 3,
+			cycles: []reapCycle{
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 2}},
+			},
+		},
+		{
+			name:      "missing exactly threshold cycles reaps and deletes the counter",
+			threshold: 3,
+			cycles: []reapCycle{
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 2}},
+				{live: alpha, gone: alphaGone, wantReap: alpha},
+			},
+		},
+		{
+			name:      "a present cycle mid-streak resets the counter",
+			threshold: 3,
+			cycles: []reapCycle{
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 2}},
+				{live: alpha, gone: alphaPresent, wantRemaining: alpha},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 2}},
+			},
+		},
+		{
+			name:      "a name leaving the live list prunes its counter",
+			threshold: 3,
+			cycles: []reapCycle{
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 2}},
+				{live: []string{}, gone: map[string]bool{}},
+				{live: alpha, gone: alphaGone, wantRemaining: alpha, wantCounters: map[string]int{"alpha": 1}},
+			},
+		},
+		{
+			name:      "several sessions progress independently",
+			threshold: 3,
+			counters:  map[string]int{"beta": 1, "gamma": 2},
+			cycles: []reapCycle{
+				{
+					live:          []string{"alpha", "beta", "gamma"},
+					gone:          map[string]bool{"alpha": false, "beta": true, "gamma": true},
+					wantReap:      []string{"gamma"},
+					wantRemaining: []string{"alpha", "beta"},
+					wantCounters:  map[string]int{"beta": 2},
+				},
+			},
+		},
+		{
+			name:      "a churning name never accumulates counter entries",
+			threshold: 3,
+			cycles: slices.Repeat([]reapCycle{
+				{
+					live:          []string{"churner"},
+					gone:          map[string]bool{"churner": true},
+					wantRemaining: []string{"churner"},
+					wantCounters:  map[string]int{"churner": 1},
+				},
+				{live: []string{}, gone: map[string]bool{}},
+			}, 50),
+		},
+		{
+			name:      "hub probe refuses to act",
+			threshold: 3,
+			counters:  map[string]int{"alpha": 2, "beta": 1},
+			cycles: []reapCycle{
+				{
+					live:          []string{"alpha", "beta", "gamma"},
+					hubDown:       true,
+					gone:          map[string]bool{"alpha": true, "beta": true, "gamma": true},
+					inFlight:      map[string]bool{"gamma": true},
+					wantRemaining: []string{"alpha", "beta"},
+					wantCounters:  map[string]int{"alpha": 2, "beta": 1},
+				},
+			},
+		},
+		{
+			name:      "in-flight name is excluded from both returns while the hub is live",
+			threshold: 3,
+			cycles: []reapCycle{
+				{
+					live:          []string{"alpha", "beta"},
+					gone:          map[string]bool{"alpha": true, "beta": false},
+					inFlight:      map[string]bool{"alpha": true},
+					wantRemaining: []string{"beta"},
+				},
+			},
+		},
+		{
+			name:      "in-flight name is excluded from both returns while the hub is gone",
+			threshold: 3,
+			cycles: []reapCycle{
+				{
+					live:          []string{"alpha", "beta"},
+					hubDown:       true,
+					gone:          map[string]bool{"alpha": true, "beta": false},
+					inFlight:      map[string]bool{"alpha": true},
+					wantRemaining: []string{"beta"},
+				},
+			},
+		},
 	}
-	if !equalStringSlices(reap, []string{"alpha"}) {
-		t.Errorf("reap = %v, want [alpha] at the threshold cycle", reap)
-	}
-	if len(remaining) != 0 {
-		t.Errorf("remaining = %v, want none at the threshold cycle", remaining)
-	}
-	if _, ok := counters["alpha"]; ok {
-		t.Errorf("counters[alpha] still present = %d, want deleted after the reap", counters["alpha"])
-	}
-}
 
-// TestPlanReapCycle_MissingThenPresentThenMissingResetsCounter pins that a present cycle in the
-// middle of a gone streak resets the counter, so a subsequent missing streak shorter than threshold
-// does not reap.
-func TestPlanReapCycle_MissingThenPresentThenMissingResetsCounter(t *testing.T) {
-	counters := map[string]int{}
-	threshold := 3
-
-	// Two missing cycles, short of threshold.
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	if counters["alpha"] != 2 {
-		t.Fatalf("counters[alpha] after two missing cycles = %d, want 2", counters["alpha"])
-	}
-
-	// One present cycle resets it.
-	_, remaining := planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": false}, counters, map[string]bool{}, threshold)
-	if !equalStringSlices(remaining, []string{"alpha"}) {
-		t.Fatalf("remaining after the present cycle = %v, want [alpha]", remaining)
-	}
-	if _, ok := counters["alpha"]; ok {
-		t.Fatalf("counters[alpha] present after reset = %d, want deleted", counters["alpha"])
-	}
-
-	// Two more missing cycles: still short of a fresh threshold, so no reap fires.
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	reap, _ := planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	if len(reap) != 0 {
-		t.Errorf("reap = %v, want none: the reset means only 2 consecutive gone cycles have accrued", reap)
-	}
-}
-
-// TestPlanReapCycle_NameLeavingLiveListPrunesItsCounter pins that a name absent from live has its
-// counter entry pruned, so its return starts from zero.
-func TestPlanReapCycle_NameLeavingLiveListPrunesItsCounter(t *testing.T) {
-	counters := map[string]int{}
-	threshold := 3
-
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	if counters["alpha"] != 2 {
-		t.Fatalf("counters[alpha] = %d, want 2 before it leaves the live list", counters["alpha"])
-	}
-
-	// alpha leaves the live list entirely.
-	planReapCycle([]string{}, true, map[string]bool{}, counters, map[string]bool{}, threshold)
-	if _, ok := counters["alpha"]; ok {
-		t.Fatalf("counters[alpha] = %d, want pruned once it left the live list", counters["alpha"])
-	}
-
-	// alpha returns: it starts from zero, not from where it left off.
-	planReapCycle([]string{"alpha"}, true, map[string]bool{"alpha": true}, counters, map[string]bool{}, threshold)
-	if counters["alpha"] != 1 {
-		t.Errorf("counters[alpha] on return = %d, want 1 (starting from zero)", counters["alpha"])
-	}
-}
-
-// TestPlanReapCycle_SeveralSessionsProgressIndependently pins that several sessions on one hub
-// progress independently in the same cycle: one live, one gone-but-short-of-threshold, one at
-// threshold.
-func TestPlanReapCycle_SeveralSessionsProgressIndependently(t *testing.T) {
-	counters := map[string]int{"beta": 1, "gamma": 2}
-	threshold := 3
-	live := []string{"alpha", "beta", "gamma"}
-	gone := map[string]bool{"alpha": false, "beta": true, "gamma": true}
-
-	reap, remaining := planReapCycle(live, true, gone, counters, map[string]bool{}, threshold)
-	sort.Strings(reap)
-	sort.Strings(remaining)
-
-	if !equalStringSlices(reap, []string{"gamma"}) {
-		t.Errorf("reap = %v, want [gamma]", reap)
-	}
-	if !equalStringSlices(remaining, []string{"alpha", "beta"}) {
-		t.Errorf("remaining = %v, want [alpha beta]", remaining)
-	}
-	if counters["beta"] != 2 {
-		t.Errorf("counters[beta] = %d, want 2", counters["beta"])
-	}
-	if _, ok := counters["gamma"]; ok {
-		t.Errorf("counters[gamma] still present, want deleted after its reap")
-	}
-	if _, ok := counters["alpha"]; ok {
-		t.Errorf("counters[alpha] present, want absent since it is live")
-	}
-}
-
-// TestPlanReapCycle_CounterMapHygiene pins that counters does not grow unboundedly across a sequence
-// of cycles whose live set churns: only names currently live (and previously observed gone at least
-// once) ever occupy a slot.
-func TestPlanReapCycle_CounterMapHygiene(t *testing.T) {
-	counters := map[string]int{}
-	threshold := 3
-
-	for i := 0; i < 50; i++ {
-		name := "churner"
-		planReapCycle([]string{name}, true, map[string]bool{name: true}, counters, map[string]bool{}, threshold)
-		planReapCycle([]string{}, true, map[string]bool{}, counters, map[string]bool{}, threshold)
-	}
-	if len(counters) != 0 {
-		t.Errorf("counters = %v, want empty: a churning single name must never accumulate stale entries", counters)
-	}
-}
-
-// TestPlanReapCycle_HubProbeRefusesToAct pins the-hub-itself-is-probed-before-the-reap-pass: with
-// hubLive false and a listing naming several names all marked gone, planReapCycle reaps none of
-// them, leaves every counter untouched, and returns every name as remaining except those in
-// inFlight.
-func TestPlanReapCycle_HubProbeRefusesToAct(t *testing.T) {
-	counters := map[string]int{"alpha": 2, "beta": 1}
-	before := map[string]int{"alpha": 2, "beta": 1}
-	live := []string{"alpha", "beta", "gamma"}
-	gone := map[string]bool{"alpha": true, "beta": true, "gamma": true}
-	inFlight := map[string]bool{"gamma": true}
-
-	reap, remaining := planReapCycle(live, false, gone, counters, inFlight, 3)
-	sort.Strings(remaining)
-
-	if len(reap) != 0 {
-		t.Errorf("reap = %v, want none while the hub is not proven live", reap)
-	}
-	if !equalStringSlices(remaining, []string{"alpha", "beta"}) {
-		t.Errorf("remaining = %v, want [alpha beta] (gamma excluded via inFlight)", remaining)
-	}
-	for name, want := range before {
-		if counters[name] != want {
-			t.Errorf("counters[%s] = %d, want unchanged at %d", name, counters[name], want)
-		}
-	}
-}
-
-// TestPlanReapCycle_InFlightExcludedFromBothReturns pins that a name in inFlight appears in neither
-// return value, on both the hubLive true and false branches — not reaped again, and not passed to
-// planSessionDiff, so it can never read as appeared while its reap is still running.
-func TestPlanReapCycle_InFlightExcludedFromBothReturns(t *testing.T) {
-	for _, hubLive := range []bool{true, false} {
-		t.Run(map[bool]string{true: "hubLive", false: "hubGone"}[hubLive], func(t *testing.T) {
-			counters := map[string]int{}
-			live := []string{"alpha", "beta"}
-			gone := map[string]bool{"alpha": true, "beta": false}
-			inFlight := map[string]bool{"alpha": true}
-
-			reap, remaining := planReapCycle(live, hubLive, gone, counters, inFlight, 3)
-			for _, n := range reap {
-				if n == "alpha" {
-					t.Errorf("reap = %v, want alpha excluded (in-flight)", reap)
-				}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			counters := maps.Clone(tt.counters)
+			if counters == nil {
+				counters = map[string]int{}
 			}
-			for _, n := range remaining {
-				if n == "alpha" {
-					t.Errorf("remaining = %v, want alpha excluded (in-flight)", remaining)
+			for i, c := range tt.cycles {
+				reap, remaining := planReapCycle(c.live, !c.hubDown, c.gone, counters, c.inFlight, tt.threshold)
+				sort.Strings(reap)
+				sort.Strings(remaining)
+				if !slices.Equal(reap, c.wantReap) {
+					t.Fatalf("cycle %d: reap = %v, want %v", i, reap, c.wantReap)
+				}
+				if !slices.Equal(remaining, c.wantRemaining) {
+					t.Fatalf("cycle %d: remaining = %v, want %v", i, remaining, c.wantRemaining)
+				}
+				if !maps.Equal(counters, c.wantCounters) {
+					t.Fatalf("cycle %d: counters = %v, want %v", i, counters, c.wantCounters)
 				}
 			}
 		})
@@ -362,8 +302,6 @@ func worktreeRootGoneFixture(t *testing.T) (missing, plainFile, dir string) {
 	return missing, plainFile, dir
 }
 
-// TestWorktreeRootGone pins the per-name proven-gone predicate: missing -> gone; a plain file ->
-// gone; a directory -> not gone.
 func TestWorktreeRootGone(t *testing.T) {
 	missing, plainFile, dir := worktreeRootGoneFixture(t)
 
@@ -385,8 +323,6 @@ func TestWorktreeRootGone(t *testing.T) {
 	}
 }
 
-// TestHubIsLiveDir pins the hub-probe proven-live predicate: a directory -> live; a missing path ->
-// not live; a plain file -> not live.
 func TestHubIsLiveDir(t *testing.T) {
 	missing, plainFile, dir := worktreeRootGoneFixture(t)
 
@@ -455,14 +391,7 @@ func TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth(t *testi
 	}
 }
 
-// TestValidateWatchdogFlags pins validateWatchdogFlags as a pure function: an empty or relative
-// hubPath is rejected, an empty tmuxPath is rejected, and an absolute hubPath with a non-empty
-// tmuxPath is accepted.
-//
-// This is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of
-// the accepting case would fall through the pre-flight into a global logger mutation, a lock
-// acquisition under a scratch directory the command never creates, and then the discovery loop,
-// whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
+// validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
 func TestValidateWatchdogFlags(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -491,8 +420,7 @@ func TestValidateWatchdogFlags(t *testing.T) {
 	}
 }
 
-// TestWatchdogDefaultTiming pins that watchdogDefaultTiming returns exactly the three package
-// constants — the guard against a test-only default silently becoming production's cadence,
+// watchdogDefaultTiming guards against a test-only default silently becoming production's cadence,
 // mirroring the coverage internal/reedengine/watchloop_test.go already gives its own default-timing
 // constructor.
 func TestWatchdogDefaultTiming(t *testing.T) {
