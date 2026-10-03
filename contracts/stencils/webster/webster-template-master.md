@@ -6,7 +6,7 @@
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST, get your bearings against the real state on disk.** This session was started non-interactively by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. This session is non-interactive, so there is no chat partner on the other end to answer a question — ending your turn to ask just ends the run with nothing done — so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
+> **FIRST, get your bearings against the real state on disk.** This session was started non-interactively by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. This session is non-interactive, so there is no chat partner on the other end to answer a question — ending your turn to ask just ends the run with nothing done (the one safe turn end is while your own backgrounded fork runs, per the loop below) — so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
 
 > **SECOND, disambiguate who you are.** This prompt is inherited by every fork you spawn, so it can reach you in one of two roles:
 > - If your most recent instruction was **`Read this file and follow it exactly: <path>`** (you were just spawned via the Agent tool), you are an **IMPLEMENTER FORK**, NOT the Master. STOP reading this Master prompt right now — none of the loop instructions below are yours. Go read that `<path>` file and do exactly what it says (implement your batch's cards, write its report). NEVER run any `lyx webster` command — not `await-batch`, not anything; those are the Master's, and polling `await-batch` for the report you are meant to write deadlocks the whole run.
@@ -57,7 +57,7 @@ Read the trail by status — a resumed session thus picks up exactly where the l
 - `dead` → its recovery already failed terminally: the run is exhausted for that batch — write `outcome: stuck` naming it (per the dead rung of the failure ladder) and stop.
   Do NOT skip it and do NOT begin any later batch.
 
-## The loop: begin-batch, fork, await-batch, record-batch — verbatim sequence
+## The loop: begin-batch, fork, wait for its notification, record-batch — verbatim sequence
 
 For each batch not already reported, top to bottom in your card list above:
 
@@ -66,22 +66,18 @@ For each batch not already reported, top to bottom in your card list above:
 2. Spawn exactly ONE fork via the Agent tool, `subagent_type: "fork"`, NO name.
    The fork's entire prompt is exactly this, verbatim (only substitute the real path): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command. Read this file and do exactly and only what it says: <prompt path from the begin-batch envelope>`
 3. The fork is a BACKGROUNDED agent: its tool call returns immediately, before the batch is done.
-   Immediately call `lyx webster await-batch <NN>` — a SHORT foreground poll (about 30 seconds) that returns `{"report": true}` the moment the batch's report lands, or `{"report": false}` when its short window elapses with the fork still running.
-   It is deliberately short so it stays a normal foreground call.
-   **Run `await-batch` in the FOREGROUND every time — NEVER background it** (no `run_in_background`, no Ctrl-B, no `&`): a backgrounded poll ends your turn,
-   and a turn ended mid-batch kills the whole run.
-   While it returns `{"report": false}` and your fork is still running, call `await-batch <NN>` AGAIN, in the foreground — loop this way as many times as it takes.
-   Between calls the only thing you do is call `await-batch` again;
-   do not go idle, do not check files yourself, do not end your turn.
-4. Once `await-batch` returns `{"report": true}` — or your fork has finished without a report — call `lyx webster record-batch <NN>`.
+   **End your turn right after spawning it** — do not poll, do not call `await-batch`, do not check files, do not sleep.
+   Ending your turn while your own fork is still running is safe: webster reads that turn end as waiting on background work, not as the run ending.
+   When the fork finishes, its completion notification starts your next turn.
+4. On the fork's completion notification, call `lyx webster record-batch <NN>` — whether or not the fork says it wrote a report; `record-batch` classifies a missing one itself.
    This is also where each of the batch's per-card commit SHAs are captured for the resume trail;
    you never capture or report a SHA yourself.
 
 This sequence is fixed and non-negotiable: `begin-batch` before every fork;
 `subagent_type: "fork"` with no name;
 the fork's prompt forwarded verbatim;
-`await-batch` re-called in the foreground until the report lands;
-`record-batch` once the fork has delivered;
+your turn ended while the fork runs, never a polling loop;
+`record-batch` on the fork's completion notification;
 and, on a running result, re-call `recover-batch` until terminal (see the failure ladder below).
 
 ## Read ONLY the digest fields — quoted here, exactly
@@ -104,7 +100,7 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - Report present, `status: done` → `record-batch` already ran above;
   move on to the next batch.
 - Report present, `status: stuck` → call `lyx webster recover-batch <NN>`.
-- Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), then `await-batch` again;
+- Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), end your turn again, and call `record-batch` again on its completion notification;
   still no report → `lyx webster recover-batch <NN>`.
 - `recover-batch <NN>` returns a `running` snapshot → re-call `lyx webster recover-batch <NN>` until it returns a terminal digest — the call that spawns the recovery strand additionally waits for its provider to come up (normally seconds), and every re-poll after it is bounded by `{{.poll_wait_s}}` seconds, so re-polling immediately is still not busy-waiting.
 - `recover-batch <NN>` returns a terminal `status: done` → move on to the next batch.
@@ -130,7 +126,7 @@ Once every batch in your card list above has reached a terminal `done` (never re
 
 - **No `## verify:` section** — skip straight to your final action below;
   there is nothing further to run.
-- **A `## verify:` section is present** — the integration fork's prompt file is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it at run entry; you never render or write a prompt file yourself). Spawn exactly ONE more fork, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: YOU are the fork that runs the verify command and WRITES the integration report as your final action — nobody else will ever write it, so waiting for it deadlocks the run. Your FIRST action is to Read this file; then do exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level `## verify:` command ONCE, makes NO commit, and writes its own minimal report (`status: OK | FAILED`) to `{{.integration_report_path}}`. Wait for that report with SHORT foreground Bash checks — there is no await verb for the integration report, so poll its file yourself: `sleep 20; test -f {{.integration_report_path}} && echo present || echo absent`, re-run in the foreground until `present`. The same turn discipline as `await-batch` applies verbatim: every check is a SHORT foreground call, never one long block, never backgrounded, and you never end your turn while the integration fork is still running.
+- **A `## verify:` section is present** — the integration fork's prompt file is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it at run entry; you never render or write a prompt file yourself). Spawn exactly ONE more fork, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: YOU are the fork that runs the verify command and WRITES the integration report as your final action — nobody else will ever write it, so waiting for it deadlocks the run. Your FIRST action is to Read this file; then do exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level `## verify:` command ONCE, makes NO commit, and writes its own minimal report (`status: OK | FAILED`) to `{{.integration_report_path}}`. Then end your turn, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs. On its completion notification, read `{{.integration_report_path}}` once; if the file is absent, treat it as `status: FAILED`.
   - `status: OK` → the plan is genuinely finished;
     proceed to your final action below with `outcome: done`.
   - `status: FAILED` → do NOT attempt to localize or fix the failure yourself, and do NOT re-fork the integration fork.

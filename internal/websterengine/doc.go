@@ -231,33 +231,30 @@
 // provides thin bracket verbs Master calls around each fork: begin-batch
 // (pause/fingerprint checks, records the batch's start-SHA, idempotently
 // asserts Master's model for this batch, renders and writes the fork
-// prompt) immediately before forking, await-batch (a SHORT, stateless,
-// foreground poll on the batch's report path, re-called in a loop) between
-// the fork spawn and the record, and record-batch (incremental fork audit,
-// batch-report parsing, digest distillation, state update) once the fork
-// has delivered. await-batch exists because the Agent-tool fork is a
-// BACKGROUNDED agent on current Claude Code (2.1.205): the fork call
-// returns immediately, before the batch is done, so Master must stay
-// inside its turn by re-polling await-batch until the report lands — a
-// Master that ends its turn "waiting" is classified asking by the shuttle
-// file contract and kills the run (found live in round fable-r1). Each
-// await-batch call blocks only ~30s (DefaultAwaitWaitS), deliberately
-// short: Claude Code auto-backgrounds a foreground command that runs much
-// past ~2 minutes, and a backgrounded poll stops keeping Master's turn
-// alive — so the poll is short and looped rather than one long block. Go's
+// prompt) immediately before forking, and record-batch (incremental fork
+// audit, batch-report parsing, digest distillation, state update) once the
+// fork has delivered. The Agent-tool fork is a BACKGROUNDED agent: the fork
+// call returns immediately, before the batch is done, so Master ends its
+// turn right after spawning it and calls record-batch when the fork's
+// completion notification starts its next turn. That turn end does not end
+// the run: shuttle reads a turn that ends with a background agent still
+// running as EventWaiting, which its wait loop treats as still running,
+// so Master spends no turns while a fork works. await-batch (a stateless,
+// bounded wait on a batch's report path) remains as a verb an operator can
+// call, but no longer sits in Master's loop. Go's
 // gates only run when Master actually calls them — the fork itself is
 // Master's own un-gateable act, so enforcement is two-layer: template
-// discipline (the master template pins the begin -> fork -> await -> record
-// sequence, property-tested) plus fail-loud detection after the fact
+// discipline (the master template pins the begin -> fork -> notification ->
+// record sequence, property-tested) plus fail-loud detection after the fact
 // (record-batch archives the report and refuses when a batch has no begin-batch record, naming begin-batch as the way forward;
 // the audit cross-checks fork-transcript count against begun-batch count). This
 // is a steering guard, not a security boundary, the same class as burler's
 // nested-Agent ban.
 //
 // A third, deterministic layer closes the fork-loop deadlock: because a fork
-// inherits Master's whole prompt (the await-batch poll loop included), a fork
-// that starts driving that loop itself — polling await-batch for the report
-// it is meant to write — livelocks the run. A fork-context PreToolUse(Bash)
+// inherits Master's whole prompt (the batch loop included), a fork that
+// starts driving that loop itself — calling the bracket verbs or waiting for
+// the report it is meant to write — livelocks the run. A fork-context PreToolUse(Bash)
 // hook in the claudeengine seam (buildSettings, gated on the same
 // fork-authorized spec that enables forks) refuses any `lyx webster` command
 // when it fires inside a fork (the hook payload carries a top-level agent_id,
@@ -381,8 +378,9 @@
 // Master-synthesized prompt file would itself be a parent-write audit
 // violation (found live in round fable-r1: with no pre-rendered prompt the
 // stage was unreachable). Master spawns the fork exactly like a batch
-// fork; AwaitIntegration mirrors await-batch's own bounded long-poll idiom
-// over the single fixed IntegrationReportPath rather than a per-batch
+// fork and waits for its completion notification the same way;
+// AwaitIntegration, Go's own bounded wait at run exit, mirrors await-batch's
+// idiom over the single fixed IntegrationReportPath rather than a per-batch
 // report path, and a missing integration report at run exit is
 // outcome-aware: fail-loud under Master's outcome: done (a done claim
 // requires a passing suite), consistent-and-preserved under stuck (the
