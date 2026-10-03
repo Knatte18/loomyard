@@ -1,17 +1,7 @@
-// cli_test.go covers Command's bare-listing and unknown-subcommand behaviour, plus armFromSeed's
-// seed-driven arming: the run-id positional defaulting to "self", an absent seed's run-id listing
-// refusal, an unknown-recipe refusal, the verb gate, and the pinned refusal precedence. It stays
-// untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc
-// comment), so every case here drives it directly against a hand-built *lyxcwd.Location, with no
-// real git repository behind it -- matching the repo's own convention that a real lyxcwd.Resolve
-// spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the
-// precedent).
-//
-// The two bare-listing/unknown-subcommand cases below do call RunCLIIn(t.TempDir(), …), because
-// RunCLI delegates to RunCLIIn("", …) and therefore reads the process cwd -- the package source
-// directory, which is inside this repo's worktree -- so an injected non-git cwd is reachable only
-// through the cwd-carrying seam. What keeps those two cases Tier 1 is that each one short-circuits
-// at cmd.Name() == "shed" inside resolvePersistentPreRun, before lyxcwd.Resolve is ever called.
+// cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", an absent seed's run-id listing refusal, an unknown-recipe refusal, the verb gate, and the pinned refusal precedence.
+// It stays untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment),
+// so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it --
+// matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
 package shedcli
 
 import (
@@ -26,36 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
-
-// TestRunCLIIn_BareListingNeedsNoGitRepository asserts a bare "lyx shed" lists the four
-// subcommands and succeeds against a cwd that is not a git worktree at all.
-func TestRunCLIIn_BareListingNeedsNoGitRepository(t *testing.T) {
-	var out bytes.Buffer
-	exitCode := RunCLIIn(t.TempDir(), &out, nil)
-
-	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(nil) exit code = %d; want 0; output: %s", exitCode, out.String())
-	}
-	for _, sub := range []string{"run", "step", "status", "pause", "goto", "seed"} {
-		if !strings.Contains(out.String(), sub) {
-			t.Errorf("bare shed listing missing subcommand %q; got:\n%s", sub, out.String())
-		}
-	}
-}
-
-// TestRunCLIIn_UnknownSubcommandEmitsJSONEnvelope asserts "lyx shed bogus" emits a JSON error
-// envelope rather than cobra's own plain-text help.
-func TestRunCLIIn_UnknownSubcommandEmitsJSONEnvelope(t *testing.T) {
-	var out bytes.Buffer
-	exitCode := RunCLIIn(t.TempDir(), &out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Fatalf("RunCLIIn([bogus]) exit code = %d; want 1; output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Errorf("RunCLIIn([bogus]) output missing ok:false envelope; got: %q", out.String())
-	}
-}
 
 // fixtureLocation builds a synthetic *lyxcwd.Location by hand, mirroring the field derivation
 // Resolve performs, without spawning git.

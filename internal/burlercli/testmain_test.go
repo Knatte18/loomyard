@@ -2,6 +2,7 @@
 // gitkit.HermeticGitEnv() runs once before any test, so burlercli's git-spawning fixtures never
 // inherit the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment
 // Invariant).
+// The binary also runs under tmux isolation through tmuxkit.Main.
 //
 // This file is required rather than tidy: card 19's integration test drives RunCLIIn, which now
 // reaches preflight.ResolveMode and through it lyxcwd.Resolve's real `git rev-parse` spawn, in a
@@ -18,11 +19,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs gitkit.HermeticGitEnv() before any test in this package spawns git, then delegates
-// to the normal test run.
+// TestMain runs gitkit.HermeticGitEnv() before any test in this package spawns git, then runs the tests under tmuxkit.Main.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }

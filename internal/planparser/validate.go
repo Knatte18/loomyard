@@ -38,8 +38,8 @@ import (
 	"github.com/Knatte18/quarry/glyph"
 )
 
-// recognizedFormat is the only plan-format version Validate currently understands.
-const recognizedFormat = 5
+// RecognizedFormat is the only plan-format version Validate currently understands.
+const RecognizedFormat = 5
 
 // ValidationError is one finding from Validate: which check tripped, which card it concerns, and a
 // human-readable detail.
@@ -118,14 +118,14 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	return findings
 }
 
-// checkFormatRecognized implements format-unrecognized: plan.Format must equal recognizedFormat.
+// checkFormatRecognized implements format-unrecognized: plan.Format must equal RecognizedFormat.
 func checkFormatRecognized(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	if plan.Format != recognizedFormat {
+	if plan.Format != RecognizedFormat {
 		findings = append(findings, ValidationError{
 			Check:  "format-unrecognized",
-			Detail: fmt.Sprintf("format %d is not recognized; only format %d is known", plan.Format, recognizedFormat),
+			Detail: fmt.Sprintf("format %d is not recognized; only format %d is known", plan.Format, RecognizedFormat),
 		})
 	}
 

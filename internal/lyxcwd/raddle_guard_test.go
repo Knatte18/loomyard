@@ -8,26 +8,17 @@
 package lyxcwd
 
 import (
-	"io/fs"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // TestRaddleGuard verifies that no production source file in internal/lyxcwd contains the literal
 // substring _raddle.
 func TestRaddleGuard(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
-		// Resolve package directory relative to this test file.
-		_, file, _, ok := runtime.Caller(0)
-		if !ok {
-			t.Fatal("could not determine test file location")
-		}
-		// One level up from internal/lyxcwd/raddle_guard_test.go → package dir
-		pkgDir := filepath.Dir(file)
-
 		// Predicate: returns true if the bytes contain _raddle.
 		containsRaddle := func(data []byte) bool {
 			return strings.Contains(string(data), "_raddle")
@@ -35,29 +26,12 @@ func TestRaddleGuard(t *testing.T) {
 
 		var failures []string
 
-		// Walk the package directory.
-		err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+		scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/lyxcwd"}, Shallow: true}, func(f *scankit.File) {
+			if containsRaddle(f.Data) {
+				failures = append(failures, filepath.Base(f.Rel))
 			}
-
-			// Only check .go files that are not _test.go files.
-			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-				if containsRaddle(data) {
-					failures = append(failures, d.Name())
-				}
-			}
-
-			return nil
 		})
-
-		if err != nil {
-			t.Fatalf("failed to walk package directory: %v", err)
-		}
+		scankit.RequireFloor(t, scanned, 1, "raddle guard")
 
 		if len(failures) > 0 {
 			t.Errorf("found _raddle reference in production files: %v", failures)

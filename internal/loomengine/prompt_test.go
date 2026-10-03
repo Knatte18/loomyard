@@ -15,61 +15,29 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils, the three
-// pattern-directive stencils, and the friction-directive-implementer/-interview stencils, all copied
-// byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as
-// stencilsDir.
+// newTestStencilsDir returns a t.TempDir() seeded with every registry stencil.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := newMinimalStencilsDir(t)
-
-	patternDir := filepath.Join(dir, "pattern")
-	if err := os.MkdirAll(patternDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-implementer.md"), stencils.PatternDirectiveImplementer, 0o644); err != nil {
-		t.Fatalf("WriteFile(pattern-directive-implementer.md) = %v; want nil", err)
-	}
-	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-review-fix.md"), stencils.PatternDirectiveReviewFix, 0o644); err != nil {
-		t.Fatalf("WriteFile(pattern-directive-review-fix.md) = %v; want nil", err)
-	}
-	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-orchestrator.md"), stencils.PatternDirectiveOrchestrator, 0o644); err != nil {
-		t.Fatalf("WriteFile(pattern-directive-orchestrator.md) = %v; want nil", err)
-	}
-
-	frictionDir := filepath.Join(dir, "friction")
-	if err := os.MkdirAll(frictionDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", frictionDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(frictionDir, "friction-directive-implementer.md"), stencils.FrictionDirectiveImplementer, 0o644); err != nil {
-		t.Fatalf("WriteFile(friction-directive-implementer.md) = %v; want nil", err)
-	}
-	if err := os.WriteFile(filepath.Join(frictionDir, "friction-directive-interview.md"), stencils.FrictionDirectiveInterview, 0o644); err != nil {
-		t.Fatalf("WriteFile(friction-directive-interview.md) = %v; want nil", err)
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
-// newMinimalStencilsDir builds a t.TempDir() seeded with only loom's two stencils -- no
-// pattern-directive or friction-directive stencils at all -- for tests that must prove a composer
-// needs none of those to render its Tier-2-off / PATTERN-inactive path.
+// newMinimalStencilsDir returns a seeded stencils directory with the pattern-directive and friction-directive stencils removed, for tests that must prove a composer needs none of them to render its Tier-2-off / PATTERN-inactive path.
 func newMinimalStencilsDir(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	loomDir := filepath.Join(dir, "loom")
-	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-discussion.md"), stencils.LoomTemplateDiscussion, 0o644); err != nil {
-		t.Fatalf("WriteFile(loom-template-discussion.md) = %v; want nil", err)
-	}
-	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-plan.md"), stencils.LoomTemplatePlan, 0o644); err != nil {
-		t.Fatalf("WriteFile(loom-template-plan.md) = %v; want nil", err)
-	}
+	dir := stencilkit.Seed(t)
+	stencilkit.Remove(t, dir,
+		"pattern-directive-implementer",
+		"pattern-directive-review-fix",
+		"pattern-directive-orchestrator",
+		"friction-directive-implementer",
+		"friction-directive-review-fix",
+		"friction-directive-orchestrator",
+		"friction-directive-interview",
+	)
 	return dir
 }
 

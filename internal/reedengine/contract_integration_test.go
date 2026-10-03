@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // seedReedConfig writes the minimal on-disk config structure for LoadConfig.
@@ -79,17 +80,10 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := fmt.Sprintf("lyx-contract-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := tmuxkit.Socket(t, cfg.Tmux)
 
 	session := "contract-session"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
-
-	t.Cleanup(func() {
-		// Always torn down, success or failure: a leaked scratch server on a
-		// pid/timestamp socket is harmless to a real hub server, but leaves a
-		// stray process behind if the test does not clean up after itself.
-		_ = reed.run("kill-server")
-	})
 
 	// new-session: the same shape ensureServerAndSessionLocked spawns
 	// (-x/-y sizing plus a real shell command as the initial pane's command),
@@ -404,17 +398,13 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := fmt.Sprintf("lyx-contract-exact-target-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := tmuxkit.Socket(t, cfg.Tmux)
 	// sibling's name deliberately extends session's, so any prefix-match
 	// fallback in the binary would resolve session-targets onto the sibling
 	// once the exact-named session is gone.
 	const session = "exact-target"
 	const sibling = "exact-target2"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
-
-	t.Cleanup(func() {
-		_ = reed.run("kill-server")
-	})
 
 	for _, name := range []string{session, sibling} {
 		if err := reed.run("new-session", "-d", "-s", name, "-x", "80", "-y", "24", cfg.Shell); err != nil {
@@ -484,14 +474,10 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := fmt.Sprintf("lyx-contract-absent-session-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := tmuxkit.Socket(t, cfg.Tmux)
 	const present = "absent-probe-present"
 	const absent = "absent-probe-missing"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
-
-	t.Cleanup(func() {
-		_ = reed.run("kill-server")
-	})
 
 	if err := reed.run("new-session", "-d", "-s", present, "-x", "80", "-y", "24", cfg.Shell); err != nil {
 		t.Fatalf("new-session %s: %v", present, err)
@@ -554,11 +540,8 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := fmt.Sprintf("lyx-contract-rewrite-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := tmuxkit.Socket(t, cfg.Tmux)
 	reed := NewTmuxCmd(cfg.Tmux, socket)
-	t.Cleanup(func() {
-		_ = reed.run("kill-server")
-	})
 
 	tests := []struct {
 		name      string
@@ -915,13 +898,9 @@ func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	}
 
 	const windowRows = 6
-	socket := fmt.Sprintf("lyx-contract-selvage-floor-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	socket := tmuxkit.Socket(t, cfg.Tmux)
 	session := "selvage-floor-session"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
-
-	t.Cleanup(func() {
-		_ = reed.run("kill-server")
-	})
 
 	if err := reed.run("new-session", "-d", "-s", session, "-x", "80", "-y", strconv.Itoa(windowRows), cfg.Shell); err != nil {
 		t.Fatalf("new-session: %v", err)

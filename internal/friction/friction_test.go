@@ -1,45 +1,21 @@
 // friction_test.go covers Directive's four roles and WarnIfMarkerAbsent.
-// Every test here is untagged Tier 1: it uses only os.MkdirAll/os.WriteFile inside a t.TempDir() (via
-// newTestStencilsDir, seeding a hermetic stencils directory), t.TempDir itself, and spawns nothing.
+// Every test here is untagged Tier 1: it uses only t.TempDir (via newTestStencilsDir, seeding a hermetic stencils directory) and spawns nothing.
 
 package friction
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with the four friction-directive stencils, copied
-// from the stencils package's embedded defaults and stamped through
-// stencilstore.ApplyStamp(content, stencilstore.BodyHash(content)) so the fixture matches what
-// stencilstore.Reconcile really puts on disk in a hub — a real leading banner included, which is
-// what makes the banner-strip assertion in this file meaningful.
+// newTestStencilsDir returns a seeded stencils directory.
+// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner, which is what makes the banner-strip assertion in this file meaningful.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	files := map[string][]byte{
-		implementerDirectiveStencil:  stencils.FrictionDirectiveImplementer,
-		reviewFixDirectiveStencil:    stencils.FrictionDirectiveReviewFix,
-		orchestratorDirectiveStencil: stencils.FrictionDirectiveOrchestrator,
-		interviewDirectiveStencil:    stencils.FrictionDirectiveInterview,
-	}
-	for name, content := range files {
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
-		}
-		stamped := stencilstore.ApplyStamp(content, stencilstore.BodyHash(content))
-		if err := os.WriteFile(path, stamped, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 // TestDirective_AllRolesReturnOwnStencilText covers all four roles: each returns its own stencil's

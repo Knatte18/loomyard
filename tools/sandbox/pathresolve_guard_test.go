@@ -15,16 +15,19 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// pathResolveAllowlistFile is the single file permitted to contain a banned
-// bare-PATH lyx literal: resolve.go, the sole resolution site.
-const pathResolveAllowlistFile = "resolve.go"
+// pathResolveAllowlist is the single file permitted to contain a banned bare-PATH lyx literal.
+var pathResolveAllowlist = []scankit.Entry{
+	{Key: "tools/sandbox/resolve.go", Why: "the sole resolution site"},
+}
+
+// pathResolveMinFiles is the vacuous-scan floor for this guard's single-directory walk.
+const pathResolveMinFiles = 3
 
 // bareLyxLookupLiteral is the one banned token matched as a whole-file substring.
 const bareLyxLookupLiteral = `lookPath("lyx")`
@@ -36,41 +39,23 @@ var execSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 // TestPathResolveGuard_NoBarePathLyxOutsideResolve fails if any non-test *.go file contains a
 // banned bare-PATH lyx literal.
 func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
-	dir := sandboxSourceDir(t)
+	allow := scankit.NewAllowlist(pathResolveAllowlist)
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read sandbox source dir %s: %v", dir, err)
-	}
-
-	var scanned int
 	var failures []string
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"tools/sandbox"}, Shallow: true}, func(f *scankit.File) {
+		if allow.Allowed(f.Rel) {
+			return
 		}
-		scanned++
-
-		if entry.Name() == pathResolveAllowlistFile {
-			continue
-		}
-
-		data, readErr := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if readErr != nil {
-			t.Fatalf("read %s: %v", entry.Name(), readErr)
-		}
-
-		if token, bad := firstBannedLyxToken(string(data)); bad {
+		if token, bad := firstBannedLyxToken(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned bare-PATH lyx literal %q -- route through resolveLyx (resolve.go) instead",
-				entry.Name(), token,
+				f.Rel, token,
 			))
 		}
-	}
+	})
 
-	if scanned < 3 {
-		t.Fatalf("pathresolve guard: only scanned %d non-test .go file(s) in %s; expected at least 3 -- the directory read may be misconfigured", scanned, dir)
-	}
+	scankit.RequireFloor(t, scanned, pathResolveMinFiles, "pathresolve guard")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Dev/Prod Binary Separation Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
@@ -103,15 +88,4 @@ func lineHasBannedLyxSpawn(line string) (token string, bad bool) {
 		}
 	}
 	return "", false
-}
-
-// sandboxSourceDir returns the tools/sandbox package directory, derived from
-// this test file's location.
-func sandboxSourceDir(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate pathresolve_guard_test.go source file")
-	}
-	return filepath.Dir(thisFile)
 }

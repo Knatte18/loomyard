@@ -1,8 +1,6 @@
-// coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list
-// actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table
-// below, checked in both directions against New's real, current output rather than against a
-// standalone literal that could drift silently. It builds a real shedrecipe.Env/ShedPaths pair and
-// calls this package's own New, rather than iterating the table alone.
+// coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table of wantProducerTable (shape_test.go),
+// checked in both directions against New's real, current output rather than against a standalone literal that could drift silently.
+// It builds a real shedrecipe.Env/ShedPaths pair and calls this package's own New, rather than iterating the table alone.
 //
 // This file used to also assert that shedrecipe.Names() carried no engine unreachable by this
 // table beyond an allowlist -- a fourth, closed-coverage direction. That assertion was correct but
@@ -19,39 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// loomRowEngines maps each of New's row names to the engine name backing it. The row-name
-// side is keyed off loomshed's own Name* constants, per the row-name-authority-stays-with-the-go-
-// constants Shared Decision -- loomshed reads two of them for status-seed and resume purposes, so
-// those constants remain the authority even though this package now builds the list. The engine
-// side genuinely has to be written down by hand, because shedengine.ProducerDef carries no engine
-// name at all -- only the row-name side is derivable from New's own assembled output.
-var loomRowEngines = map[string]string{
-	loomshed.NamePreflight:         "Preflight",
-	loomshed.NameLoomPreflight:     "LoomPreflight",
-	loomshed.NameDiscussionWrite:   "DiscussionWrite",
-	loomshed.NameDiscussionBouncer: "Bouncer",
-	loomshed.NameDiscussionBurler:  "BurlerRound",
-	loomshed.NamePlanWrite:         "PlanWrite",
-	loomshed.NamePlanBouncer:       "Bouncer",
-	loomshed.NamePlanBurler:        "BurlerRound",
-	loomshed.NameBatchifier:        "Batchifier",
-	loomshed.NameWebster:           "Webster",
-	loomshed.NameWebsterBouncer:    "Bouncer",
-	loomshed.NameWebsterBurler:     "BurlerRound",
-	loomshed.NameDescribe:          "Describe",
-	loomshed.NamePublish:           "Publish",
-	loomshed.NamePRGate:            "PRGate",
-	loomshed.NamePRRework:          "PRRework",
-	loomshed.NameFinalize:          "Finalize",
-	loomshed.NameFrictionReflect:   "FrictionReflect",
-}
-
-// TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about loomRowEngines against
-// New's real, current row list: every row New assembles has an entry in the table (the direction
-// that catches a row added to the recipe before its consuming task lands); every key in the table
-// names a row New actually has (the direction that keeps the table from accumulating dead
-// entries); and every engine name the table maps to resolves through shedrecipe.Lookup without
-// error.
+// TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about the row-to-engine mapping read off wantProducerTable (shape_test.go) against New's real, current row list:
+// every row New assembles has an entry in the table (the direction that catches a row added to the recipe before its consuming task lands);
+// every key in the table names a row New actually has (the direction that keeps the table from accumulating dead entries);
+// and every engine name the table maps to resolves through shedrecipe.Lookup without error.
 func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -59,17 +28,18 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
 
+	engines := rowEngines()
 	rowNames := make(map[string]bool, len(shed.Producers))
 	for _, p := range shed.Producers {
 		rowNames[p.Name] = true
-		if _, ok := loomRowEngines[p.Name]; !ok {
-			t.Errorf("New() row %q has no entry in loomRowEngines", p.Name)
+		if _, ok := engines[p.Name]; !ok {
+			t.Errorf("New() row %q has no entry in wantProducerTable", p.Name)
 		}
 	}
 
-	for rowName, engineName := range loomRowEngines {
+	for rowName, engineName := range engines {
 		if !rowNames[rowName] {
-			t.Errorf("loomRowEngines names row %q, which New() does not have", rowName)
+			t.Errorf("wantProducerTable names row %q, which New() does not have", rowName)
 		}
 		if _, err := shedrecipe.Lookup(engineName); err != nil {
 			t.Errorf("Lookup(%q) (engine for row %q) error = %v, want nil", engineName, rowName, err)
@@ -79,7 +49,7 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 
 // TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger proves each of the three surviving
 // directions actually fails on its own trigger, rather than assuming the deletion above left them
-// intact: a row absent from loomRowEngines, a table key naming no row, and a table engine that
+// intact: a row absent from the table, a table key naming no row, and a table engine that
 // does not resolve.
 func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 	env, paths := testEnv(t)
@@ -94,8 +64,9 @@ func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 	}
 
 	t.Run("RowAbsentFromTable", func(t *testing.T) {
-		table := make(map[string]string, len(loomRowEngines))
-		for rowName, engineName := range loomRowEngines {
+		engines := rowEngines()
+		table := make(map[string]string, len(engines))
+		for rowName, engineName := range engines {
 			if rowName == loomshed.NamePreflight {
 				continue
 			}

@@ -34,11 +34,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // statusVocabularySelectors is the closed set of selector names that read quarry's resolve-status
@@ -78,30 +76,25 @@ type statusHit struct {
 	fn string
 }
 
-// allowedStatusConsumer names one (file, function) pair verified fail-closed today: the four
-// readable statuses are handled explicitly and everything else -- the zero value included -- is
-// routed through a default/else arm rather than silently passed or dropped.
-type allowedStatusConsumer struct {
-	file string
-	fn   string
+// statusConsumerKey is the allowlist key naming one (file, function) pair: the file's module-relative path and the enclosing function, joined by a colon.
+func statusConsumerKey(rel, fn string) string {
+	return rel + ":" + fn
 }
 
-// allowedStatusConsumers is the tripwire's own allowlist. Adding a new .Status consumer means
-// making it fail closed (see this file's own doc comment) and then adding its (file, function) pair
-// here -- the test is what forces that review, not a style preference.
-var allowedStatusConsumers = []allowedStatusConsumer{
-	{"resolve.go", "statusFindings"},
-	{"resolve.go", "unreadableStatusDetail"},
-	{"create.go", "createFindings"},
-	{"donecheck.go", "doneCheckVerdicts"},
-	{"handle.go", "renameDeclSource"},
-	{"containment.go", "resolveContainment"},
-	// CanonicalizeHandles reads Unit-named selectors that are NOT the status vocabulary --
-	// quarry.NameResult.Unit and quarry.Declaration.Unit, the batched Name call's echo pair,
-	// compared to each other in its own fail-closed echo guard -- but the scan is a name-shape
-	// check and cannot tell those apart from ResolveResult.Unit, so the reviewed function earns
-	// its row here rather than a carve-out in the matcher.
-	{"handle.go", "CanonicalizeHandles"},
+// allowedStatusConsumers is the tripwire's own allowlist.
+// Each key names one (file, function) pair verified fail-closed today: the four readable statuses are handled explicitly and everything else -- the zero value included -- is routed through a default/else arm rather than silently passed or dropped.
+// Adding a new .Status consumer means making it fail closed (see this file's own doc comment) and then adding its pair here -- the test is what forces that review, not a style preference.
+var allowedStatusConsumers = []scankit.Entry{
+	{Key: "internal/planglyph/resolve.go:statusFindings", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/create.go:createFindings", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/containment.go:resolveContainment", Why: "fail-closed status reader"},
+	{
+		Key: "internal/planglyph/handle.go:CanonicalizeHandles",
+		Why: "reads Unit-named selectors that are NOT the status vocabulary -- quarry.NameResult.Unit and quarry.Declaration.Unit, the batched Name call's echo pair, compared to each other in its own fail-closed echo guard -- but the scan is a name-shape check and cannot tell those apart from ResolveResult.Unit, so the reviewed function earns its row here rather than a carve-out in the matcher",
+	},
 }
 
 // statusHitsIn returns every statusHit astFile's declarations contain: for each top-level
@@ -136,50 +129,27 @@ func statusHitsIn(astFile *ast.File) []statusHit {
 // TestStatusEnforcement_NoOutOfAllowlistConsumer parses every production .go file directly under
 // internal/planglyph (a _test.go file is skipped: the invariant is about production reads, and a
 // test's own assertions against a synthetic Status are not a second consumer) and fails when any
-// "Status" selector sits outside a function named in allowedStatusConsumers. It spawns no process
-// and carries no build tag, resolving the package directory from runtime.Caller(0) exactly as
-// internal/cliwire/bannedecl_enforcement_test.go does.
+// "Status" selector sits outside a function named in allowedStatusConsumers.
+// It spawns no process and carries no build tag.
 func TestStatusEnforcement_NoOutOfAllowlistConsumer(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine planglyph source directory location")
-	}
-	dir := filepath.Dir(thisFile)
-
-	allowed := make(map[[2]string]bool, len(allowedStatusConsumers))
-	for _, a := range allowedStatusConsumers {
-		allowed[[2]string{a.file, a.fn}] = true
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read directory %s: %v", dir, err)
-	}
+	allow := scankit.NewAllowlist(allowedStatusConsumers)
 
 	var failures []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
-		if err != nil {
-			t.Fatalf("parse %s: %v", name, err)
-		}
-
-		for _, hit := range statusHitsIn(astFile) {
-			if allowed[[2]string{name, hit.fn}] {
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/planglyph"}, Shallow: true}, func(f *scankit.File) {
+		for _, hit := range statusHitsIn(f.AST(t, parser.ParseComments)) {
+			if allow.Allowed(statusConsumerKey(f.Rel, hit.fn)) {
 				continue
 			}
 			label := hit.fn
 			if label == "" {
 				label = "<package scope>"
 			}
-			failures = append(failures, name+": "+label)
+			failures = append(failures, f.Rel+": "+label)
 		}
-	}
+	})
+
+	scankit.RequireFloor(t, scanned, planglyphScanMinFiles, "planglyph status scan")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf(".Status tripwire fired for consumer(s) not in the allowlist: %v -- a new .Status "+

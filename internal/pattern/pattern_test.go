@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // writePatternFile creates root/_lyx/PATTERN.md (and the _lyx
@@ -31,37 +31,11 @@ func writePatternFile(t *testing.T, root, content string) {
 	}
 }
 
-// newTestStencilsDir builds a t.TempDir() seeded with the three pattern-directive stencils, copied
-// from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
-//
-// Unlike the three existing consumer test helpers (loomengine, burlerengine, websterengine), which
-// write each embedded default's bytes raw, this helper writes each file's bytes through
-// stencilstore.ApplyStamp(content, stencilstore.BodyHash(content)) first, so the fixture matches what
-// stencilstore.Reconcile really puts on disk in a hub — a real leading banner, `lyx-stencil:` stamp
-// line included. Do not "fix" this into consistency with the other three: the other helpers get away
-// with raw bytes because everything they feed passes through stencil.Fill, which strips the banner
-// either way, whereas a raw fixture here would make the banner-strip test (see
-// TestDirective_StripsBanner) vacuous and let a missing strip pass green.
+// newTestStencilsDir returns a seeded stencils directory.
+// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner, a raw fixture would make the banner-strip test (see TestDirective_StripsBanner) vacuous and let a missing strip pass green.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	patternDir := filepath.Join(dir, "pattern")
-	if err := os.MkdirAll(patternDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
-	}
-	files := map[string][]byte{
-		"pattern-directive-implementer.md":  stencils.PatternDirectiveImplementer,
-		"pattern-directive-review-fix.md":   stencils.PatternDirectiveReviewFix,
-		"pattern-directive-orchestrator.md": stencils.PatternDirectiveOrchestrator,
-	}
-	for name, content := range files {
-		stamped := stencilstore.ApplyStamp(content, stencilstore.BodyHash(content))
-		if err := os.WriteFile(filepath.Join(patternDir, name), stamped, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 // TestDirective_ActiveWithFile covers the common active case — PATTERN.md present as a regular file

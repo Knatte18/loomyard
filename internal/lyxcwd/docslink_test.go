@@ -1,7 +1,6 @@
 // docslink_test.go guards markdown link and anchor integrity under manifest/ and docs/: every
 // inline markdown link's file part and #anchor must resolve somewhere in the repo. Its placement in
-// internal/lyxcwd is a file-layout convenience reusing repoRootForEnforcement and
-// walkEnforcementRoots from enforcement_test.go, not an ownership claim on markdown links by that
+// internal/lyxcwd is a file-layout convenience, not an ownership claim on markdown links by that
 // package — see CONSTRAINTS.md's Markdown Link Integrity invariant.
 
 package lyxcwd
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // inlineLinkPattern matches an inline markdown link "[text](target)". Reference-style links
@@ -291,12 +292,9 @@ func TestDocsLinkHeadingAnchors(t *testing.T) {
 	}
 }
 
-// docsLinkKey identifies one (file, target) link instance for allowlisting purposes. File is the
-// repoRoot-relative, slash-normalized path of the file the link was found in; Target is the raw
-// target string exactly as written in the source.
-type docsLinkKey struct {
-	File   string
-	Target string
+// docsLinkKey is the allowlist key of one (file, target) link instance: the base-relative, slash-normalized path of the file the link was found in and the raw target string exactly as written in the source, joined by a space (a target never contains whitespace).
+func docsLinkKey(file, target string) string {
+	return file + " " + target
 }
 
 // docsLinkBreak is one unresolved markdown link found by a scan.
@@ -344,20 +342,20 @@ func docsLinkResolve(repoRoot, relPath string, data []byte, filePart, fragment s
 	return ""
 }
 
-// docsLinkScan walks every ".md" file under roots (repoRoot-relative, "." for the whole tree) via
-// walkEnforcementRoots, extracts every inline link, and resolves each one against the repo tree.
+// docsLinkScan walks every ".md" file under roots (base-relative, "." for the whole tree) via scankit, extracts every inline link, and resolves each one against the tree rooted at base.
 // The root restriction is source-side only: roots names which files are scanned for outgoing links
 // and never restricts where a target may point — every target is resolved wherever it lands in the
-// repo, including the #anchor of any ".md" target whether or not that target is itself inside roots.
-// breaks is every unresolved link whose docsLinkKey is not present in allow; unmatched is every
-// allow key that no break in this run — allowlisted or not — matched, which is how a stale allowlist
-// entry (its link now resolves, or its keyed file was renamed or deleted away) is reported.
-func docsLinkScan(t *testing.T, repoRoot string, roots []string, allow map[docsLinkKey]string) (breaks []docsLinkBreak, unmatched []docsLinkKey) {
+// tree, including the #anchor of any ".md" target whether or not that target is itself inside roots.
+// breaks is every unresolved link whose docsLinkKey is not in allow;
+// stale is every allow key that no break in this run — allowlisted or not — matched, which is how a stale allowlist entry (its link now resolves, or its keyed file was renamed or deleted away) is reported.
+// scanned is the number of markdown files visited.
+func docsLinkScan(t *testing.T, base string, roots []string, allow []scankit.Entry) (breaks []docsLinkBreak, stale []string, scanned int) {
 	t.Helper()
 
-	matched := make(map[docsLinkKey]bool)
+	allowlist := scankit.NewAllowlist(allow)
 
-	walkEnforcementRoots(t, repoRoot, roots, []string{".md"}, func(relPath string, data []byte) {
+	scanned = scankit.Walk(t, scankit.Options{Base: base, Roots: roots, Exts: []string{".md"}, Filter: scankit.All}, func(f *scankit.File) {
+		relPath, data := f.Rel, f.Data
 		for _, link := range docsLinkExtract(data) {
 			target := link.Target
 			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") {
@@ -365,36 +363,30 @@ func docsLinkScan(t *testing.T, repoRoot string, roots []string, allow map[docsL
 			}
 
 			filePart, fragment, hasFragment := strings.Cut(target, "#")
-			reason := docsLinkResolve(repoRoot, relPath, data, filePart, fragment, hasFragment)
+			reason := docsLinkResolve(base, relPath, data, filePart, fragment, hasFragment)
 			if reason == "" {
 				continue
 			}
 
-			key := docsLinkKey{File: relPath, Target: target}
-			matched[key] = true
-			if _, ok := allow[key]; ok {
+			if allowlist.Allowed(docsLinkKey(relPath, target)) {
 				continue
 			}
 			breaks = append(breaks, docsLinkBreak{File: relPath, Line: link.Line, Target: target, Reason: reason})
 		}
 	})
 
-	for key := range allow {
-		if !matched[key] {
-			unmatched = append(unmatched, key)
-		}
-	}
-
-	return breaks, unmatched
+	return breaks, allowlist.Stale(), scanned
 }
 
 // docsLinkAllowlist is the self-expiring allowlist of known-broken links this task leaves for other
 // tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
 // by (file, target) and never by line number; every entry names its owning task; and an entry whose
 // key is not matched by any break in a scan is reported by docsLinkScan as deletable.
-// 1 entry from an earlier task in the chain, not yet resolved.
-var docsLinkAllowlist = map[docsLinkKey]string{
-	{File: "docs/overview.md", Target: "../CONSTRAINTS.md#package-naming"}:                         "chain A -> B -> E; E is last owner",
+var docsLinkAllowlist = []scankit.Entry{
+	{
+		Key: docsLinkKey("docs/overview.md", "../CONSTRAINTS.md#package-naming"),
+		Why: "chain A -> B -> E; E is last owner",
+	},
 }
 
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
@@ -402,19 +394,20 @@ var docsLinkAllowlist = map[docsLinkKey]string{
 // and its #anchor.
 func TestEnforcement_MarkdownLinks(t *testing.T) {
 	t.Run("repo", func(t *testing.T) {
-		breaks, unmatched := docsLinkScan(t, repoRootForEnforcement(t), []string{"manifest", "docs"}, docsLinkAllowlist)
+		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"manifest", "docs"}, docsLinkAllowlist)
 
+		scankit.RequireFloor(t, scanned, 1, "markdown link scan")
 		for _, b := range breaks {
 			t.Errorf("broken markdown link: %s:%d  %s  %s", b.File, b.Line, b.Reason, b.Target)
 		}
-		for _, u := range unmatched {
-			t.Errorf("stale allowlist entry, delete it: %s -> %s", u.File, u.Target)
+		for _, u := range stale {
+			t.Errorf("stale allowlist entry, delete it: %s", u)
 		}
 	})
 
 	// writeTree materializes files (each keyed by a slash-separated path relative to the tree
 	// root) under a fresh t.TempDir() and returns the tree's absolute root. None of these paths
-	// may contain "testdata" -- walkEnforcementRoots skips any directory whose name contains that
+	// may contain "testdata" -- scankit skips any directory whose name contains that
 	// substring, which would make the built fixture walk to zero files and pass vacuously.
 	writeTree := func(t *testing.T, files map[string]string) string {
 		t.Helper()
@@ -436,9 +429,9 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md": "[b](b.md)\n",
 			"b.md": "# B\n",
 		})
-		breaks, unmatched := docsLinkScan(t, root, []string{"."}, nil)
-		if len(breaks) != 0 || len(unmatched) != 0 {
-			t.Errorf("docsLinkScan() breaks=%v unmatched=%v; want none", breaks, unmatched)
+		breaks, stale, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 || len(stale) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v stale=%v; want none", breaks, stale)
 		}
 	})
 
@@ -446,7 +439,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "[b](b.md)\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 1 || breaks[0].Reason != "missing file" {
 			t.Errorf("docsLinkScan() breaks=%v; want one missing file break", breaks)
 		}
@@ -457,7 +450,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md": "[b](b.md#some-heading)\n",
 			"b.md": "## Some Heading\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
@@ -468,7 +461,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md": "[b](b.md#no-such-heading)\n",
 			"b.md": "## Some Heading\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 1 || breaks[0].Reason != "missing anchor" {
 			t.Errorf("docsLinkScan() breaks=%v; want one missing anchor break", breaks)
 		}
@@ -478,7 +471,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "## Some Heading\n\n[self](#some-heading)\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
@@ -488,7 +481,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "[h](http://example.com/x) [s](https://example.com/y) [m](mailto:a@example.com)\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
@@ -498,15 +491,13 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "[b](b.md)\n",
 		})
-		allow := map[docsLinkKey]string{
-			{File: "a.md", Target: "b.md"}: "test",
-		}
-		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		allow := []scankit.Entry{{Key: docsLinkKey("a.md", "b.md"), Why: "test"}}
+		breaks, stale, _ := docsLinkScan(t, root, []string{"."}, allow)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none (allowlisted)", breaks)
 		}
-		if len(unmatched) != 0 {
-			t.Errorf("docsLinkScan() unmatched=%v; want none", unmatched)
+		if len(stale) != 0 {
+			t.Errorf("docsLinkScan() stale=%v; want none", stale)
 		}
 	})
 
@@ -515,15 +506,13 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md": "[b](b.md)\n",
 			"b.md": "# B\n",
 		})
-		allow := map[docsLinkKey]string{
-			{File: "a.md", Target: "b.md"}: "test",
-		}
-		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		allow := []scankit.Entry{{Key: docsLinkKey("a.md", "b.md"), Why: "test"}}
+		breaks, stale, _ := docsLinkScan(t, root, []string{"."}, allow)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
-		if len(unmatched) != 1 || unmatched[0] != (docsLinkKey{File: "a.md", Target: "b.md"}) {
-			t.Errorf("docsLinkScan() unmatched=%v; want the now-resolved entry reported stale", unmatched)
+		if len(stale) != 1 || stale[0] != docsLinkKey("a.md", "b.md") {
+			t.Errorf("docsLinkScan() stale=%v; want the now-resolved entry reported stale", stale)
 		}
 	})
 
@@ -535,15 +524,13 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"other.md": "# Other\n",
 		})
-		allow := map[docsLinkKey]string{
-			{File: "renamed-away.md", Target: "b.md"}: "test",
-		}
-		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		allow := []scankit.Entry{{Key: docsLinkKey("renamed-away.md", "b.md"), Why: "test"}}
+		breaks, stale, _ := docsLinkScan(t, root, []string{"."}, allow)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
-		if len(unmatched) != 1 || unmatched[0] != (docsLinkKey{File: "renamed-away.md", Target: "b.md"}) {
-			t.Errorf("docsLinkScan() unmatched=%v; want the renamed-away entry reported stale", unmatched)
+		if len(stale) != 1 || stale[0] != docsLinkKey("renamed-away.md", "b.md") {
+			t.Errorf("docsLinkScan() stale=%v; want the renamed-away entry reported stale", stale)
 		}
 	})
 
@@ -551,7 +538,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "text\n```\n[missing](no-such-file.md)\n```\nmore\n~~~\n[missing2](also-no-such-file.md)\n~~~\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none (fenced links ignored)", breaks)
 		}
@@ -562,7 +549,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md": "[first](b.md#foo) [second](b.md#foo-1)\n",
 			"b.md": "## Foo\n## Foo\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
 		}
@@ -573,7 +560,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			"a.md":   "[doc](doc.go#nonexistent-anchor)\n",
 			"doc.go": "package p\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 0 {
 			t.Errorf("docsLinkScan() breaks=%v; want none -- non-.md target with fragment skips anchor check", breaks)
 		}
@@ -583,7 +570,7 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		root := writeTree(t, map[string]string{
 			"a.md": "[gone](gone.go)\n",
 		})
-		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		breaks, _, _ := docsLinkScan(t, root, []string{"."}, nil)
 		if len(breaks) != 1 || breaks[0].Reason != "missing file" {
 			t.Errorf("docsLinkScan() breaks=%v; want one missing file break", breaks)
 		}

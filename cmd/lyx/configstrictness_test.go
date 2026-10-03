@@ -34,12 +34,12 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // configStrictnessDegradingSet is the pinned set of module-relative, slash-separated
@@ -83,72 +83,24 @@ const configStrictnessMinScannedFiles = 50
 // with no matching call anywhere fails just as loudly as an unpinned package that
 // gained a call.
 func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
-	// gitrepoboundary_test.go, crosscompile_test.go, and tierpurity_test.go.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
 	collectedDegrading := map[string]bool{}
 	collectedStrict := map[string]bool{}
-	var scanned int
 
-	walkErr := filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if path != moduleRoot && (strings.HasPrefix(d.Name(), ".") || d.Name() == "vendor") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-		scanned++
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		content := string(data)
-
-		relDir, relErr := filepath.Rel(moduleRoot, filepath.Dir(path))
-		if relErr != nil {
-			return relErr
-		}
-		relDir = filepath.ToSlash(relDir)
+	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+		relDir := path.Dir(f.Rel)
 		if relDir == "internal/configengine" {
-			return nil
+			return
 		}
-
+		content := string(f.Data)
 		if strings.Contains(content, "configengine.LoadOrTemplate(") {
 			collectedDegrading[relDir] = true
 		}
 		if strings.Contains(content, "configengine.Load(") {
 			collectedStrict[relDir] = true
 		}
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk module tree: %v", walkErr)
-	}
 
-	if scanned < configStrictnessMinScannedFiles {
-		t.Fatalf("config strictness guard: only scanned %d non-test .go file(s) under %s; expected at least %d -- the walk may be misconfigured", scanned, moduleRoot, configStrictnessMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, configStrictnessMinScannedFiles, "config strictness guard")
 
 	if diff := configStrictnessDiffSets(configStrictnessDegradingSet, collectedDegrading); diff != "" {
 		t.Errorf("Config Strictness Invariant violated (see CONSTRAINTS.md): configengine.LoadOrTemplate( call-site package set drifted from the pinned degrading set:\n%s", diff)

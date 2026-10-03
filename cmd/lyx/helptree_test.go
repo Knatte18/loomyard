@@ -1,8 +1,4 @@
-// helptree_test.go asserts that the lyx help tree is complete: the root help output names every
-// module,
-// and each verb-module's help output names every one of its subcommands.
-// Tests use superset assertions (pinned set ⊆ output) so that cobra's auto-generated help and
-// completion entries do not make them brittle.
+// helptree_test.go pins single help-tree behaviours; the module and subcommand listings are derived in clitree_test.go.
 
 package main
 
@@ -12,34 +8,14 @@ import (
 	"testing"
 )
 
-// TestHelpTree_RootNamesAllModules asserts that running "lyx --help" (no args, which triggers
-// cobra's help for the root) produces output that names every registered module.
-// The assertion is a superset check — extra text such as cobra's "help" and "completion" entries is
-// tolerated.
-func TestHelpTree_RootNamesAllModules(t *testing.T) {
+// TestHelpTree_ConfigListsReconcile asserts that `lyx config --help` lists the reconcile verb.
+func TestHelpTree_ConfigListsReconcile(t *testing.T) {
 	var out bytes.Buffer
-	code := run(nil, &out)
-	if code != 0 {
-		t.Fatalf("run(nil) = %d; want 0. output:\n%s", code, out.String())
+	if code := run([]string{"config", "--help"}, &out); code != 0 {
+		t.Fatalf("run([config --help]) = %d; want 0. output:\n%s", code, out.String())
 	}
-
-	got := out.String()
-	requiredModules := []string{
-		"board", "config", "ide", "reed", "fabric", "selfreport", "shuttle", "burler", "webster", "stencil", "loom", "start", "quarry", "batten", "shed", "orch",
-	}
-	for _, module := range requiredModules {
-		if !strings.Contains(got, module) {
-			t.Errorf("root help output missing module %q; got:\n%s", module, got)
-		}
-	}
-
-	// Verify reconcile subcommand is discoverable under config.
-	var configOut bytes.Buffer
-	if code := run([]string{"config", "--help"}, &configOut); code != 0 {
-		t.Fatalf("run([config --help]) = %d; want 0. output:\n%s", code, configOut.String())
-	}
-	if !strings.Contains(configOut.String(), "reconcile") {
-		t.Errorf("config --help output missing %q; got:\n%s", "reconcile", configOut.String())
+	if !strings.Contains(out.String(), "reconcile") {
+		t.Errorf("config --help output missing %q; got:\n%s", "reconcile", out.String())
 	}
 }
 
@@ -51,116 +27,5 @@ func TestHelpTree_OrchStartListsAdopt(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "--adopt") {
 		t.Errorf("orch start --help missing %q; got:\n%s", "--adopt", out.String())
-	}
-}
-
-// TestHelpTree_VerbModuleSubcommands asserts that each verb-module's help output names all of its
-// subcommands.
-// Each module is invoked via the run() seam with only the module name so cobra prints the
-// subcommand listing (exit 0).
-// Assertions are superset checks so cobra's auto-added "help" entry is tolerated.
-func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
-	tests := []struct {
-		name     string
-		module   string
-		wantSubs []string
-	}{
-		{
-			name:   "board",
-			module: "board",
-			wantSubs: []string{
-				"upsert", "upsert-batch", "set-status", "remove", "get",
-				"list", "list-full", "merge", "set-deps", "rerender", "sync",
-				"find", "promote", "prune", "retire-legacy",
-			},
-		},
-		{
-			name:   "fabric",
-			module: "fabric",
-			wantSubs: []string{
-				"clone", "add", "list", "remove", "checkout",
-				"pairs", "reconcile", "prune", "cleanup", "unwire", "shortname",
-				"status", "commit", "push", "pull", "sync", "diff",
-				"merge", "merge-in",
-			},
-		},
-		{
-			name:     "ide",
-			module:   "ide",
-			wantSubs: []string{"spawn", "menu"},
-		},
-		{
-			name:     "reed",
-			module:   "reed",
-			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "statusline", "watchdog", "list"},
-		},
-		{
-			name:     "selfreport",
-			module:   "selfreport",
-			wantSubs: []string{"create"},
-		},
-		{
-			name:     "shuttle",
-			module:   "shuttle",
-			wantSubs: []string{"run", "interrupt", "send"},
-		},
-		{
-			name:     "burler",
-			module:   "burler",
-			wantSubs: []string{"run"},
-		},
-		{
-			name:     "webster",
-			module:   "webster",
-			wantSubs: []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch", "rebaseline", "accept-audit", "restore-plan"},
-		},
-		{
-			name:     "stencil",
-			module:   "stencil",
-			wantSubs: []string{"list", "validate", "diff", "sync", "promote"},
-		},
-		{
-			name:     "loom",
-			module:   "loom",
-			wantSubs: []string{"start", "run", "step", "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "approve", "commit-records"},
-		},
-		{
-			name:     "quarry",
-			module:   "quarry",
-			wantSubs: []string{"toc", "glyphs", "resolve", "expand"},
-		},
-		{
-			name:     "batten",
-			module:   "batten",
-			wantSubs: []string{"run", "step", "status", "pause", "goto"},
-		},
-		{
-			name:     "shed",
-			module:   "shed",
-			wantSubs: []string{"run", "step", "status", "pause", "goto", "seed"},
-		},
-		{
-			name:     "orch",
-			module:   "orch",
-			wantSubs: []string{"start", "status", "cycle", "stop"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var out bytes.Buffer
-			// Invoking a verb-module with no subcommand prints the subcommand listing and exits 0.
-			code := run([]string{tt.module}, &out)
-			if code != 0 {
-				t.Fatalf("run([%q]) = %d; want 0. output:\n%s", tt.module, code, out.String())
-			}
-
-			got := out.String()
-			for _, sub := range tt.wantSubs {
-				if !strings.Contains(got, sub) {
-					t.Errorf("help output for %q missing subcommand %q; got:\n%s", tt.module, sub, got)
-				}
-			}
-		})
 	}
 }

@@ -6,10 +6,10 @@ package planglyph
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -17,17 +17,7 @@ import (
 // returns that directory's absolute path, ready to hand to openRepo.
 func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
-	root := t.TempDir()
-	for rel, content := range files {
-		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) failed: %v", full, err)
-		}
-	}
-	return root
+	return plankit.Repo(t, files)
 }
 
 // TestOpenRepo_Success asserts openRepo succeeds against a real directory.

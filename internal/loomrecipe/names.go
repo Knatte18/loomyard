@@ -15,7 +15,7 @@ import (
 // returns the result sorted. It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
-// loomRowEngines.
+// the one row table in shape_test.go.
 //
 // RecipeEngines never returns a nil slice alongside an error: a parse failure panics, naming this
 // package, since a recipe that fails to parse is a build-time defect in an embedded file rather

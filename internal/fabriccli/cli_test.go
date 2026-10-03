@@ -1,7 +1,6 @@
 //go:build integration
 
-// cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
-// unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
+// cli_test.go covers the fabric CLI cobra surface: the --weft-path push-only gate, pairs with a
 // real hub built by hubforge.NewHub, and the WEFT_SKIP_PUSH env-to-SyncOptions
 // mapping on push — this package exercises both the topology and content-sync verb
 // families against the one fabric command tree.
@@ -63,47 +62,6 @@ func setupCLIRepo(t *testing.T) *hubforge.Hub {
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: wt-\npathspec: _lyx\n")
 	return h
-}
-
-// TestRunCLI_NoArgs verifies that "lyx fabric" with no subcommand prints the subcommand listing
-// naming all 14 verbs — no git repo is needed, since the bare group command is excluded from
-// weft-verb PersistentPreRunE resolution.
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{})
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI() = %d; want 0 for no-arg listing", exitCode)
-	}
-
-	got := out.String()
-	wantVerbs := []string{
-		"clone", "add", "list", "remove", "checkout",
-		"pairs", "reconcile", "prune", "cleanup", "shortname",
-		"status", "commit", "push", "pull", "sync",
-	}
-	for _, verb := range wantVerbs {
-		if !strings.Contains(got, verb) {
-			t.Errorf("RunCLI() no-arg output missing verb %q; got:\n%s", verb, got)
-		}
-	}
-}
-
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
-// envelope with ok=false.
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	// "fabric" is not in weftVerbNames, so the PersistentPreRunE guard returns nil early, bypassing
-	// all resolution -- no cwd setup is needed to reach this path, whatever the process cwd is.
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"unknown"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI with unknown subcommand returned %d; want 1", exitCode)
-	}
-
-	envelope.RequireErr(t, out.String(), "unknown")
 }
 
 // TestRunCLI_WeftPathPushOnly verifies that --weft-path with a non-push subcommand returns exit 1

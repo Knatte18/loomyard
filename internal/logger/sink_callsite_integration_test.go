@@ -21,14 +21,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestMain runs gitkit.HermeticGitEnv() before any test in this binary spawns git, per
-// CONSTRAINTS.md's Hermetic Git Test Environment Invariant. It compiles only under the integration
-// tag, so the untagged logger test binary keeps its default TestMain.
+// CONSTRAINTS.md's Hermetic Git Test Environment Invariant, then runs the tests under tmuxkit.Main.
+// It compiles only under the integration tag, so the untagged logger test binary gets its TestMain from testmain_test.go.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(m.Run())
+	os.Exit(tmuxkit.Main(m))
 }
 
 // initPlainGitRepo turns dir into a plain git repository root and returns its symlink-resolved

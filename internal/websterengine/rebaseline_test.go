@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -340,17 +341,26 @@ func fileSHA(t *testing.T, path string) string {
 }
 
 // handlePlan is a three-card plan whose card 2 declares a draft handle that card 1 Uses, so canonicalizing card 2's handle rewrites card 1 as well.
-func handlePlan(draft bool) map[string]string {
+func handlePlan(draft bool) plankit.Plan {
 	spelling := "Baz"
 	if draft {
 		spelling = "Bazz"
 	}
-	return map[string]string{
-		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: handle fixture\n\n## Card Index\n\n" +
-			"1 — json-flag — uses a handle card 2 declares\n2 — list-tests — declares the handle\n3 — third — an unbegun card\n",
-		"01-json-flag.md":  "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Uses:**\n- `plan:internal/foo#" + spelling + "`\n\n**Intent:** placeholder card.\n",
-		"02-list-tests.md": "# Card 2 — list-tests\n\n**Create:**\n- `plan:internal/foo#" + spelling + "` -> `func Baz()`\n\n**Intent:** declare the handle.\n",
-		"03-third.md":      "# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
+	base := []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}
+	return plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "json-flag", Summary: "uses a handle card 2 declares", Groups: base, Uses: []string{"plan:internal/foo#" + spelling}, Intent: "placeholder card."},
+			{
+				Number:  2,
+				Slug:    "list-tests",
+				Summary: "declares the handle",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#" + spelling + "` -> `func Baz()"}}},
+				Intent:  "declare the handle.",
+			},
+			{Number: 3, Slug: "third", Summary: "an unbegun card", Groups: base, Intent: "placeholder card."},
+		},
 	}
 }
 
@@ -359,13 +369,7 @@ func handlePlan(draft bool) map[string]string {
 func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	t.Helper()
 	fx := newBeginFixture(t)
-	writePlan := func(files map[string]string) {
-		for name, body := range files {
-			if err := os.WriteFile(filepath.Join(fx.PlanDir, name), []byte(body), 0o644); err != nil {
-				t.Fatalf("write %s: %v", name, err)
-			}
-		}
-	}
+	writePlan := func(p plankit.Plan) { plankit.Write(t, fx.PlanDir, p) }
 	writePlan(handlePlan(false))
 	plan, err := planparser.ParsePlan(fx.PlanDir)
 	if err != nil {
@@ -427,16 +431,21 @@ func TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330(t *testing.T) {
 	})
 
 	planDir := t.TempDir()
-	files := map[string]string{
-		"00-overview.md":  "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — declares a handle\n2 — pending — an unbegun card\n",
-		"01-json-flag.md": "# Card 1 — json-flag\n\n**Create:**\n- `plan:internal/foo#Bar` -> `func Bar() {}`\n\n**Intent:** add Bar\n",
-		"02-pending.md":   "# Card 2 — pending\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
-	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "framing",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "json-flag",
+				Summary: "declares a handle",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Bar` -> `func Bar() {}"}}},
+				Intent:  "add Bar",
+			},
+			{Number: 2, Slug: "pending", Summary: "an unbegun card", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}, Intent: "placeholder card."},
+		},
+	})
 	plan, err := planparser.ParsePlan(planDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)

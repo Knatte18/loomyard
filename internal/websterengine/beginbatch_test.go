@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -60,16 +61,14 @@ func newScratchRepo(t *testing.T) string {
 func seedPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for name, body := range map[string]string{
-		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# plan\n\n## Card Index\n\n" +
-			"1 — json-flag — add the json flag\n2 — list-tests — list the tests\n",
-		"01-json-flag.md":  "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
-		"02-list-tests.md": "# Card 2 — list-tests\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n",
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("seed plan dir: %v", err)
-		}
-	}
+	plankit.Write(t, dir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "json-flag", Summary: "add the json flag", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
+			{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
+		},
+	})
 	return dir
 }
 
@@ -795,23 +794,28 @@ func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 func seedRewritingPlanDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-
-	files := map[string]string{
-		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
-			"# Plan: canonicalization fixture\n\nTwo cards: one rewrites, one blocks.\n\n" +
-			"## Card Index\n\n1 — json-flag — declares a draft handle whose canonical spelling differs\n" +
-			"2 — list-tests — references a glyph that does not resolve\n",
-		"01-json-flag.md": "# Card 1 — json-flag\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n" +
-			"**Intent:** Declare a draft handle whose canonical spelling differs from the draft.\n",
-		"02-list-tests.md": "# Card 2 — list-tests\n\n**Edit:**\n- `internal/foo#Missing`\n\n" +
-			"**Intent:** Reference a glyph that does not resolve against the tree.\n\n" +
-			"**ImpactSummary:** None — the target does not exist.\n",
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("seed rewriting plan dir %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, dir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Two cards: one rewrites, one blocks.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "json-flag",
+				Summary: "declares a draft handle whose canonical spelling differs",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Barr` -> `func Bar()"}}},
+				Intent:  "Declare a draft handle whose canonical spelling differs from the draft.",
+			},
+			{
+				Number:        2,
+				Slug:          "list-tests",
+				Summary:       "references a glyph that does not resolve",
+				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"internal/foo#Missing"}}},
+				Intent:        "Reference a glyph that does not resolve against the tree.",
+				ImpactSummary: "None — the target does not exist.",
+			},
+		},
+	})
 	return dir
 }
 

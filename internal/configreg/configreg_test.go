@@ -8,20 +8,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestNames pins both the membership and the ORDER of the registry: the list is alphabetical,
-// and every `lyx config` surface (help text, unknown-module error, --print sections, reconcile
-// output, menu numbering) renders it in exactly this order, so an out-of-sort entry is
-// user-visible.
+// TestNames pins the registry's ORDER and shape: every `lyx config` surface (help text, unknown-module error, --print sections, reconcile output, menu numbering) renders it in registry order,
+// so an out-of-sort or repeated entry is user-visible.
+// Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
 	got := Names()
-	want := []string{"batcher", "board", "burler", "fabric", "landing", "logger", "loom", "models", "orch", "reed", "shuttle", "webster"}
-	if len(got) != len(want) {
-		t.Errorf("Names() = %v; want %v", got, want)
-		return
+	for i := 1; i < len(got); i++ {
+		if got[i-1] >= got[i] {
+			t.Errorf("Names() = %v; want strictly ascending, got %q before %q", got, got[i-1], got[i])
+		}
 	}
-	for i, name := range got {
-		if name != want[i] {
-			t.Errorf("Names()[%d] = %q; want %q", i, name, want[i])
+	for _, name := range got {
+		tmpl, ok := Template(name)
+		if !ok || tmpl == nil {
+			t.Errorf("Template(%q) = _, %v; want a template function", name, ok)
+			continue
+		}
+		if tmpl() == "" {
+			t.Errorf("Template(%q)() is empty; want a non-empty template", name)
 		}
 	}
 }

@@ -1,8 +1,7 @@
-// rubric_test.go pins loom-rubric-discussion-review.md's, loom-rubric-plan-review.md's, and loom-rubric-webster-review.md's required content: the do-not-flag and also-flag items of the Discussion-Review rubric, the do-not-flag, also-flag and support-log items of the Plan-Review rubric, the diff-review, range, do-not-flag and also-flag items of loom-rubric-webster-review.md, and the two-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three rubrics:
+// rubric_test.go pins the two-marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for all three rubrics:
 // a rubric may carry the specs_dir and stencils_dir markers and nothing else -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
-// It additionally pins that the markers render successfully through the production render helper, that both review rubrics name their writer's deployed stencil path, and that every stencil carrying a normative citation actually declares the literal {{.specs_dir}} marker.
-// It also pins the one property that matters across all four friction directive stencils: each
-// states that writing the note is optional and that an absent note is normal.
+// It additionally pins that the markers render successfully through the production render helper and that both review rubrics name their writer's deployed stencil path.
+// The rubrics' wording is pinned in claims_test.go.
 
 package stencils
 
@@ -32,36 +31,6 @@ func assertRubricMarkersWithinAllowlist(t *testing.T, rubricName string, markers
 	}
 }
 
-// TestLoomRubricDiscussionReview_NamesEveryRequiredItem asserts LoomRubricDiscussionReview's bytes contain a distinctive phrase for each item the rubric's own two "Discussion-Review rubric" subsections require: the do-not-flag items and the also-flag items.
-// Following internal/burlerengine/template_test.go's TestTemplate_StatesRoundDiscipline as precedent,
-// each assertion is a short, distinctive substring rather than a whole paragraph, so ordinary prose
-// edits do not break this test.
-func TestLoomRubricDiscussionReview_NamesEveryRequiredItem(t *testing.T) {
-	text := string(LoomRubricDiscussionReview)
-
-	tests := []struct {
-		name   string
-		phrase string
-	}{
-		{"missing Notes for the plan writer is not a deficiency", "Notes for the plan writer"},
-		{"missing rejected alternatives is by design", "Rejected alternatives"},
-		{"incomplete cross-reference enumeration belongs to the compiler and Plan-Write", "Plan-Write`'s own quarry lookups"},
-		{"relocation and exclusion findings are legitimate", "Relocation and exclusion findings"},
-		{"completeness-before-leanness test", "completeness-before-leanness test"},
-		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
-		{"attack-surface question asks what it can skip or let through", "skip or let through"},
-		{"attack-surface question asks what bounds it", "what bounds it"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(text, tt.phrase) {
-				t.Errorf("LoomRubricDiscussionReview does not contain %q", tt.phrase)
-			}
-		})
-	}
-}
-
 // TestLoomRubricDiscussionReview_MarkersWithinAllowlist asserts LoomRubricDiscussionReview's top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set as the other two rubrics' -- an asymmetric rule across the three is how the next author loses the invariant.
 func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
 	markers, err := stencil.TopLevelMarkers(LoomRubricDiscussionReview)
@@ -69,45 +38,6 @@ func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
 		t.Fatalf("stencil.TopLevelMarkers(LoomRubricDiscussionReview) = _, %v; want nil error", err)
 	}
 	assertRubricMarkersWithinAllowlist(t, "LoomRubricDiscussionReview", markers)
-}
-
-// TestLoomRubricPlanReview_NamesEveryRequiredItem asserts LoomRubricPlanReview's bytes contain a distinctive phrase for each item required: the "Also flag" items, the "Do not flag" items, and the named support-log exclusion.
-// Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
-// short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
-// this test.
-func TestLoomRubricPlanReview_NamesEveryRequiredItem(t *testing.T) {
-	text := string(LoomRubricPlanReview)
-
-	tests := []struct {
-		name   string
-		phrase string
-	}{
-		{"granularity is one card per independently reviewable/testable unit", "independently reviewable/testable unit"},
-		{"ImpactSummary carries a real blast-radius conclusion", "blast-radius conclusion"},
-		{"Custom is a last resort", "is a last resort"},
-		{"fidelity to the decision record at its anchor-relative path", "_lyx/discussion/decision-record.md"},
-		{"writer/reviewer symmetry note", "writer/reviewer symmetry note"},
-		{"verify coverage of every targeted package", "does not run is a finding against the plan"},
-		{"anything this round's own gate already checks, through commit-subject-mismatch", "commit-subject-mismatch"},
-		{"dependency edges are derived, never authored", "Dependency edges are derived, never authored"},
-		{"Rename carries no ImpactSummary because there is no graded blast radius", "no graded blast radius to summarise"},
-		{"support-log.md is outside this review entirely", "support-log.md"},
-		{"the live generation's findings join the answer key", "findings.md"},
-		{"the live generation's round needs a class", "record.json` carries a `class`"},
-		{"the live generation's round matches first_card", "`first_card`"},
-		{"generation 0 falls back to the decision record alone", "the decision record alone is the answer key"},
-		{"the prior-generation archive is never a subject", "prior-generation/"},
-		{"attack-surface question asks what it can skip or let through", "skip or let through"},
-		{"attack-surface question asks what bounds it", "what bounds it"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(text, tt.phrase) {
-				t.Errorf("LoomRubricPlanReview does not contain %q", tt.phrase)
-			}
-		})
-	}
 }
 
 // TestLoomRubricPlanReview_MarkersWithinAllowlist asserts LoomRubricPlanReview's top-level marker
@@ -119,43 +49,6 @@ func TestLoomRubricPlanReview_MarkersWithinAllowlist(t *testing.T) {
 		t.Fatalf("stencil.TopLevelMarkers(LoomRubricPlanReview) = _, %v; want nil error", err)
 	}
 	assertRubricMarkersWithinAllowlist(t, "LoomRubricPlanReview", markers)
-}
-
-// TestLoomRubricWebsterReview_NamesEveryRequiredItem asserts LoomRubricWebsterReview's bytes contain a distinctive phrase for each item required: the diff-review base statement, the review-range derivation steps, the "Do not flag" items, and the "Also flag" items.
-// Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
-// short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
-// this test.
-func TestLoomRubricWebsterReview_NamesEveryRequiredItem(t *testing.T) {
-	text := string(LoomRubricWebsterReview)
-
-	tests := []struct {
-		name   string
-		phrase string
-	}{
-		{"ordinary diff review is the base", "Ordinary diff review is the base"},
-		{"the review range is derived via git merge-base", "git merge-base"},
-		{"an undeterminable review range raises a BLOCKING finding", "could not be determined"},
-		{"the rework branch finds the live round by class", "carries a `class`"},
-		{"the rework branch finds the live round by first_card", "`first_card`"},
-		{"the rework range starts at the rejected head", "`head_sha`"},
-		{"the rework range excludes mid-run merges", "git log --first-parent --no-merges"},
-		{"anything the plan's own gates already check", "Plan-Write`'s and `Plan-Burler`'s own gates"},
-		{"the plan is the measuring stick and never the subject", "measuring stick and never the subject"},
-		{"a missing ImpactSummary belongs to Plan-Review", "Both belong to "},
-		{"this segment's own round artifacts are never the subject", "_lyx/reviews/webster/"},
-		{"comment-convention compliance checks the target repository's own conventions", "target repository's own conventions"},
-		{"a written rule outranks a convention inferred from surrounding code", "outranks a convention inferred from the surrounding code"},
-		{"a line width is never inferred from surrounding code", "A line width is never inferred from the surrounding code"},
-		{"per-card mechanical check names assert-no-callers for a Delete card", "assert-no-callers"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(text, tt.phrase) {
-				t.Errorf("LoomRubricWebsterReview does not contain %q", tt.phrase)
-			}
-		})
-	}
 }
 
 // TestLoomRubricWebsterReview_MarkersWithinAllowlist asserts LoomRubricWebsterReview's top-level
@@ -232,60 +125,6 @@ func TestLoomRubrics_NameTheWriterStencil(t *testing.T) {
 			want := filepath.ToSlash(stencilstore.Path(dir, tt.writer))
 			if !strings.Contains(filepath.ToSlash(got), want) {
 				t.Errorf("rendered %s does not contain the writer stencil path %q", tt.name, want)
-			}
-		})
-	}
-}
-
-// TestStencils_SpecsDirMarkerIsPresent asserts each of the four stencils carrying a normative
-// citation this task rewrote -- the plan template, the two rubrics, and the implementer body --
-// contains the literal {{.specs_dir}} marker. Without this a future edit could quietly revert a
-// citation to a bare path, and only the bare-citation enforcement scan would notice, and only if the
-// reverted path happened to match that scan's prefix rule.
-func TestStencils_SpecsDirMarkerIsPresent(t *testing.T) {
-	tests := []struct {
-		name string
-		def  []byte
-	}{
-		{"loom-template-plan", LoomTemplatePlan},
-		{"loom-rubric-plan-review", LoomRubricPlanReview},
-		{"loom-rubric-webster-review", LoomRubricWebsterReview},
-		{"webster-body-implementer", WebsterBodyImplementer},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(string(tt.def), "{{.specs_dir}}") {
-				t.Errorf("%s does not contain the literal {{.specs_dir}} marker", tt.name)
-			}
-		})
-	}
-}
-
-// TestFrictionDirectives_StateOptionalAndAbsenceIsNormal asserts each of the four friction directive
-// stencils contains a short, distinctive substring for the one property that matters across all of
-// them: that writing the note is optional, and that an absent note is normal.
-// Following TestLoomRubricDiscussionReview_NamesEveryRequiredItem as precedent, each assertion is a
-// short, distinctive substring rather than a whole paragraph, so ordinary prose edits do not break
-// this test.
-func TestFrictionDirectives_StateOptionalAndAbsenceIsNormal(t *testing.T) {
-	tests := []struct {
-		name string
-		text string
-	}{
-		{"FrictionDirectiveImplementer", string(FrictionDirectiveImplementer)},
-		{"FrictionDirectiveReviewFix", string(FrictionDirectiveReviewFix)},
-		{"FrictionDirectiveOrchestrator", string(FrictionDirectiveOrchestrator)},
-		{"FrictionDirectiveInterview", string(FrictionDirectiveInterview)},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if !strings.Contains(tt.text, "**optional**") {
-				t.Errorf("%s does not contain %q", tt.name, "**optional**")
-			}
-			if !strings.Contains(tt.text, "normal outcome and never an error") {
-				t.Errorf("%s does not contain %q", tt.name, "normal outcome and never an error")
 			}
 		})
 	}

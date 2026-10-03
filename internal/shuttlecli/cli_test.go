@@ -1,6 +1,4 @@
-// cli_test.go covers the shuttlecli cobra seam through RunCLI: bare-group listing, the
-// unknown-subcommand JSON envelope, run's flag-shape validation, and interrupt/send's exact-args
-// validation.
+// cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and interrupt/send's exact-args validation.
 // No live tmux/claude session is required by any test in this file;
 // the full run/interrupt/send round-trip against a live agent lives in smoke tests (batch 6) and
 // the sandbox suite.
@@ -21,50 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
-
-// TestRunCLI_NoArgs verifies that "lyx shuttle" with no subcommand lists the run verb and exits 0 —
-// no git repo is needed, since the PersistentPreRunE guard skips layout/config/engine resolution
-// for the group command itself.
-func TestRunCLI_NoArgs(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-	wantSubs := []string{"run", "interrupt", "send"}
-	for _, sub := range wantSubs {
-		if !strings.Contains(got, sub) {
-			t.Errorf("RunCLI(nil) no-arg listing missing subcommand %q; got:\n%s", sub, got)
-		}
-	}
-}
-
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
-// envelope with ok=false, without needing a git repo (the PersistentPreRunE guard for cmd.Name() ==
-// "shuttle" fires before layout resolution).
-func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"bogus"})
-
-	if exitCode != 1 {
-		t.Errorf("RunCLI(bogus) = %d; want 1", exitCode)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, `"ok":false`) {
-		t.Errorf("RunCLI(bogus) output missing ok:false envelope; got: %q", got)
-	}
-	if !strings.Contains(got, "unknown") {
-		t.Errorf("RunCLI(bogus) output missing \"unknown\"; got: %q", got)
-	}
-}
 
 // TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
 // PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,

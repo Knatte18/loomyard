@@ -22,10 +22,10 @@ package main
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // TestCrossCompileLinux cross-compiles the entire module for GOOS=linux and fails on any non-zero
@@ -51,22 +51,11 @@ func TestCrossCompileLinux(t *testing.T) {
 		t.Skip("host is not linux/amd64 and CC is unset: no linux/amd64 C cross-toolchain is configured, and quarry hard-requires CGO_ENABLED=1")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
 	// Build every package for GOOS=linux, GOARCH=amd64, CGO_ENABLED=1: quarry's own cgoguard
 	// refuses CGO_ENABLED=0 outright, so this can no longer be the static, cgo-free cross-compile
 	// it once was — see the file doc comment.
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./...")
-	cmd.Dir = moduleRoot
+	cmd.Dir = scankit.Root(t)
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=1")
 	buildOut, err := cmd.CombinedOutput()
 	if err != nil {

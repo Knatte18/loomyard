@@ -14,19 +14,17 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // rawGitMutationScanPackages are the module-relative package subtrees this
 // guard walks: exactly the one package the discussion's regression-guard
 // decision names, internal/websterengine.
 var rawGitMutationScanPackages = []string{
-	filepath.Join("internal", "websterengine"),
+	"internal/websterengine",
 }
 
 // rawGitMutationBannedTokens are the raw substrings a non-test .go file in
@@ -42,8 +40,8 @@ var rawGitMutationBannedTokens = []string{
 // exemption the Fabric Git Invariant's "Known gap, tracked" clause carved
 // out when the mutating paths in this package migrated onto
 // internal/fabricengine's warp-only methods.
-var rawGitMutationAllowlist = map[string]string{
-	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — via gitrepo.New the read-only queries CurrentSHA, MergeHeadPresent, the reconcile walk's CommitParents, ResolveSHA, IsAncestor, MergeTree and CommitTree, SHAExists (shaExists) and IsAncestor (isAncestor), and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty), `status --porcelain --ignored` (ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob), `rev-parse --verify --quiet` (commitBlob) and `ls-tree -r` (treePathsWithBlob)",
+var rawGitMutationAllowlist = []scankit.Entry{
+	{Key: "internal/websterengine/gitwrap.go", Why: "grandfathered read-only exemptions — via gitrepo.New the read-only queries CurrentSHA, MergeHeadPresent, the reconcile walk's CommitParents, ResolveSHA, IsAncestor, MergeTree and CommitTree, SHAExists (shaExists) and IsAncestor (isAncestor), and via the checked gitexec.Run the read-only probes the Shared Decision git-verification-via-gitrepo's carved-out exception covers: `status --porcelain` (dirty), `status --porcelain --ignored` (ignoredPath), `worktree list --porcelain` (otherWorktrees), `diff --quiet` and `ls-files --others` (worktreePathDiffers), `hash-object` (worktreeBlob), `rev-parse --verify --quiet` (commitBlob) and `ls-tree -r` (treePathsWithBlob)"},
 }
 
 // rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's
@@ -57,80 +55,30 @@ const rawGitMutationMinScannedFiles = 4
 // "gitrepo.New(" or "gitexec.Run(" — the two construction/call tokens a raw, fabric-bypassing
 // git mutation would carry.
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH,
-	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate
-	// never blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
+	allow := scankit.NewAllowlist(rawGitMutationAllowlist)
 
 	var scanned int
 	var failures []string
 
 	for _, pkgRel := range rawGitMutationScanPackages {
-		pkgDir := filepath.Join(moduleRoot, pkgRel)
-
-		walkErr := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+		scanned += scankit.Walk(t, scankit.Options{Roots: []string{pkgRel}}, func(f *scankit.File) {
+			if allow.Allowed(f.Rel) {
+				return
 			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
-
-			relPath, relErr := filepath.Rel(moduleRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			// Normalize to slash-separated form before any comparison,
-			// exactly as tierpurity_test.go does: filepath.WalkDir yields
-			// backslash paths on Windows (the primary dev OS).
-			relPath = filepath.ToSlash(relPath)
-			scanned++
-
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			content := string(data)
-
-			if _, allowlisted := rawGitMutationAllowlist[relPath]; allowlisted {
-				return nil
-			}
-
+			content := string(f.Data)
 			for _, tok := range rawGitMutationBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
 						"%s: contains banned raw-git-mutation token %q — mutating git in this package must dispatch through internal/fabricengine's warp-only methods (see CONSTRAINTS.md's Fabric Git Invariant), or add a rawGitMutationAllowlist entry in cmd/lyx/rawgitmutation_test.go with a reason if this is a new grandfathered read-only exemption",
-						relPath, tok,
+						f.Rel, tok,
 					))
 				}
 			}
-			return nil
 		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", pkgDir, walkErr)
-		}
 	}
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < rawGitMutationMinScannedFiles {
-		t.Fatalf("raw git mutation guard: only scanned %d production .go file(s) across %v; expected at least %d — the walk may be misconfigured", scanned, rawGitMutationScanPackages, rawGitMutationMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, rawGitMutationMinScannedFiles, "raw git mutation guard")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Fabric Git Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))

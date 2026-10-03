@@ -21,34 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// TestTemplate_StatesRoundDiscipline asserts each asset's bytes carry the load-bearing
-// round-discipline phrases in prose, so an edit that silently waters down the sequencing rule or
-// the fix-everything rule fails this test rather than only a human review.
-func TestTemplate_StatesRoundDiscipline(t *testing.T) {
-	orchestrator := string(stencils.BurlerTemplateRoundOrchestrator)
-	requireContains(t, orchestrator, "Sequencing rule")
-	requireContains(t, orchestrator, "fully written to")
-	requireContains(t, orchestrator, "before you touch")
-
-	instruction3 := string(stencils.BurlerStep3Fix)
-	requireContains(t, instruction3, "not whether it gets fixed")
-	requireContains(t, instruction3, "never push")
-	requireContains(t, instruction3, "nothing fixed")
-
-	instruction2 := string(stencils.BurlerStep2Review)
-	requireContains(t, instruction2, "origin")
-}
-
-// TestTemplate_HasClusterRulesSection asserts instruction 2's static bytes carry the "## Cluster
-// rules" section and its {{.cluster_rules}} marker, so an edit that drops the section heading or
-// renames the marker fails this test rather than only a human review.
-func TestTemplate_HasClusterRulesSection(t *testing.T) {
-	text := string(stencils.BurlerStep2Review)
-
-	requireContains(t, text, "Cluster rules")
-	requireContains(t, text, "{{.cluster_rules}}")
-}
-
 // TestTemplate_StatesClusterForkDiscipline pins the cluster round's load-bearing fork-discipline
 // statements — the single-message fork spawn, the unnamed-fork rule, the fork's read-only/no-git
 // discipline, that consolidation happens before job B, the origin labels, and the Rejected section

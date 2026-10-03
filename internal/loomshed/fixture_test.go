@@ -12,9 +12,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // validDecisionRecord carries all seven required sections, in order, plus the optional eighth. It
@@ -78,25 +81,22 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 // exempt from on-disk existence checking.
 func seedPlanFormatFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
+	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), firstCardPlan(approved, "none", "internal/firstcard/new.go", ""))
+}
 
-	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
+// firstCardPlan describes a one-card plan whose sole Create group targets createTarget and, when useTarget is non-empty, whose card also uses useTarget.
+func firstCardPlan(approved bool, language, createTarget, useTarget string) plankit.Plan {
+	card := plankit.Card{
+		Number:  1,
+		Slug:    "first-card",
+		Summary: "placeholder card 1",
+		Groups:  []plankit.Group{{Label: "Create", Targets: []string{createTarget}}},
+		Intent:  "placeholder card.",
 	}
-
-	cardBody := "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
-		"**Intent:** placeholder card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
+	if useTarget != "" {
+		card.Uses = []string{useTarget}
 	}
-
-	overview := fmt.Sprintf(
-		"---\nformat: 5\napproved: %t\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
-		approved,
-	)
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview file: %v", err)
-	}
+	return plankit.Plan{Approved: approved, Language: language, Framing: "Framing.", Cards: []plankit.Card{card}}
 }
 
 // seedFormatInvalidPlanFixture writes a plan whose overview declares an unrecognized format,
@@ -105,39 +105,23 @@ func seedPlanFormatFixture(t *testing.T, anchorPath string, approved bool) {
 func seedFormatInvalidPlanFixture(t *testing.T, anchorPath string) {
 	t.Helper()
 
+	files := plankit.Render(firstCardPlan(true, "none", "internal/firstcard/new.go", ""))
+	recognized := fmt.Sprintf("format: %d\n", planparser.RecognizedFormat)
+	overview := strings.Replace(string(files["00-overview.md"]), recognized, "format: 99\n", 1)
+	if overview == string(files["00-overview.md"]) {
+		t.Fatalf("overview does not carry %q", recognized)
+	}
+	files["00-overview.md"] = []byte(overview)
+
 	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
-
-	cardBody := "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
-		"**Intent:** placeholder card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
-
-	overview := "---\nformat: 99\napproved: true\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview file: %v", err)
-	}
-}
-
-// writeGlyphRepoFixture writes files (keyed by repository-relative path) under a fresh t.TempDir()
-// and returns that directory's absolute path, ready to hand to NewPlanGate as worktreeRoot --
-// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo.
-func writeGlyphRepoFixture(t *testing.T, files map[string]string) string {
-	t.Helper()
-	root := t.TempDir()
-	for rel, content := range files {
-		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) failed: %v", full, err)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(planDir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
 		}
 	}
-	return root
 }
 
 // seedGlyphPlanFixture writes a syntactically complete, one-card language: go plan under
@@ -146,29 +130,5 @@ func writeGlyphRepoFixture(t *testing.T, files map[string]string) string {
 // resolved outside the Create inversion.
 func seedGlyphPlanFixture(t *testing.T, anchorPath string, approved bool, createTarget, useTarget string) {
 	t.Helper()
-
-	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-
-	usesBlock := ""
-	if useTarget != "" {
-		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", useTarget)
-	}
-	cardBody := fmt.Sprintf(
-		"# Card 1 — first-card\n\n**Create:**\n- `%s`\n%s\n**Intent:** placeholder card.\n",
-		createTarget, usesBlock,
-	)
-	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(cardBody), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
-
-	overview := fmt.Sprintf(
-		"---\nformat: 5\napproved: %t\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
-		approved,
-	)
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview file: %v", err)
-	}
+	plankit.Write(t, filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), firstCardPlan(approved, "go", createTarget, useTarget))
 }

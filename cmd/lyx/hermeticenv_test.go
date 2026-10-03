@@ -10,20 +10,19 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // allowedNonHermetic is the Hermetic Git Test Environment Invariant allowlist, with
 // two distinct entry kinds distinguished by whether the key names a directory
-// (path or path-prefix) or a single *_test.go file:
+// (a path ending in "/", matching the package and everything below it) or a single *_test.go file:
 //
-//   - A directory entry (no trailing ".go") exempts the whole package from the
+//   - A directory entry (trailing "/") exempts the whole package from the
 //     "git-spawning ⇒ hermetic" requirement — the package's tests genuinely spawn
 //     non-git processes for which a git-hermetic TestMain would be meaningless.
 //   - A file entry (exact match, ending in "_test.go") is a per-file scan
@@ -33,11 +32,12 @@ import (
 //     presence token"), because the file carries the guard's tokens as its own
 //     test data rather than as real evidence. It is NOT a package-level
 //     exemption — see hermeticenv_test.go's own entry below.
-var allowedNonHermetic = map[string]string{
-	"internal/proc":                                          "spawns generic non-git processes — process control is the package's subject",
-	"cmd/lyx/hermeticenv_test.go":                            "this guard file itself; carries the tokens as its own test data",
-	"tools/sandbox/pathresolve_guard_test.go":                "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
-	"internal/reedengine/attachgeometry_integration_test.go": "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn",
+var allowedNonHermetic = []scankit.Entry{
+	{Key: "internal/proc/", Why: "spawns generic non-git processes — process control is the package's subject"},
+	{Key: "cmd/lyx/hermeticenv_test.go", Why: "this guard file itself; carries the tokens as its own test data"},
+	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
+	{Key: "internal/testkit/tmuxkit/", Why: "its tests spawn the tmux binary against the kit's own sockets, never git"},
+	{Key: "internal/reedengine/attachgeometry_integration_test.go", Why: "spawns a real tmux/pty client process via exec.Command to prove the attach handover — a real non-git process, not a git spawn"},
 }
 
 // gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning for the Hermetic Git Test Environment Invariant.
@@ -85,60 +85,27 @@ type pkgHermeticStatus struct {
 // constraint: the git-spawning set is almost exactly the integration-tagged set, so skipping tagged
 // files the way tierpurity does would make this guard vacuous.
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
-	// tierpurity_test.go and crosscompile_test.go so this gate never blocks a
-	// minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
+	var fileEntries, dirEntries []scankit.Entry
+	for _, e := range allowedNonHermetic {
+		if strings.HasSuffix(e.Key, "_test.go") {
+			fileEntries = append(fileEntries, e)
+		} else {
+			dirEntries = append(dirEntries, e)
+		}
 	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
+	excludedFiles := scankit.NewAllowlist(fileEntries)
+	exemptPackages := scankit.NewAllowlist(dirEntries)
 	packages := map[string]*pkgHermeticStatus{}
 
-	walkErr := filepath.WalkDir(moduleRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			// Skip overlay directories per tierPuritySkipDirs.
-			if tierPuritySkipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
+	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
+		// A file-level allowlist entry is excluded from content-based evidence entirely.
+		if excludedFiles.Allowed(f.Rel) {
+			return
 		}
 
-		relPath, relErr := filepath.Rel(moduleRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		// Normalize to slash-separated form before any comparison.
-		relPath = filepath.ToSlash(relPath)
+		content := string(f.Data)
 
-		// This guard's own file is excluded from content-based evidence entirely.
-		if fileLevelExcluded(relPath) {
-			return nil
-		}
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		content := string(data)
-
-		dir := filepath.ToSlash(filepath.Dir(relPath))
+		dir := filepath.ToSlash(filepath.Dir(f.Rel))
 		status := packages[dir]
 		if status == nil {
 			status = &pkgHermeticStatus{}
@@ -147,18 +114,15 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 
 		if status.spawningFile == "" {
 			if token, bad := firstSpawnToken(content); bad {
-				status.spawningFile = relPath
+				status.spawningFile = f.Rel
 				status.spawningToken = token
 			}
 		}
 		if strings.Contains(content, hermeticPresenceToken) {
 			status.hermetic = true
 		}
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk module tree: %v", walkErr)
-	}
+	scankit.RequireFloor(t, scanned, 1, "hermetic git env guard")
 
 	var gitSpawningCount int
 	var failures []string
@@ -170,7 +134,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 		if status.hermetic {
 			continue
 		}
-		if packageAllowed(dir) {
+		if exemptPackages.Allowed(dir + "/") {
 			continue
 		}
 		failures = append(failures, fmt.Sprintf(
@@ -183,8 +147,10 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 
 	// Vacuous-scan protection: fewer than zero git-spawning packages means misconfiguration.
 	if gitSpawningCount == 0 {
-		t.Fatalf("hermetic git env guard: found zero git-spawning packages under %s — the walk may be misconfigured", moduleRoot)
+		t.Fatal("hermetic git env guard: found zero git-spawning packages — the walk may be misconfigured")
 	}
+	excludedFiles.RequireNoStale(t)
+	exemptPackages.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("Hermetic Git Test Environment Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
@@ -199,27 +165,4 @@ func firstSpawnToken(content string) (string, bool) {
 		}
 	}
 	return gitkitSpawnReference(content)
-}
-
-// fileLevelExcluded reports whether relPath is an exact-match file-level allowedNonHermetic entry.
-func fileLevelExcluded(relPath string) bool {
-	for key := range allowedNonHermetic {
-		if strings.HasSuffix(key, "_test.go") && relPath == key {
-			return true
-		}
-	}
-	return false
-}
-
-// packageAllowed reports whether dir is covered by an allowedNonHermetic directory-prefix entry.
-func packageAllowed(dir string) bool {
-	for key := range allowedNonHermetic {
-		if strings.HasSuffix(key, "_test.go") {
-			continue
-		}
-		if dir == key || strings.HasPrefix(dir, key+"/") {
-			return true
-		}
-	}
-	return false
 }

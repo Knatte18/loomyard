@@ -3,32 +3,17 @@
 package loomengine
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newParentReviewStencilsDir seeds a temp stencils directory with the two parent-review stencils from the embedded defaults.
+// newParentReviewStencilsDir returns a seeded stencils directory.
 func newParentReviewStencilsDir(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	for name, content := range map[string][]byte{
-		"loom-template-parent-review-delivery": stencils.LoomTemplateParentReviewDelivery,
-		"loom-template-parent-review-brief":    stencils.LoomTemplateParentReviewBrief,
-	} {
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(path), err)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 func TestParentReviewDeliveryPrompt_OneLineNamingReviewerSlugBrief(t *testing.T) {

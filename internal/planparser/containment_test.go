@@ -133,7 +133,7 @@ func TestValidate_ContainmentUnitOverlap_LanguageNone(t *testing.T) {
 	t.Parallel()
 
 	plan := &Plan{
-		Format: recognizedFormat, Approved: true, Language: "none",
+		Format: RecognizedFormat, Approved: true, Language: "none",
 		Cards: []Card{
 			{Number: 1, Slug: "member", Type: CardTypeEdit, TypeLabelCount: 1,
 				TargetGroups: []TargetGroup{{Type: CardTypeEdit, Refs: []string{"internal/foo#Bar"}}},

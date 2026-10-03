@@ -20,29 +20,27 @@ package shedrecipe
 
 import (
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // shedrecipeAllowedImports are the only non-stdlib import paths production code in this package may
 // use.
-var shedrecipeAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/shedengine":    true,
-	"github.com/Knatte18/loomyard/internal/shedadapters":  true,
-	"github.com/Knatte18/loomyard/internal/loomshed":      true,
-	"github.com/Knatte18/loomyard/internal/landingshed":   true,
-	"github.com/Knatte18/loomyard/internal/parentreview":  true,
-	"github.com/Knatte18/loomyard/internal/battenshed":    true,
-	"github.com/Knatte18/loomyard/internal/preflightshed": true,
-	"github.com/Knatte18/loomyard/internal/websterengine": true,
-	"github.com/Knatte18/loomyard/internal/burlerengine":  true,
-	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
-	"github.com/Knatte18/loomyard/internal/stencilstore":  true,
-	"github.com/Knatte18/loomyard/internal/stencil":       true,
+var shedrecipeAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/Knatte18/loomyard/internal/shedadapters",
+	"github.com/Knatte18/loomyard/internal/loomshed",
+	"github.com/Knatte18/loomyard/internal/landingshed",
+	"github.com/Knatte18/loomyard/internal/parentreview",
+	"github.com/Knatte18/loomyard/internal/battenshed",
+	"github.com/Knatte18/loomyard/internal/preflightshed",
+	"github.com/Knatte18/loomyard/internal/websterengine",
+	"github.com/Knatte18/loomyard/internal/burlerengine",
+	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	"github.com/Knatte18/loomyard/internal/stencilstore",
+	"github.com/Knatte18/loomyard/internal/stencil",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes
@@ -54,63 +52,17 @@ const shedrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxc
 // imports only stdlib or an entry in shedrecipeAllowedImports, and separately asserts that no
 // production import path is shedrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine shedrecipe source directory location")
-	}
-	pkgDir := filepath.Dir(file)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedrecipe", shedrecipeAllowedImports...)
 
-	var failures []string
 	var deniedFound []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-
-			relPath, _ := filepath.Rel(pkgDir, path)
-			if importPath == shedrecipeDeniedLyxcwdImport {
-				deniedFound = append(deniedFound, relPath)
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedrecipe"}, Shallow: true}, func(f *scankit.File) {
+		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
+			if strings.Trim(imp.Path.Value, `"`) == shedrecipeDeniedLyxcwdImport {
+				deniedFound = append(deniedFound, f.Rel)
 			}
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || shedrecipeAllowedImports[importPath] {
-				continue
-			}
-
-			failures = append(failures, relPath+": "+importPath)
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk shedrecipe directory: %v", err)
-	}
-
-	if len(failures) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
-	}
+	scankit.RequireFloor(t, scanned, 1, "shedrecipe denied-import scan")
 	if len(deniedFound) > 0 {
 		t.Errorf("Shed Recipe Registry Invariant violated; %s imported directly in: %v", shedrecipeDeniedLyxcwdImport, deniedFound)
 	}

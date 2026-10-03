@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/statuscommit"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -180,75 +181,16 @@ func boardStatus(producer, state string) (string, bool) {
 	return state + " · " + producer, true
 }
 
-// commitStatusMessage renders the commit message for a per-transition status commit. It is a
-// function rather than a bare constant because the seam fires once per transition rather than once
-// per landing, and an unreadable stream of identical messages is the log a resuming operator has to
-// read.
-func commitStatusMessage(producer, state string) string {
-	return fmt.Sprintf("loom: %s -> %s", producer, state)
-}
-
-// commitStatusFailureDisposition decides what a failed status Commit means, and it exists because
-// the mid-merge probe is unlocked by construction: nothing fabric can hold serialises against an
-// operator running plain git inside the fabric sibling worktree, which the Fabric Git Invariant's
-// own carve-out permits. So a merge can become live in the window between MergeActive answering
-// false and the commit running, and when it does the commit fails on git's own "cannot do a partial
-// commit during a merge" -- a path-scoped commit is a partial commit by definition.
-//
-// Without this re-probe that lost race took the commit-hard-errors disposition and killed the whole
-// run, in precisely the situation skip-while-mid-merge exists to absorb gracefully. Re-probing turns
-// it back into the skip it was always meant to be: if a merge is live NOW, the commit failure is
-// explained and the run continues, and the next transition retries once the operator is done.
-// A probe that errors on the re-read is treated as active for the same reason the first probe is --
-// an unreadable probe is the same untrustworthy-git-state category, and probe I/O failures cluster
-// exactly when foreign merge machinery is touching the repo.
-//
-// Every other commit failure keeps the hard-error disposition unchanged: a git fault on the run's
-// own bookkeeping with no merge to explain it is real infrastructure breakage.
-//
-// One residual is NOT closed here and must not be read as closed: gitrepo.StageAndCommit runs
-// `git add` before `git commit`, so a commit that loses this race has already staged the status file
-// into the foreign merge's index, and the operator's own conclude will carry it. Closing that would
-// take a lock the operator does not take, so it is stated rather than defended against.
-func commitStatusFailureDisposition(deps commitStatusDeps, producer, state string, commitErr error) error {
-	active, probeErr := deps.MergeActive()
-	if probeErr != nil {
-		logger.Warn("loomcli: status commit failed and the merge-state re-probe failed too; continuing",
-			"producer", producer, "state", state, "commit_error", commitErr, "probe_error", probeErr)
-		return nil
-	}
-	if active {
-		logger.Warn("loomcli: status commit failed because the fabric sibling went mid-merge after the probe; skipping this transition",
-			"producer", producer, "state", state, "error", commitErr)
-		return nil
-	}
-	return commitErr
-}
-
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
 // It first writes the run's board status when that status changed, and a failed board write only warns:
 // the board is the hub's overview, never the run's own bookkeeping.
-// It then implements three dispositions, evaluated in the order they appear in the closure body -- skip first, then commit,
-// then push:
-//
-//  1. skip-while-mid-merge: MergeActive reporting true skips both Commit and Push, logged at warn. A
-//     non-nil error from MergeActive is treated exactly like true -- an unreadable probe is the same
-//     "git state cannot be trusted right now" category the skip exists for, and probe I/O failures
-//     cluster precisely when foreign merge machinery is touching the repo.
-//     The probe is unlocked, so this disposition also has a second half at the other end of the
-//     window: see commitStatusFailureDisposition.
-//  2. commit-hard-errors: a Commit failure returns an error from the seam and therefore halts the
-//     run -- a git fault on the run's own bookkeeping is infrastructure breakage, the same disposition
-//     landingshed already gives a failing CommitStatus. The one exception is a failure the re-probe
-//     explains as a merge that went live after the first probe, which takes the skip disposition
-//     instead.
-//  3. push-warns: a Push failure logs a warning and returns nil -- an offline laptop must not kill an
-//     autonomous run, and the next transition's push catches the branch up.
-//     EVERY push error warns here, gitrepo.ErrPushRejected and otherwise alike; the sentinel is not
-//     discriminated. A rejection means another machine advanced the branch, which is a human decision
-//     rather than something a background persist may rewrite history over -- and an unreachable
-//     remote is the offline case the disposition exists for -- so the two land in the same place.
+// It then calls the shared statuscommit core, which owns the skip-while-mid-merge, commit-hard-errors and push-warns dispositions, with loom's own commit and log prefixes and no after-commit callback.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
+	core := statuscommit.New(statuscommit.Deps{
+		MergeActive: deps.MergeActive,
+		Commit:      deps.Commit,
+		Push:        deps.Push,
+	}, "loom", "loomcli", nil)
 	lastBoardStatus := ""
 	return func(producer, state string) error {
 		if status, ok := boardStatus(producer, state); ok && deps.SetBoardStatus != nil && status != lastBoardStatus {
@@ -258,26 +200,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 				lastBoardStatus = status
 			}
 		}
-
-		active, err := deps.MergeActive()
-		if err != nil {
-			logger.Warn("loomcli: skip status commit, merge-state probe failed", "producer", producer, "state", state, "error", err)
-			return nil
-		}
-		if active {
-			logger.Warn("loomcli: skip status commit, fabric sibling is mid-merge", "producer", producer, "state", state)
-			return nil
-		}
-
-		if err := deps.Commit(commitStatusMessage(producer, state)); err != nil {
-			return commitStatusFailureDisposition(deps, producer, state, err)
-		}
-
-		if err := deps.Push(); err != nil {
-			logger.Warn("loomcli: status push failed, next transition will catch up", "producer", producer, "state", state, "error", err)
-			return nil
-		}
-		return nil
+		return core(producer, state)
 	}
 }
 

@@ -7,6 +7,7 @@ package envelope
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -24,14 +25,23 @@ type Envelope struct {
 // Decode parses out as exactly one JSON document, failing the test on malformed JSON or trailing documents.
 func Decode(t testing.TB, out string) Envelope {
 	t.Helper()
+	env, err := Parse(out)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	return env
+}
+
+// Parse is Decode returning its failure as an error instead of failing a test.
+func Parse(out string) (Envelope, error) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(out)))
 	var all map[string]any
 	if err := dec.Decode(&all); err != nil {
-		t.Fatalf("envelope: malformed JSON %q: %v", out, err)
+		return Envelope{}, fmt.Errorf("envelope: malformed JSON %q: %v", out, err)
 	}
 	var extra json.RawMessage
 	if err := dec.Decode(&extra); err != io.EOF {
-		t.Fatalf("envelope: more than one top-level document in %q", out)
+		return Envelope{}, fmt.Errorf("envelope: more than one top-level document in %q", out)
 	}
 
 	env := Envelope{Raw: map[string]any{}}
@@ -51,7 +61,7 @@ func Decode(t testing.TB, out string) Envelope {
 			env.Raw[k] = v
 		}
 	}
-	return env
+	return env, nil
 }
 
 // RequireOK decodes out and fails the test unless ok is true.

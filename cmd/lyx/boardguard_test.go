@@ -11,14 +11,12 @@ package main
 
 import (
 	"fmt"
+	"go/ast"
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // boardGuardBannedImports are the import paths internal/boardengine's production
@@ -51,90 +49,42 @@ const boardGuardMinScannedFiles = 5
 // file imports internal/gitrepo or internal/gitexec directly, or shells out to `git` via
 // exec.Command/exec.CommandContext.
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH,
-	// mirroring ghguard_test.go and gitrepoboundary_test.go so this gate never
-	// blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory (cwd-independent).
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	dir := filepath.Join(filepath.Dir(goMod), "internal", "boardengine")
+	const dir = "internal/boardengine"
 
 	var scanned int
 	var failures []string
 
-	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			// boardtest is a sibling package of integration tests — skip it.
-			if d.Name() == "boardtest" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
+	scankit.Walk(t, scankit.Options{Roots: []string{dir}}, func(f *scankit.File) {
+		// boardtest is a sibling package of integration tests — skip it.
+		if strings.HasPrefix(f.Rel, dir+"/boardtest/") {
+			return
 		}
 		scanned++
 
-		relPath, relErr := filepath.Rel(dir, path)
-		if relErr != nil {
-			return relErr
-		}
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-
-		if imp, bad := firstBannedBoardImport(path); bad {
+		if imp, bad := firstBannedBoardImport(f.AST(t, parser.ImportsOnly)); bad {
 			failures = append(failures, fmt.Sprintf(
 				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
-				relPath, imp,
+				f.Rel, imp,
 			))
 		}
 
-		if token, bad := firstBannedGitSpawn(string(data)); bad {
+		if token, bad := firstBannedGitSpawn(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
-				relPath, token,
+				f.Rel, token,
 			))
 		}
-
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk internal/boardengine: %v", walkErr)
-	}
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < boardGuardMinScannedFiles {
-		t.Fatalf("board guard: only scanned %d non-test .go file(s) in %s; expected at least %d -- the directory resolution may be misconfigured", scanned, dir, boardGuardMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, boardGuardMinScannedFiles, "board guard")
 
 	if len(failures) > 0 {
 		t.Errorf("Fabric Git Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
 	}
 }
 
-// firstBannedBoardImport parses path's import declarations and reports the first banned one.
-func firstBannedBoardImport(path string) (string, bool) {
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-	if err != nil {
-		return "", false
-	}
+// firstBannedBoardImport reports the first banned import in astFile's import declarations.
+func firstBannedBoardImport(astFile *ast.File) (string, bool) {
 	for _, imp := range astFile.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
 		if boardGuardBannedImports[importPath] {

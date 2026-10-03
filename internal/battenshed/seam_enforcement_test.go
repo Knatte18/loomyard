@@ -11,19 +11,17 @@ package battenshed
 
 import (
 	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // battenshedAllowedImports are the only non-stdlib import paths production code in this package
 // may use.
-var battenshedAllowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/shedengine": true,
-	"github.com/Knatte18/loomyard/internal/logger":     true,
+var battenshedAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/Knatte18/loomyard/internal/logger",
 }
 
 // battenshedDeniedLyxcwdImport is the exact import path the Told-Geometry Invariant excludes
@@ -31,67 +29,19 @@ var battenshedAllowedImports = map[string]bool{
 // reported by name rather than only implied by its absence from the allowlist above.
 const battenshedDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 
-// TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
-// imports only stdlib or an entry in battenshedAllowedImports, and separately asserts that no
-// production import path is battenshedDeniedLyxcwdImport.
+// TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is battenshedDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine battenshed source directory location")
-	}
-	pkgDir := filepath.Dir(file)
+	scankit.AssertImportAllowlistNoStale(t, "internal/battenshed", battenshedAllowedImports...)
 
-	var failures []string
 	var deniedFound []string
-
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-
-			relPath, _ := filepath.Rel(pkgDir, path)
-			if importPath == battenshedDeniedLyxcwdImport {
-				deniedFound = append(deniedFound, relPath)
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/battenshed"}, Shallow: true}, func(f *scankit.File) {
+		for _, imp := range f.AST(t, parser.ImportsOnly).Imports {
+			if strings.Trim(imp.Path.Value, `"`) == battenshedDeniedLyxcwdImport {
+				deniedFound = append(deniedFound, f.Rel)
 			}
-
-			firstSegment := importPath
-			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
-				firstSegment = importPath[:idx]
-			}
-			isStdlib := !strings.Contains(firstSegment, ".")
-
-			if isStdlib || battenshedAllowedImports[importPath] {
-				continue
-			}
-
-			failures = append(failures, relPath+": "+importPath)
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk battenshed directory: %v", err)
-	}
-
-	if len(failures) > 0 {
-		t.Errorf("Told-Geometry Invariant violated; imports outside the allowlist found: %v", failures)
-	}
+	scankit.RequireFloor(t, scanned, 1, "battenshed denied-import scan")
 	if len(deniedFound) > 0 {
 		t.Errorf("Told-Geometry Invariant violated; %s imported directly in: %v", battenshedDeniedLyxcwdImport, deniedFound)
 	}

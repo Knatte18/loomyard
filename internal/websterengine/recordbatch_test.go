@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -1283,15 +1284,17 @@ func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
 func writeRecordPlanDir(t *testing.T, cardBody string) (string, *planparser.Plan) {
 	t.Helper()
 	dir := t.TempDir()
+	plankit.Write(t, dir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "framing",
+		Cards:    []plankit.Card{{Number: 1, Slug: "json-flag", Summary: "summary"}},
+	})
 
+	// The card body is the part under test, so it replaces the card file plankit rendered.
 	content := "# Card 1 — json-flag\n\n" + cardBody + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "01-json-flag.md"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write card file: %v", err)
-	}
-
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — summary\n"
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview file: %v", err)
 	}
 
 	plan, err := planparser.ParsePlan(dir)
@@ -1553,28 +1556,23 @@ func TestRecordBatch_DoneChecksPassOnLandedCreate(t *testing.T) {
 func seedDriftPlanDir(t *testing.T, uses []string) string {
 	t.Helper()
 	dir := t.TempDir()
-
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n" +
-		"# Plan: drift fixture\n\nA two-card fixture whose second card is still pending.\n\n" +
-		"## Card Index\n\n1 — json-flag — the recorded batch's own card\n2 — pending — the not-yet-built card\n"
-	card1 := "# Card 1 — json-flag\n\n**Prosa:**\n- `//base.txt`\n\n**Intent:** The recorded batch's own card.\n"
-
-	var usesBullets string
-	for _, u := range uses {
-		usesBullets += "- `" + u + "`\n"
-	}
-	card2 := "# Card 2 — pending\n\n**Prosa:**\n- `//base.txt`\n\n**Uses:**\n" + usesBullets +
-		"\n**Intent:** The not-yet-built card that still references what batch 1 moved out from under it.\n"
-
-	for name, content := range map[string]string{
-		"00-overview.md":  overview,
-		"01-json-flag.md": card1,
-		"02-pending.md":   card2,
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("seed drift plan dir %s: %v", name, err)
-		}
-	}
+	base := []plankit.Group{{Label: "Prosa", Targets: []string{"//base.txt"}}}
+	plankit.Write(t, dir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "A two-card fixture whose second card is still pending.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "json-flag", Summary: "the recorded batch's own card", Groups: base, Intent: "The recorded batch's own card."},
+			{
+				Number:  2,
+				Slug:    "pending",
+				Summary: "the not-yet-built card",
+				Groups:  base,
+				Uses:    uses,
+				Intent:  "The not-yet-built card that still references what batch 1 moved out from under it.",
+			},
+		},
+	})
 	return dir
 }
 
@@ -1902,12 +1900,26 @@ func TestRecordBatch_RefusedForeignEditLeavesCardHashes(t *testing.T) {
 			})
 			planDir, plan := writeRecordPlanDir(t, "**Intent:** x.\n\n**Verify:** go test ./...\n")
 			if canonicalize {
-				if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte("---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: test\n\nframing\n\n## Card Index\n\n1 — json-flag — summary\n2 — pending — declares a draft handle\n"), 0o644); err != nil {
-					t.Fatalf("write overview: %v", err)
-				}
-				draft := "# Card 2 — pending\n\n**Create:**\n- `plan:internal/foo#Barr` -> `func Bar()`\n\n**Intent:** declare a draft handle.\n"
-				if err := os.WriteFile(filepath.Join(planDir, "02-pending.md"), []byte(draft), 0o644); err != nil {
-					t.Fatalf("write card 2: %v", err)
+				files := plankit.Render(plankit.Plan{
+					Approved: true,
+					Language: "go",
+					Framing:  "framing",
+					Cards: []plankit.Card{
+						{Number: 1, Slug: "json-flag", Summary: "summary"},
+						{
+							Number:  2,
+							Slug:    "pending",
+							Summary: "declares a draft handle",
+							Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Barr` -> `func Bar()"}}},
+							Intent:  "declare a draft handle.",
+						},
+					},
+				})
+				// Card 1 stays as the test wrote it; only the overview and the new card 2 are added.
+				for _, name := range []string{"00-overview.md", "02-pending.md"} {
+					if err := os.WriteFile(filepath.Join(planDir, name), files[name], 0o644); err != nil {
+						t.Fatalf("write %s: %v", name, err)
+					}
 				}
 				var err error
 				if plan, err = planparser.ParsePlan(planDir); err != nil {

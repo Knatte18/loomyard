@@ -46,6 +46,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -121,30 +122,27 @@ var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 func seedRunPlanDir(t *testing.T, numCards int) string {
 	t.Helper()
 	dir := t.TempDir()
-
-	var index strings.Builder
-	files := map[string]string{}
-	for i := 1; i <= numCards; i++ {
-		slug := fmt.Sprintf("batch%d", i)
-		file := fmt.Sprintf("%02d-%s.md", i, slug)
-		index.WriteString(fmt.Sprintf("%d — %s — placeholder card %d\n", i, slug, i))
-
-		creates := fmt.Sprintf("internal/%s/new.go", slug)
-		body := fmt.Sprintf(
-			"# Card %d — %s\n\n**Create:**\n- `%s`\n\n**Intent:** placeholder card.\n",
-			i, slug, creates,
-		)
-		files[file] = body
-	}
-	files["00-overview.md"] = "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		index.String()
-
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write plan fixture %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, dir, runPlan(1, numCards))
 	return dir
+}
+
+// runPlan returns a validation-clean plan of numCards cards numbered from first, each a Create of its own new file.
+func runPlan(first, numCards int) plankit.Plan {
+	p := plankit.Plan{Approved: true, Framing: "Framing."}
+	if first != 1 {
+		p.FirstCard = first
+	}
+	for n := first; n < first+numCards; n++ {
+		slug := fmt.Sprintf("batch%d", n)
+		p.Cards = append(p.Cards, plankit.Card{
+			Number:  n,
+			Slug:    slug,
+			Summary: fmt.Sprintf("placeholder card %d", n),
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{fmt.Sprintf("internal/%s/new.go", slug)}}},
+			Intent:  "placeholder card.",
+		})
+	}
+	return p
 }
 
 // seedShuttleRunState hand-seeds a run.json under runDirRoot naming
@@ -2322,18 +2320,8 @@ func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
 			t.Fatalf("remove %s: %v", e.Name(), err)
 		}
 	}
-	overview := "---\nformat: 5\napproved: true\nfirst_card: 3\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"3 — batch3 — placeholder card 3\n4 — batch4 — placeholder card 4\n"
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
+	plankit.Write(t, fx.PlanDir, runPlan(3, 2))
 	appendIntegrationVerify(t, fx.PlanDir, "go test ./...")
-	for _, n := range []int{3, 4} {
-		card := fmt.Sprintf("# Card %d — batch%d\n\n**Create:**\n- `internal/batch%d/new.go`\n\n**Intent:** placeholder card.\n", n, n, n)
-		if err := os.WriteFile(filepath.Join(fx.PlanDir, fmt.Sprintf("%02d-batch%d.md", n, n)), []byte(card), 0o644); err != nil {
-			t.Fatalf("write card %d: %v", n, err)
-		}
-	}
 
 	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-generation", waitErr: fmt.Errorf("stop after spawn")}
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})

@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -27,9 +26,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -40,33 +40,6 @@ type fakeAlwaysDoneProducer struct{}
 
 func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	return shedengine.Done, shedengine.OutputPointer{}, nil
-}
-
-// seedBouncerStencils writes the six stencils a live Plan-Write, Discussion-Review, Plan-Review, or Webster-Review segment reads at dir, keyed by stencilstore.Path(dir, name): the two generic bouncer templates (bouncer-template-seed, bouncer-template-judge) and all three segments' rubrics (loom-rubric-discussion-review, loom-rubric-plan-review, loom-rubric-webster-review) plus loom-template-prior-plan, which the Plan-Write rotator renders once it moves a seeded plan, each seeded from its real embedded contracts/stencils bytes rather than dummy content.
-// shedadapters.NewBouncer probes the rubric eagerly at construction, and seedCall/judgeCall read the two templates at call
-// time and degrade to Stuck when either is unreadable, so dummy templates would make
-// shedengine.Done unreachable and would also diverge from the marker set internal/stencil's Fill
-// requires in production.
-func seedBouncerStencils(t *testing.T, dir string) {
-	t.Helper()
-
-	seeds := map[string][]byte{
-		"bouncer-template-seed":         stencils.BouncerTemplateSeed,
-		"bouncer-template-judge":        stencils.BouncerTemplateJudge,
-		"loom-rubric-discussion-review": stencils.LoomRubricDiscussionReview,
-		"loom-rubric-plan-review":       stencils.LoomRubricPlanReview,
-		"loom-rubric-webster-review":    stencils.LoomRubricWebsterReview,
-		"loom-template-prior-plan":      stencils.LoomTemplatePriorPlan,
-	}
-	for name, content := range seeds {
-		path := stencilstore.Path(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("mkdir stencil dir for %s: %v", name, err)
-		}
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			t.Fatalf("write stencil %s: %v", name, err)
-		}
-	}
 }
 
 // newLoomBurler returns the shedfake.BurlerRunner every review segment's Burler row runs through.
@@ -159,42 +132,38 @@ func writeDiscussionFixture(t *testing.T, dir, decisionRecord, supportLog string
 	return decisionRecordPath, supportLogPath
 }
 
-// planFixtureCard is the syntactically complete, one-card plan-format card body seedPlanFixture
-// and the loom shuttle's "plan"-role branch both write, kept as a single package-level constant so the
-// two writers never drift apart. The sole card carries a Create group so path-missing never fires
-// regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence
-// checking.
-const planFixtureCard = "# Card 1 — first-card\n\n**Create:**\n- `internal/firstcard/new.go`\n\n" +
-	"**Intent:** placeholder card.\n"
-
-// planFixtureOverview returns the plan-format overview body naming approved in its frontmatter,
-// pointing at the sole card planFixtureCard writes. It is kept alongside planFixtureCard as a
-// single package-level function so seedPlanFixture and the loom shuttle's "plan"-role branch
-// never drift apart.
-func planFixtureOverview(approved bool) string {
-	return fmt.Sprintf(
-		"---\nformat: 5\napproved: %t\nlanguage: none\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — first-card — placeholder card 1\n",
-		approved,
-	)
+// writePlanFixture writes the syntactically complete, one-card plan seedPlanFixture and the loom shuttle's "plan"-role branch both write, so the two writers never drift apart.
+// The sole card carries a Create group so path-missing never fires regardless of worktreeRoot's contents — a Create group's targets stay exempt from on-disk existence checking.
+func writePlanFixture(planDir string, approved bool) error {
+	if err := os.MkdirAll(planDir, 0o755); err != nil {
+		return err
+	}
+	files := plankit.Render(plankit.Plan{
+		Approved: approved,
+		Language: "none",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "first-card",
+			Summary: "placeholder card 1",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/firstcard/new.go"}}},
+			Intent:  "placeholder card.",
+		}},
+	})
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(planDir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // seedPlanFixture writes a syntactically complete, one-card plan-format plan under
-// <anchorPath>/_lyx/plan/, approved or not per approved, via planFixtureCard and
-// planFixtureOverview.
+// <anchorPath>/_lyx/plan/, approved or not per approved, via writePlanFixture.
 func seedPlanFixture(t *testing.T, anchorPath string, approved bool) {
 	t.Helper()
-
-	planDir := filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan")
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(planFixtureCard), 0o644); err != nil {
-		t.Fatalf("write card file: %v", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(planFixtureOverview(approved)), 0o644); err != nil {
-		t.Fatalf("write overview file: %v", err)
+	if err := writePlanFixture(filepath.Join(anchorPath, lyxdirs.LyxDirName, "plan"), approved); err != nil {
+		t.Fatalf("write plan fixture: %v", err)
 	}
 }
 
@@ -212,7 +181,7 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 // newLoomShuttle returns the shedfake.Shuttle serving row 3 (Discussion-Write), row 6 (Plan-Write),
 // and all three segments' Bouncer rows' spawn roles: shedrecipe.Env carries one Shuttle field, not
 // one per row, so this single fake serves all of them, and its RunFn branches on the Spec's own Role.
-// On spec.Role == "plan" it writes the whole plan-directory fixture -- planFixtureCard and planFixtureOverview(false) into planDir -- rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory (including the card file seedPlanFixture pre-wrote) before the shuttle runs,
+// On spec.Role == "plan" it writes the whole plan-directory fixture -- writePlanFixture(planDir, false) -- rather than only spec.OutputFiles, because loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan directory (including the card file seedPlanFixture pre-wrote) before the shuttle runs,
 // so writing only the overview would leave the Card Index naming a card file that no longer exists and Plan-Write's own gate would fail.
 // The overview it writes is unapproved, mirroring the plan stencil's own "you never self-approve" rule: the real Plan-Write producer can never emit an approved plan,
 // and a fake writer that did would hand the review gate a plan the production writer can never produce -- Plan-Bouncer's approve_seam is what flips the flag, not this row.
@@ -238,14 +207,8 @@ func newLoomShuttle(planDir string, writeOutputs bool) *shedfake.Shuttle {
 func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) (shuttleengine.Result, error) {
 	switch spec.Role {
 	case "plan":
-		if err := os.MkdirAll(planDir, 0o755); err != nil {
-			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: mkdir plan dir %s: %w", planDir, err)
-		}
-		if err := os.WriteFile(filepath.Join(planDir, "01-first-card.md"), []byte(planFixtureCard), 0o644); err != nil {
-			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write plan card file: %w", err)
-		}
-		if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(planFixtureOverview(false)), 0o644); err != nil {
-			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write plan overview file: %w", err)
+		if err := writePlanFixture(planDir, false); err != nil {
+			return shuttleengine.Result{}, fmt.Errorf("loom shuttle: write plan fixture %s: %w", planDir, err)
 		}
 		return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 
@@ -447,7 +410,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 		t.Fatalf("mkdir run root: %v", err)
 	}
 	stencilsDir := filepath.Join(dir, "stencils")
-	seedBouncerStencils(t, stencilsDir)
+	stencilkit.SeedInto(t, stencilsDir)
 	specsDir := filepath.Join(dir, "specs")
 	if err := os.MkdirAll(specsDir, 0o755); err != nil {
 		t.Fatalf("mkdir specs dir: %v", err)

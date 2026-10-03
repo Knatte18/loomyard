@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -239,7 +240,7 @@ func TestNewPlanGate(t *testing.T) {
 
 	t.Run("InformationalOnlyFindingsPassWithAWarnLine", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 		// "newpkg#Bar" resolves not_found with unit: not_found, which createFindings reports as the
 		// informational create-new-unit finding -- no blocking finding in this plan.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
@@ -261,7 +262,7 @@ func TestNewPlanGate(t *testing.T) {
 
 	t.Run("MixedBlockingAndInformationalFailsTheGate", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 		// "newpkg#Bar" is informational (create-new-unit); "sub#Missing" resolves not_found with
 		// unit: found, which statusFindings reports as the blocking glyph-not-found finding. One
 		// blocking finding is enough to fail the gate.
@@ -293,6 +294,14 @@ func writeOverviewOnlyPlanDir(t *testing.T, anchorPath, overview string) (planDi
 	return planDir
 }
 
+// oneCardIndexLine is the Card Index line firstCardOverview renders for the sole card.
+const oneCardIndexLine = "1 — first-card — placeholder card 1"
+
+// firstCardOverview returns the overview plankit renders for firstCardPlan's one-card plan.
+func firstCardOverview() string {
+	return string(plankit.Render(firstCardPlan(true, "none", "internal/firstcard/new.go", ""))["00-overview.md"])
+}
+
 // TestNewPlanGate_ParsePlanSplit covers the ParsePlan error split -- the subtlest rule in the task:
 // a malformed overview, an unparseable card index, and an absent 00-overview.md each produce
 // Passed false with the error's own text as findings, while both of ParsePlan's read faults produce
@@ -322,7 +331,11 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
 		// A Card Index line that matches none of cardIndexLineRe's accepted separators.
-		writeOverviewOnlyPlanDir(t, anchorPath, "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n## Card Index\n\nnot a valid card index line\n")
+		overview := strings.Replace(firstCardOverview(), oneCardIndexLine, "not a valid card index line", 1)
+		if !strings.Contains(overview, "not a valid card index line") {
+			t.Fatalf("overview does not carry the index line %q", oneCardIndexLine)
+		}
+		writeOverviewOnlyPlanDir(t, anchorPath, overview)
 
 		gate := NewPlanGate(anchorPath, worktreeRoot)
 		result, err := gate()
@@ -387,7 +400,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 	t.Run("PerCardReadFaultIsAReturnedError", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
-		planDir := writeOverviewOnlyPlanDir(t, anchorPath, "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n## Card Index\n\n1 — first-card — placeholder card 1\n")
+		planDir := writeOverviewOnlyPlanDir(t, anchorPath, firstCardOverview())
 		// A directory at the card file's own path, reached through parseCardFile, forces its
 		// os.ReadFile to fail the same non-not-exist way the overview read fault above does.
 		if err := os.MkdirAll(filepath.Join(planDir, "01-first-card.md"), 0o755); err != nil {
@@ -440,39 +453,33 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 // The told number is therefore 2.
 func seedReworkGlyphPlan(t *testing.T, anchorPath string, cardNumber int, creates, uses string) map[string][]byte {
 	t.Helper()
-	planDir := planparser.PlanDir(anchorPath)
-	if err := os.MkdirAll(planDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	overview := func(firstCard int, index string) string {
-		first := ""
-		if firstCard > 1 {
-			first = fmt.Sprintf("first_card: %d\n", firstCard)
-		}
-		return "---\nformat: 5\napproved: true\nlanguage: go\n" + first + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" + index
-	}
-	oldIndex := "1 — first-card — placeholder card 1\n"
-	oldCard := "# Card 1 — first-card\n\n**Create:**\n- `sub#Foo`\n\n**Intent:** placeholder card.\n"
-	usesBlock := ""
+	var usesTargets []string
 	if uses != "" {
-		usesBlock = fmt.Sprintf("\n**Uses:**\n- `%s`\n", uses)
+		usesTargets = []string{uses}
 	}
-	newIndex := fmt.Sprintf("%d — new-card — placeholder card %d\n", cardNumber, cardNumber)
-	newCard := fmt.Sprintf("# Card %d — new-card\n\n**Create:**\n- `%s`\n%s\n**Intent:** new generation card.\n", cardNumber, creates, usesBlock)
-
-	files := map[string]string{
-		"00-overview.md": overview(cardNumber, newIndex),
-		fmt.Sprintf("%02d-new-card.md", cardNumber): newCard,
+	firstCard := 0
+	if cardNumber > 1 {
+		firstCard = cardNumber
 	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
+	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
+		Approved:  true,
+		Language:  "go",
+		FirstCard: firstCard,
+		Framing:   "Framing.",
+		Cards: []plankit.Card{{
+			Number:  cardNumber,
+			Slug:    "new-card",
+			Summary: fmt.Sprintf("placeholder card %d", cardNumber),
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{creates}}},
+			Uses:    usesTargets,
+			Intent:  "new generation card.",
+		}},
+	})
+	committed := map[string][]byte{}
+	for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
+		committed[path.Join(planparser.PlanDirRel(), name)] = data
 	}
-	return map[string][]byte{
-		path.Join(planparser.PlanDirRel(), "00-overview.md"):   []byte(overview(1, oldIndex)),
-		path.Join(planparser.PlanDirRel(), "01-first-card.md"): []byte(oldCard),
-	}
+	return committed
 }
 
 // committedReader returns a ReadCommitted seam over committed.
@@ -488,7 +495,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("WholeNewPlanNumberedFromToldCardPasses", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
 		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
@@ -502,7 +509,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("FirstCardDifferingFromToldNumberFails", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 1, "newpkg#Bar", "")
 
 		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
@@ -516,7 +523,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("EveryCardIsResolved", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "sub#Missing")
 
 		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
@@ -530,7 +537,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("NoCardIsExemptedAsBuilt", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "sub#Foo", "")
 
 		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
@@ -544,7 +551,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("NoCommittedPlanReturnsAnError", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		worktreeRoot := writeGlyphRepoFixture(t, builtRepo)
+		worktreeRoot := plankit.Repo(t, builtRepo)
 		seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
 		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(nil))()

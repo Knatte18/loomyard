@@ -337,11 +337,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				b, cfg := newBouncerFixture(t,
 					withBareConfig(),
-					withStencils(map[string]string{
-						"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
-						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-						// bouncer-template-judge deliberately absent.
-					}),
+					withoutStencils("bouncer-template-judge"),
 					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
 					withClock(fixedClock(bouncerJudgeTestClock)),
 				).Build()
@@ -365,11 +361,9 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
 				b, cfg := newBouncerFixture(t,
 					withBareConfig(),
-					withStencils(map[string]string{
-						"bouncer-template-seed": "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}}\n",
+					withStencilOverrides(map[string]string{
 						// Declares a marker the Go side does not supply.
-						"bouncer-template-judge":  "# Judge\n\n{{.unknown_marker}}\n",
-						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+						"bouncer-template-judge": "# Judge\n\n{{.unknown_marker}}\n",
 					}),
 					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
 					withClock(fixedClock(bouncerJudgeTestClock)),

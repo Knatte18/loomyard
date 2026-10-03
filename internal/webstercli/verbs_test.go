@@ -35,7 +35,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -49,22 +48,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
-// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
-// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs -- webster's prompts are
-// read from disk at call time now, so a fixture hub that is never seeded fails every verb that
-// renders one.
+// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil --
+// webster's prompts are read from disk at call time,
+// so a fixture hub that is never seeded fails every verb that renders one.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	baseDir := fabricengine.StencilsDir(hub)
-	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
-		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
-	}
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 func newScratchRepo(t *testing.T) string {
@@ -1018,15 +1014,26 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 // so a later edit to card 2 changes the plan fingerprint without touching card 1.
 func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 	t.Helper()
-	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-		"1 — only — placeholder card\n2 — second — second card\n"
-	card1 := "# Card 1 — only\n\n**Create:**\n- `internal/only/new.go`\n\n**Intent:** placeholder card.\n"
-	card2 := "# Card 2 — second\n\n**Create:**\n- `internal/only/two.go`\n\n**Intent:** " + secondIntent + "\n"
-	for name, body := range map[string]string{"00-overview.md": overview, "01-only.md": card1, "02-second.md": card2} {
-		if err := os.WriteFile(filepath.Join(planDir, name), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "only",
+				Summary: "placeholder card",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/new.go"}}},
+				Intent:  "placeholder card.",
+			},
+			{
+				Number:  2,
+				Slug:    "second",
+				Summary: "second card",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/two.go"}}},
+				Intent:  secondIntent,
+			},
+		},
+	})
 }
 
 // TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords proves a plan edit to a later card is accepted:
@@ -1135,14 +1142,17 @@ func TestRebaselineCmd_RefusesRemovedCard(t *testing.T) {
 	if err := os.Remove(filepath.Join(planDir, "01-only.md")); err != nil {
 		t.Fatalf("remove card: %v", err)
 	}
-	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — other — replacement card\n"
-	card := "# Card 1 — other\n\n**Create:**\n- `internal/only/other.go`\n\n**Intent:** replacement card.\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(planDir, "01-other.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card: %v", err)
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "other",
+			Summary: "replacement card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/other.go"}}},
+			Intent:  "replacement card.",
+		}},
+	})
 
 	var out strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil)
@@ -1371,17 +1381,29 @@ func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testi
 	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
 		t.Fatalf("write sub/a.go: %v", err)
 	}
-	files := map[string]string{
-		"00-overview.md": "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
-			"1 — first — creates a symbol\n2 — second — uses it\n",
-		"01-first.md":  "# Card 1 — first\n\n**Create:**\n- `newpkg#Bar`\n\n**Intent:** creates a symbol.\n",
-		"02-second.md": "# Card 2 — second\n\n**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `newpkg#Bar`\n\n**Intent:** uses it.\n\n**ImpactSummary:** none.\n",
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(c.geom.PlanDir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
+	plankit.Write(t, c.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "first",
+				Summary: "creates a symbol",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
+				Intent:  "creates a symbol.",
+			},
+			{
+				Number:        2,
+				Slug:          "second",
+				Summary:       "uses it",
+				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"sub#Foo"}}},
+				Uses:          []string{"newpkg#Bar"},
+				Intent:        "uses it.",
+				ImpactSummary: "none.",
+			},
+		},
+	})
 
 	state := &websterengine.State{
 		RunGUID:         "run-guid",

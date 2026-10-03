@@ -1,6 +1,5 @@
-// status_test.go is a table over shedverbs.RenderStatusLine for the "loom" label, pinning its exact
-// rendered line for each shape of Activity the composed status file can carry, plus a table over
-// shedverbs.PrintStatusLinesOnChange's suppress-an-unchanged-line rule.
+// status_test.go drives loom's status verb in-process and pins the envelope key set it emits and the interrupt policy it adds.
+// The generic status line rendering is tested in internal/shedverbs.
 
 package loomcli
 
@@ -8,128 +7,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
-
-// TestRenderStatusLine covers shedverbs.RenderStatusLine's three shapes for the "loom" label: an
-// empty last and wait, a populated last only, and both populated -- each asserting the exact
-// expected line, since the format is pinned rather than left to judgment.
-func TestRenderStatusLine(t *testing.T) {
-	tests := []struct {
-		name string
-		st   shedengine.Status
-		want string
-	}{
-		{
-			name: "EmptyLastAndWait",
-			st: shedengine.Status{
-				State:    shedengine.StateRunning,
-				Activity: shedengine.Activity{Now: "Preflight", Last: "", Wait: ""},
-			},
-			want: "loom running | now Preflight",
-		},
-		{
-			name: "LastOnly",
-			st: shedengine.Status{
-				State:    shedengine.StateRunning,
-				Activity: shedengine.Activity{Now: "Discussion-Write", Last: "Preflight → done", Wait: ""},
-			},
-			want: "loom running | now Discussion-Write | last Preflight → done",
-		},
-		{
-			name: "LastAndWait",
-			st: shedengine.Status{
-				State:    shedengine.StateBlocked,
-				Activity: shedengine.Activity{Now: "Plan-Bouncer", Last: "Plan-Bouncer → stuck", Wait: "plan validation failed"},
-			},
-			want: "loom blocked | now Plan-Bouncer | last Plan-Bouncer → stuck | wait plan validation failed",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shedverbs.RenderStatusLine("loom", tt.st); got != tt.want {
-				t.Errorf("shedverbs.RenderStatusLine(\"loom\", %+v) = %q; want %q", tt.st, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestPrintStatusLinesOnChange covers the suppress-an-unchanged-line rule the watch tail rests on.
-// The UnchangedRepeats row is the direct regression guard: before this rule the tail printed one
-// line per poll, so a producer call that lasts minutes emitted hundreds of byte-identical lines into
-// the strand pane and evicted its own scrollback.
-func TestPrintStatusLinesOnChange(t *testing.T) {
-	tests := []struct {
-		name  string
-		polls []string
-		want  []string
-	}{
-		{
-			name:  "UnchangedRepeats",
-			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Write", "loom running | now Plan-Write"},
-			want:  []string{"loom running | now Plan-Write"},
-		},
-		{
-			name:  "PrintsEveryTransition",
-			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom blocked | now Plan-Bouncer"},
-			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom blocked | now Plan-Bouncer"},
-		},
-		{
-			name:  "ReprintsAfterReturningToAnEarlierLine",
-			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
-			want:  []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},
-		},
-		{
-			name:  "TransientUnavailableIsAlsoDeduped",
-			polls: []string{shedverbs.UnavailableLine("loom"), shedverbs.UnavailableLine("loom"), "loom running | now Plan-Write"},
-			want:  []string{shedverbs.UnavailableLine("loom"), "loom running | now Plan-Write"},
-		},
-		{
-			name:  "FirstLineIsAlwaysPrinted",
-			polls: []string{"loom running | now Preflight"},
-			want:  []string{"loom running | now Preflight"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var out bytes.Buffer
-			next := 0
-			poll := func() string {
-				line := tt.polls[next]
-				next++
-				return line
-			}
-			slept := 0
-			shedverbs.PrintStatusLinesOnChange(&out, poll, func() { slept++ }, len(tt.polls))
-
-			got := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-			if out.Len() == 0 {
-				got = nil
-			}
-			if len(got) != len(tt.want) {
-				t.Fatalf("shedverbs.PrintStatusLinesOnChange(%v) printed %d line(s) %q; want %d line(s) %q", tt.polls, len(got), got, len(tt.want), tt.want)
-			}
-			for i := range tt.want {
-				if got[i] != tt.want[i] {
-					t.Errorf("shedverbs.PrintStatusLinesOnChange(%v) line %d = %q; want %q", tt.polls, i, got[i], tt.want[i])
-				}
-			}
-			if slept != len(tt.polls) {
-				t.Errorf("shedverbs.PrintStatusLinesOnChange(%v) slept %d time(s); want %d -- the tail must keep polling at its interval even while suppressing output", tt.polls, slept, len(tt.polls))
-			}
-		})
-	}
-}
 
 // TestStatusCmd_EnvelopeKeySet drives statusCmd()'s RunE in-process against a hand-populated
 // receiver whose shedPaths point at a seeded status file under t.TempDir(), and asserts the emitted

@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -75,21 +76,19 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 // gate always runs planglyph.ValidateFormat, never the require_approved-aware planglyph.Validate.
 func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	anchorPath, planDir := setupPlanDir(t)
-	overview := "---\nformat: 5\napproved: true\nlanguage: none\n---\n\n" +
-		"# Plan: add a helper\n\n" +
-		"## Card Index\n\n" +
-		"1 — add-helper — Add the helper\n\n" +
-		"## verify:\n\n```bash\ngo test ./...\n```\n"
-	card := "# Card 1 — Add the helper\n\n" +
-		"**Create:**\n- `helper.go`\n\n" +
-		"**Intent:** Add the helper.\n\n" +
-		"**Commit:** 1: Add the helper\n"
-	if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("WriteFile(00-overview.md): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(planDir, "01-add-helper.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("WriteFile(01-add-helper.md): %v", err)
-	}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Sections: []plankit.Section{{Heading: "verify:", Body: "```bash\ngo test ./...\n```"}},
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "add-helper",
+			Summary: "Add the helper",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"helper.go"}}},
+			Intent:  "Add the helper.",
+			Commit:  "1: Add the helper",
+		}},
+	})
 	// The one file the Card Index does not name -- this is what makes index-file-mismatch the
 	// plan's single finding.
 	if err := os.WriteFile(filepath.Join(planDir, "99-unindexed.md"), []byte("stray"), 0o644); err != nil {

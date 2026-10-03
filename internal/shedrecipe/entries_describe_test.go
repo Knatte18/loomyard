@@ -36,7 +36,6 @@ func TestDescribeEntry_ConstructionFailures(t *testing.T) {
 		{"NilCommitDescription", func(e *Env) { e.CommitDescription = nil }, gated, "CommitDescription"},
 		{"NilShuttle", func(e *Env) { e.Shuttle = nil }, gated, "Shuttle"},
 		{"MissingDescriptionPath", func(e *Env) { e.DescriptionPath = "" }, gated, "DescriptionPath"},
-		{"UnknownConfigKey", func(e *Env) {}, Config{"bogus_key": "x"}, "bogus_key"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

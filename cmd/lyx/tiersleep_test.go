@@ -14,13 +14,15 @@ import (
 	"go/token"
 	"strconv"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // allowedLongSleepers is the real-time-wait guard's allowlist: module-relative,
 // slash-separated file paths permitted to contain a literal time.Sleep(...) of at
 // least one second in an untagged test file, each with a one-line reason — mirroring
 // tierpurity_test.go's allowedSpawners style.
-var allowedLongSleepers = map[string]string{}
+var allowedLongSleepers = []scankit.Entry{}
 
 // findLongLiteralSleep parses data as Go and finds time.Sleep(...) calls with duration >= 1 second.
 func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (evidence string, found bool) {
