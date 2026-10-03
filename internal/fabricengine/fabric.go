@@ -160,30 +160,12 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 	return RequireWarpWorktree(l)
 }
 
-// PairSiblingRemnant reports whether slug's weft worktree is still on disk, and where, for a caller
-// that has already found the slug's warp worktree gone.
-// It exists for the same vocabulary reason RequireDrivableWorktree does: a caller outside the Fabric
-// Vocabulary Invariant's owner set cannot name WeftWorktreePath, yet a teardown row re-entered after
-// Topology.Remove was interrupted between its two halves must tell "the pair is gone" from "only
-// the warp side is gone", because the second is the debris `lyx fabric prune` exists to remove.
-// A stat error other than absence is returned, never folded into false.
-func PairSiblingRemnant(l *lyxcwd.Location, slug string) (path string, present bool, err error) {
-	path = WeftWorktreePath(l, slug)
-	if _, statErr := os.Stat(path); statErr != nil {
-		if os.IsNotExist(statErr) {
-			return path, false, nil
-		}
-		return path, false, statErr
-	}
-	return path, true, nil
-}
-
 // PairComplete reports whether l's pair -- l is the warp worktree's own resolved Location, not the
 // hub's prime -- satisfies Add's own full post-condition: the paired sibling worktree exists, the
 // warp junctions actually resolve into it, and the pair's origin record names its parent branch.
 // The origin record is part of that post-condition because Add writes it last before pushing, and a
 // pair missing it makes every later reader of the parent branch refuse.
-// It exists for the same vocabulary reason PairSiblingRemnant does, for a caller that must tell a
+// It exists for the same vocabulary reason RequireDrivableWorktree does, for a caller that must tell a
 // pair Add finished from one a SIGKILL interrupted partway through: Add's own in-process rollback
 // never runs when the process that called it dies instead of Add itself returning an error, so a
 // bare "the warp worktree directory resolves" check cannot draw that line.
