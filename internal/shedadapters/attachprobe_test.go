@@ -161,8 +161,8 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	// Only round 1's report exists at Call entry -- a verdict already on disk would settle (or, if
-	// CONVERGED, clear) before judgeCall is ever reached, so the judge branch would go unexercised.
+	// Only round 1's report exists at Call entry -- a verdict already on disk would settle (or, if CONVERGED, clear) before judgeCall is ever reached,
+	// so the judge branch would go unexercised.
 	// The attached judge writes its verdict and ledger while Call waits on it, which duringAttach
 	// stands in for.
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
