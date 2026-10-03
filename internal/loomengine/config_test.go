@@ -62,8 +62,8 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
 	}
-	if cfg.Discussion != "opus[effort=high]" {
-		t.Errorf("cfg.Discussion = %q; want %q", cfg.Discussion, "opus[effort=high]")
+	if cfg.Discussion != "opus[medium]" {
+		t.Errorf("cfg.Discussion = %q; want %q", cfg.Discussion, "opus[medium]")
 	}
 	if cfg.DiscussionTimeoutMin != 480 {
 		t.Errorf("cfg.DiscussionTimeoutMin = %d; want %d", cfg.DiscussionTimeoutMin, 480)
@@ -71,14 +71,14 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.DiscussionInteractive != false {
 		t.Errorf("cfg.DiscussionInteractive = %v; want %v", cfg.DiscussionInteractive, false)
 	}
-	if cfg.Plan != "opus[effort=high]" {
-		t.Errorf("cfg.Plan = %q; want %q", cfg.Plan, "opus[effort=high]")
+	if cfg.Plan != "opus[medium]" {
+		t.Errorf("cfg.Plan = %q; want %q", cfg.Plan, "opus[medium]")
 	}
 	if cfg.PlanTimeoutMin != 120 {
 		t.Errorf("cfg.PlanTimeoutMin = %d; want %d", cfg.PlanTimeoutMin, 120)
 	}
-	if cfg.Review != "opus[effort=high]" {
-		t.Errorf("cfg.Review = %q; want %q", cfg.Review, "opus[effort=high]")
+	if cfg.Review != "sonnet[medium]" {
+		t.Errorf("cfg.Review = %q; want %q", cfg.Review, "sonnet[medium]")
 	}
 	if cfg.Judge != "sonnet[medium]" {
 		t.Errorf("cfg.Judge = %q; want %q", cfg.Judge, "sonnet[medium]")
@@ -89,14 +89,14 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.Selfreport != true {
 		t.Errorf("cfg.Selfreport = %v; want %v", cfg.Selfreport, true)
 	}
-	if cfg.Friction != "opus[effort=high]" {
-		t.Errorf("cfg.Friction = %q; want %q", cfg.Friction, "opus[effort=high]")
+	if cfg.Friction != "sonnet[medium]" {
+		t.Errorf("cfg.Friction = %q; want %q", cfg.Friction, "sonnet[medium]")
 	}
 	if cfg.FrictionTimeoutMin != 30 {
 		t.Errorf("cfg.FrictionTimeoutMin = %d; want %d", cfg.FrictionTimeoutMin, 30)
 	}
-	if cfg.Driver != "" {
-		t.Errorf("cfg.Driver = %q; want \"\" (the template's own default: defer to the provider default)", cfg.Driver)
+	if cfg.Driver != "sonnet[medium]" {
+		t.Errorf("cfg.Driver = %q; want %q", cfg.Driver, "sonnet[medium]")
 	}
 }
 
@@ -268,8 +268,8 @@ review_timeout_min: 240
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v; want nil for a loom.yaml missing the friction keys", err)
 	}
-	if cfg.Friction != "opus[effort=high]" {
-		t.Errorf("cfg.Friction = %q; want the template default %q", cfg.Friction, "opus[effort=high]")
+	if cfg.Friction != "sonnet[medium]" {
+		t.Errorf("cfg.Friction = %q; want the template default %q", cfg.Friction, "sonnet[medium]")
 	}
 	if cfg.FrictionTimeoutMin != 30 {
 		t.Errorf("cfg.FrictionTimeoutMin = %d; want the template default %d", cfg.FrictionTimeoutMin, 30)
