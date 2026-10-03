@@ -347,119 +347,13 @@ func watchdogTestTiming() watchTiming {
 	}
 }
 
-// driverHook is a thread-safe scripted TmuxCmd.execHook for watchLoop driver tests: watchLoop runs
-// in its own goroutine while the test goroutine both reads the recorded argv and rewrites the
-// scripted answers mid-run (e.g. to simulate a resize or a hook install appearing).
-type driverHook struct {
-	mu    sync.Mutex
-	calls [][]string
-
-	live []LivePane
-
-	boxAnswer string
-	boxErr    error
-
-	hookAnswer string
-	hookErr    error
-
-	selectLayoutErr error
-}
-
-// newDriverHook builds a driverHook over live, with box "100 21" (matching newTestEngine's default
-// cfg.Width/Height) and no hook installed.
-func newDriverHook(live []LivePane) *driverHook {
-	return &driverHook{live: live, boxAnswer: "100 21"}
-}
-
-// exec is the TmuxCmd.execHook function itself.
-func (h *driverHook) exec(capture bool, args ...string) (string, error) {
-	h.mu.Lock()
-	h.calls = append(h.calls, append([]string{}, args...))
-	live := h.live
-	boxAnswer, boxErr := h.boxAnswer, h.boxErr
-	hookAnswer, hookErr := h.hookAnswer, h.hookErr
-	selectLayoutErr := h.selectLayoutErr
-	h.mu.Unlock()
-
-	switch args[0] {
-	case "has-session":
-		return "", nil
-	case "list-panes":
-		return encodeLivePanes(live), nil
-	case "display-message":
-		// The generation probe (generation.go) and the window-size query (windowsize.go) both go
-		// through display-message; disambiguate by the trailing format string exactly as
-		// reapply_test.go's scriptedHook does.
-		if args[len(args)-1] == paneGenerationFormat {
-			return "$0|1|1000", nil
-		}
-		return boxAnswer, boxErr
-	case "show-options":
-		return hookAnswer, hookErr
-	case "select-layout":
-		if selectLayoutErr != nil {
-			return "", selectLayoutErr
-		}
-		return "", nil
-	default:
-		return "", nil
-	}
-}
-
-// setHook rewrites the show-options answer the next tick observes.
-func (h *driverHook) setHook(answer string, err error) {
-	h.mu.Lock()
-	h.hookAnswer, h.hookErr = answer, err
-	h.mu.Unlock()
-}
-
-// setBox rewrites the live-window-size answer the next tick observes.
-func (h *driverHook) setBox(answer string, err error) {
-	h.mu.Lock()
-	h.boxAnswer, h.boxErr = answer, err
-	h.mu.Unlock()
-}
-
-// setSelectLayoutErr rewrites the error select-layout reports on every future call.
-func (h *driverHook) setSelectLayoutErr(err error) {
-	h.mu.Lock()
-	h.selectLayoutErr = err
-	h.mu.Unlock()
-}
-
-// snapshot returns a defensive copy of every call recorded so far.
-func (h *driverHook) snapshot() [][]string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([][]string, len(h.calls))
-	copy(out, h.calls)
-	return out
-}
-
-// count reports how many recorded calls invoke subcommand.
-func (h *driverHook) count(subcommand string) int {
-	n := 0
-	for _, c := range h.snapshot() {
-		if len(c) > 0 && c[0] == subcommand {
-			n++
-		}
-	}
-	return n
-}
-
-// has reports whether any recorded call invokes subcommand.
-func (h *driverHook) has(subcommand string) bool {
-	return h.count(subcommand) > 0
-}
-
 // newWatchLoopTestEngine builds an Engine and a persisted ReedState the way reapply_test.go's
 // newReapplyTestEngine does — one strand bound to "%1", live panes "%1" and "%2" — wired to a
-// driverHook instead of reapply_test.go's non-thread-safe scriptedHook, and with cfg.Watchdog set
-// to watchdog.
-func newWatchLoopTestEngine(t *testing.T, watchdog string) (*Engine, *driverHook) {
+// fakeTmux the test goroutine may re-script mid-run while watchLoop runs in its own, and with
+// cfg.Watchdog set to watchdog.
+func newWatchLoopTestEngine(t *testing.T, watchdog string) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
-	e.cfg.Width, e.cfg.Height = 100, 21
 	e.cfg.Watchdog = watchdog
 	st := &ReedState{
 		Strands: []Strand{
@@ -469,9 +363,9 @@ func newWatchLoopTestEngine(t *testing.T, watchdog string) (*Engine, *driverHook
 	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
-	hook := newDriverHook([]LivePane{{ID: "%1"}, {ID: "%2"}})
-	e.tmux.execHook = hook.exec
-	return e, hook
+	fake := installFakeTmux(t, e)
+	fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "100 21", nil)
+	return e, fake
 }
 
 // startWatchLoop runs e.watchLoop(ctx, timing) in a goroutine, cancels ctx and drains the
@@ -514,7 +408,7 @@ func eventually(t *testing.T, timeout time.Duration, cond func() bool) bool {
 // TestWatchLoop_DisabledNeverReturnsWhileCtxLive pins that with Watchdog: "off", watchLoop issues
 // no tmux call, does not return within a bounded wait, and returns only after ctx is cancelled.
 func TestWatchLoop_DisabledNeverReturnsWhileCtxLive(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "off")
+	e, fake := newWatchLoopTestEngine(t, "off")
 	cancel, done := startWatchLoop(t, e, watchdogTestTiming())
 
 	select {
@@ -522,8 +416,8 @@ func TestWatchLoop_DisabledNeverReturnsWhileCtxLive(t *testing.T) {
 		t.Fatalf("watchLoop returned %v before cancellation, want it parked", err)
 	case <-time.After(30 * time.Millisecond):
 	}
-	if len(hook.snapshot()) != 0 {
-		t.Errorf("hook recorded calls %v, want zero tmux calls while disabled", hook.snapshot())
+	if calls := fake.Calls(); len(calls) != 0 {
+		t.Errorf("tmux calls = %v, want zero tmux calls while disabled", calls)
 	}
 
 	cancel()
@@ -542,7 +436,7 @@ func TestWatchLoop_DisabledNeverReturnsWhileCtxLive(t *testing.T) {
 // killing the keepalive, so this must not return an error and must not return at all until
 // cancellation.
 func TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "garbage")
+	e, fake := newWatchLoopTestEngine(t, "garbage")
 	cancel, done := startWatchLoop(t, e, watchdogTestTiming())
 
 	select {
@@ -550,8 +444,8 @@ func TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive(t *testing.T) {
 		t.Fatalf("watchLoop returned %v before cancellation, want it parked", err)
 	case <-time.After(30 * time.Millisecond):
 	}
-	if len(hook.snapshot()) != 0 {
-		t.Errorf("hook recorded calls %v, want zero tmux calls on an invalid value", hook.snapshot())
+	if calls := fake.Calls(); len(calls) != 0 {
+		t.Errorf("tmux calls = %v, want zero tmux calls on an invalid value", calls)
 	}
 
 	cancel()
@@ -590,33 +484,33 @@ func TestWatchLoop_StaleSignalFileRemovedAtStart(t *testing.T) {
 // TestWatchLoop_PollModeByDefault pins that with show-options reporting no hook, the loop issues
 // repeated reapplyLayout cycles at PollCycle and never promotes into signal-mode behaviour.
 func TestWatchLoop_PollModeByDefault(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
-	hook.setHook("", nil)
+	e, fake := newWatchLoopTestEngine(t, "on")
+	fake.answer("show-options", "", nil)
 
 	startWatchLoop(t, e, watchdogTestTiming())
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("list-panes") >= 3 }) {
-		t.Fatalf("list-panes calls = %d, want at least 3 poll cycles", hook.count("list-panes"))
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 3 }) {
+		t.Fatalf("list-panes calls = %d, want at least 3 poll cycles", fake.Count("list-panes"))
 	}
-	if hook.count("show-options") == 0 {
+	if fake.Count("show-options") == 0 {
 		t.Errorf("show-options calls = 0, want poll mode to probe every cycle")
 	}
 }
 
-// waitForPromotion runs the loop already promoted to signal mode against hook's current
-// hookAnswer (which must already report reed's own command), by waiting for the list-panes call
+// waitForPromotion runs the loop already promoted to signal mode against fake's current
+// show-options answer (which must already report reed's own command), by waiting for the list-panes call
 // count to stop growing across two consecutive observation windows — the observable proxy for "no
 // more per-cycle reapplyLayout calls", since promotion is otherwise an internal mode flag.
-func waitForPromotion(t *testing.T, hook *driverHook) int {
+func waitForPromotion(t *testing.T, fake *fakeTmux) int {
 	t.Helper()
-	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("list-panes") >= 1 }) {
-		t.Fatalf("list-panes calls = %d, want at least 1 (the promoting call)", hook.count("list-panes"))
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 1 }) {
+		t.Fatalf("list-panes calls = %d, want at least 1 (the promoting call)", fake.Count("list-panes"))
 	}
 	var stableCount int
 	if !eventually(t, 300*time.Millisecond, func() bool {
-		before := hook.count("list-panes")
+		before := fake.Count("list-panes")
 		time.Sleep(20 * time.Millisecond)
-		after := hook.count("list-panes")
+		after := fake.Count("list-panes")
 		stableCount = after
 		return before == after
 	}) {
@@ -629,50 +523,50 @@ func waitForPromotion(t *testing.T, hook *driverHook) int {
 // string, the loop promotes: after promotion it stops issuing per-cycle reapplyLayout calls, and it
 // applies only after a signal file appears.
 func TestWatchLoop_ModePromotion(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	startWatchLoop(t, e, watchdogTestTiming())
 
-	stable := waitForPromotion(t, hook)
+	stable := waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply (lastApplied starts as the zero box, which never
 	// equals a live box) already issued one select-layout; the baseline below is what the
 	// signal-triggered apply below must exceed.
-	baseline := hook.count("select-layout")
+	baseline := fake.Count("select-layout")
 
 	// Change the box so the coming signal-triggered apply is a real, observable select-layout rather
 	// than one the box-equality guard skips.
-	hook.setBox("120 30", nil)
+	fake.answer("display-message", "120 30", nil)
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("list-panes") > stable }) {
-		t.Errorf("list-panes calls = %d, want more than %d after the signal file appeared", hook.count("list-panes"), stable)
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") > stable }) {
+		t.Errorf("list-panes calls = %d, want more than %d after the signal file appeared", fake.Count("list-panes"), stable)
 	}
-	if !eventually(t, 100*time.Millisecond, func() bool { return hook.count("select-layout") > baseline }) {
-		t.Errorf("select-layout calls = %d, want more than %d after the signal-triggered apply", hook.count("select-layout"), baseline)
+	if !eventually(t, 100*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
+		t.Errorf("select-layout calls = %d, want more than %d after the signal-triggered apply", fake.Count("select-layout"), baseline)
 	}
 }
 
 // TestWatchLoop_NeverDemotes pins that after a promotion, scripting show-options to return the
 // empty string produces no further probe round trips at all — signal mode never re-probes.
 func TestWatchLoop_NeverDemotes(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	startWatchLoop(t, e, watchdogTestTiming())
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 
-	probesAtPromotion := hook.count("show-options")
-	hook.setHook("", nil)
+	probesAtPromotion := fake.Count("show-options")
+	fake.answer("show-options", "", nil)
 
 	// Give the loop many more signal ticks than it took to promote; a demoting implementation would
 	// re-probe and see the hook gone.
 	time.Sleep(50 * time.Millisecond)
-	if got := hook.count("show-options"); got != probesAtPromotion {
+	if got := fake.Count("show-options"); got != probesAtPromotion {
 		t.Errorf("show-options calls = %d after clearing the hook, want unchanged from %d (signal mode never re-probes)", got, probesAtPromotion)
 	}
 }
@@ -681,9 +575,9 @@ func TestWatchLoop_NeverDemotes(t *testing.T) {
 // so every call defers, the mode stays poll and no promotion occurs; releasing the lock and then
 // reporting the hook promotes as normal.
 func TestWatchLoop_UndecidedProbeDoesNotGuess(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	dotLyx := e.stateDir()
 	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
@@ -698,48 +592,48 @@ func TestWatchLoop_UndecidedProbeDoesNotGuess(t *testing.T) {
 	startWatchLoop(t, e, watchdogTestTiming())
 
 	time.Sleep(30 * time.Millisecond)
-	if got := len(hook.snapshot()); got != 0 {
-		t.Errorf("hook recorded %d calls while reed.lock was held, want zero (every deferred tick issues no tmux call)", got)
+	if got := len(fake.Calls()); got != 0 {
+		t.Errorf("tmux recorded %d calls while reed.lock was held, want zero (every deferred tick issues no tmux call)", got)
 	}
 
 	if err := held.Release(); err != nil {
 		t.Fatalf("Release: %v", err)
 	}
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.has("show-options") }) {
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("show-options") > 0 }) {
 		t.Errorf("no show-options probe observed after releasing reed.lock")
 	}
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 }
 
 // TestWatchLoop_SignalConsumedByRemovalBeforeTheApply pins that in signal mode, creating the signal
 // file causes exactly one select-layout after the quiet period, and the file is gone before that
 // select-layout appears in the recorded argv.
 func TestWatchLoop_SignalConsumedByRemovalBeforeTheApply(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	startWatchLoop(t, e, watchdogTestTiming())
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply already issued one select-layout (lastApplied starts
 	// as the zero box); baseline is what this test's one signal must add exactly one to.
-	baseline := hook.count("select-layout")
+	baseline := fake.Count("select-layout")
 
 	// A differing box so the apply this signal triggers is a real, observable select-layout.
-	hook.setBox("130 40", nil)
+	fake.answer("display-message", "130 40", nil)
 	signalPath := e.resizeSignalPath()
 	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("select-layout") > baseline }) {
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
 		t.Fatalf("no select-layout observed after the signal file appeared")
 	}
 	if _, err := os.Stat(signalPath); !os.IsNotExist(err) {
 		t.Errorf("signal file still present once select-layout was observed, want it removed before the apply")
 	}
-	if got := hook.count("select-layout"); got != baseline+1 {
+	if got := fake.Count("select-layout"); got != baseline+1 {
 		t.Errorf("select-layout calls = %d, want exactly %d for one signal", got, baseline+1)
 	}
 }
@@ -748,15 +642,15 @@ func TestWatchLoop_SignalConsumedByRemovalBeforeTheApply(t *testing.T) {
 // (flipped directly in the fixture, standing in for a reed.yaml edit) changes nothing while the
 // loop runs: the loop reads e.cfg.Watchdog exactly once, at start.
 func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
-	hook.setHook("", nil)
+	e, fake := newWatchLoopTestEngine(t, "on")
+	fake.answer("show-options", "", nil)
 
 	_, done := startWatchLoop(t, e, watchdogTestTiming())
 
-	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("list-panes") >= 2 }) {
-		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before flipping the config", hook.count("list-panes"))
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 2 }) {
+		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before flipping the config", fake.Count("list-panes"))
 	}
-	before := hook.count("list-panes")
+	before := fake.Count("list-panes")
 
 	e.cfg.Watchdog = "off"
 
@@ -765,8 +659,8 @@ func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
 		t.Fatalf("watchLoop returned %v after flipping cfg.Watchdog mid-run, want it to keep running", err)
 	case <-time.After(20 * time.Millisecond):
 	}
-	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("list-panes") > before }) {
-		t.Errorf("list-panes calls = %d, want continued poll cycles after flipping cfg.Watchdog mid-run (%d before)", hook.count("list-panes"), before)
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") > before }) {
+		t.Errorf("list-panes calls = %d, want continued poll cycles after flipping cfg.Watchdog mid-run (%d before)", fake.Count("list-panes"), before)
 	}
 }
 
@@ -774,19 +668,19 @@ func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
 // the loop is still running and still responsive after an exhausted streak: a fresh signal file
 // still produces a fresh select-layout attempt.
 func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	timing := watchdogTestTiming()
 	_, done := startWatchLoop(t, e, timing)
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply already issued one (successful) select-layout;
 	// baseline is what this failing streak's timing.MaxAttempts attempts must add on top of.
-	baseline := hook.count("select-layout")
+	baseline := fake.Count("select-layout")
 
-	hook.setBox("140 50", nil)
-	hook.setSelectLayoutErr(errors.New("select-layout boom"))
+	fake.answer("display-message", "140 50", nil)
+	fake.answer("select-layout", "", errors.New("select-layout boom"))
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
@@ -800,27 +694,27 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	wait += 50 * time.Millisecond
 
 	want := baseline + timing.MaxAttempts
-	if !eventually(t, wait, func() bool { return hook.count("select-layout") >= want }) {
-		t.Fatalf("select-layout attempts = %d, want %d (the exhausted streak)", hook.count("select-layout"), want)
+	if !eventually(t, wait, func() bool { return fake.Count("select-layout") >= want }) {
+		t.Fatalf("select-layout attempts = %d, want %d (the exhausted streak)", fake.Count("select-layout"), want)
 	}
-	exhausted := hook.count("select-layout")
+	exhausted := fake.Count("select-layout")
 
 	select {
 	case err := <-done:
 		t.Fatalf("watchLoop returned %v after an exhausted retry streak, want it to keep running", err)
 	case <-time.After(30 * time.Millisecond):
 	}
-	if got := hook.count("select-layout"); got != exhausted {
+	if got := fake.Count("select-layout"); got != exhausted {
 		t.Errorf("select-layout attempts = %d after the streak exhausted, want unchanged at %d (no attempts beyond the cap)", got, exhausted)
 	}
 
 	// A fresh signal is a fresh event: it must still produce a fresh attempt, cap or no cap.
-	hook.setSelectLayoutErr(nil)
+	fake.answer("select-layout", "", nil)
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile fresh signal: %v", err)
 	}
-	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("select-layout") > exhausted }) {
-		t.Errorf("select-layout attempts = %d, want more than %d after a fresh signal", hook.count("select-layout"), exhausted)
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("select-layout") > exhausted }) {
+		t.Errorf("select-layout attempts = %d, want more than %d after a fresh signal", fake.Count("select-layout"), exhausted)
 	}
 }
 
@@ -828,16 +722,16 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 // the loop issues no tmux call and, once the lock is released, still applies for the same pending
 // signal.
 func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	timing := watchdogTestTiming()
 	startWatchLoop(t, e, timing)
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply already issued one select-layout; baseline is what
 	// the once-unblocked deferred signal below must exceed.
-	baseline := hook.count("select-layout")
+	baseline := fake.Count("select-layout")
 
 	dotLyx := e.stateDir()
 	held, err := lock.AcquireWriteLock(filepath.Join(dotLyx, reedLockFileName))
@@ -845,8 +739,8 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 		t.Fatalf("AcquireWriteLock: %v", err)
 	}
 
-	hook.setBox("160 60", nil)
-	beforeLock := hook.count("list-panes")
+	fake.answer("display-message", "160 60", nil)
+	beforeLock := fake.Count("list-panes")
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
@@ -857,7 +751,7 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 	// cmd/lyx's tiersleep_test.go static check (a non-constant field expression reads as
 	// unresolvable there and fails closed).
 	time.Sleep(10 * time.Millisecond)
-	if got := hook.count("list-panes"); got != beforeLock {
+	if got := fake.Count("list-panes"); got != beforeLock {
 		t.Errorf("list-panes calls = %d while reed.lock was held across the quiet period, want unchanged at %d", got, beforeLock)
 	}
 
@@ -865,7 +759,7 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 		t.Fatalf("Release: %v", err)
 	}
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("select-layout") > baseline }) {
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
 		t.Errorf("no select-layout observed once reed.lock was released, want the deferred signal still owed")
 	}
 }
@@ -919,13 +813,13 @@ func captureLog(t *testing.T) *safeLogBuffer {
 // than returning, and logs exactly one warning.
 func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	buf := captureLog(t)
-	e, hook := newWatchLoopTestEngine(t, "on")
-	hook.setHook("", nil)
+	e, fake := newWatchLoopTestEngine(t, "on")
+	fake.answer("show-options", "", nil)
 
 	_, done := startWatchLoop(t, e, watchdogTestTiming())
 
-	if !eventually(t, 200*time.Millisecond, func() bool { return hook.count("list-panes") >= 2 }) {
-		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before the worktree root vanishes", hook.count("list-panes"))
+	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 2 }) {
+		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before the worktree root vanishes", fake.Count("list-panes"))
 	}
 
 	if err := os.RemoveAll(e.geom.WorktreeRoot); err != nil {
@@ -933,9 +827,9 @@ func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	}
 
 	if !eventually(t, 300*time.Millisecond, func() bool {
-		before := hook.count("list-panes")
+		before := fake.Count("list-panes")
 		time.Sleep(20 * time.Millisecond)
-		return hook.count("list-panes") == before
+		return fake.Count("list-panes") == before
 	}) {
 		t.Fatalf("list-panes call count never stabilized, want dormancy to stop the per-cycle tmux round trip")
 	}
@@ -955,9 +849,9 @@ func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 // contract from signal mode, so the per-event retry-streak machinery cannot swallow the transition.
 func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	buf := captureLog(t)
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	// A generously wide quiet window: the sequence below writes the signal file, waits for the
 	// loop to consume it into a pending apply, and only then removes the worktree root — the
@@ -966,7 +860,7 @@ func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	timing.Quiet = 30 * time.Millisecond
 
 	_, done := startWatchLoop(t, e, timing)
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 
 	signalPath := e.resizeSignalPath()
 	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
@@ -1006,15 +900,15 @@ func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 // poll.
 func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 	buf := captureLog(t)
-	e, hook := newWatchLoopTestEngine(t, "on")
+	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	hook.setHook(ownCommand, nil)
+	fake.answer("show-options", ownCommand, nil)
 
 	timing := watchdogTestTiming()
 	timing.Quiet = 30 * time.Millisecond
 
 	startWatchLoop(t, e, timing)
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 
 	signalPath := e.resizeSignalPath()
 	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
@@ -1056,7 +950,7 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 
 	// Signal mode's signature, distinguishing it from poll mode: with no fresh signal file, the
 	// list-panes count stabilizes rather than continuing to grow tick after tick.
-	waitForPromotion(t, hook)
+	waitForPromotion(t, fake)
 }
 
 // TestWatchLoop_NonSentinelFailureDoesNotGoDormant pins the narrowing itself: a re-apply failure
@@ -1064,14 +958,14 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 // re-applying at its existing (poll) cadence exactly as it does today.
 func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	buf := captureLog(t)
-	e, hook := newWatchLoopTestEngine(t, "on")
-	hook.setHook("", nil)
-	hook.setSelectLayoutErr(errors.New("select-layout boom"))
+	e, fake := newWatchLoopTestEngine(t, "on")
+	fake.answer("show-options", "", nil)
+	fake.answer("select-layout", "", errors.New("select-layout boom"))
 
 	startWatchLoop(t, e, watchdogTestTiming())
 
-	if !eventually(t, 300*time.Millisecond, func() bool { return hook.count("list-panes") >= 5 }) {
-		t.Fatalf("list-panes calls = %d, want continued poll-cadence reapply attempts despite the non-sentinel failure", hook.count("list-panes"))
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 5 }) {
+		t.Fatalf("list-panes calls = %d, want continued poll-cadence reapply attempts despite the non-sentinel failure", fake.Count("list-panes"))
 	}
 	if strings.Contains(buf.String(), "told worktree root is gone") {
 		t.Errorf("dormancy warning logged for a non-sentinel failure, want only the sentinel to trigger dormancy:\n%s", buf.String())
