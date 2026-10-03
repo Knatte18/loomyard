@@ -33,5 +33,5 @@ var mergeresolveAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/mergeresolve", mergeresolveAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/mergeresolve", mergeresolveAllowedImports...)
 }

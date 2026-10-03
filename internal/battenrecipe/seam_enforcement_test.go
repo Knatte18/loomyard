@@ -38,7 +38,7 @@ const battenrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/ly
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
 // that no production import path is battenrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/battenrecipe", battenrecipeAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/battenrecipe", battenrecipeAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/battenrecipe"}, Shallow: true}, func(f *scankit.File) {

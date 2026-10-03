@@ -272,19 +272,26 @@ func RequireFloor(t testing.TB, scanned, min int, what string) {
 	}
 }
 
-// importViolations returns the imports of the package's production files that are neither
-// standard library nor in allowed, as `file: import` lines, and the number of files parsed.
-func importViolations(dir string, allowed []string) ([]string, int, error) {
+// importReport is what an import scan of one package directory found.
+type importReport struct {
+	// violations are the imports that are neither standard library nor allowed, as `file: import` lines.
+	violations []string
+	// unused are the allowed import paths no production file imports, sorted.
+	unused []string
+	parsed int
+}
+
+// importViolations scans the production files of the package in dir against allowed.
+func importViolations(dir string, allowed []string) (importReport, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, 0, err
+		return importReport{}, err
 	}
-	ok := map[string]bool{}
+	used := map[string]bool{}
 	for _, a := range allowed {
-		ok[a] = true
+		used[a] = false
 	}
-	var violations []string
-	parsed := 0
+	var r importReport
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -292,18 +299,27 @@ func importViolations(dir string, allowed []string) ([]string, int, error) {
 		}
 		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, parser.ImportsOnly)
 		if err != nil {
-			return nil, 0, err
+			return importReport{}, err
 		}
-		parsed++
+		r.parsed++
 		for _, imp := range f.Imports {
 			path := strings.Trim(imp.Path.Value, `"`)
-			if isStdlib(path) || ok[path] {
+			if _, ok := used[path]; ok {
+				used[path] = true
 				continue
 			}
-			violations = append(violations, name+": "+path)
+			if !isStdlib(path) {
+				r.violations = append(r.violations, name+": "+path)
+			}
 		}
 	}
-	return violations, parsed, nil
+	for path, hit := range used {
+		if !hit {
+			r.unused = append(r.unused, path)
+		}
+	}
+	sort.Strings(r.unused)
+	return r, nil
 }
 
 func isStdlib(path string) bool {
@@ -311,21 +327,36 @@ func isStdlib(path string) bool {
 	return !strings.Contains(first, ".")
 }
 
-// AssertImportAllowlist fails the test when a production file in pkgDir imports anything beyond
-// the standard library and the allowed import paths.
+// AssertImportAllowlist fails the test when a production file in pkgDir imports anything beyond the standard library and the allowed import paths.
 // pkgDir is a slash path relative to the module root, or absolute.
 func AssertImportAllowlist(t testing.TB, pkgDir string, allowed ...string) {
+	t.Helper()
+	assertImports(t, pkgDir, allowed, false)
+}
+
+// AssertImportAllowlistNoStale is AssertImportAllowlist that also fails for every allowed import path no production file in pkgDir imports.
+func AssertImportAllowlistNoStale(t testing.TB, pkgDir string, allowed ...string) {
+	t.Helper()
+	assertImports(t, pkgDir, allowed, true)
+}
+
+func assertImports(t testing.TB, pkgDir string, allowed []string, noStale bool) {
 	t.Helper()
 	dir := pkgDir
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(Root(t), filepath.FromSlash(pkgDir))
 	}
-	violations, parsed, err := importViolations(dir, allowed)
+	r, err := importViolations(dir, allowed)
 	if err != nil {
 		t.Fatalf("scankit: %v", err)
 	}
-	RequireFloor(t, parsed, 1, "import scan of "+pkgDir)
-	for _, v := range violations {
+	RequireFloor(t, r.parsed, 1, "import scan of "+pkgDir)
+	for _, v := range r.violations {
 		t.Errorf("%s imports outside its allowlist: %s", pkgDir, v)
+	}
+	if noStale {
+		for _, p := range r.unused {
+			t.Errorf("%s: stale import allowlist entry %q is imported by no production file; remove it", pkgDir, p)
+		}
 	}
 }

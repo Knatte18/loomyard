@@ -35,7 +35,7 @@ const (
 // TestSeamInvariants_AllowlistOnly verifies that every non-test .go file in this package imports only stdlib or an entry in orchengineAllowedImports,
 // and it separately names the two denied imports so a violation reports the rule it breaks.
 func TestSeamInvariants_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/orchengine", orchengineAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/orchengine", orchengineAllowedImports...)
 
 	var lyxcwdFound, claudeFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/orchengine"}, Shallow: true}, func(f *scankit.File) {

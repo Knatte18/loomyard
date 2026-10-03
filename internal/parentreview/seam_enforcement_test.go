@@ -18,5 +18,5 @@ var parentreviewAllowedImports = []string{
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in parentreviewAllowedImports.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/parentreview", parentreviewAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/parentreview", parentreviewAllowedImports...)
 }

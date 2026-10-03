@@ -30,5 +30,5 @@ var allowedImports = []string{
 // TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib
 // or an entry in allowedImports.
 func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/treadleengine", allowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/treadleengine", allowedImports...)
 }

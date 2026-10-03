@@ -32,7 +32,7 @@ const battenshedDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxc
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
 // that no production import path is battenshedDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/battenshed", battenshedAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/battenshed", battenshedAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/battenshed"}, Shallow: true}, func(f *scankit.File) {

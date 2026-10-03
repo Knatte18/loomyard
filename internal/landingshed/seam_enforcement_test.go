@@ -40,5 +40,5 @@ var landingshedAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/landingshed", landingshedAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/landingshed", landingshedAllowedImports...)
 }

@@ -141,33 +141,38 @@ func TestImportViolations(t *testing.T) {
 		"d.go":       "package p\n\nimport \"example.com/other\"\n",
 		"README.txt": "not go",
 	})
-	got, parsed, err := importViolations(dir, []string{"github.com/x/ok"})
+	got, err := importViolations(dir, []string{"github.com/x/ok", "github.com/x/testonly", "github.com/x/sub"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"b.go: github.com/x/bad", "d.go: example.com/other"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("violations = %v, want %v", got, want)
+	if !reflect.DeepEqual(got.violations, want) {
+		t.Fatalf("violations = %v, want %v", got.violations, want)
 	}
-	if parsed != 4 {
-		t.Fatalf("parsed = %d, want 4", parsed)
+	// An allowed path only a test file or a subdirectory imports is unused by the package.
+	wantUnused := []string{"github.com/x/sub", "github.com/x/testonly"}
+	if !reflect.DeepEqual(got.unused, wantUnused) {
+		t.Fatalf("unused = %v, want %v", got.unused, wantUnused)
+	}
+	if got.parsed != 4 {
+		t.Fatalf("parsed = %d, want 4", got.parsed)
 	}
 }
 
 func TestImportViolations_Clean(t *testing.T) {
-	dir := writeTree(t, map[string]string{"a.go": "package p\n\nimport \"os\"\n"})
-	got, parsed, err := importViolations(dir, nil)
-	if err != nil || len(got) != 0 || parsed != 1 {
-		t.Fatalf("got %v, %d, %v", got, parsed, err)
+	dir := writeTree(t, map[string]string{"a.go": "package p\n\nimport (\n\t\"os\"\n\t\"github.com/x/ok\"\n)\n"})
+	got, err := importViolations(dir, []string{"github.com/x/ok"})
+	if err != nil || len(got.violations) != 0 || len(got.unused) != 0 || got.parsed != 1 {
+		t.Fatalf("got %+v, %v", got, err)
 	}
 }
 
 func TestImportViolations_Errors(t *testing.T) {
-	if _, _, err := importViolations(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
+	if _, err := importViolations(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
 		t.Error("missing dir: want error")
 	}
 	dir := writeTree(t, map[string]string{"a.go": "not go at all"})
-	if _, _, err := importViolations(dir, nil); err == nil {
+	if _, err := importViolations(dir, nil); err == nil {
 		t.Error("unparsable file: want error")
 	}
 }

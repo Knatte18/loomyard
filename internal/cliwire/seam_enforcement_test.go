@@ -48,7 +48,7 @@ const cliwireDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcwd"
 // imports only stdlib or an entry in cliwireAllowedImports, and separately asserts that no
 // production import path is cliwireDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/cliwire", cliwireAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/cliwire", cliwireAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/cliwire"}, Shallow: true}, func(f *scankit.File) {

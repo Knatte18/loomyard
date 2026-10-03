@@ -50,5 +50,5 @@ var loomshedAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/loomshed", loomshedAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/loomshed", loomshedAllowedImports...)
 }

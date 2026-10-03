@@ -10,5 +10,5 @@ import (
 )
 
 func TestAgentNameInvariant_StdlibOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/agentname")
+	scankit.AssertImportAllowlistNoStale(t, "internal/agentname")
 }

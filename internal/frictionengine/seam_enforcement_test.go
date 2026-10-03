@@ -30,5 +30,5 @@ var frictionengineAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/frictionengine", frictionengineAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/frictionengine", frictionengineAllowedImports...)
 }

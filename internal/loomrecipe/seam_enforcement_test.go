@@ -38,7 +38,7 @@ const loomrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxc
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts
 // that no production import path is loomrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/loomrecipe", loomrecipeAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/loomrecipe", loomrecipeAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/loomrecipe"}, Shallow: true}, func(f *scankit.File) {

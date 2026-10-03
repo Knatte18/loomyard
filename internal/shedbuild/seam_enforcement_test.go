@@ -39,7 +39,7 @@ const shedbuildDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxcw
 // imports only stdlib or an entry in shedbuildAllowedImports, and separately asserts that no
 // production import path is shedbuildDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/shedbuild", shedbuildAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedbuild", shedbuildAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedbuild"}, Shallow: true}, func(f *scankit.File) {

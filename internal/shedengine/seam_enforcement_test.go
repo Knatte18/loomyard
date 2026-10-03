@@ -27,5 +27,5 @@ var shedengineAllowedImports = []string{
 // TestProducerSeamInvariant_AllowlistOnly verifies that every non-test .go file in this package
 // imports only stdlib or an entry in shedengineAllowedImports.
 func TestProducerSeamInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/shedengine", shedengineAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedengine", shedengineAllowedImports...)
 }

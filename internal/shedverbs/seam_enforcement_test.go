@@ -57,7 +57,7 @@ func isModuleCLIImportPath(importPath string) bool {
 // package imports only stdlib or an entry in shedverbsAllowedImports, and separately asserts that no
 // production import path is shedverbsDeniedLyxcwdImport or matches the <module>cli shape.
 func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/shedverbs", shedverbsAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedverbs", shedverbsAllowedImports...)
 
 	var deniedFound []string
 	var moduleCLIFound []string

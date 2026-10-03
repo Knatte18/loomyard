@@ -19,5 +19,5 @@ var shedtransientAllowedImports = []string{
 
 // TestImportAllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in shedtransientAllowedImports.
 func TestImportAllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/shedtransient", shedtransientAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedtransient", shedtransientAllowedImports...)
 }

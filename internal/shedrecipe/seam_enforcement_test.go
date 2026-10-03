@@ -52,7 +52,7 @@ const shedrecipeDeniedLyxcwdImport = "github.com/Knatte18/loomyard/internal/lyxc
 // imports only stdlib or an entry in shedrecipeAllowedImports, and separately asserts that no
 // production import path is shedrecipeDeniedLyxcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
-	scankit.AssertImportAllowlist(t, "internal/shedrecipe", shedrecipeAllowedImports...)
+	scankit.AssertImportAllowlistNoStale(t, "internal/shedrecipe", shedrecipeAllowedImports...)
 
 	var deniedFound []string
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedrecipe"}, Shallow: true}, func(f *scankit.File) {
