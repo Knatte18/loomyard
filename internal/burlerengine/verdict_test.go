@@ -1,7 +1,7 @@
 // verdict_test.go table-drives ParseReview over the happy paths and every fail-loud rule documented
 // on it: frontmatter presence/closure, YAML validity, verdict spelling, per-finding key
-// completeness, severity vocabulary, duplicate ids, the two verdict/findings consistency rules, and
-// the optional Origin field's pass-through (with and without it present).
+// completeness, severity and class vocabularies, duplicate ids, the two verdict/findings consistency
+// rules, and the optional Origin field's pass-through (with and without it present).
 
 package burlerengine
 
@@ -37,6 +37,7 @@ verdict: BLOCKING
 findings:
   - id: F1
     severity: BLOCKING
+    class: design
     location: file.go:7
     summary: unchecked error
 ---
@@ -51,7 +52,7 @@ findings:
 `,
 			wantVerdict: VerdictBlocking,
 			wantFindings: []Finding{
-				{ID: "F1", Severity: SeverityBlocking, Location: "file.go:7", Summary: "unchecked error"},
+				{ID: "F1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:7", Summary: "unchecked error"},
 			},
 		},
 		{
@@ -61,6 +62,7 @@ verdict: APPROVED
 findings:
   - id: nit-1
     severity: NIT
+    class: consistency
     location: file.go:10
     summary: prefer a shorter variable name
 ---
@@ -69,7 +71,7 @@ Polish only.
 `,
 			wantVerdict: VerdictApproved,
 			wantFindings: []Finding{
-				{ID: "nit-1", Severity: SeverityNit, Location: "file.go:10", Summary: "prefer a shorter variable name"},
+				{ID: "nit-1", Severity: SeverityNit, Class: ClassConsistency, Location: "file.go:10", Summary: "prefer a shorter variable name"},
 			},
 		},
 		{
@@ -79,10 +81,12 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     location: file.go:5
     summary: missing nil check
   - id: m-1
     severity: MEDIUM
+    class: scope
     location: file.go:20
     summary: unclear naming
 ---
@@ -91,8 +95,43 @@ Fix the nil check.
 `,
 			wantVerdict: VerdictBlocking,
 			wantFindings: []Finding{
-				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check"},
-				{ID: "m-1", Severity: SeverityMedium, Location: "file.go:20", Summary: "unclear naming"},
+				{ID: "b-1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:5", Summary: "missing nil check"},
+				{ID: "m-1", Severity: SeverityMedium, Class: ClassScope, Location: "file.go:20", Summary: "unclear naming"},
+			},
+		},
+		{
+			name: "every class value parses and is carried",
+			content: `---
+verdict: APPROVED
+findings:
+  - id: c-1
+    severity: LOW
+    class: design
+    location: file.go:1
+    summary: design finding
+  - id: c-2
+    severity: LOW
+    class: scope
+    location: file.go:2
+    summary: scope finding
+  - id: c-3
+    severity: LOW
+    class: decision
+    location: file.go:3
+    summary: decision finding
+  - id: c-4
+    severity: LOW
+    class: consistency
+    location: file.go:4
+    summary: consistency finding
+---
+`,
+			wantVerdict: VerdictApproved,
+			wantFindings: []Finding{
+				{ID: "c-1", Severity: SeverityLow, Class: ClassDesign, Location: "file.go:1", Summary: "design finding"},
+				{ID: "c-2", Severity: SeverityLow, Class: ClassScope, Location: "file.go:2", Summary: "scope finding"},
+				{ID: "c-3", Severity: SeverityLow, Class: ClassDecision, Location: "file.go:3", Summary: "decision finding"},
+				{ID: "c-4", Severity: SeverityLow, Class: ClassConsistency, Location: "file.go:4", Summary: "consistency finding"},
 			},
 		},
 		{
@@ -105,11 +144,13 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     location: file.go:5
     summary: missing nil check
     origin: lens:security
   - id: m-1
     severity: MEDIUM
+    class: design
     location: file.go:20
     summary: unclear naming
     origin: handler
@@ -119,8 +160,8 @@ Fix the nil check.
 `,
 			wantVerdict: VerdictBlocking,
 			wantFindings: []Finding{
-				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check", Origin: "lens:security"},
-				{ID: "m-1", Severity: SeverityMedium, Location: "file.go:20", Summary: "unclear naming", Origin: "handler"},
+				{ID: "b-1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:5", Summary: "missing nil check", Origin: "lens:security"},
+				{ID: "m-1", Severity: SeverityMedium, Class: ClassDesign, Location: "file.go:20", Summary: "unclear naming", Origin: "handler"},
 			},
 		},
 		{
@@ -132,6 +173,7 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     location: file.go:5
     summary: missing nil check
 ---
@@ -140,7 +182,7 @@ Fix the nil check.
 `,
 			wantVerdict: VerdictBlocking,
 			wantFindings: []Finding{
-				{ID: "b-1", Severity: SeverityBlocking, Location: "file.go:5", Summary: "missing nil check"},
+				{ID: "b-1", Severity: SeverityBlocking, Class: ClassDesign, Location: "file.go:5", Summary: "missing nil check"},
 			},
 		},
 		{
@@ -178,6 +220,7 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: LOW
+    class: design
     location: file.go:1
     summary: "capital" is misspelled as "captial" (both occurrences on line 1)
 ---
@@ -209,6 +252,7 @@ verdict: approved
 verdict: BLOCKING
 findings:
   - severity: BLOCKING
+    class: design
     location: file.go:5
     summary: missing nil check
 ---
@@ -222,6 +266,7 @@ findings:
 verdict: BLOCKING
 findings:
   - id: b-1
+    class: design
     location: file.go:5
     summary: missing nil check
 ---
@@ -236,6 +281,7 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     summary: missing nil check
 ---
 `,
@@ -249,6 +295,7 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     location: file.go:5
 ---
 `,
@@ -262,6 +309,7 @@ verdict: BLOCKING
 findings:
   - id: b-1
     severity: CRITICAL
+    class: design
     location: file.go:5
     summary: missing nil check
 ---
@@ -270,16 +318,77 @@ findings:
 			errSubstr: "unknown severity",
 		},
 		{
+			name: "missing finding class",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    location: file.go:5
+    summary: missing nil check
+---
+`,
+			wantErr:   true,
+			errSubstr: "finding \"b-1\" is missing a non-empty class",
+		},
+		{
+			name: "empty finding class",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    class: "  "
+    location: file.go:5
+    summary: missing nil check
+---
+`,
+			wantErr:   true,
+			errSubstr: "finding \"b-1\" is missing a non-empty class",
+		},
+		{
+			name: "unknown finding class wrong case",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    class: Design
+    location: file.go:5
+    summary: missing nil check
+---
+`,
+			wantErr:   true,
+			errSubstr: "unknown class \"Design\"",
+		},
+		{
+			name: "unknown finding class nit",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: BLOCKING
+    class: nit
+    location: file.go:5
+    summary: missing nil check
+---
+`,
+			wantErr:   true,
+			errSubstr: "unknown class \"nit\"",
+		},
+		{
 			name: "duplicate ids",
 			content: `---
 verdict: BLOCKING
 findings:
   - id: dup
     severity: BLOCKING
+    class: design
     location: file.go:5
     summary: missing nil check
   - id: dup
     severity: LOW
+    class: design
     location: file.go:9
     summary: also here
 ---
@@ -294,6 +403,7 @@ verdict: BLOCKING
 findings:
   - id: m-1
     severity: MEDIUM
+    class: design
     location: file.go:5
     summary: not blocking
 ---
@@ -308,6 +418,7 @@ verdict: APPROVED
 findings:
   - id: b-1
     severity: BLOCKING
+    class: design
     location: file.go:5
     summary: this should not be approved
 ---

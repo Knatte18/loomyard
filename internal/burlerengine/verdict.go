@@ -36,14 +36,35 @@ const (
 	SeverityNit      Severity = "NIT"
 )
 
+// Class is the per-finding class tag: what kind of finding it is, which decides who decides it and
+// when a review loop stops — never whether it is fixed.
+type Class string
+
+// The four legal Class values.
+const (
+	// ClassDesign: the design is wrong, a decision is missing or rests on a false premise.
+	ClassDesign Class = "design"
+	// ClassScope: a call site, file or case the work missed.
+	ClassScope Class = "scope"
+	// ClassDecision: a choice left open that the author must make.
+	ClassDecision Class = "decision"
+	// ClassConsistency: two parts of the artifact disagree, or it departs from its own conventions.
+	ClassConsistency Class = "consistency"
+)
+
+// GatingClass is the one class that decides when a review loop stops, in every segment.
+// A round with no finding of this class has nothing left that holds the loop open.
+const GatingClass = ClassDesign
+
 // Finding is one recorded review-file finding: a stable ID (kept unique and fail-loud across rounds
 // so cross-round hydration and audit can cite it unambiguously — the segment's Bouncer judges progress across
 // rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from
-// the fixed vocabulary, a Location pointing at the offending content, a prose Summary, and an
-// optional Origin.
+// the fixed vocabulary, a Class from the fixed four, a Location pointing at the offending content,
+// a prose Summary, and an optional Origin.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`
+	Class    Class    `yaml:"class"`
 	Location string   `yaml:"location"`
 	Summary  string   `yaml:"summary"`
 	// Origin is optional free-text provenance (`lens:<name>` or `handler`)
@@ -70,6 +91,7 @@ type reviewHeader struct {
 //   - verdict must be exactly "APPROVED" or "BLOCKING" (case-sensitive);
 //   - every finding must have a non-empty id, severity, location, summary;
 //   - severity must be one of the four Severity constants;
+//   - every finding must have a non-empty class, one of the four Class constants;
 //   - finding ids must be unique (kept fail-loud for cross-round hydration
 //     and audit, not for Go-side cycle detection — the caller judges progress
 //     holistically via its own verdict judge);
@@ -193,6 +215,14 @@ func validateFindings(findings []Finding) error {
 		case SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit:
 		default:
 			return fmt.Errorf("burler: review file finding %q has unknown severity %q; want one of %q, %q, %q, %q", f.ID, f.Severity, SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit)
+		}
+		if strings.TrimSpace(string(f.Class)) == "" {
+			return fmt.Errorf("burler: review file finding %q is missing a non-empty class; want one of %q, %q, %q, %q", f.ID, ClassDesign, ClassScope, ClassDecision, ClassConsistency)
+		}
+		switch f.Class {
+		case ClassDesign, ClassScope, ClassDecision, ClassConsistency:
+		default:
+			return fmt.Errorf("burler: review file finding %q has unknown class %q; want one of %q, %q, %q, %q", f.ID, f.Class, ClassDesign, ClassScope, ClassDecision, ClassConsistency)
 		}
 		if seenIDs[f.ID] {
 			return fmt.Errorf("burler: review file has duplicate finding id %q", f.ID)

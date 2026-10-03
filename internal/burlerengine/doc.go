@@ -68,6 +68,21 @@
 // genuinely cannot do alone; even then it must be named explicitly, with
 // its reason, in the fixer-report's deferred section.
 //
+// # Finding class
+//
+// Every finding carries a required Class beside its severity, one of four:
+// design (the design is wrong, or a decision is missing or rests on a false premise),
+// scope (the work missed a call site, file or case),
+// decision (a choice is left open that the author must make) and
+// consistency (two parts disagree, or the artifact departs from its own conventions).
+// Each loom rubric says what design means for its own segment.
+// A recurring scope gap is raised once, as a design finding about the method that keeps missing it.
+// GatingClass (design) is the one class that decides when a review loop stops, in every segment.
+//
+// Class is not a severity ladder.
+// It decides who decides and when the loop stops, never whether a finding is fixed:
+// the fixer still fixes every finding of every class and severity.
+//
 // A single burler round never grades its own fix. Because A precedes B
 // within a round, A is a legitimate, independent gate exactly like a
 // normal reviewer — but the fix FROM round N is judged by a FRESH

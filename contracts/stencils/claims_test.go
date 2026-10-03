@@ -200,6 +200,11 @@ var wordingClaims = []stencilClaims{
 		{must: "## Focus departures", why: "the review format has a Focus departures section"},
 		{must: "Cluster rules", why: "instruction 2 carries the Cluster rules section the composed cluster block fills"},
 		{must: "{{.cluster_rules}}", why: "the Cluster rules section is filled through its marker, so renaming the marker cannot go unnoticed"},
+		{must: "`class`", why: "every finding carries the required class key"},
+		{must: "`design`", why: "the review format names the design class"},
+		{must: "`scope`", why: "the review format names the scope class"},
+		{must: "`decision`", why: "the review format names the decision class"},
+		{must: "`consistency`", why: "the review format names the consistency class"},
 	}},
 	{"burler-template-round-orchestrator.md", BurlerTemplateRoundOrchestrator, []claim{
 		{must: "Sequencing rule", why: "the orchestrator states the sequencing rule between its two jobs"},
