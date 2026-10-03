@@ -57,6 +57,10 @@ var cliTreeFindings = []scankit.Entry{
 		Why: "refuses with \"not a git repository\" instead of listing its verbs",
 	},
 	{
+		Key: "config#bogus",
+		Why: "refuses with \"not a git repository\" before reaching the unknown-subcommand refusal",
+	},
+	{
 		Key: "selfreport#bogus",
 		Why: "prints help and exits 0 instead of refusing an unknown subcommand",
 	},
@@ -113,7 +117,7 @@ func TestCLITree_EveryCommand(t *testing.T) {
 			if code != 1 {
 				t.Errorf("run(%v) = %d; want 1\noutput: %s", bogus, code, out.String())
 			}
-			envelope.RequireErr(t, out.String(), "")
+			envelope.RequireErr(t, out.String(), "unknown subcommand")
 		})
 	})
 	if walked < 2 {
