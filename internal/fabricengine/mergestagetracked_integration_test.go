@@ -2,8 +2,8 @@
 
 // mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a
 // real conflicted pair: a tracked, non-conflicted edit staged by the verb lands in the merge commit
-// MergeContinue writes, a file created mid-merge is listed as untracked, and the verb refuses with no
-// merge in progress.
+// MergeContinue writes, a file created mid-merge in the warp is listed as untracked,
+// an untracked weft file is not, and the verb refuses with no merge in progress.
 
 package fabricengine_test
 
@@ -46,6 +46,10 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 	}
 	if err := os.WriteFile(filepath.Join(warpDir, "created.txt"), []byte("new\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(created.txt): %v", err)
+	}
+	// The weft is no merge participant, so its untracked file is neither listed nor a reason to fail.
+	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "weft-state.txt"), []byte("lyx state\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(weft-state.txt): %v", err)
 	}
 
 	untracked, err := f.MergeUntrackedFiles()

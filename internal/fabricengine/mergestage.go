@@ -7,8 +7,6 @@ package fabricengine
 import (
 	"fmt"
 	"path/filepath"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // StageResult is the mutating result type MergeStageResolved returns, embedding MutationRecord per
@@ -157,37 +155,16 @@ func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 	return StageResult{}, nil
 }
 
-// MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree, unified the way
-// the conflict list is: worktree-relative, so a caller never names a fabric side.
-// Weft untracked paths map through the same visible-tree test as conflicted ones, and a path that
-// cannot be mapped to the visible worktree fails the call rather than yielding a partial list, since
-// an omitted untracked file is one a caller would silently leave out of the merge commit.
+// MergeUntrackedFiles returns the untracked, non-ignored paths in the task worktree's warp checkout,
+// worktree-relative, so a caller never names a fabric side.
+// The weft is not read: it is no merge participant, so an untracked weft file can never enter the
+// merge commit, and listing one would only halt a merge that would have been right.
 // Junctioned `_lyx` and `.lyx` sit in `.git/info/exclude`, so they never appear.
 // It returns an empty, never nil, slice when there are none.
 func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
-	warpUntracked, err := f.warp.UntrackedFiles()
+	untracked, err := f.warp.UntrackedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
 	}
-	weftUntracked, err := f.weft.UntrackedFiles()
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
-	}
-	if len(weftUntracked) == 0 {
-		return warpUntracked, nil
-	}
-
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: resolve layout to list untracked files: %w", err)
-	}
-	anchorRel, wiredNames, err := resolveMergeGeometry(l)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: resolve merge geometry to list untracked files: %w", err)
-	}
-	unified, unmappable := unifyConflictPaths(warpUntracked, weftUntracked, anchorRel, wiredNames)
-	if unmappable {
-		return nil, fmt.Errorf("fabricengine: untracked files include a path outside the visible worktree: %v", weftUntracked)
-	}
-	return unified, nil
+	return untracked, nil
 }
