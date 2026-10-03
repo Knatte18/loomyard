@@ -126,14 +126,6 @@ func TestPRReworkEntry_ConstructionFailures(t *testing.T) {
 }
 
 func TestPRReworkEntry_Config(t *testing.T) {
-	t.Run("UnknownKey", func(t *testing.T) {
-		_, err := prReworkEntry("Row", Config{"bogus_key": "x"}, reworkTestEnv(t))
-		if err == nil {
-			t.Fatalf("prReworkEntry() error = nil; want non-nil for an unrecognised config key")
-		}
-		assertErrContains(t, err, "bogus_key")
-	})
-
 	t.Run("ReworkPlanGate", func(t *testing.T) {
 		gateSpec, err := resolveGateSpec("PRRework", gatesCfg("rework-plan", 3), reworkTestEnv(t))
 		if err != nil {

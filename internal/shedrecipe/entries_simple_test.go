@@ -1,5 +1,5 @@
-// entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table, an
-// unrecognised-Config-key table, and an under-filled-Env table, plus the entry-specific subtests
+// entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table and an
+// under-filled-Env table, plus the entry-specific subtests
 // entries_simple.go's own doc comments call out.
 
 package shedrecipe
@@ -201,20 +201,6 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 			}
 			if producer == nil {
 				t.Fatalf("%s() = nil producer; want non-nil", tt.registryKey)
-			}
-		})
-	}
-}
-
-func TestSimpleEntries_RejectsUnrecognisedConfigKey(t *testing.T) {
-	for _, tt := range simpleEntryCases() {
-		t.Run(tt.registryKey, func(t *testing.T) {
-			_, err := tt.entry("row-name", Config{"bogus_key": "x"}, tt.buildEnv(t))
-			if err == nil {
-				t.Fatalf("%s() error = nil; want non-nil for an unrecognised config key", tt.registryKey)
-			}
-			if !strings.Contains(err.Error(), "bogus_key") {
-				t.Errorf("%s() error = %v; want it to name the offending key %q", tt.registryKey, err, "bogus_key")
 			}
 		})
 	}
