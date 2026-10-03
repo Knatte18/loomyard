@@ -1626,8 +1626,8 @@ func failuresByID(fs []IntegrationFailure, ids []string) []IntegrationFailure {
 
 // accumulatedCardSHAs walks batches in execution order and collects every
 // terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
-// ordered per-card SHA trail and parallel label set bisect and its
-// escalation search over. A batch with no persisted record (should never
+// ordered per-card SHA trail and parallel label set cardHint reads to name
+// the cards that touched a failing package. A batch with no persisted record (should never
 // happen once verifyEveryBatchDone has already confirmed every batch is
 // terminal-done, but handled defensively rather than assumed) contributes
 // nothing.

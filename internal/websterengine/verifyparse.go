@@ -31,6 +31,7 @@ const subtestIndent = 4
 // A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it, so a failing TestX/a and a failing TestX/b are distinct identities.
 // A package identity is "<package>" and marks a failure no named test explains:
 // a build or setup failure, a failing package with no failing test, or a test binary that crashed (a panic, a fatal error, a timeout) or exited before reporting its result, which also hides every test it never ran.
+// Each test and package identity carries its import path in Package; the opaque identity has none.
 // When neither is found, one opaque identity (opaqueFailureID) carries the output tail.
 func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 	if passed {
@@ -70,10 +71,10 @@ func parseVerifyFailures(output string, passed bool) []IntegrationFailure {
 			}
 			pkg := fields[0]
 			for _, t := range block.leaves() {
-				add(IntegrationFailure{ID: pkg + "." + t.name, Kind: FailureKindTest, Tail: capTail(t.tail)})
+				add(IntegrationFailure{ID: pkg + "." + t.name, Kind: FailureKindTest, Package: pkg, Tail: capTail(t.tail)})
 			}
 			if len(block.tests) == 0 || block.crashed || !block.summarized {
-				add(IntegrationFailure{ID: pkg, Kind: FailureKindPackage, Tail: outputTail(lines[blockStart : i+1])})
+				add(IntegrationFailure{ID: pkg, Kind: FailureKindPackage, Package: pkg, Tail: outputTail(lines[blockStart : i+1])})
 			}
 			block = packageBlock{}
 			blockStart = i + 1

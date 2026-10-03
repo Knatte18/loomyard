@@ -39,6 +39,8 @@ type IntegrationFailure struct {
 	ID string `yaml:"id"`
 	// Kind is one of FailureKindTest, FailureKindPackage, FailureKindOpaque.
 	Kind string `yaml:"kind"`
+	// Package is the import path the identity belongs to: the test's package or the failing package itself, and empty for an opaque identity.
+	Package string `yaml:"package,omitempty"`
 	// Tail is the last lines of the identity's output.
 	Tail string `yaml:"tail"`
 }
