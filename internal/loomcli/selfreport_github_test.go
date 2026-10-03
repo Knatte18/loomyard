@@ -146,10 +146,7 @@ func TestDetectAndFileAnomalies_EngineBoundary_RequestShapes(t *testing.T) {
 	}
 }
 
-// TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate asserts a
-// filing call that fails leaves that title out of Titles, keeps it pending with the body the
-// engine boundary was sent, and does not propagate -- the pending entry and the unchanged
-// surrounding behaviour.
+// TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate asserts a filing call that fails leaves that title out of Titles, keeps it pending with the body the engine boundary was sent, and does not propagate -- the pending entry and the unchanged surrounding behaviour.
 func TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate(t *testing.T) {
 	var captured []githubRequestCapture
 	server := newGitHubIssueServer(t, http.StatusUnprocessableEntity, `{"message":"Validation Failed"}`, &captured)

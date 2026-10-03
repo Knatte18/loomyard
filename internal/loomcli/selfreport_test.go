@@ -285,8 +285,7 @@ func TestSelfreportFiledMarker_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestSelfreportFiledMarker_PendingRoundTrip asserts a pending entry survives a write and a read,
-// and that a marker file written before Pending existed reads with no pending entries.
+// TestSelfreportFiledMarker_PendingRoundTrip asserts a pending entry survives a write and a read, and that a marker file written before Pending existed reads with no pending entries.
 func TestSelfreportFiledMarker_PendingRoundTrip(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	want := selfreportFiledMarker{
@@ -309,8 +308,7 @@ func TestSelfreportFiledMarker_PendingRoundTrip(t *testing.T) {
 	}
 }
 
-// pendHaltTitle runs one pass over a halt status with a failing filer, leaving the halt's title
-// pending, and returns that title and the body the filer was sent.
+// pendHaltTitle runs one pass over a halt status with a failing filer, leaving the halt's title pending, and returns that title and the body the filer was sent.
 func pendHaltTitle(t *testing.T, f *selfreportTestFixture) (title, body string) {
 	t.Helper()
 	st := haltStatus()
@@ -333,8 +331,7 @@ func pendHaltTitle(t *testing.T, f *selfreportTestFixture) (title, body string) 
 	return title, body
 }
 
-// TestDetectAndFileAnomalies_FailedFilingResumedPast_IsRetriedOnce is the done-when case: a halt
-// whose filing failed is filed with its stored body once the status no longer shows the halt.
+// TestDetectAndFileAnomalies_FailedFilingResumedPast_IsRetriedOnce is the done-when case: a halt whose filing failed is filed with its stored body once the status no longer shows the halt.
 func TestDetectAndFileAnomalies_FailedFilingResumedPast_IsRetriedOnce(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	title, body := pendHaltTitle(t, f)
@@ -364,8 +361,7 @@ func TestDetectAndFileAnomalies_FailedFilingResumedPast_IsRetriedOnce(t *testing
 	}
 }
 
-// TestDetectAndFileAnomalies_PendingRetryFailsAgain_StaysPendingAndNewStillFiles asserts a
-// pending entry whose retry fails stays pending while a newly detected anomaly is still filed.
+// TestDetectAndFileAnomalies_PendingRetryFailsAgain_StaysPendingAndNewStillFiles asserts a pending entry whose retry fails stays pending while a newly detected anomaly is still filed.
 func TestDetectAndFileAnomalies_PendingRetryFailsAgain_StaysPendingAndNewStillFiles(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	title, _ := pendHaltTitle(t, f)
@@ -397,8 +393,7 @@ func TestDetectAndFileAnomalies_PendingRetryFailsAgain_StaysPendingAndNewStillFi
 	}
 }
 
-// TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce asserts a title that is pending
-// and detected again in the same pass is filed once.
+// TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce asserts a title that is pending and detected again in the same pass is filed once.
 func TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	title, _ := pendHaltTitle(t, f)
@@ -414,8 +409,7 @@ func TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce(t *testing.T
 	}
 }
 
-// TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce asserts a pending title whose retry fails and that the same pass detects again is sent to the filer once,
-// and stays in the pending list once and out of the recorded titles.
+// TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce asserts a pending title whose retry fails and that the same pass detects again is sent to the filer once and stays in the pending list once and out of the recorded titles.
 func TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	title, _ := pendHaltTitle(t, f)
@@ -432,8 +426,7 @@ func TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStays
 	}
 }
 
-// TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending asserts a missing status file, an
-// unreadable one and an undecodable product each still retry the pending entries.
+// TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending asserts a missing status file, an unreadable one and an undecodable product each still retry the pending entries.
 func TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending(t *testing.T) {
 	cases := map[string]func(t *testing.T, f *selfreportTestFixture){
 		"missing": func(t *testing.T, f *selfreportTestFixture) {
@@ -470,8 +463,7 @@ func TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending(t *testing.T)
 	}
 }
 
-// TestDetectAndFileAnomalies_Skips_LeavePendingInPlace asserts the knob, busy and cancelled-context
-// skips retry nothing.
+// TestDetectAndFileAnomalies_Skips_LeavePendingInPlace asserts the knob, busy and cancelled-context skips retry nothing.
 func TestDetectAndFileAnomalies_Skips_LeavePendingInPlace(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -499,8 +491,7 @@ func TestDetectAndFileAnomalies_Skips_LeavePendingInPlace(t *testing.T) {
 	}
 }
 
-// TestDetectAndFileAnomalies_CancelledWithCrashResume_FilesItAndRetriesPending asserts the
-// cancelled-context arm files a lone crash-resume and also retries the pending entries.
+// TestDetectAndFileAnomalies_CancelledWithCrashResume_FilesItAndRetriesPending asserts the cancelled-context arm files a lone crash-resume and also retries the pending entries.
 func TestDetectAndFileAnomalies_CancelledWithCrashResume_FilesItAndRetriesPending(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	title, _ := pendHaltTitle(t, f)

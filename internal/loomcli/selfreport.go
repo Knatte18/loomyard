@@ -187,10 +187,8 @@ func detectAndFileAnomalies(deps selfreportDeps) {
 	runFilingPass(deps, detectFinalAnomalies(deps))
 }
 
-// detectFinalAnomalies reads the final status from deps.StatusPath and returns the anomalies the
-// detector finds in it.
-// A status file that is missing, unreadable or carries an undecodable product yields no anomalies,
-// the last two warned.
+// detectFinalAnomalies reads the final status from deps.StatusPath and returns the anomalies the detector finds in it.
+// A status file that is missing, unreadable or carries an undecodable product yields no anomalies, the last two warned.
 func detectFinalAnomalies(deps selfreportDeps) []loomengine.Anomaly {
 	final, found, err := state.ReadJSONStrict[shedengine.Status](deps.StatusPath, deps.StatusLockPath)
 	if err != nil {
@@ -258,16 +256,14 @@ func discoverLedgers(deps selfreportDeps, final shedengine.Status) []loomengine.
 }
 
 // runFilingPass performs the ordered steps of the filing pass.
-// It reads the marker and returns without a write when the marker holds no pending entry and there
-// is no new anomaly.
-// It then retries every pending entry in recorded order with its stored body: a success moves the
-// title from Pending to Titles and writes the marker at once, and a failure warns and leaves the
-// entry pending.
-// It then collapses the new anomalies by title, skips a title already recorded or pending, and files
-// one filing-seam call per surviving anomaly in the slice's deterministic order.
-// A success records the title and writes the marker, never in advance and never in one batch at
-// the end; a failure appends the title and its rendered body to Pending and writes the marker at
-// once, so the anomaly is retried on every later pass even when no later detection finds it again.
+// It reads the marker and returns without a write when the marker holds no pending entry and there is no new anomaly.
+// It then retries every pending entry in recorded order with its stored body:
+// a success moves the title from Pending to Titles and writes the marker at once,
+// and a failure warns and leaves the entry pending.
+// It then collapses the new anomalies by title, skips a title already recorded or pending, and files one filing-seam call per surviving anomaly in the slice's deterministic order.
+// A success records the title and writes the marker, never in advance and never in one batch at the end;
+// a failure appends the title and its rendered body to Pending and writes the marker at once,
+// so the anomaly is retried on every later pass even when no later detection finds it again.
 func runFilingPass(deps selfreportDeps, anomalies []loomengine.Anomaly) {
 	collapsed := collapseAnomaliesByTitle(anomalies)
 	marker := readFiledMarker(deps.MarkerPath, deps.MarkerLockPath)
@@ -346,19 +342,16 @@ func collapseAnomaliesByTitle(anomalies []loomengine.Anomaly) []loomengine.Anoma
 	return collapsed
 }
 
-// pendingAnomaly is an anomaly whose filing failed: its title and the body rendered when it was
-// detected, kept so a later pass can file it without detecting it again.
+// pendingAnomaly is an anomaly whose filing failed: its title and the body rendered when it was detected, kept so a later pass can file it without detecting it again.
 type pendingAnomaly struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 }
 
-// selfreportFiledMarker is the machine-local record of which anomaly titles have already been
-// filed as GitHub issues, and of the anomalies whose filing failed and awaits a retry.
-// Titles stays a dumb string set with no parsing of its own -- dedupe granularity is whatever the
-// title shape already encodes.
-// Pending holds the failed filings in the order they failed, each retried on every later pass until
-// it succeeds; a marker written before Pending existed reads as one with no pending entries.
+// selfreportFiledMarker is the machine-local record of which anomaly titles have already been filed as GitHub issues, and of the anomalies whose filing failed and awaits a retry.
+// Titles stays a dumb string set with no parsing of its own -- dedupe granularity is whatever the title shape already encodes.
+// Pending holds the failed filings in the order they failed, each retried on every later pass until it succeeds;
+// a marker written before Pending existed reads as one with no pending entries.
 // A title is in at most one of Titles and Pending.
 type selfreportFiledMarker struct {
 	Titles  []string         `json:"titles"`
