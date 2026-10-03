@@ -57,13 +57,12 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // checkedCallRawTokens are the two raw substrings a non-test .go file under internal/ or cmd/ may
@@ -108,103 +107,47 @@ const checkedCallMinScannedFiles = 200
 // resulting per-package raw-site count matches checkedCallPinnedRawSites exactly, treating an unlisted
 // package as pinned zero.
 func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring every sibling
-	// guard in this package so this gate never blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
-	var scanned int
 	var markerFailures []string
 	pkgRawCounts := map[string]int{}
 
-	for _, rootRel := range checkedCallScanRoots {
-		rootDir := filepath.Join(moduleRoot, rootRel)
+	scanned := scankit.Walk(t, scankit.Options{Roots: checkedCallScanRoots}, func(f *scankit.File) {
+		pkg := path.Dir(f.Rel)
+		lines := strings.Split(string(f.Data), "\n")
 
-		walkErr := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				if os.IsNotExist(err) {
-					return nil
+		for i, line := range lines {
+			// A pure-comment line (a doc comment mentioning either token in prose, such as a
+			// package or file header) is not a call site and carries no marker requirement of
+			// its own; only a line containing real source is a raw site.
+			if strings.HasPrefix(strings.TrimSpace(line), "//") {
+				continue
+			}
+
+			matchedToken := ""
+			for _, tok := range checkedCallRawTokens {
+				if strings.Contains(line, tok) {
+					matchedToken = tok
+					break
 				}
-				return err
 			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
+			if matchedToken == "" {
+				continue
 			}
 
-			relPath, relErr := filepath.Rel(moduleRoot, path)
-			if relErr != nil {
-				return relErr
-			}
-			// Normalize to slash-separated form before any comparison: filepath.WalkDir yields
-			// backslash paths on Windows (the primary dev OS).
-			relPath = filepath.ToSlash(relPath)
-			pkg := filepath.ToSlash(filepath.Dir(relPath))
-			scanned++
-
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			lines := strings.Split(string(data), "\n")
-
-			for i, line := range lines {
-				// A pure-comment line (a doc comment mentioning either token in prose, such as a
-				// package or file header) is not a call site and carries no marker requirement of
-				// its own; only a line containing real source is a raw site.
-				if strings.HasPrefix(strings.TrimSpace(line), "//") {
-					continue
-				}
-
-				matchedToken := ""
-				for _, tok := range checkedCallRawTokens {
-					if strings.Contains(line, tok) {
-						matchedToken = tok
-						break
-					}
-				}
-				if matchedToken == "" {
-					continue
-				}
-
-				markerHere := strings.Contains(line, "//gitexec:raw")
-				markerAbove := i > 0 && strings.Contains(lines[i-1], "//gitexec:raw")
-				if !markerHere && !markerAbove {
-					markerFailures = append(markerFailures, fmt.Sprintf(
-						"%s:%d: contains raw token %q with no adjacent //gitexec:raw marker (same line or the line immediately above) — mark it with the justification if the raw form is correct here, or migrate the call to the checked entry point",
-						relPath, i+1, matchedToken,
-					))
-					continue
-				}
-
-				pkgRawCounts[pkg]++
+			markerHere := strings.Contains(line, "//gitexec:raw")
+			markerAbove := i > 0 && strings.Contains(lines[i-1], "//gitexec:raw")
+			if !markerHere && !markerAbove {
+				markerFailures = append(markerFailures, fmt.Sprintf(
+					"%s:%d: contains raw token %q with no adjacent //gitexec:raw marker (same line or the line immediately above) — mark it with the justification if the raw form is correct here, or migrate the call to the checked entry point",
+					f.Rel, i+1, matchedToken,
+				))
+				continue
 			}
 
-			return nil
-		})
-		if walkErr != nil {
-			t.Fatalf("failed to walk %s: %v", rootDir, walkErr)
+			pkgRawCounts[pkg]++
 		}
-	}
+	})
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < checkedCallMinScannedFiles {
-		t.Fatalf("checked-call guard: only scanned %d non-test .go file(s) under %v; expected at least %d — the walk may be misconfigured", scanned, checkedCallScanRoots, checkedCallMinScannedFiles)
-	}
+	scankit.RequireFloor(t, scanned, checkedCallMinScannedFiles, "checked-call guard")
 
 	sort.Strings(markerFailures)
 	if len(markerFailures) > 0 {

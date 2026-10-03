@@ -8,18 +8,18 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// ghGuardAllowlistDir is the single package directory permitted to shell out to
+// ghGuardAllowlist names the single package directory permitted to shell out to
 // `gh`: the one place the GitHub Auth Invariant designates as owning token
 // resolution.
-const ghGuardAllowlistDir = "internal/githubclient"
+var ghGuardAllowlist = []scankit.Entry{
+	{Key: "internal/githubclient/", Why: "owns the one bounded `gh auth token` shell-out"},
+}
 
 // ghExecSpawnTokens are the substrings identifying an exec.Command or
 // exec.CommandContext call, matched on the SAME LINE as the quoted "gh" argument
@@ -36,82 +36,28 @@ var ghExecSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 const ghLookPathLiteral = `LookPath("gh")`
 
 // TestGHGuard_NoShellOutOutsideGithubclient walks every non-test *.go file under the module root
-// and fails if any file outside ghGuardAllowlistDir contains a banned `gh` shell-out token.
+// and fails if any file outside the ghGuardAllowlist directory contains a banned `gh` shell-out token.
 // A bare "gh" substring is unusable as a banned token -- it matches "through", "right", "highlight"
 // and hundreds of other words repo-wide -- so, following tools/sandbox/pathresolve_guard_test.go's
 // precedent, both banned forms carry the quoted binary name so no English word can match.
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
-	// Skip cleanly rather than fail when the go toolchain is not on PATH,
-	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate never
-	// blocks a minimal environment.
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not on PATH")
-	}
-
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
-	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
-	if err != nil {
-		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
-	}
-	goMod := strings.TrimSpace(string(out))
-	if goMod == "" || goMod == os.DevNull {
-		t.Skip("no enclosing Go module (go env GOMOD is empty)")
-	}
-	moduleRoot := filepath.Dir(goMod)
-
-	var scanned int
+	allow := scankit.NewAllowlist(ghGuardAllowlist)
 	var failures []string
 
-	walkErr := filepath.WalkDir(moduleRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+		if allow.Allowed(f.Rel) {
+			return
 		}
-		if d.IsDir() {
-			// Skip overlay directories per tierPuritySkipDirs.
-			if tierPuritySkipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		// Only non-test *.go files are in scope.
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(moduleRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		// Normalize to slash-separated form before any comparison.
-		relPath = filepath.ToSlash(relPath)
-		scanned++
-
-		if relPath == ghGuardAllowlistDir || strings.HasPrefix(relPath, ghGuardAllowlistDir+"/") {
-			// internal/githubclient is the designated `gh` shell-out owner; skip it.
-			return nil
-		}
-
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-
-		if token, bad := firstBannedGHToken(string(data)); bad {
+		if token, bad := firstBannedGHToken(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned gh shell-out token %q -- route through internal/githubclient instead",
-				relPath, token,
+				f.Rel, token,
 			))
 		}
-		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("failed to walk module tree: %v", walkErr)
-	}
 
-	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
-	if scanned < 20 {
-		t.Fatalf("gh guard: only scanned %d non-test .go file(s) under %s; expected at least 20 -- the walk may be misconfigured", scanned, moduleRoot)
-	}
+	scankit.RequireFloor(t, scanned, 20, "gh guard")
+	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("GitHub Auth Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
