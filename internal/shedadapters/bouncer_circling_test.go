@@ -1,5 +1,4 @@
-// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it
-// writes for the operator and the way it acts on the operator's recorded decision.
+// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the operator and the way it acts on the operator's recorded decision.
 
 package shedadapters
 
