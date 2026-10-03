@@ -1,6 +1,4 @@
-// bouncer_verdict_test.go covers the Bouncer's verdict vocabulary: the strict parse, the legacy
-// aliases read only at Call entry, the harvest rule that refuses a legacy word, and the three
-// verdicts' outcome mapping.
+// bouncer_verdict_test.go covers the Bouncer's verdict vocabulary: the strict parse, the legacy aliases read only at Call entry, the harvest rule that refuses a legacy word, and the three verdicts' outcome mapping.
 
 package shedadapters
 
