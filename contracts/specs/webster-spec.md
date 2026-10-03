@@ -1,12 +1,12 @@
 # Webster contract: the fork-based implementer loop's cross-module contracts
 
-> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the integration fork + bisect, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
+> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the verify gate and its fixer fork, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
 
 ## What it is
 
 Webster is Loomyard's implementer module: one long-lived **Master** session reads a plan once and forks one implementer per execution batch in-session, sequentially, until the plan is built.
 This file pins only the shapes another module is entitled to depend on.
-Everything about *how* webster reaches those shapes — the fork mechanism, the bracket verbs, the audit policy, the model assertion, crash/resume, the integration-suite fork and its bisect — is `internal/websterengine`'s own business; see its package documentation for that design.
+Everything about *how* webster reaches those shapes — the fork mechanism, the bracket verbs, the audit policy, the model assertion, crash/resume, the verify gate's mechanics — is `internal/websterengine`'s own business; see its package documentation for that design.
 
 ## Plan input
 
@@ -41,12 +41,23 @@ The format and validation it shares are pinned producer-agnostically in [final-s
 It is required and fail-loud only when `outcome: done`, and follows the same archive-never-refuse discipline as every other stale artifact.
 A long-lived Master session is the only party with full oversight of what actually shipped, which is why it writes the run record.
 
-A `summary.md` may additionally carry an appended `## Integration suite failed` section naming the bisect-localized offending card and its commit SHA, and also listing the regressing identities with their output tails — `internal/websterengine`'s `AppendIntegrationFailure` writes it as the document half of an integration-failure escalation.
-A failing suite that triage classifies as flaky or pre-existing only, with no regression, instead appends an `## Integration suite triage` section listing those identities (`AppendIntegrationTriage`) and the run keeps its outcome.
-When the integration stage spawns a fix strand for a regression, `AppendIntegrationFix` appends an `## Integration suite fix` section recording the attempt's result, the pre-fix head, the fix commits and the cleared identities.
-Any result but `fixed` also lists the remaining identities, the reason and a way-forward sentence naming the pre-fix head and the fix commits, so the operator decides whether to keep them.
+A `summary.md` may additionally carry two sections the verify gate produces.
+When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them; the run keeps its outcome.
+When the gate sends a failure back to Merriam, Merriam spawns one fixer fork and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what the fixer says it changed and each `fix: <summary>` commit it made.
 Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
-The bisect mechanism that produces it stays webster-internal and is not described here.
+
+## The verify gate
+
+Merriam's strand carries the plan's `## verify:` command as one must-pass gate named `verify`, so the command runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
+Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
+A failing run is rerun once; a pass on the rerun passes the gate and records the failing identities as flaky.
+A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
+Merriam answers each failure with one fixer fork, whose commits are `fix: <summary>` and are checked at the next attempt.
+`verify_gate_attempts` in `webster.yaml` bounds the attempts; an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
+`verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.
+
+`lyx webster verify` runs the same plan-level verify through the same function, `internal/verifytree`, and boots no reed session.
+A pass records the verified tree, so a landing step or a later gate that finds the tree unchanged skips the run.
 
 ## See also
 
