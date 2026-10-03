@@ -15,7 +15,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -194,28 +193,17 @@ func TestWatchdogSelfHeal_ShrinksBackToPlannedLayout(t *testing.T) {
 // coalescing either way.
 // What the debounce actually promises is bounded on the watcher's own select-layout calls, so this
 // counts those directly: real is a plain TmuxCmd bound to the same binary and socket with no execHook
-// of its own, and the spy installed on e.tmux forwards every call through it — so every tmux round
-// trip still hits the live server exactly as before, with select-layout invocations tallied on the
-// way past.
+// of its own, and the fakeTmux installed on e.tmux forwards every call through it — so every tmux
+// round trip still hits the live server exactly as before, with select-layout invocations tallied on
+// the way past.
 func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 	timing := fastWatchTiming()
 	fx := bootWatchdogFixture(t, 100, 30)
 	e := fx.e
 
 	real := NewTmuxCmd(e.tmux.tmuxPath, e.tmux.socket)
-	var mu sync.Mutex
-	selectLayoutCalls := 0
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		if len(args) > 0 && args[0] == "select-layout" {
-			mu.Lock()
-			selectLayoutCalls++
-			mu.Unlock()
-		}
-		if capture {
-			return real.output(args...)
-		}
-		return "", real.run(args...)
-	}
+	fake := installFakeTmux(t, e)
+	fake.forwardTo(real)
 
 	startWatchLoop(t, e, timing)
 
@@ -239,9 +227,7 @@ func TestWatchdogSelfHeal_BurstCoalesces(t *testing.T) {
 		return ok && height == e.cfg.Selvage.HeightRows
 	})
 
-	mu.Lock()
-	calls := selectLayoutCalls
-	mu.Unlock()
+	calls := fake.Count("select-layout")
 	if calls > len(sizes)/2 {
 		t.Errorf("watch loop issued select-layout %d times across the burst, want far fewer than the %d resize events driven — the debounce should have coalesced them into a small number of settled applies", calls, len(sizes))
 	}

@@ -34,25 +34,14 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 	preReap := selvagePaneID + " 0 0 100 3 4321\n" + untrackedPaneID + " 0 3 100 20 4322\n"
 	postReap := selvagePaneID + " 0 0 100 3 4321\n"
 
-	var verbs []string
-	var listPanesCalls int
-	var splitArgs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		verbs = append(verbs, args[0])
-		switch args[0] {
-		case "list-panes":
-			listPanesCalls++
-			if listPanesCalls == 1 {
-				return preReap, nil
-			}
-			return postReap, nil
-		case "split-window":
-			splitArgs = append([]string{}, args...)
-			return "%new\n", nil
-		default:
-			return "", nil
+	fake := installFakeTmux(t, e)
+	fake.answerFunc("list-panes", func([]string) (string, error) {
+		if fake.Count("list-panes") == 1 {
+			return preReap, nil
 		}
-	}
+		return postReap, nil
+	})
+	fake.answer("split-window", "%new\n", nil)
 
 	st := &ReedState{SelvagePaneID: selvagePaneID}
 	st.Strands = append(st.Strands, Strand{GUID: "new"})
@@ -61,6 +50,8 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
+	verbs := fake.Sequence()
+	splitArgs := fake.LastArgv("split-window")
 
 	killIdx, splitIdx, secondListIdx := -1, -1, -1
 	listPanesSeen := 0
@@ -120,18 +111,9 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 	const boundPaneID = "%bound"
 	live := selvagePaneID + " 0 0 100 3 4321\n" + boundPaneID + " 0 3 100 20 4322\n"
 
-	var verbs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		verbs = append(verbs, args[0])
-		switch args[0] {
-		case "list-panes":
-			return live, nil
-		case "split-window":
-			return "%new\n", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", live, nil)
+	fake.answer("split-window", "%new\n", nil)
 
 	st := &ReedState{SelvagePaneID: selvagePaneID}
 	st.Strands = append(st.Strands, Strand{GUID: "bound", PaneID: boundPaneID}, Strand{GUID: "new"})
@@ -140,6 +122,7 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 	if err := e.launchStrandLocked(st, s, "echo hi"); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
+	verbs := fake.Sequence()
 
 	for _, v := range verbs {
 		if v == "kill-pane" {
@@ -321,20 +304,12 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				switch args[0] {
-				case "display-message":
-					return liveAnswer, nil
-				case "list-sessions":
-					return "worktree\n", nil
-				case "list-panes":
-					// Both panes present and alive, so a binding that survives the repair reads as
-					// live and one that does not reads as not-live.
-					return selvagePane + " 0 0 100 3 4322\n" + firstStrandPane + " 0 3 100 20 4323\n", nil
-				default:
-					return "", nil
-				}
-			}
+			fake := installFakeTmux(t, e)
+			fake.answer("display-message", liveAnswer, nil)
+			fake.answer("list-sessions", "worktree\n", nil)
+			// Both panes present and alive, so a binding that survives the repair reads as
+			// live and one that does not reads as not-live.
+			fake.answer("list-panes", selvagePane+" 0 0 100 3 4322\n"+firstStrandPane+" 0 3 100 20 4323\n", nil)
 
 			st := &ReedState{SelvagePaneID: selvagePane, PaneGeneration: liveGeneration}
 			names := []string{"first", "second"}
@@ -363,24 +338,22 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 	}
 }
 
-// launchFake installs an e.tmux.execHook that reports one live Selvage pane, answers split-window with a fresh pane id, and records every send-keys call.
+// launchFake installs a fakeTmux that reports one live Selvage pane and answers split-window with a fresh pane id.
 // onEnter, when non-nil, runs at the Enter submit, the last step of launchStrandLocked.
-func launchFake(e *Engine, sendKeysCalls *[][]string, onEnter func()) {
-	live := "%selvage 0 0 100 20 4321\n"
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return live, nil
-		case "split-window":
-			return "%new\n", nil
-		case "send-keys":
-			*sendKeysCalls = append(*sendKeysCalls, append([]string{}, args...))
-			if onEnter != nil && args[len(args)-1] == "Enter" {
+func launchFake(t *testing.T, e *Engine, onEnter func()) *fakeTmux {
+	t.Helper()
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", "%selvage 0 0 100 20 4321\n", nil)
+	fake.answer("split-window", "%new\n", nil)
+	if onEnter != nil {
+		fake.answerFunc("send-keys", func(args []string) (string, error) {
+			if args[len(args)-1] == "Enter" {
 				onEnter()
 			}
-		}
-		return "", nil
+			return "", nil
+		})
 	}
+	return fake
 }
 
 // readLaunchScript returns the content of strandGUID's launch script.
@@ -424,8 +397,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 	const exe = "/opt/lyx/bin/lyx"
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
 
-	var sendKeysCalls [][]string
-	launchFake(e, &sendKeysCalls, nil)
+	fake := launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: "%selvage"}
 	st.Strands = append(st.Strands, Strand{GUID: "new"})
@@ -435,6 +407,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 	if err := e.launchStrandLocked(st, s, launchCmd); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
+	sendKeysCalls := fake.ArgvFor("send-keys")
 
 	if len(sendKeysCalls) != 2 {
 		t.Fatalf("send-keys called %d times, want exactly 2 (the literal payload, then Enter): %v", len(sendKeysCalls), sendKeysCalls)
@@ -464,8 +437,7 @@ func TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand(t *testing.T)
 func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
-	var calls [][]string
-	launchFake(e, &calls, nil)
+	launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
 	s := &st.Strands[0]
@@ -483,8 +455,7 @@ func TestLaunchStrandLocked_RelaunchRegeneratesTheScript(t *testing.T) {
 func TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no exe") })
-	var calls [][]string
-	launchFake(e, &calls, nil)
+	launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
 	if err := e.launchStrandLocked(st, &st.Strands[0], "claude"); err != nil {
@@ -500,8 +471,7 @@ func TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone(t *testing.T) {
 	e := newTestEngine(t)
 	const exe = "/opt/lyx/bin/lyx"
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-	var calls [][]string
-	launchFake(e, &calls, nil)
+	launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "new"}}}
 	if err := e.launchStrandLocked(st, &st.Strands[0], ""); err != nil {
@@ -517,8 +487,7 @@ func TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone(t *testing.T) {
 func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
-	var calls [][]string
-	launchFake(e, &calls, nil)
+	fake := launchFake(t, e, nil)
 	if err := os.MkdirAll(e.stateDir(), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
@@ -533,7 +502,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
 	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName))
-	if first := calls[0]; first[len(first)-1] != want {
+	if first := fake.ArgvFor("send-keys")[0]; first[len(first)-1] != want {
 		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
 	}
 	if !strings.Contains(buf.String(), "guid-w") {
@@ -545,19 +514,13 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 func TestAddStrandLocked_FailedSendLeavesNoScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return "%selvage 0 0 100 20 4321\n", nil
-		case "split-window":
-			return "%new\n", nil
-		case "send-keys":
-			if len(args) > 3 && args[3] == "-l" {
-				return "", errors.New("send failed")
-			}
+	fake := launchFake(t, e, nil)
+	fake.answerFunc("send-keys", func(args []string) (string, error) {
+		if len(args) > 3 && args[3] == "-l" {
+			return "", errors.New("send failed")
 		}
 		return "", nil
-	}
+	})
 
 	st := &ReedState{SelvagePaneID: "%selvage"}
 	if _, err := e.addStrandLocked(st, AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
@@ -570,8 +533,7 @@ func TestAddStrandLocked_FailedSendLeavesNoScript(t *testing.T) {
 func TestAddStrand_PersistFailureLeavesNoScript(t *testing.T) {
 	e := newTestEngine(t)
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
-	var calls [][]string
-	launchFake(e, &calls, func() { breakSaveState(t, e) })
+	launchFake(t, e, func() { breakSaveState(t, e) })
 
 	if _, err := e.AddStrand(AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
 		t.Fatalf("AddStrand: want the persist error")
@@ -586,8 +548,7 @@ func TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand(t *testing.T)
 	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{{GUID: "old", Display: render.Display{Anchor: render.AnchorHidden}}}}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
-	var calls [][]string
-	launchFake(e, &calls, func() { breakSaveState(t, e) })
+	launchFake(t, e, func() { breakSaveState(t, e) })
 
 	if _, err := e.ReplaceStrand("old", AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}); err == nil {
 		t.Fatalf("ReplaceStrand: want an error")
@@ -610,20 +571,7 @@ func TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand(t *testing.
 	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
 
 	const selvagePaneID = "%selvage"
-	live := selvagePaneID + " 0 0 100 20 4321\n"
-
-	var splitArgs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return live, nil
-		case "split-window":
-			splitArgs = append([]string{}, args...)
-			return "%new\n", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: selvagePaneID}
 	st.Strands = append(st.Strands, Strand{GUID: "new"})
@@ -632,6 +580,7 @@ func TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand(t *testing.
 	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
+	splitArgs := fake.LastArgv("split-window")
 
 	if len(splitArgs) < 2 {
 		t.Fatalf("split-window argv = %v, too short to check its tail", splitArgs)
@@ -648,19 +597,7 @@ func TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle(t *testing.T) {
 
 	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
 
-	var order []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return "%selvage 0 0 100 20 4321\n", nil
-		case "split-window":
-			order = append(order, "split-window")
-			return "%new\n", nil
-		case "set-option", "select-pane", "send-keys":
-			order = append(order, strings.Join(args, " "))
-		}
-		return "", nil
-	}
+	fake := launchFake(t, e, nil)
 
 	st := &ReedState{SelvagePaneID: "%selvage"}
 	st.Strands = append(st.Strands, Strand{GUID: "new", Name: "tst:slug:worker"})
@@ -668,6 +605,16 @@ func TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle(t *testing.T) {
 
 	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
+	}
+
+	var order []string
+	for _, call := range fake.Calls() {
+		switch call[0] {
+		case "split-window":
+			order = append(order, "split-window")
+		case "set-option", "select-pane", "send-keys":
+			order = append(order, strings.Join(call, " "))
+		}
 	}
 
 	if len(order) < 4 {

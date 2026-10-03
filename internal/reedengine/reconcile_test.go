@@ -303,9 +303,7 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
+		installFakeTmux(t, e)
 		buf := captureLogOutput(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}
@@ -328,9 +326,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 
 	t.Run("KillsNothing_LogsNothing", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
+		installFakeTmux(t, e)
 		buf := captureLogOutput(t)
 
 		st := &ReedState{}
@@ -349,12 +345,12 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("PartialKillFailure_LogsOnlyTheDestroyedPaneAndStillReturnsTheError", func(t *testing.T) {
 		e := newTestEngine(t)
 		killPaneErr := errors.New("kill-pane failed")
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] == "kill-pane" && len(args) >= 3 && args[2] == "%orphan2" {
+		installFakeTmux(t, e).answerFunc("kill-pane", func(args []string) (string, error) {
+			if len(args) >= 3 && args[2] == "%orphan2" {
 				return "", killPaneErr
 			}
 			return "", nil
-		}
+		})
 		buf := captureLogOutput(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}

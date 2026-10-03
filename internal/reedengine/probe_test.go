@@ -110,19 +110,15 @@ func TestProbeCapability(t *testing.T) {
 func TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd(t *testing.T) {
 	e := newTestEngine(t)
 
-	var sawArgs [][]string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		sawArgs = append(sawArgs, args)
-		if len(args) > 0 && args[0] == "-V" {
-			return fakeVersionOutput, nil
-		}
-		return fakeFullCommandsOutput(), nil
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("-V", fakeVersionOutput, nil)
+	fake.answer("list-commands", fakeFullCommandsOutput(), nil)
 
 	if err := e.probeCapabilityLocked(); err != nil {
 		t.Fatalf("probeCapabilityLocked() = %v; want nil — a non-nil error here means the probe shelled out to the (deliberately nonexistent) configured binary instead of going through TmuxCmd", err)
 	}
 
+	sawArgs := fake.Calls()
 	if len(sawArgs) != 2 {
 		t.Fatalf("TmuxCmd saw %d probe call(s) (%v); want exactly 2 (-V and list-commands) — every probe call must carry reed's own -L socket", len(sawArgs), sawArgs)
 	}

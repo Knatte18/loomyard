@@ -27,21 +27,49 @@ type fakeTmux struct {
 	mu        sync.Mutex
 	verbs     map[string]tmuxAnswer
 	formats   map[string]tmuxAnswer
+	funcs     map[string]func(args []string) (string, error)
 	forbidden map[string]bool
 	calls     [][]string
+	captures  []bool
+	real      *TmuxCmd
 }
 
 // installFakeTmux installs a fresh fakeTmux on e's tmux seam.
 func installFakeTmux(t *testing.T, e *Engine) *fakeTmux {
 	t.Helper()
+	return installFakeTmuxOn(t, &e.tmux)
+}
+
+// installFakeTmuxOn installs a fresh fakeTmux on a bare TmuxCmd.
+func installFakeTmuxOn(t *testing.T, cmd *TmuxCmd) *fakeTmux {
+	t.Helper()
 	f := &fakeTmux{
 		t:         t,
 		verbs:     map[string]tmuxAnswer{},
 		formats:   map[string]tmuxAnswer{},
+		funcs:     map[string]func(args []string) (string, error){},
 		forbidden: map[string]bool{},
 	}
-	e.tmux.execHook = f.exec
+	cmd.execHook = f.exec
 	return f
+}
+
+// forwardTo sends every call no script answers to a real TmuxCmd, so an integration test still hits
+// its live server while the fake logs the calls on the way past.
+func (f *fakeTmux) forwardTo(real TmuxCmd) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.real = &real
+}
+
+// answerFunc scripts verb's answer as a function of the call's argv, for an answer that depends on
+// the target or on a side effect between calls.
+// It takes precedence over answer and answerFormat, and runs outside the fake's lock, so it may
+// call the fake's own readers.
+func (f *fakeTmux) answerFunc(verb string, fn func(args []string) (string, error)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.funcs[verb] = fn
 }
 
 // answer scripts verb's answer from now on, replacing any earlier one.
@@ -107,6 +135,28 @@ func (f *fakeTmux) ArgvFor(verb string) [][]string {
 	return out
 }
 
+// LastArgv returns the argv of the last call to verb, or nil when verb never ran.
+func (f *fakeTmux) LastArgv(verb string) []string {
+	calls := f.ArgvFor(verb)
+	if len(calls) == 0 {
+		return nil
+	}
+	return calls[len(calls)-1]
+}
+
+// CapturedFor reports, per call to verb in order, whether the call captured stdout (output) or discarded it (run).
+func (f *fakeTmux) CapturedFor(verb string) []bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []bool
+	for i, c := range f.calls {
+		if c[0] == verb {
+			out = append(out, f.captures[i])
+		}
+	}
+	return out
+}
+
 // Count reports how many calls ran verb.
 func (f *fakeTmux) Count(verb string) int {
 	return len(f.ArgvFor(verb))
@@ -116,7 +166,10 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 	verb := args[0]
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{}, args...))
+	f.captures = append(f.captures, capture)
 	forbidden := f.forbidden[verb]
+	fn := f.funcs[verb]
+	real := f.real
 	ans, ok := f.verbs[verb]
 	if verb == "display-message" {
 		if byFormat, found := f.formats[args[len(args)-1]]; found {
@@ -129,7 +182,16 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 		f.t.Errorf("tmux %s was called with %v, want it never called", verb, args)
 		return "", errors.New("tmux " + verb + " must not be called")
 	}
+	if fn != nil {
+		return fn(append([]string{}, args...))
+	}
 	if !ok {
+		if real != nil {
+			if capture {
+				return real.output(args...)
+			}
+			return "", real.run(args...)
+		}
 		return "", nil
 	}
 	return ans.out, ans.err

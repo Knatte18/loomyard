@@ -125,36 +125,28 @@ func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
 // error, which is exactly what a failed round trip produces.
 const unprobeableSession = ""
 
-// generationHook returns an execHook answering list-sessions with the session names in
-// answersBySessionName and display-message with each session's own generation answer.
+// answerGenerations scripts list-sessions with the session names in answersBySessionName and
+// display-message with each session's own generation answer.
 // A session absent from the map is absent from both answers, which is how a recorded session that no
 // longer exists is expressed; a session mapped to unprobeableSession is listed but does not answer.
-// Every other subcommand answers empty/nil, since the generation code issues none of them.
-func generationHook(t *testing.T, answersBySessionName map[string]string) func(bool, ...string) (string, error) {
-	t.Helper()
+func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {
 	names := make([]string, 0, len(answersBySessionName))
 	for name := range answersBySessionName {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
-	return func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-sessions":
-			return strings.Join(names, "\n") + "\n", nil
-		case "display-message":
-			target := args[len(args)-2]
-			out, ok := answersBySessionName[strings.TrimSuffix(strings.TrimPrefix(target, "="), ":")]
-			if !ok {
-				// tmux 3.6 answers an absent session with exit 0 and empty session-scoped fields,
-				// not an error (see paneGenerationLocked); #{pid} is server-global and still fills.
-				return "|4321|", nil
-			}
-			return out, nil
-		default:
-			return "", nil
+	f.answer("list-sessions", strings.Join(names, "\n")+"\n", nil)
+	f.answerFunc("display-message", func(args []string) (string, error) {
+		target := args[len(args)-2]
+		out, ok := answersBySessionName[strings.TrimSuffix(strings.TrimPrefix(target, "="), ":")]
+		if !ok {
+			// tmux 3.6 answers an absent session with exit 0 and empty session-scoped fields,
+			// not an error (see paneGenerationLocked); #{pid} is server-global and still fills.
+			return "|4321|", nil
 		}
-	}
+		return out, nil
+	})
 }
 
 // TestAdoptPaneGenerationLocked is the regression guard for the R5 review's R5-F2 (stale bindings
@@ -249,7 +241,7 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.tmux.execHook = generationHook(t, tt.generations)
+			answerGenerations(installFakeTmux(t, e), tt.generations)
 
 			st := &ReedState{
 				SelvagePaneID:  "%1",
