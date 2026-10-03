@@ -30,7 +30,6 @@ package fabriccli_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestRunCLI_ReconcileReportsAFailedPairAsAFailure asserts the full envelope contract on the
@@ -74,21 +74,14 @@ func TestRunCLI_ReconcileReportsAFailedPairAsAFailure(t *testing.T) {
 		t.Fatalf("RunCLI(reconcile) with an unrepairable pair = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode reconcile envelope: %v\noutput: %s", err, out.String())
-	}
-
-	if ok, _ := envelope["ok"].(bool); ok {
-		t.Errorf("envelope ok = true; want false when a pair failed to repair\noutput: %s", out.String())
-	}
-	if msg, _ := envelope["error"].(string); msg == "" {
+	env := envelope.RequireErr(t, out.String(), "")
+	if env.Error == "" {
 		t.Errorf("envelope carries no \"error\" string; want one naming the failed repair\noutput: %s", out.String())
 	}
 
 	// The per-pair report must survive the failure path, and the failing pair must still carry its
 	// own reason — an exit code alone tells a caller nothing about which pair to go fix.
-	pairs, ok := envelope["pairs"].([]any)
+	pairs, ok := env.Raw["pairs"].([]any)
 	if !ok || len(pairs) == 0 {
 		t.Fatalf("envelope has no non-empty \"pairs\" array on the failure path\noutput: %s", out.String())
 	}
@@ -107,10 +100,10 @@ func TestRunCLI_ReconcileReportsAFailedPairAsAFailure(t *testing.T) {
 	}
 
 	// The fixed key set holds on this path too.
-	if _, present := envelope["mutations"]; !present {
+	if _, present := env.Raw["mutations"]; !present {
 		t.Errorf("envelope is missing the always-present \"mutations\" key\noutput: %s", out.String())
 	}
-	if _, present := envelope["partial"]; !present {
+	if env.Partial == nil {
 		t.Errorf("envelope is missing the always-present \"partial\" key\noutput: %s", out.String())
 	}
 }
@@ -130,12 +123,8 @@ func TestRunCLI_PruneEmitsAnEmptyArrayNotNull(t *testing.T) {
 		t.Fatalf("RunCLI(prune) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode prune envelope: %v\noutput: %s", err, out.String())
-	}
-
-	raw, present := envelope["entries"]
+	env := envelope.Decode(t, out.String())
+	raw, present := env.Raw["entries"]
 	if !present {
 		t.Fatalf("prune envelope has no \"entries\" key\noutput: %s", out.String())
 	}
@@ -178,15 +167,9 @@ func TestRunCLI_ReconcileDoesNotFailOnAPairThatVanishedMidWalk(t *testing.T) {
 		t.Fatalf("RunCLI(reconcile) with a pair that vanished mid-walk = %d; want 0 — a concurrent teardown is not a reconcile failure\noutput: %s", exitCode, out.String())
 	}
 
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode reconcile envelope: %v\noutput: %s", err, out.String())
-	}
-	if ok, _ := envelope["ok"].(bool); !ok {
-		t.Errorf("envelope ok = false; want true\noutput: %s", out.String())
-	}
+	env := envelope.RequireOK(t, out.String())
 
-	pairs, isArray := envelope["pairs"].([]any)
+	pairs, isArray := env.Raw["pairs"].([]any)
 	if !isArray {
 		t.Fatalf("envelope has no \"pairs\" array\noutput: %s", out.String())
 	}

@@ -9,7 +9,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -57,13 +57,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse board output: %v; output: %s", err, out.String())
-	}
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true from dispatched board command, got %v", result)
-	}
+	envelope.RequireOK(t, out.String())
 }
 
 func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
@@ -212,13 +206,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 		t.Fatalf("expected exit 0 for config reconcile, got %d; output: %s", code, out.String())
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse config reconcile output: %v; output: %s", err, out.String())
-	}
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true from config reconcile command, got %v", result)
-	}
+	envelope.RequireOK(t, out.String())
 }
 
 // exitSweepFixture is a git repo carrying _lyx/ (so the cwd-anchored sink may arm) and a .lyx/logs directory pre-seeded with dead-pid traces.
