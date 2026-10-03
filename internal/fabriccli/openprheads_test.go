@@ -1,5 +1,4 @@
-// openprheads_test.go covers the head filtering of the open pull request lookup over a stubbed PR list,
-// and exports the lookup seam for the package's external integration tests.
+// openprheads_test.go covers the head filtering of the open pull request lookup over a stubbed PR list, and exports the lookup seam for the package's external integration tests.
 
 package fabriccli
 

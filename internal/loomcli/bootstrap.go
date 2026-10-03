@@ -319,9 +319,8 @@ const (
 	// driverStrandDead means a strand carries the name but is not live: the corpse must be removed
 	// before a relaunch, since reed's add has no upsert semantics.
 	driverStrandDead
-	// driverStrandRetiring means a strand carries the name, is live and is marked retiring: some caller of
-	// "reed remove --detach" already asked to remove it, so start replaces it with a fresh driver
-	// instead of adopting it.
+	// driverStrandRetiring means a strand carries the name, is live and is marked retiring: some caller of "reed remove --detach" already asked to remove it,
+	// so start replaces it with a fresh driver instead of adopting it.
 	driverStrandRetiring
 )
 

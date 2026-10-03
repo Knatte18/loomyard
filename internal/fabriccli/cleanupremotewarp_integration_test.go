@@ -24,8 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// landedManagedBranch pushes the prime's HEAD to the warp origin as branch, so all its work is on the default branch,
-// and gives it an archive tag on the weft origin, which makes it fabric-managed.
+// landedManagedBranch pushes the prime's HEAD to the warp origin as branch, so all its work is on the default branch, and gives it an archive tag on the weft origin, which makes it fabric-managed.
 func landedManagedBranch(t *testing.T, h *hubforge.Hub, branch string) {
 	t.Helper()
 

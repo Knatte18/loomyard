@@ -165,10 +165,9 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 // warp junctions actually resolve into it, and the pair's origin record names its parent branch.
 // The origin record is part of that post-condition because Add writes it last before pushing, and a
 // pair missing it makes every later reader of the parent branch refuse.
-// It exists for the same vocabulary reason RequireDrivableWorktree does, for a caller that must tell a
-// pair Add finished from one a SIGKILL interrupted partway through: Add's own in-process rollback
-// never runs when the process that called it dies instead of Add itself returning an error, so a
-// bare "the warp worktree directory resolves" check cannot draw that line.
+// It exists for the same vocabulary reason RequireDrivableWorktree does, for a caller that must tell a pair Add finished from one a SIGKILL interrupted partway through:
+// Add's own in-process rollback never runs when the process that called it dies instead of Add itself returning an error,
+// so a bare "the warp worktree directory resolves" check cannot draw that line.
 // ok is true only when every check passes; reason names the first one that did not, in fabric's own
 // vocabulary -- not for a non-owner caller to repeat verbatim in its own operator-facing text, the
 // same restraint createRefusal already applies to Add's own errors.

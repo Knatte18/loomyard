@@ -963,8 +963,8 @@ func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force, remot
 }
 
 // sweepRemoteTaskBranches runs the origin task-branch sweep with the open pull request set fetched from GitHub.
-// When the set cannot be established it skips the sweep entirely and names the cause in SkippedReason,
-// failing toward keeping every task branch; the returned entries are then an empty array, never nil.
+// When the set cannot be established it skips the sweep entirely and names the cause in SkippedReason, failing toward keeping every task branch;
+// the returned entries are then an empty array, never nil.
 func sweepRemoteTaskBranches(ctx context.Context, top *fabricengine.Topology, l *lyxcwd.Location, apply bool) (fabricengine.RemoteWarpCleanupResult, error) {
 	skipped := func(reason string) fabricengine.RemoteWarpCleanupResult {
 		return fabricengine.RemoteWarpCleanupResult{

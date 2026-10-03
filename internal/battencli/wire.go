@@ -98,8 +98,8 @@ func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location
 // taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
 // hub and resolvable as a worktree of its own.
 //
-// DriverAlive and taskWorktreeComplete use it; Worktree-Teardown does not, since the pair-teardown
-// composite decides for itself whether the task worktree is gone.
+// DriverAlive and taskWorktreeComplete use it;
+// Worktree-Teardown does not, since the pair-teardown composite decides for itself whether the task worktree is gone.
 //
 // Worktree-Create uses the stronger taskWorktreeComplete instead, not this function: a bare
 // directory check cannot tell a pair Add finished from one a SIGKILL interrupted partway through

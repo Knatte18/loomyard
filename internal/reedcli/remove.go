@@ -182,8 +182,7 @@ Example:
 
 			removed, err := c.strandEngine().RemoveStrand(guid, recursive)
 			if waitPID != 0 && errors.Is(err, reedengine.ErrUnknownStrand) {
-				// The detached remover found its strand already gone, as when `lyx loom start`
-				// replaced it under a new guid first: nothing left to remove.
+				// The detached remover found its strand already gone, as when `lyx loom start` replaced it under a new guid first: nothing left to remove.
 				logger.Info("reed: detached remove found its strand already gone", "guid", guid)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 					"removed": []map[string]any{},

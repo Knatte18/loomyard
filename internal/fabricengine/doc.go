@@ -546,9 +546,7 @@
 // `gitrepo.ErrPushRejected` as a human-decidable condition rather than retrying. `MergeStateActive`
 // is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
 // distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
-// `PairComplete(l)` is the same shape over `Add`'s own post-condition:
-// a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through
-// cannot name the weft worktree path or the junction machinery itself to check it by hand.
+// `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
 // `Remove` itself finishes a half-removed pair, so a teardown re-entered after an interruption calls it again.
 //
 // # The mutation record

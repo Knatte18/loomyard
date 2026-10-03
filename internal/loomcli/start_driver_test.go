@@ -405,8 +405,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *test
 	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
-// TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced pins that a live driver strand
-// marked retiring is removed by guid before a fresh driver starts, rather than adopted.
+// TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced pins that a live driver strand marked retiring is removed by guid before a fresh driver starts, rather than adopted.
 func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testing.T) {
 	var order []string
 	retiring := func() ([]reedengine.StrandStatus, error) {
@@ -431,8 +430,7 @@ func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testin
 	}
 }
 
-// TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced pins that a live driver strand
-// without the retiring mark keeps today's handling: no removal and no spawn.
+// TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced pins that a live driver strand without the retiring mark keeps today's handling: no removal and no spawn.
 func TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced(t *testing.T) {
 	live := func() ([]reedengine.StrandStatus, error) {
 		return []reedengine.StrandStatus{{GUID: "g-live", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}, nil

@@ -18,8 +18,7 @@ const (
 )
 
 // TestEnforcement_PairTeardownChokepoint is the Pair Teardown Invariant's tripwire, not a completeness proof:
-// it fails on a four-argument Remove call in a production file importing internal/fabricengine outside the two owning packages,
-// and on any remaining reference to the retired RemovePairBranch helper.
+// it fails on a four-argument Remove call in a production file importing internal/fabricengine outside the two owning packages, and on any remaining reference to the retired RemovePairBranch helper.
 func TestEnforcement_PairTeardownChokepoint(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.All}, func(f *scankit.File) {
 		for _, finding := range scanSource(t, f) {

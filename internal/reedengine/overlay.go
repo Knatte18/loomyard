@@ -173,8 +173,7 @@ func ReapSession(tmuxPath, shellPath, socketKey, sessionName string) error {
 	return reapSessionVia(NewTmuxCmd(tmuxPath, socketKey), shellPath, socketKey, sessionName)
 }
 
-// reapSessionVia is ReapSession's body over an already-built TmuxCmd, so a test can drive it
-// through the exec seam.
+// reapSessionVia is ReapSession's body over an already-built TmuxCmd, so a test can drive it through the exec seam.
 func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) error {
 	live, err := reapSessionPanes(cmd, sessionName)
 	if err != nil {
@@ -206,20 +205,19 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) error
 // Engine.Down cannot, because withOpLock's live-worktree validator refuses a gone root,
 // and creating the op lock would recreate the gone worktree's .lyx directory.
 //
-// It takes no lock and writes no state, because both lived under the gone worktree and nothing
-// is left to guard; it reads no geometry beyond the two strings it is told.
+// It takes no lock and writes no state, because both lived under the gone worktree and nothing is left to guard;
+// it reads no geometry beyond the two strings it is told.
 // It reaches only the exact-match session it is named, on the socket it is given,
 // and kills that socket's server only when no session remains on it.
 // It must never be pointed at a session whose worktree is still present; Engine.Down is the right call there.
 //
-// It reports whether a session existed and was reaped; an absent session returns (false, nil)
-// and touches nothing.
+// It reports whether a session existed and was reaped;
+// an absent session returns (false, nil) and touches nothing.
 func EndSessionByName(tmuxPath, shellPath, socketKey, sessionName string) (bool, error) {
 	return endSessionByNameVia(NewTmuxCmd(tmuxPath, socketKey), shellPath, socketKey, sessionName)
 }
 
-// endSessionByNameVia is EndSessionByName's body over an already-built TmuxCmd, split out the way
-// reapSessionPanes and reapSessionKill are, so a test can drive it through the exec seam.
+// endSessionByNameVia is EndSessionByName's body over an already-built TmuxCmd, split out the way reapSessionPanes and reapSessionKill are, so a test can drive it through the exec seam.
 func endSessionByNameVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) (bool, error) {
 	present, err := cmd.hasSession(sessionName)
 	if err != nil {
@@ -231,8 +229,8 @@ func endSessionByNameVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) 
 
 	killErr := reapSessionVia(cmd, shellPath, socketKey, sessionName)
 
-	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy
-	// sibling session remains, and kill-server takes the socket with the server.
+	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy sibling session remains,
+	// and kill-server takes the socket with the server.
 	if out, err := cmd.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 		logger.Info("reed: tearing down tmux server after ending session by name", "socket", socketKey, "session", sessionName)
 		if err := cmd.run("kill-server"); err != nil {

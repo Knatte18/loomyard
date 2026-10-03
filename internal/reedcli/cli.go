@@ -48,8 +48,8 @@ type reedCLI struct {
 	// back off to drive the real spawn path.
 	suppressWatchdogSpawn bool
 
-	// strands and spawnRemove are test seams for the remove and status verbs; nil means the real
-	// engine and the real detached spawn.
+	// strands and spawnRemove are test seams for the remove and status verbs;
+	// nil means the real engine and the real detached spawn.
 	strands     strandOps
 	spawnRemove func(guid string, recursive bool) error
 }

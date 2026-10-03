@@ -1,5 +1,4 @@
-// openprheads.go is the open pull request lookup `lyx fabric cleanup --remote` hands to
-// fabricengine.Topology.CleanupRemoteWarp, which keeps every branch an open pull request still names.
+// openprheads.go is the open pull request lookup `lyx fabric cleanup --remote` hands to fabricengine.Topology.CleanupRemoteWarp, which keeps every branch an open pull request still names.
 // It lives here rather than in fabricengine because the engine imports no GitHub client.
 
 package fabriccli
@@ -20,10 +19,9 @@ const openPRListTimeout = 30 * time.Second
 // openPRListPageSize is the page size of the open-PR listing, GitHub's maximum.
 const openPRListPageSize = 100
 
-// listOpenPRHeads returns the head branch of every open pull request on the repository behind
-// remoteURL whose head lives in that same repository; the map is non-nil, and empty when none is open.
-// Any failure (a non-GitHub origin, no token, a network error, the timeout) returns an error,
-// so the caller keeps every branch.
+// listOpenPRHeads returns the head branch of every open pull request on the repository behind remoteURL whose head lives in that same repository;
+// the map is non-nil, and empty when none is open.
+// Any failure (a non-GitHub origin, no token, a network error, the timeout) returns an error, so the caller keeps every branch.
 // It is a package-level variable so tests can substitute the GitHub call.
 var listOpenPRHeads = fetchOpenPRHeads
 

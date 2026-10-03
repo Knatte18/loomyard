@@ -95,8 +95,7 @@ func (t *Topology) cleanupRemoteWarp(l *lyxcwd.Location, apply bool, openPRHeads
 		checkedOut[wt.Branch] = true
 	}
 
-	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date,
-	// which is the parent the landed check compares against.
+	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date, which is the parent the landed check compares against.
 	if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName}, repoDir); err != nil {
 		return res, fmt.Errorf("fetch %q: %w", originRemoteName, err)
 	}
