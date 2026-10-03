@@ -257,17 +257,16 @@ const (
 // to prove stencil.FillOptional's per-marker error.
 func masterTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"batch_index":             "01 — json-flag — add the --json flag",
-		"progress":                "none",
-		"remaining":               "01-a",
-		"outcome_path":            "/lyx/webster/outcome.yaml",
-		"summary_path":            "/lyx/webster/summary.md",
-		"integration_prompt_path": "/lyx/webster/prompts/integration.md",
-		"plan_dir":                "_lyx/plan",
-		"integration_report_path": "/lyx/webster/reports/integration.yaml",
-		"self_fix_cap":            "2",
-		"pattern_directive":       "## Constraints — do this before you fork anything\n\n- Read _lyx/PATTERN.md.",
-		"friction_directive":      "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
+		"batch_index":            "01 — json-flag — add the --json flag",
+		"progress":               "none",
+		"remaining":              "01-a",
+		"outcome_path":           "/lyx/webster/outcome.yaml",
+		"summary_path":           "/lyx/webster/summary.md",
+		"verify_fix_prompt_path": "/lyx/webster/prompts/verify-fix.md",
+		"plan_dir":               "_lyx/plan",
+		"self_fix_cap":           "2",
+		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read _lyx/PATTERN.md.",
+		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
 	}
 }
 
@@ -369,7 +368,7 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"batch_index", "progress", "outcome_path", "summary_path", "integration_prompt_path", "plan_dir", "integration_report_path", "self_fix_cap"} {
+	for _, marker := range []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := masterTemplateMarkerValues()
 			delete(values, marker)
@@ -802,7 +801,7 @@ func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
 	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, ""); err == nil {
+	if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, ""); err == nil {
 		t.Fatal("RenderMasterPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
@@ -880,13 +879,54 @@ func TestRenderMasterPrompt_NeverFillsWorktreeRoot(t *testing.T) {
 	anchorRoot, stencilsDir := testLayout(t)
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
 
-	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, "")
+	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "")
 	if err != nil {
 		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 	}
 	text := string(got)
 	requireNotContains(t, text, "worktree_root")
 	requireNotContains(t, text, anchorRoot)
+}
+
+// TestRenderVerifyFixPrompt_NamesGateReport asserts the fixer prompt names the gate report it is told and renders no leftover marker.
+func TestRenderVerifyFixPrompt_NamesGateReport(t *testing.T) {
+	anchorRoot, stencilsDir := testLayout(t)
+	reportPath := "/lyx/webster/reports/verify-gate.yaml"
+
+	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, "")
+	if err != nil {
+		t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+	requireContains(t, text, reportPath)
+	requireContains(t, text, "`_lyx/plan`")
+	requireNotContains(t, text, "{{")
+}
+
+// TestRenderVerifyFixPrompt_EmptyReportPathErrors asserts the fixer prompt refuses an empty report path.
+func TestRenderVerifyFixPrompt_EmptyReportPathErrors(t *testing.T) {
+	anchorRoot, stencilsDir := testLayout(t)
+
+	if _, err := websterengine.RenderVerifyFixPrompt("", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, ""); err == nil {
+		t.Fatal("RenderVerifyFixPrompt() error = nil; want an error for an empty report path")
+	}
+}
+
+// TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork asserts Merriam's prompt names the fixer prompt file and carries no integration fork.
+func TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork(t *testing.T) {
+	anchorRoot, stencilsDir := testLayout(t)
+	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
+
+	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "")
+	if err != nil {
+		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+	requireContains(t, text, "/lyx/webster/prompts/verify-fix.md")
+	requireContains(t, text, "Gate findings recorded at")
+	requireContains(t, text, "## Verify gate fixes")
+	requireNotContains(t, text, "integration fork")
+	requireNotContains(t, text, "integration.yaml")
 }
 
 // TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt injects the plan's
@@ -1174,7 +1214,7 @@ func TestRenderMasterPrompt_ReflectsSequencedOrder(t *testing.T) {
 	}
 	anchorRoot, stencilsDir := testLayout(t)
 
-	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, "")
+	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "")
 	if err != nil {
 		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 	}
@@ -1304,7 +1344,7 @@ func TestRenderMasterPrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-master.md")
-		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, notePath)
+		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, notePath)
 		if err != nil {
 			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 		}
@@ -1313,7 +1353,7 @@ func TestRenderMasterPrompt_FrictionDirective(t *testing.T) {
 
 	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, "")
+		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "")
 		if err != nil {
 			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 		}
@@ -1324,7 +1364,7 @@ func TestRenderMasterPrompt_FrictionDirective(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		stripFrictionMarker(t, stencilsDir, "webster-template-master")
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-master.md")
-		if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", filepath.Join(anchorRoot, "_lyx", "plan"), "/lyx/webster/reports/integration.yaml", 2, anchorRoot, anchorRoot, stencilsDir, notePath); err != nil {
+		if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, notePath); err != nil {
 			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})

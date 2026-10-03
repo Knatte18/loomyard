@@ -1,5 +1,5 @@
 // render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-template-integration.md, webster-template-integration-fix.md)
-// and the rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when ShouldRunIntegration reports true), and RenderIntegrationFixPrompt (for the one-shot cold-start strand that repairs an integration regression),
+// and the rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), RenderVerifyFixPrompt (called by run for the verify-gate fixer fork Merriam spawns on a gate failure), RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when ShouldRunIntegration reports true), and RenderIntegrationFixPrompt (for the one-shot cold-start strand that repairs an integration regression),
 // plus the two sequenced-execution-order renderers those prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
 // told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
@@ -366,8 +366,48 @@ func renderRegressions(regressions []IntegrationFailure) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-// noIntegrationPromptPath is the sentinel RenderMasterPrompt renders when no integration prompt file.
-const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
+// VerifyFixTemplate reads webster-body-verify-fix's current content from stencilsDir via stencilstore.Read.
+func VerifyFixTemplate(stencilsDir string) ([]byte, error) {
+	return stencilstore.Read(stencilsDir, "webster-body-verify-fix")
+}
+
+// verifyFixPromptFileName is the verify-gate fixer fork's prompt file name inside a webster prompts dir.
+const verifyFixPromptFileName = "verify-fix.md"
+
+// RenderVerifyFixPrompt fills webster-body-verify-fix for the verify-gate fixer fork, read from stencilsDir.
+// reportPath is the verify-gate report the fork reads (VerifyGateReportPath); the fork never names a record path.
+// Returns an error if reportPath is empty.
+// planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it.
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a friction.Directive error swallowed as a Warn rather than propagated.
+func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, notePath string) ([]byte, error) {
+	if strings.TrimSpace(reportPath) == "" {
+		return nil, fmt.Errorf("webster: render verify-fix prompt: report path is empty")
+	}
+
+	directive, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-body-verify-fix", "error", err)
+		directive = ""
+	}
+
+	values := map[string]string{
+		"report_path":       reportPath,
+		"worktree_root":     worktreeRoot,
+		"plan_dir":          masterPlanDirDisplay(worktreeRoot, planDir),
+		friction.MarkerName: directive,
+	}
+	template, err := VerifyFixTemplate(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("webster: read verify-fix template: %w", err)
+	}
+	friction.WarnIfMarkerAbsent(template, "webster-body-verify-fix", directive)
+	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
+	if err != nil {
+		return nil, fmt.Errorf("webster: fill verify-fix template: %w", err)
+	}
+	return prompt, nil
+}
 
 // masterPlanDirDisplay returns the plan-directory spelling the rendered prompts carry: planDir
 // relative to paneCwd when it sits inside it — hub geometry, whose pane runs at the anchor the
@@ -392,10 +432,11 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // SequenceBatches already reordered, since nothing in this function reorders it further.
 // It fills no {{.worktree_root}} key at all — anchorRoot feeds pattern.Directive's own probe, and
 // worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
-// planDir is the told plan directory (Geometry.PlanDir) and integrationReportPath the told
-// integration-report file path, both rendered so a standalone Master — whose plan lives in the
-// derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt
-// tells it to read (found live in crucible round fable5-high-r3, F-A4).
+// planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose
+// plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find
+// what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
+// verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to
+// its one fixer fork.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
@@ -403,12 +444,7 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, integrationPromptPath, planDir, integrationReportPath string, selfFixCap int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
-	integrationPrompt := strings.TrimSpace(integrationPromptPath)
-	if integrationPrompt == "" {
-		integrationPrompt = noIntegrationPromptPath
-	}
-
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
 	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleOrchestrator)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
@@ -421,17 +457,16 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 	}
 
 	values := map[string]string{
-		"batch_index":             RenderBatchIndex(batches),
-		"progress":                RenderProgress(batches, st),
-		"remaining":               RenderRemaining(batches, st),
-		"outcome_path":            outcomePath,
-		"summary_path":            summaryPath,
-		"integration_prompt_path": integrationPrompt,
-		"plan_dir":                masterPlanDirDisplay(worktreeRoot, planDir),
-		"integration_report_path": integrationReportPath,
-		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
-		"pattern_directive":       directive,
-		friction.MarkerName:       frictionDirective,
+		"batch_index":            RenderBatchIndex(batches),
+		"progress":               RenderProgress(batches, st),
+		"remaining":              RenderRemaining(batches, st),
+		"outcome_path":           outcomePath,
+		"summary_path":           summaryPath,
+		"verify_fix_prompt_path": verifyFixPromptPath,
+		"plan_dir":               masterPlanDirDisplay(worktreeRoot, planDir),
+		"self_fix_cap":           fmt.Sprintf("%d", selfFixCap),
+		"pattern_directive":      directive,
+		friction.MarkerName:      frictionDirective,
 	}
 	template, err := MasterTemplate(stencilsDir)
 	if err != nil {

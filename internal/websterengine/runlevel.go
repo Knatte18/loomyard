@@ -615,65 +615,41 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
 
-	// The integration fork's prompt is Go-rendered and Go-written, up front,
-	// exactly like a batch's own fork prompt: Master may write nothing but its
-	// two contract files (a hand-synthesized prompt file would be a
-	// parent-write audit violation), so a plan with a "## verify:" section
-	// must find its integration prompt already on disk — found live in
-	// crucible round fable-r1, where a Master correctly refused to improvise
-	// one and the stage was unreachable.
-	// The integration-report path is resolved unconditionally: the Master prompt renders it as its
-	// own {{.integration_report_path}} marker regardless of whether the plan carries a "## verify:"
-	// section, with the surrounding prose gating when it matters.
-	integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
-	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
-	}
-	// A report left by an earlier run describes an earlier head: Master would read it as this run's
-	// verdict and end stuck again without respawning the integration fork, so a run resumed after a
-	// fix could never re-verify. Every run starts without one.
+	// The integration stage still reads an integration report until it is retired, so one left by an earlier run is cleared.
+	integrationReportPath := IntegrationReportPath(deps.Geom.ReportsDir)
 	if err := os.Remove(integrationReportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return RunResult{}, fmt.Errorf("webster: remove stale integration report %s: %w", integrationReportPath, err)
 	}
 
 	// A verify-gate report left by an earlier run describes an earlier attempt and would be read as this run's.
-	if err := os.Remove(VerifyGateReportPath(deps.Geom.ReportsDir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	verifyGateReportPath, err := filepath.Abs(VerifyGateReportPath(deps.Geom.ReportsDir))
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: resolve verify-gate report path: %w", err)
+	}
+	if err := os.Remove(verifyGateReportPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return RunResult{}, fmt.Errorf("webster: remove stale verify-gate report: %w", err)
 	}
 
-	integrationPromptPath := ""
-	if ShouldRunIntegration(plan) {
-		integrationNotePath := friction.NotePath(deps.FrictionDir, "webster-integration")
-		integrationLogPath, err := filepath.Abs(IntegrationLogPath(deps.Geom.ScratchDir))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration log path: %w", err)
-		}
-		// Remove any prior log so a log present at triage time was written by this run's fork.
-		if err := os.Remove(integrationLogPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return RunResult{}, fmt.Errorf("webster: remove stale integration log %s: %w", integrationLogPath, err)
-		}
-		// The fork's shell redirect cannot create the log's parent directory.
-		if err := os.MkdirAll(filepath.Dir(integrationLogPath), 0o755); err != nil {
-			return RunResult{}, fmt.Errorf("webster: create verify log dir: %w", err)
-		}
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, integrationLogPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, integrationNotePath)
-		if err != nil {
-			return RunResult{}, err
-		}
-		if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
-			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
-		}
-		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.Geom.PromptsDir, integrationPromptFileName))
-		if err != nil {
-			return RunResult{}, fmt.Errorf("webster: resolve integration prompt path: %w", err)
-		}
-		if err := os.WriteFile(integrationPromptPath, integrationPrompt, 0o644); err != nil {
-			return RunResult{}, fmt.Errorf("webster: write integration prompt %s: %w", integrationPromptPath, err)
-		}
+	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
+	// Merriam may write nothing but its two contract files.
+	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, verifyFixNotePath)
+	if err != nil {
+		return RunResult{}, err
+	}
+	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
+		return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
+	}
+	verifyFixPromptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, verifyFixPromptFileName))
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: resolve verify-fix prompt path: %w", err)
+	}
+	if err := os.WriteFile(verifyFixPromptPath, verifyFixPrompt, 0o644); err != nil {
+		return RunResult{}, fmt.Errorf("webster: write verify-fix prompt %s: %w", verifyFixPromptPath, err)
 	}
 
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, integrationPromptPath, deps.Geom.PlanDir, integrationReportPath, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -1056,15 +1032,15 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 }
 
 // forkOwnReport returns the report the fork behind transcript may write:
-// the report of the batch whose ForkTranscripts holds it, or the integration report when no batch does,
-// since only the integration fork runs outside a batch bracket.
+// the report of the batch whose ForkTranscripts holds it, or the verify-gate report when no batch does,
+// since only the verify-gate fixer fork runs outside a batch bracket.
 func forkOwnReport(st *State, geom Geometry, transcript string) string {
 	for number, bs := range st.Batches {
 		if bs != nil && slices.Contains(bs.ForkTranscripts, transcript) {
 			return filepath.Join(geom.ReportsDir, ReportFileName(number, bs.Slug))
 		}
 	}
-	return IntegrationReportPath(geom.ReportsDir)
+	return VerifyGateReportPath(geom.ReportsDir)
 }
 
 // hasPendingFinding reports whether st already carries a pending finding with identity id.

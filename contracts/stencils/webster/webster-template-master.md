@@ -2,7 +2,7 @@
      list).
      It is filled by `run`'s engine core via internal/stencil and handed to the shuttle as the Master session's entire instruction set for one whole plan run: the long-lived session that reads the codebase and the plan once, then forks one implementer per execution batch in-session (Claude Code's Agent tool, subagent_type "fork").
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker but pattern_directive and friction_directive non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). plan_dir renders hub-relative ("_lyx/plan") in hub mode and absolute (the derived state directory's plan dir) in standalone, and integration_report_path is always rendered with its prose context gating when it matters — both added when the standalone Master proved unable to see a plan it was told about only in hub-relative terms. pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive. -->
+     stencil.FillOptional requires every marker but pattern_directive and friction_directive non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). plan_dir renders hub-relative ("_lyx/plan") in hub mode and absolute (the derived state directory's plan dir) in standalone, added when the standalone Master proved unable to see a plan it was told about only in hub-relative terms. verify_fix_prompt_path is the Go-rendered verify-gate fixer fork prompt file. pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive. -->
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
@@ -123,19 +123,24 @@ You never read raw fork output beyond its own turn, and you never open a file to
   If record-batch refuses because the batch is a recovery batch, run `lyx webster recover-batch <NN>` backgrounded instead.
   Then continue the loop from the next batch.
 
-## After every batch: the integration-suite stage
+## After every batch: the verify gate
 
-Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), check whether this plan carries a plan-level `## verify:` section in `00-overview.md` (you already read `00-overview.md` at orientation, which carries the `## verify:` section — no new file read is needed here):
+Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), proceed to your final action below.
+You never run the plan-level `## verify:` command yourself: when your turn ends with both contract files written, a gate runs it at the current HEAD and either accepts the run or sends you its findings.
 
-- **No `## verify:` section** — skip straight to your final action below;
-  there is nothing further to run.
-- **A `## verify:` section is present** — the integration fork's prompt file is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it at run entry; you never render or write a prompt file yourself). Spawn exactly ONE more fork, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: YOU are the fork that runs the verify command and WRITES the integration report as your final action — nobody else will ever write it, so waiting for it deadlocks the run. Your FIRST action is to Read this file; then do exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level `## verify:` command ONCE, makes NO commit, and writes its own minimal report (`status: OK | FAILED`) to `{{.integration_report_path}}`. Then end your turn, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs. On its completion notification, read `{{.integration_report_path}}` once; if the file is absent, treat it as `status: FAILED`.
-  - `status: OK` → the plan is genuinely finished;
-    proceed to your final action below with `outcome: done`.
-  - `status: FAILED` → do NOT attempt to localize or fix the failure yourself, and do NOT re-fork the integration fork.
-    Your job for this stage ends here: proceed straight to your final action below with `outcome: done`, and note in your `summary.md` that the integration suite reported `FAILED` and that webster triages it after the session ends.
-    Once your session ends, webster reruns the suite, compares it against the plan's starting commit, and escalates only a regression to `stuck` (with a SHA-bisect that localizes the offending card);
-    a flaky or pre-existing failure is recorded and the run stays `done` — you hand off to it by finishing normally, not by trying to run it yourself.
+## A gate failure: spawn one fixer fork
+
+When a message reaches you reading `Gate findings recorded at …`, the plan-level verify failed (or the worktree was not clean) after your turn ended.
+Do NOT localize or fix the failure yourself.
+
+1. Read the findings file the message names, once.
+2. Spawn exactly ONE fixer fork in the background, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: nobody writes one for you. Your FIRST action is to Read this file; then do exactly and only what it says: {{.verify_fix_prompt_path}}`. The prompt file is already rendered on disk (Go wrote it at run entry; you never render or write a prompt file yourself).
+3. End your turn right after spawning it, exactly as after a batch's fork: no polling, no `sleep`, no file checks while it runs.
+   That turn end is waiting on your own fork, not an arrival at the gate.
+4. On the fork's completion notification, rewrite `{{.outcome_path}}` and `{{.summary_path}}` once more, as your final action: the same outcome rules as below, and the summary gaining a `## Verify gate fixes` section that names the findings, what the fixer's reply says it changed and each `fix:` commit it names.
+   Then end your turn; that turn end re-arrives at the gate, which verifies again.
+
+Spawn at most one fixer fork per gate message; the gate bounds the number of attempts.
 
 ## A paused refusal ends your run immediately
 
@@ -186,7 +191,7 @@ NEVER spawn a non-fork or named subagent — every implementer you spawn is `sub
 ## Your final action: the outcome and summary files
 
 Your absolute LAST action of this whole run — whether it finished cleanly, got stuck, or was paused — is writing BOTH `{{.outcome_path}}` and `{{.summary_path}}`.
-Nothing you do after these files exist is read by anyone: write them last, and write each exactly once.
+Nothing you do after these files exist is read by anyone: write them last, and write each exactly once per turn end — a gate failure (see above) is the one case that has you rewrite them.
 
 `{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:
 

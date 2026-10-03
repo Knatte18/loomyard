@@ -207,7 +207,7 @@
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
-// It audits nothing while a later fork batch of the session is open or the integration report exists, since an unseen transcript may then be that fork's.
+// It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
@@ -411,29 +411,16 @@
 // BisectAndEscalate then records that localized finding as a terminal, non-successful entry in State.Batches under the reserved key -1 (RecordIntegrationFailure — never a real plan card number, so RenderProgress's walk over batch numbers, which are equally positive, can never surface it by accident)
 // and extends summary.md naming the offending card and the regressing identities with their tails (AppendIntegrationFailure).
 //
-// # The integration-fix attempt
+// # The verify-gate fixer fork
 //
-// A regression under a Master outcome of done gets one automated fix attempt before it escalates (attemptIntegrationFix, in integrationfix.go);
-// a non-done Master outcome escalates with no attempt, since a fix cannot change it.
-// It runs after the triage and the localization, in two-phase steps that never hold the state-mutation lease across the strand's wait or a verify run:
-// a leased step records State.IntegrationFix with the pre-fix head before any spawn, so a resumed run never spends a second attempt;
-// the strand starts through RunDeps.FixStarter at the recovery role's model, with recovery_timeout_min as its timeout and a report under the reports directory as its output file;
-// a second leased step records its strand GUID, which run entry's reclaim stops if the run died while the strand was live;
-// after the wait the strand and its run directory are removed.
-// A nil FixStarter is a wiring error checked before anything is recorded, so a wiring fault never spends the attempt.
-// Go accepts the strand's work only when the plan fingerprint is unchanged (which catches an on-disk plan write no commit can show) and checkFixCommits passes:
-// non-merge commits outside the plan and `_lyx`, HEAD reconciled with the reported head, and a clean worktree.
-// A refusal there, a timeout or dead outcome, a missing or malformed report and a FAILED report each end the attempt as failed.
-// Success is decided by Go, never by the strand's report: the plan's verify runs once at HEAD, and a red run is triaged against the batches' start commits; no regression in that result means the regression is fixed.
-// A fixed regression keeps the run done and records the attempt in the integration report's Fix field and an "Integration suite fix" section of summary.md, with no -1 record;
-// any other result escalates as above, the pre-fix bisect result under the reserved -1 record, plus the same Fix record and section, and a stuck reason naming the pre-fix head and the fix commits.
-// Go never resets the branch: a failed attempt's commits stay on it for the operator to keep or drop.
-// A State.IntegrationFix with an empty Result, found when the stage next runs, is an attempt the run's end interrupted;
-// it is checked after the integration report loads and before the OK early return, ends as failed whatever the report says, and sets Result in the same save.
-// `run --fresh` builds a new State and so resets the record.
-// The bound is the single recorded attempt, the timeout, the commit check with the plan-fingerprint compare, the post-fix triage deciding success, and the later review rows seeing the fix commits like any other branch commit.
-// Triage sees only failures, so a test the strand deleted or skipped reads as cleared;
-// the strand's prompt forbids it and summary.md names the fix commits and cleared identities for review.
+// A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
+// Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
+// The waiting turn end in between is no arrival.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify.
+// Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
+// They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and Webster-Review, which reviews the committed range.
+// The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
+// forkOwnReport maps a fork transcript outside every batch bracket to the verify-gate report, and CheckFork audits the fixer fork as it audits a batch fork.
 //
 // # The verify gate
 //

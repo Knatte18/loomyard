@@ -72,7 +72,7 @@ func joinClaims(groups ...[]claim) []claim {
 const (
 	websterDoneCheckSection = "## A done-check failure arrives as `batch_failed`"
 	websterPlanDriftSection = "## A plan-drift refusal ends your run as stuck"
-	websterFailedBranch     = "- `status: FAILED` →"
+	websterGateSection      = "## A gate failure: spawn one fixer fork"
 	websterOutcomeKeysLine  = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
 	droppedConceptsWhy      = "the batch-era concept (oversized batches, deferred-verify chains, the per-batch Scope section) is dropped from the prompt"
 )
@@ -246,6 +246,18 @@ var wordingClaims = []stencilClaims{
 		wantAll("the integration fork runs the plan-level verify once and implements no cards and makes no commit", "implement NO cards", "make NO commit"),
 		wantNone("the integration fork carries no per-card or commit instructions, unlike a batch's own fork template", "**Commit:**", "One commit per card", "{{.cards}}"),
 	)},
+	{"webster-body-verify-fix.md", WebsterBodyVerifyFix, joinClaims(
+		wantAll("the fixer reads the gate report and fixes the cause in source",
+			"{{.report_path}}", "Fix the cause in source"),
+		wantAll("the fixer never deletes, skips or weakens a test",
+			"Never delete, skip or weaken a test"),
+		wantAll("the fixer never touches the plan directory or _lyx",
+			"Never touch the plan directory `{{.plan_dir}}` or anything under `_lyx`"),
+		wantAll("the fixer commits each fix as fix: <summary> and runs the failing packages' tests with the integration tag",
+			"`fix: <summary>`", "`-tags integration`"),
+		wantAll("the fixer does not run the plan-level verify and never drives the webster loop",
+			"never run the plan-level verify", "NEVER run any `lyx webster` command"),
+	)},
 	{"webster-template-master.md", WebsterTemplateMaster, joinClaims(
 		inSection(websterDoneCheckSection, joinClaims(
 			wantNone("postBatchChecks records a deleted-symbol reference as a later-card warning, never a batch_failed done-check",
@@ -297,10 +309,16 @@ var wordingClaims = []stencilClaims{
 		inSection(websterPlanDriftSection, wantAll("record-batch and recover-batch refuse with plan_drifted too, and the operator's way forward is restore-plan",
 			"`record-batch` and `recover-batch` also refuse with `{\"plan_drifted\": true}`",
 			"`lyx webster restore-plan`")),
-		[]claim{
-			{must: "`outcome: done`", branch: websterFailedBranch, why: "a FAILED integration report still finishes the run as outcome: done, webster triages the report after the session"},
-			{mustNot: "outcome: stuck", branch: websterFailedBranch, why: "a FAILED integration report no longer tells Master outcome: stuck"},
-		},
+		wantNone("Merriam spawns no integration fork and reads no integration report",
+			"integration fork", "integration_prompt_path", "integration_report_path", "integration report"),
+		inSection(websterGateSection, wantAll("on a gate failure Merriam reads the findings, spawns one fixer fork with the Go-rendered prompt, ends its turn, and rewrites its contract files with a Verify gate fixes section on the notification",
+			"`Gate findings recorded at …`",
+			"Do NOT localize or fix the failure yourself",
+			"Spawn exactly ONE fixer fork in the background",
+			"{{.verify_fix_prompt_path}}",
+			"not an arrival at the gate",
+			"## Verify gate fixes",
+			"re-arrives at the gate")),
 		wantAll("round fable-r1, crucible: a freshly spawned Master classified the injected orchestration prompt as suspicious content, reasoned that no lyx tool was in its toolset and ended its turn asking, which killed ~40% of real spawns; the prompt states it is real, that lyx is a CLI driven through Bash, and that the session gets its bearings through the status verb",
 			"get your bearings against the real state on disk",
 			"started by `lyx webster run`",
@@ -344,8 +362,7 @@ var wordingClaims = []stencilClaims{
 			"`done` → skip",
 			"`stuck` → its fork reported stuck",
 			"`dead` → its recovery already failed",
-			"On its completion notification, read `{{.integration_report_path}}` once",
-			"if the file is absent, treat it as `status: FAILED`"),
+			"On the fork's completion notification, rewrite `{{.outcome_path}}` and `{{.summary_path}}` once more"),
 		wantNone("Master never polls for a report: await-batch and the sleep poll are not its verbs", "lyx webster await-batch", "sleep 20", "sleep 30"),
 		wantAll("the card-list order is the listed one rather than ascending batch number, and no batch is skipped or reordered",
 			"the order listed above, top to bottom",

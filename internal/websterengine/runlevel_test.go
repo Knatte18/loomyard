@@ -1279,6 +1279,68 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 	}
 }
 
+// TestRun_FixerForkPlanWriteIsFlagged proves the run-exit fork audit covers the verify-gate fixer fork:
+// a fork outside every batch bracket that writes the plan directory leaves one pending fork-plan-write finding.
+func TestRun_FixerForkPlanWriteIsFlagged(t *testing.T) {
+	const session = "master-session-fixer"
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}, ForkTranscripts: []string{"/transcripts/fork1.jsonl"}},
+		},
+	})
+	planFile := filepath.Join(fx.Deps.Geom.PlanDir, "00-overview.md")
+	forks := []shuttleengine.ForkReport{
+		{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+		{TranscriptPath: "/transcripts/fixer.jsonl", ReportReturned: true, WritePaths: []string{planFile}},
+	}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a correctness finding demotes, it is not an error)", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Fatalf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if len(st.PendingAuditFindings) != 1 || st.PendingAuditFindings[0].Class != "fork-plan-write" {
+		t.Errorf("PendingAuditFindings = %+v; want one fork-plan-write finding", st.PendingAuditFindings)
+	}
+}
+
+// TestRun_RendersVerifyFixPrompt proves Run writes the fixer prompt naming the gate report and Merriam's prompt names that file.
+func TestRun_RendersVerifyFixPrompt(t *testing.T) {
+	const session = "master-session-fixprompt"
+	fx := newRunFixture(t, 1)
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: session, CardSHAs: []string{"deadbeef"}},
+		},
+	})
+	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
+	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {})
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", session)
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	prompt, err := os.ReadFile(filepath.Join(fx.Deps.Geom.PromptsDir, "verify-fix.md"))
+	if err != nil {
+		t.Fatalf("read verify-fix prompt: %v", err)
+	}
+	if !strings.Contains(string(prompt), websterengine.VerifyGateReportPath(fx.Deps.Geom.ReportsDir)) {
+		t.Errorf("verify-fix prompt does not name the gate report path")
+	}
+	if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "integration.md")); err == nil {
+		t.Errorf("integration.md exists; Run renders no integration prompt")
+	}
+}
+
 // TestRun_FabricReferenceInIntegrationForkIsStuck proves a fabric reference in the integration fork's transcript is correctness whatever its command:
 // the run ends stuck, the stuck reason quotes the command, and state.json carries one pending finding with no path.
 func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
