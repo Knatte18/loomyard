@@ -92,19 +92,6 @@ func (f *fakeResolutionShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, e
 
 var _ mergeresolve.Shuttle = (*fakeResolutionShuttle)(nil)
 
-// commitOnCurrentBranchLanding writes filename with content in dir, stages it, and commits msg on
-// whatever branch is currently checked out -- this package's own local copy of
-// fabricengine_test's identically-shaped helper, since the two test packages cannot share
-// unexported test code.
-func commitOnCurrentBranchLanding(t *testing.T, dir, filename, content, msg string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", filename, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", filename)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", msg)
-}
-
 // openFabricAtLanding opens a *fabricengine.Fabric on the warp worktree at path, via
 // lyxcwd.ResolveWorktree + fabricengine.Open -- the only production constructor either producer's
 // pair-opener closures may legally wrap.
@@ -119,33 +106,6 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 		t.Fatalf("fabricengine.Open(%s): %v", path, err)
 	}
 	return f
-}
-
-// gitParentCountLanding returns the number of parents rev has in dir, via `git log -1 --format=%P`
-// -- this package's own local copy of fabricengine_test's identically-shaped helper.
-func gitParentCountLanding(t *testing.T, dir, rev string) int {
-	t.Helper()
-	cmd := exec.Command("git", "log", "-1", "--format=%P", rev)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git log -1 --format=%%P %s in %s: %v", rev, dir, err)
-	}
-	return len(strings.Fields(strings.TrimSpace(string(out))))
-}
-
-// currentSHALanding returns dir's current HEAD SHA, via `git rev-parse HEAD` -- this package's own
-// local stand-in for fabricengine's own test-only CurrentSHAForTest, which is not reachable from a
-// different package's test binary.
-func currentSHALanding(t *testing.T, dir string) string {
-	t.Helper()
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // TestFinalize_ResolvesConflictAndSquashMergesIntoParent builds a task pair and a parent pair off
@@ -167,12 +127,12 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 
 	// The genuine warp-side conflict: both branches add conflict.txt independently, off a common
 	// ancestor where it does not exist.
-	commitOnCurrentBranchLanding(t, taskWarp, "conflict.txt", "task content\n", "task: add conflict.txt")
-	commitOnCurrentBranchLanding(t, parentWarp, "conflict.txt", "parent content\n", "parent: add conflict.txt")
+	gitkit.CommitFile(t, taskWarp, "conflict.txt", "task content\n", "task: add conflict.txt")
+	gitkit.CommitFile(t, parentWarp, "conflict.txt", "parent content\n", "parent: add conflict.txt")
 
 	// A clean, non-conflicting weft-side divergence on the task pair alone, so "the parent pair
 	// carries the task's content on both sides" has a concrete weft-side fact to assert.
-	commitOnCurrentBranchLanding(t, taskWeft, "task-note.txt", "task weft note\n", "task: add task-note.txt")
+	gitkit.CommitFile(t, taskWeft, "task-note.txt", "task weft note\n", "task: add task-note.txt")
 
 	scratchDir := filepath.Join(t.TempDir(), "scratch")
 	shuttle := &fakeResolutionShuttle{worktreeRoot: taskWarp, paths: []string{"conflict.txt"}, resolved: "resolved content\n"}
@@ -203,7 +163,7 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	// Captured before Call so the weft-not-a-merge-participant assertion below has a concrete
 	// before/after pair to compare, mirroring internal/fabricengine's own weftBefore/weftHEAD
 	// convention (see e.g. mergeweftlocal_integration_test.go).
-	parentWeftBefore := currentSHALanding(t, parentWeft)
+	parentWeftBefore := gitkit.RevParse(t, parentWeft, "HEAD")
 
 	outcome, _, err := fz.Call(context.Background())
 	if err != nil {
@@ -232,13 +192,13 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(parentWeft, "task-note.txt")); !os.IsNotExist(err) {
 		t.Errorf("os.Stat(parent weft task-note.txt) error = %v; want a not-exist error -- the weft is not a merge participant", err)
 	}
-	if got := currentSHALanding(t, parentWeft); got != parentWeftBefore {
+	if got := gitkit.RevParse(t, parentWeft, "HEAD"); got != parentWeftBefore {
 		t.Errorf("parent weft HEAD = %q; want byte-identical %q -- the weft is not a merge participant", got, parentWeftBefore)
 	}
 
 	// The squash setting took effect on the parent pair's warp: a single-parent commit.
-	warpHEAD := currentSHALanding(t, parentWarp)
-	if got := gitParentCountLanding(t, parentWarp, warpHEAD); got != 1 {
+	warpHEAD := gitkit.RevParse(t, parentWarp, "HEAD")
+	if got := len(strings.Fields(gitkit.Git(t, parentWarp, "log", "-1", "--format=%P", warpHEAD))); got != 1 {
 		t.Errorf("parent warp HEAD %s has %d parents; want exactly 1 (a squash commit)", warpHEAD, got)
 	}
 
@@ -283,7 +243,7 @@ func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
 	taskWarp := h.PairWarpWorktree("task")
 	parentWarp := h.PairWarpWorktree("parent")
 
-	commitOnCurrentBranchLanding(t, taskWarp, "feature.txt", "task feature\n", "task: add feature.txt")
+	gitkit.CommitFile(t, taskWarp, "feature.txt", "task feature\n", "task: add feature.txt")
 
 	newFinalize := func() *landingshed.Finalize {
 		deps := landingshed.Deps{
@@ -314,14 +274,14 @@ func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("first Call() = (%q, %v); want (Done, nil)", outcome, err)
 	}
-	headAfterFirst := currentSHALanding(t, parentWarp)
+	headAfterFirst := gitkit.RevParse(t, parentWarp, "HEAD")
 
 	// A second Finalize over the now already-landed parent.
 	outcome, _, err = newFinalize().Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Fatalf("second Call() = (%q, %v); want (Done, nil)", outcome, err)
 	}
-	if got := currentSHALanding(t, parentWarp); got != headAfterFirst {
+	if got := gitkit.RevParse(t, parentWarp, "HEAD"); got != headAfterFirst {
 		t.Errorf("parent warp HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
 	}
 }

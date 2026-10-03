@@ -14,7 +14,6 @@ package fabriccli_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,35 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
-
-// headSHA returns dir's HEAD commit SHA.
-func headSHA(t *testing.T, dir string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// branchSHA returns branch's commit SHA as resolved in dir, distinct from headSHA because a real
-// hub's weft bare carries more than one branch (the primary pair's own "main-weft" alongside
-// weft:main's "main"), so the bare's own HEAD symref does not necessarily name the branch a caller
-// means to check.
-func branchSHA(t *testing.T, dir, branch string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "refs/heads/"+branch)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse refs/heads/%s in %s: %v", branch, dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
 
 // TestRunCLI_BypassPushAdvancesBothUpstreams builds weft and warp repos with unpushed commits, then
 // asserts that --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches
@@ -77,8 +47,8 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	// "main" branch (the board checkout), and the bare's default HEAD may not name the prime pair's
 	// branch.
 	weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "--abbrev-ref", "HEAD"))
-	wantWeftSHA := headSHA(t, h.PrimeWeft())
-	wantWarpSHA := headSHA(t, h.PrimeWorktree())
+	wantWeftSHA := gitkit.RevParse(t, h.PrimeWeft(), "HEAD")
+	wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
@@ -95,10 +65,10 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 		t.Errorf("RunCLI bypass push ok = %v; want true. Error: %v", result["ok"], result["error"])
 	}
 
-	if gotWeftSHA := branchSHA(t, h.WeftBare, weftBranch); gotWeftSHA != wantWeftSHA {
+	if gotWeftSHA := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
 		t.Errorf("weft bare %s = %s; want %s (the unpushed commit was not pushed)", weftBranch, gotWeftSHA, wantWeftSHA)
 	}
-	if gotWarpSHA := headSHA(t, h.WarpBare); gotWarpSHA != wantWarpSHA {
+	if gotWarpSHA := gitkit.RevParse(t, h.WarpBare, "HEAD"); gotWarpSHA != wantWarpSHA {
 		t.Errorf("warp bare HEAD = %s; want %s (the unpushed commit was not pushed)", gotWarpSHA, wantWarpSHA)
 	}
 }

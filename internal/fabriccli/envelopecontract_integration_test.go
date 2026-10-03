@@ -38,6 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -216,11 +217,11 @@ func TestRunCLI_MergeConflictEnvelopeKeepsPartialFalse(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
 	// Diverge warp's "conflict.txt" on both the current branch and a "feature" branch, so merging
-	// "feature" into the current branch conflicts. commitOnBranchCLI/commitOnCurrentBranchCLI are
-	// merge_cli_integration_test.go's own fixture helpers, in the same package.
-	commitOnCurrentBranchCLI(t, h.PrimeWorktree(), "conflict.txt", "seed content\n", "seed conflict.txt")
+	// "feature" into the current branch conflicts. commitOnBranchCLI is merge_cli_integration_test.go's
+	// own fixture helper, in the same package.
+	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "seed content\n", "seed conflict.txt")
 	commitOnBranchCLI(t, h.PrimeWorktree(), "feature", "conflict.txt", "branch content\n", "diverge conflict.txt on feature")
-	commitOnCurrentBranchCLI(t, h.PrimeWorktree(), "conflict.txt", "current content\n", "diverge conflict.txt on current")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "current content\n", "diverge conflict.txt on current")
 	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
 
 	var out bytes.Buffer

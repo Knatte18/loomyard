@@ -23,19 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// commitOnCurrentBranchCLI writes filename with content in dir, stages it, and commits msg on
-// whatever branch is currently checked out. Named distinctly from internal/fabricengine's identical
-// helper since the two packages share no test code.
-func commitOnCurrentBranchCLI(t *testing.T, dir, filename, content, msg string) {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", filename, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", filename)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", msg)
-}
-
 // commitOnBranchCLI checks out branch in dir — creating it off whatever is currently checked out when
 // it does not exist yet — writes filename with content, commits msg, then switches back to whatever
 // branch was checked out before.
@@ -43,25 +30,15 @@ func commitOnBranchCLI(t *testing.T, dir, branch, filename, content, msg string)
 	t.Helper()
 
 	current := strings.TrimSpace(gitOutputCLI(t, dir, "branch", "--show-current"))
-	if branchExistsLocallyCLI(t, dir, branch) {
-		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
+	if gitkit.BranchExists(t, dir, branch) {
+		gitkit.Git(t, dir, "checkout", "-q", branch)
 	} else {
-		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
+		gitkit.Git(t, dir, "checkout", "-q", "-b", branch)
 	}
 
-	commitOnCurrentBranchCLI(t, dir, filename, content, msg)
+	gitkit.CommitFile(t, dir, filename, content, msg)
 
-	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
-}
-
-// branchExistsLocallyCLI reports whether branch already exists as a local ref in dir. Uses plain
-// exec.Command rather than gitOutputCLI, which fails the test on a non-zero exit — a non-zero exit
-// here is exactly the "does not exist" case, not a test failure.
-func branchExistsLocallyCLI(t *testing.T, dir, branch string) bool {
-	t.Helper()
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = dir
-	return cmd.Run() == nil
+	gitkit.Git(t, dir, "checkout", "-q", current)
 }
 
 // branchAtCurrentHEADCLI creates branch in dir pointing at whatever is currently checked out, without
@@ -77,9 +54,9 @@ func branchAtCurrentHEADCLI(t *testing.T, dir, branch string) {
 func setupConflictingDivergenceCLI(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
-	commitOnCurrentBranchCLI(t, dir, filename, "seed content\n", "seed "+filename)
+	gitkit.CommitFile(t, dir, filename, "seed content\n", "seed "+filename)
 	commitOnBranchCLI(t, dir, branch, filename, "branch content\n", "diverge "+filename+" on "+branch)
-	commitOnCurrentBranchCLI(t, dir, filename, "current content\n", "diverge "+filename+" on current")
+	gitkit.CommitFile(t, dir, filename, "current content\n", "diverge "+filename+" on current")
 }
 
 // TestRunCLI_MergeInConflictThenContinueConcludes drives "merge-in" into a warp-side conflict,
@@ -207,7 +184,7 @@ func TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "target")
 
-	commitOnCurrentBranchCLI(t, h.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
+	gitkit.CommitFile(t, h.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
 	commitOnBranchCLI(t, h.PrimeWorktree(), "feature", "conflict.txt", "feature content\n", "feature: diverge conflict.txt")
 	commitOnBranchCLI(t, h.PrimeWeft(), "feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
 

@@ -117,7 +117,7 @@ func TestPublish_MergesInCleanlyBeforeCreatingPullRequest(t *testing.T) {
 	// Advance main (the parent branch) with a clean commit while the task branch stays behind, so
 	// the merge-in step below has genuine, non-conflicting content to bring in.
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
-	commitOnCurrentBranchLanding(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
+	gitkit.CommitFile(t, taskWorktree, "parent-progress.txt", "parent progress\n", "main: progress")
 	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
 
 	finalSummaryPath := summaryparser.Path(t.TempDir())

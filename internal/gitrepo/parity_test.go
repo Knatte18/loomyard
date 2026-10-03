@@ -62,17 +62,6 @@ func newRenameFixture(t *testing.T) (dir, oldName, newName string) {
 	return dir, oldName, newName
 }
 
-// commitFile writes name under dir with content and commits it directly via
-// the git CLI, bypassing the Repo under test — a repo-shaping helper the
-// parity cases use to build history, not something under test itself.
-func commitFile(t *testing.T, dir, name, content, message string) {
-	t.Helper()
-
-	writeFile(t, dir, name, content)
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
-}
-
 // assertParitySHA fails the test unless oracle and impl — the SHAs returned
 // by the CLI oracle and gitrepo's method for the same operation and fixture —
 // are identical.
@@ -427,7 +416,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 
 		gitkit.MustRun(t, dir, "git", "checkout", "--orphan", "orphan-branch")
 		gitkit.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
-		commitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
+		gitkit.CommitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
 
 		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
 		if oracleErr != nil {

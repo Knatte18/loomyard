@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,14 +55,6 @@ func remoteEnvelopeRemoveOrigin(t *testing.T, repoRoot string) {
 	gitkit.MustRun(t, repoRoot, "git", "remote", "remove", "origin")
 }
 
-// remoteEnvelopeBranchExists reports whether branch exists at repoRoot.
-func remoteEnvelopeBranchExists(t *testing.T, repoRoot, branch string) bool {
-	t.Helper()
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = repoRoot
-	return cmd.Run() == nil
-}
-
 // remoteEnvelopeDecode unmarshals out into a JSON envelope map, failing the test on decode error.
 func remoteEnvelopeDecode(t *testing.T, out *bytes.Buffer) map[string]any {
 	t.Helper()
@@ -94,10 +85,10 @@ func TestRunCLI_CleanupRemoteAloneWithoutApplyDeletesNothing(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --remote) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	if !remoteEnvelopeBranchExists(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed locally by cleanup --remote with no --apply", branch)
 	}
-	if !remoteEnvelopeBranchExists(t, h.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q was removed on the remote by cleanup --remote with no --apply", branch)
 	}
 }

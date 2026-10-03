@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -389,20 +390,6 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	}
 }
 
-// weftCommitCount returns the number of commits reachable from HEAD in the git repository at dir.
-func weftCommitCount(t *testing.T, dir string) int {
-	t.Helper()
-	out, err := exec.Command("git", "-C", dir, "rev-list", "--count", "HEAD").Output()
-	if err != nil {
-		t.Fatalf("git -C %s rev-list --count HEAD: %v", dir, err)
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
-	if err != nil {
-		t.Fatalf("parse rev-list count %q: %v", out, err)
-	}
-	return n
-}
-
 // weftHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository
 // root.
 func weftHeadChangedFiles(t *testing.T, dir string) []string {
@@ -703,7 +690,7 @@ func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 	_, loc, worktree, _ := newWiredPairFixture(t)
 
 	weftDir := fabricengine.WeftWorktree(loc)
-	beforeCount := weftCommitCount(t, weftDir)
+	beforeCount := gitkit.RevListCount(t, weftDir, "HEAD")
 
 	stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "run")
 	if err != nil {
@@ -738,7 +725,7 @@ func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 	if !clean {
 		t.Errorf("fabricengine.Clean() = (false, %q); want the weft left clean after the refusal", reason)
 	}
-	if afterCount := weftCommitCount(t, weftDir); afterCount != beforeCount {
+	if afterCount := gitkit.RevListCount(t, weftDir, "HEAD"); afterCount != beforeCount {
 		t.Errorf("weft commit count changed from %d to %d; want unchanged on a pre-flight refusal", beforeCount, afterCount)
 	}
 }
@@ -903,7 +890,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	_, loc, worktree, slug := newWiredPairFixture(t)
 
 	weftDir := fabricengine.WeftWorktree(loc)
-	beforeCount := weftCommitCount(t, weftDir)
+	beforeCount := gitkit.RevListCount(t, weftDir, "HEAD")
 
 	seedAndCommitStatus(t, loc, slug)
 
@@ -915,7 +902,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 		t.Errorf("fabricengine.Clean() = (false, %q); want clean immediately after the seed commit", reason)
 	}
 
-	afterCount := weftCommitCount(t, weftDir)
+	afterCount := gitkit.RevListCount(t, weftDir, "HEAD")
 	if afterCount != beforeCount+1 {
 		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
 	}
@@ -930,17 +917,6 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	}
 	if report.Has(preflight.CheckWorktreeClean) {
 		t.Errorf("Check report still carries CheckWorktreeClean after the seed commit; the bootstrap must reach past the first precondition row rather than block on it")
-	}
-}
-
-// mustGitSmoke runs a git subcommand against dir, failing the test on any non-zero exit -- the plain
-// direct-exec shape smoke tests already use for weftCommitCount/weftHeadChangedFiles, extended here to
-// a general run-and-fail helper for the legacy-pair rig below.
-func mustGitSmoke(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git -C %s %v: %v; output: %s", dir, args, err, out)
 	}
 }
 
@@ -962,8 +938,8 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 
 	// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
 	// created before the record existed.
-	mustGitSmoke(t, weftDir, "rm", "-q", "--", originRel)
-	mustGitSmoke(t, weftDir, "commit", "-m", "smoke: simulate legacy pair with no origin record")
+	gitkit.Git(t, weftDir, "rm", "-q", "--", originRel)
+	gitkit.Git(t, weftDir, "commit", "-m", "smoke: simulate legacy pair with no origin record")
 
 	// Simulate the crash: write the record straight to disk through the same production primitive
 	// step 1 itself uses, but never commit it -- the exact state a process death between steps 1 and

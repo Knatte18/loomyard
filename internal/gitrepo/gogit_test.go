@@ -51,24 +51,13 @@ func forceGoGitFinalizersOnCleanup(t *testing.T) {
 	})
 }
 
-// writeAndCommit writes a file and commits it via git CLI, bypassing goGit.
-func writeAndCommit(t *testing.T, dir, name, content, message string) {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
-}
-
 // newStandaloneRepo creates a fresh git repository on main with one commit.
 func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 	t.Helper()
 
 	dir = t.TempDir()
 	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
-	writeAndCommit(t, dir, "a.txt", "hello", "init")
+	gitkit.CommitFile(t, dir, "a.txt", "hello", "init")
 	return dir, New(dir)
 }
 
@@ -100,7 +89,7 @@ func newGogitLinkedFixture(t *testing.T) *gogitLinkedFixture {
 		t.Fatalf("mkdir main: %v", err)
 	}
 	gitkit.MustRun(t, mainDir, "git", "init", "-b", "main")
-	writeAndCommit(t, mainDir, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, mainDir, "base.txt", "base", "base commit")
 
 	mainRepo := New(mainDir)
 	mainSHA, err := mainRepo.CurrentSHA()
@@ -111,7 +100,7 @@ func newGogitLinkedFixture(t *testing.T) *gogitLinkedFixture {
 
 	linkedDir := filepath.Join(container, "linked")
 	gitkit.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
-	writeAndCommit(t, linkedDir, "feature.txt", "feature", "feature commit")
+	gitkit.CommitFile(t, linkedDir, "feature.txt", "feature", "feature commit")
 
 	return &gogitLinkedFixture{
 		mainDir:      mainDir,
@@ -177,7 +166,7 @@ func TestGoGit_SucceedsOnLinkedWorktree_ReadsCommonDirState(t *testing.T) {
 func TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent(t *testing.T) {
 	parent := t.TempDir()
 	gitkit.MustRun(t, parent, "git", "init", "-b", "main")
-	writeAndCommit(t, parent, "a.txt", "hi", "init")
+	gitkit.CommitFile(t, parent, "a.txt", "hi", "init")
 
 	notARepo := filepath.Join(parent, "subdir")
 	if err := os.Mkdir(notARepo, 0o755); err != nil {
@@ -209,7 +198,7 @@ func TestGoGit_FailedOpen_NotCached(t *testing.T) {
 	}
 
 	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
-	writeAndCommit(t, dir, "a.txt", "hi", "init")
+	gitkit.CommitFile(t, dir, "a.txt", "hi", "init")
 
 	handle, err := repo.goGit()
 	if err != nil {
@@ -486,7 +475,7 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 		t.Fatalf("mkdir main: %v", err)
 	}
 	gitkit.MustRun(t, mainDir, "git", "init", "-b", "main")
-	writeAndCommit(t, mainDir, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, mainDir, "base.txt", "base", "base commit")
 	mainRepo := New(mainDir)
 	sharedSHA, err := mainRepo.CurrentSHA()
 	if err != nil {
@@ -497,7 +486,7 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 
 	linkedDir := filepath.Join(container, "linked")
 	gitkit.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
-	writeAndCommit(t, linkedDir, "feature-only.txt", "feature advances", "feature commit")
+	gitkit.CommitFile(t, linkedDir, "feature-only.txt", "feature advances", "feature commit")
 	linkedRepo := New(linkedDir)
 	linkedSHA, err := linkedRepo.CurrentSHA()
 	if err != nil {
@@ -507,7 +496,7 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 
 	otherClone := filepath.Join(container, "other-clone")
 	gitkit.MustRun(t, container, "git", "clone", "-b", "feature", bare, otherClone)
-	writeAndCommit(t, otherClone, "elsewhere.txt", "elsewhere advances", "elsewhere commit")
+	gitkit.CommitFile(t, otherClone, "elsewhere.txt", "elsewhere advances", "elsewhere commit")
 	gitkit.MustRun(t, otherClone, "git", "push")
 	gitkit.MustRun(t, linkedDir, "git", "fetch", "origin")
 

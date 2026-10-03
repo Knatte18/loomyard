@@ -53,7 +53,7 @@ func divergeCleanly(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
 	commitOnBranchCLI(t, h.PrimeWorktree(), "feature", "feature.txt", "feature\n", "feature: add file")
-	commitOnCurrentBranchCLI(t, h.PrimeWorktree(), "main-side.txt", "main\n", "main: add file")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "main-side.txt", "main\n", "main: add file")
 	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
 }
 

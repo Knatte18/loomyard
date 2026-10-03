@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -268,7 +269,7 @@ func TestParentReviewExchange_RejectThenFixGoesOnToPerch(t *testing.T) {
 
 	// The round's request directory rode along in the discussion commits.
 	rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), "round-1", "request.json"))
-	if got := mustGitOut(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
+	if got := gitkit.Git(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
 		t.Errorf("weft log touched %q; want it to include %q", got, rel)
 	}
 }

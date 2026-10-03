@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -21,7 +22,7 @@ import (
 
 const cleanSlug = "some-task"
 
-// commitFile writes content to rel under dir and commits it.
+// commitFile writes content to rel under dir and commits it, force-adding because the path may be ignored.
 func commitFile(t *testing.T, dir, rel, content string) {
 	t.Helper()
 	full := filepath.Join(dir, rel)
@@ -31,8 +32,8 @@ func commitFile(t *testing.T, dir, rel, content string) {
 	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", rel, err)
 	}
-	gitOut(t, dir, "add", "-f", "--", rel)
-	gitOut(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "add "+rel)
+	gitkit.Git(t, dir, "add", "-f", "--", rel)
+	gitkit.Git(t, dir, "commit", "-m", "add "+rel)
 }
 
 // captureLog routes the logger into a buffer for the test's duration.
@@ -107,10 +108,10 @@ func TestSpawnTaskPairStaysCleanThroughExclude(t *testing.T) {
 			if len(*launched) != 1 || (*launched)[0] != anchorDir {
 				t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, anchorDir)
 			}
-			if status := gitOut(t, worktreeDir, "status", "--porcelain"); status != "" {
+			if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
 				t.Errorf("git status --porcelain not empty:\n%s", status)
 			}
-			if out := gitOut(t, worktreeDir, "check-ignore", ".vscode/"); out == "" {
+			if out := gitkit.Git(t, worktreeDir, "check-ignore", ".vscode/"); out == "" {
 				t.Errorf("check-ignore reported .vscode/ not ignored")
 			}
 			excludeAfter, _ := os.ReadFile(excludePath)

@@ -1,7 +1,7 @@
 //go:build integration
 
 // main_integration_test.go holds the module-dispatcher tests that spawn
-// gitexec.RunGit(["init"], …) to seed a real git repo so lyxcwd.Resolve
+// gitkit.Git(t, cwd, "init") to seed a real git repo so lyxcwd.Resolve
 // succeeds, so this file is integration-tagged per the Test Tier Purity
 // Invariant.
 
@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -32,9 +32,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -74,9 +72,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -132,9 +128,7 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 
 	// Initialize a git repo so the spawned process's lyxcwd.Resolve succeeds.
 	cwd := t.TempDir()
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	// Mark cwd as a worktree lyx owns (presence of the durable _lyx tree) so the
 	// durable sink's cwd-anchored fallback is allowed to arm per isLyxWorktree
@@ -200,10 +194,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	cwd := t.TempDir()
 
 	// Initialize git repo so lyxcwd.Resolve succeeds.
-	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
@@ -241,9 +232,7 @@ type exitSweepFixture struct {
 func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
 	t.Helper()
 	cwd := t.TempDir()
-	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
-		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
-	}
+	gitkit.Git(t, cwd, "init")
 	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

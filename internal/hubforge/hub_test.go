@@ -9,7 +9,6 @@ package hubforge
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -27,34 +26,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// runGit runs a git subcommand in dir and returns its trimmed stdout, failing the test on a non-zero
-// exit.
-func runGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git %s in %s: %v", strings.Join(args, " "), dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
 func TestBuildBareTemplate(t *testing.T) {
 	t.Parallel()
 
 	warpBare, weftBare := buildBareTemplate()
 
 	t.Run("WarpHEADResolvesToMain", func(t *testing.T) {
-		head := runGit(t, warpBare, "symbolic-ref", "HEAD")
+		head := gitkit.Git(t, warpBare, "symbolic-ref", "HEAD")
 		if head != "refs/heads/main" {
 			t.Errorf("warp bare HEAD = %q; want refs/heads/main", head)
 		}
 	})
 
 	t.Run("WarpCommitCarriesRootAndBackendEntries", func(t *testing.T) {
-		out := runGit(t, warpBare, "ls-tree", "-r", "--name-only", "main")
+		out := gitkit.Git(t, warpBare, "ls-tree", "-r", "--name-only", "main")
 		entries := strings.Split(out, "\n")
 		var hasRoot, hasBackend bool
 		for _, e := range entries {
@@ -74,7 +59,7 @@ func TestBuildBareTemplate(t *testing.T) {
 	})
 
 	t.Run("WeftBareIsGenuinelyEmpty", func(t *testing.T) {
-		out := runGit(t, weftBare, "for-each-ref")
+		out := gitkit.Git(t, weftBare, "for-each-ref")
 		if out != "" {
 			t.Errorf("weft bare for-each-ref = %q; want no refs at all", out)
 		}
