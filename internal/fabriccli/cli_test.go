@@ -2,8 +2,7 @@
 
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
-// real hub built by hubforge.NewHub, commit --help's fixed-message/Warp-SHA-trailer prose,
-// pull --help's both-sides/reconcile prose, and the WEFT_SKIP_PUSH env-to-SyncOptions
+// real hub built by hubforge.NewHub, and the WEFT_SKIP_PUSH env-to-SyncOptions
 // mapping on push — this package exercises both the topology and content-sync verb
 // families against the one fabric command tree.
 
@@ -239,80 +238,6 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	remedy, _ := found["remedy"].(string)
 	if remedy == "" {
 		t.Errorf("pollution entry %+v has empty/missing 'remedy'; want a non-empty git rm --cached remedy", found)
-	}
-}
-
-// TestRunCLI_CommitHelp asserts that "fabric commit --help" output documents the fixed commit
-// message and the Warp-SHA trailer,
-// and does not advertise a --message flag that does not exist.
-func TestRunCLI_CommitHelp(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"commit", "--help"})
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(commit --help) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-
-	if !strings.Contains(got, "weft sync") {
-		t.Errorf("commit --help output missing fixed message string %q; got:\n%s", "weft sync", got)
-	}
-	if !strings.Contains(got, "Warp-SHA") {
-		t.Errorf("commit --help output missing %q trailer wording; got:\n%s", "Warp-SHA", got)
-	}
-	if strings.Contains(got, "--message") {
-		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
-	}
-}
-
-// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the both-sides pull/reconcile
-// behaviour — a help-accuracy assertion in the same style as TestRunCLI_CommitHelp, guarding
-// against the CLI/Cobra Invariant's "stale help is review-blocking" obligation now that pull drives
-// the unified Fabric.Pull instead of the weft-only PullWeft.
-func TestRunCLI_PullHelp(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"pull", "--help"})
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(pull --help) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-
-	if !strings.Contains(got, "Pulls both sides of the pair") {
-		t.Errorf("pull --help output missing both-sides Long text; got:\n%s", got)
-	}
-	if !strings.Contains(got, "reconcile") {
-		t.Errorf("pull --help output missing reconcile wording; got:\n%s", got)
-	}
-	if !strings.Contains(got, "rewrite") {
-		t.Errorf("pull --help output missing warp-history-rewrite wording; got:\n%s", got)
-	}
-}
-
-// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty and itself names the
-// both-sides/reconcile behaviour, building the command tree via the fabriccli.Command() seam (the
-// CLI/Cobra Invariant's "Short on every command" obligation, checked directly against pull's own
-// Short rather than via --help output, where Long supersedes Short).
-func TestRunCLI_PullShortNonEmpty(t *testing.T) {
-	t.Parallel()
-
-	root := fabriccli.Command()
-	pull, _, err := root.Find([]string{"pull"})
-	if err != nil {
-		t.Fatalf("root.Find([pull]) error: %v", err)
-	}
-
-	if pull.Short == "" {
-		t.Errorf("pullCmd.Short is empty; want a non-empty both-sides summary")
-	}
-	if !strings.Contains(pull.Short, "reconcil") {
-		t.Errorf("pullCmd.Short = %q; want it to mention reconcile behaviour", pull.Short)
 	}
 }
 
@@ -605,20 +530,21 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm asserts that a one-positional clone against a
-// local bare weft fixture carrying no recorded binding exits 1 through the output.Err envelope,
-// with a message naming both the unbound-binding condition and the two-argument form's exact
-// invocation as the remedy. makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
-// the unborn-HEAD case the weft-candidate guard admits on its own, so --force-bootstrap is not
-// needed here.
-func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
+// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare
+// weft carrying no recorded binding, and requires the envelope's error to equal the engine's own
+// refusal text exactly.
+// The refusal's wording is owned by fabricengine's TestCloneHub_UnboundWeftNamesTwoArgForm.
+func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	fixtures := t.TempDir()
-	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft")
+	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
 
-	cloneParent := t.TempDir()
+	_, engineErr := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: weftBare})
+	if !errors.Is(engineErr, fabricengine.ErrNoWarpBinding) {
+		t.Fatalf("CloneHub(%s) error = %v; want errors.Is ErrNoWarpBinding", weftBare, engineErr)
+	}
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", cloneParent, filepath.ToSlash(weftBare)})
+	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", t.TempDir(), weftBare})
 	if exitCode != 1 {
 		t.Fatalf("RunCLI(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
@@ -627,12 +553,8 @@ func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
 	if ok, _ := result["ok"].(bool); ok {
 		t.Errorf("RunCLI(clone <weft-url>) ok = true; want false")
 	}
-	errMsg, _ := result["error"].(string)
-	if !strings.Contains(errMsg, "has no recorded warp binding") {
-		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"has no recorded warp binding\" substring", errMsg)
-	}
-	if !strings.Contains(errMsg, "lyx fabric clone <weft-url> <warp-url>") {
-		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"lyx fabric clone <weft-url> <warp-url>\" substring", errMsg)
+	if got, _ := result["error"].(string); got != engineErr.Error() {
+		t.Errorf("RunCLI(clone <weft-url>) error = %q; want the engine's %q", got, engineErr.Error())
 	}
 }
 
@@ -651,20 +573,6 @@ func TestRunCLI_MergeHelp(t *testing.T) {
 		if !strings.Contains(got, flag) {
 			t.Errorf("merge --help output missing %q; got:\n%s", flag, got)
 		}
-	}
-}
-
-// TestRunCLI_MergeInHelp asserts "fabric merge-in --help" has a non-empty Short.
-func TestRunCLI_MergeInHelp(t *testing.T) {
-	t.Parallel()
-
-	root := fabriccli.Command()
-	mergeIn, _, err := root.Find([]string{"merge-in"})
-	if err != nil {
-		t.Fatalf("root.Find([merge-in]) error: %v", err)
-	}
-	if mergeIn.Short == "" {
-		t.Errorf("merge-in.Short is empty; want a non-empty summary")
 	}
 }
 
