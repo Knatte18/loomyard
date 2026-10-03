@@ -149,7 +149,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		if !bad {
 			bannedTok, bad = gitkitSpawnReference(string(data))
 		}
-		if bad &&!pathAllowlisted(relPath, allowedSpawners) {
+		if bad && !pathAllowlisted(relPath, allowedSpawners) {
 			failures = append(failures, fmt.Sprintf(
 				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				relPath, bannedTok,
