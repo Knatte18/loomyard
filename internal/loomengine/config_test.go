@@ -181,8 +181,7 @@ func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_MalformedJudgeSpec verifies an ungrammatical judge model-spec fails loud at load
-// time, naming the "judge" key.
+// TestLoadConfig_MalformedJudgeSpec verifies an ungrammatical judge model-spec fails loud at load time, naming the "judge" key.
 func TestLoadConfig_MalformedJudgeSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	writeLoomConfigWithKey(t, baseDir, "judge", `"sonnet[medium"`)
