@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
@@ -494,7 +495,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.stateDir(), "reed"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	buf := captureLogOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 
 	st := &ReedState{SelvagePaneID: "%selvage", Strands: []Strand{{GUID: "guid-w"}}}
 	const launchCmd = "claude"

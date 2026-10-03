@@ -6,7 +6,6 @@
 package shuttleengine
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
@@ -86,22 +85,6 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 			}
 		})
 	}
-}
-
-// captureLoggerOutput redirects internal/logger's stderr half into a buffer at Info verbosity for
-// the duration of the calling test, restoring both when it ends.
-// It is the seam the teardown-observability assertion below needs: Info is gated on verbosity for
-// that half, and the durable trace file is not readable from a test.
-func captureLoggerOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetVerbosity(0)
-		logger.SetOutput(os.Stderr)
-	})
-	return &buf
 }
 
 // TestRun_Wait_MechanismFailure_KeepsRunIdentity pins that a Wait which reaches no classification
@@ -174,7 +157,7 @@ func TestRun_Wait_LogsTeardownThroughLogger(t *testing.T) {
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
 				withRunClock(fc, fc.Now().Add(time.Minute)))
 
-			buf := captureLoggerOutput(t)
+			buf := logcapture.CaptureVerbose(t)
 			if _, err := run.Wait(); err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
@@ -1799,7 +1782,7 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
 		withRunClock(fc, fc.Now().Add(time.Minute)))
 
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	result, err := run.Wait()
 	if err != nil {
 		t.Fatalf("Wait() error: %v, want the classified Result returned despite the failed Outcome write", err)

@@ -1,7 +1,6 @@
 package mergeresolve
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -11,21 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
-// os.Stderr via t.Cleanup -- the same pattern internal/loomshed/gatefindings_test.go uses.
-func captureLogOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
 // results/errors.
@@ -346,7 +335,7 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
 			}
-			buf := captureLogOutput(t)
+			buf := logcapture.Capture(t)
 
 			res, err := r.Resolve(context.Background(), "source")
 			if err != nil {
@@ -387,7 +376,7 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	_, err = r.Resolve(context.Background(), "source")
 	if err == nil {

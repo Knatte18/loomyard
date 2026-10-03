@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestNewRunner_RefusesUnusableToldPaths pins the told-pair guard.
@@ -438,7 +439,7 @@ func TestRunner_Start_StrandTeardownFailure_LogsThroughLogger(t *testing.T) {
 	}
 	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error; want the save-run-state failure to propagate")
 	}

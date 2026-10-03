@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // seedLaunchScripts writes a placeholder launch script for each guid and returns the paths in order.
@@ -95,7 +96,7 @@ func TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor(t *testing.T) {
 
 func TestRemoveStrand_NoScriptSucceedsSilently(t *testing.T) {
 	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", "")}})
-	buf := captureLogOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 
 	if _, err := e.RemoveStrand("a", false); err != nil {
 		t.Fatalf("RemoveStrand: %v", err)

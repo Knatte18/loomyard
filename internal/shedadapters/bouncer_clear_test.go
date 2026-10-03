@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -199,7 +200,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	})
 
 	t.Run("VerdictWithNoParsableLedger", func(t *testing.T) {
-		logBuf := captureBouncerWarnings(t)
+		logBuf := logcapture.Capture(t)
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
@@ -208,7 +209,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 
 		outcome, ptr, err := b.Call(context.Background())
 		assertJudgeDegraded(t, outcome, ptr, err)
-		if logBuf.Len() == 0 {
+		if logBuf.String() == "" {
 			t.Error("Call() did not log a warning on a degraded path")
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
@@ -244,7 +245,7 @@ func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
 // the two failure causes are mechanically inseparable at this call site. archiveRunDir's own
 // rename-failure contract is unit-tested directly in archive_test.go.
 func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
-	logBuf := captureBouncerWarnings(t)
+	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
@@ -262,7 +263,7 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam after a failed clear; want it never reached")
 	}
-	if logBuf.Len() == 0 {
+	if logBuf.String() == "" {
 		t.Error("Call() did not log a warning on the failed clear")
 	}
 }
@@ -463,7 +464,7 @@ func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
 		ledger:  bouncerLedgerContent(1),
 	}})
 
-	logBuf := captureBouncerWarnings(t)
+	logBuf := logcapture.Capture(t)
 	shedfake.CallOK(t, b)
 
 	got := logBuf.String()

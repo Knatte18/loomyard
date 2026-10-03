@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeNamer is a SessionNamer answering from fixed fields and recording the drift queries it receives.
@@ -80,7 +81,7 @@ func TestPlanTitleRepairs(t *testing.T) {
 }
 
 func TestRepairNames_DriftedTitleIsRewrittenAndLogged(t *testing.T) {
-	logs := captureLogOutput(t)
+	logs := logcapture.CaptureVerbose(t)
 	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "claude"}})
@@ -111,7 +112,7 @@ func TestRepairNames_MatchingTitleIsLeftAlone(t *testing.T) {
 }
 
 func TestRepairNames_SessionNameRenamedOnIdlePane(t *testing.T) {
-	logs := captureLogOutput(t)
+	logs := logcapture.CaptureVerbose(t)
 	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})

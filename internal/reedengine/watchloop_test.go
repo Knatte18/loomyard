@@ -8,20 +8,18 @@
 package reedengine
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestWatchDefaultTiming_MatchesTheSixConstants pins that watchDefaultTiming returns exactly the
@@ -766,53 +764,15 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 
 // --- Dormant-mode driver tests -----------------------------------------------
 //
-// These reuse the driver-test fixture above, plus a mutex-guarded log buffer:
+// These reuse the driver-test fixture above, plus logcapture's mutex-guarded buffer:
 // watchLoop writes log lines from its own goroutine while the test goroutine
 // reads the buffer, so an unguarded bytes.Buffer would race under -race.
-
-// safeLogBuffer is a mutex-guarded io.Writer standing in for a real sink, safe for one goroutine
-// to write to while another reads its accumulated contents.
-type safeLogBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-// Write implements io.Writer under the buffer's own mutex.
-func (b *safeLogBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-// String returns a snapshot of everything written so far, under the same mutex as Write.
-func (b *safeLogBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
-// captureLog redirects logger's stderr sink to a fresh safeLogBuffer for the rest of the test,
-// restoring os.Stderr in a t.Cleanup. It also lowers the verbosity threshold to Info so that the
-// recovery line's Info-level log (unlike the dormancy warning, which is Warn and therefore already
-// visible at the default threshold) reaches the captured buffer, restoring the default Warn
-// threshold in the same cleanup.
-func captureLog(t *testing.T) *safeLogBuffer {
-	t.Helper()
-	buf := &safeLogBuffer{}
-	logger.SetOutput(buf)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
-		logger.SetVerbosity(0)
-	})
-	return buf
-}
 
 // TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot pins that when the told worktree root
 // vanishes while the loop is in poll mode, the loop stops issuing tmux calls, keeps running rather
 // than returning, and logs exactly one warning.
 func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 
@@ -848,7 +808,7 @@ func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 // TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot pins the identical entry-into-dormancy
 // contract from signal mode, so the per-event retry-streak machinery cannot swallow the transition.
 func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 	fake.answer("show-options", ownCommand, nil)
@@ -899,7 +859,7 @@ func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 // dormancy — signal mode here, so the regression guard is that it does not come back demoted to
 // poll.
 func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 	fake.answer("show-options", ownCommand, nil)
@@ -957,7 +917,7 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 // that is NOT errWorktreeRootGone must not drop the loop into dormancy, so the loop keeps
 // re-applying at its existing (poll) cadence exactly as it does today.
 func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
-	buf := captureLog(t)
+	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 	fake.answer("select-layout", "", errors.New("select-layout boom"))

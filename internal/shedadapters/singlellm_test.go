@@ -1,7 +1,6 @@
 package shedadapters
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -10,21 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
-// os.Stderr via t.Cleanup -- the same pattern internal/loomshed/gatefindings_test.go uses.
-func captureLogOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 func specSource(spec shuttleengine.Spec, err error) SpecSource {
 	return func() (shuttleengine.Spec, error) {
@@ -102,7 +91,7 @@ func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 				RunDir:     dir,
 			}}
 			p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
-			buf := captureLogOutput(t)
+			buf := logcapture.Capture(t)
 
 			_, _, err := p.Call(context.Background())
 			if err == nil {
@@ -135,7 +124,7 @@ func TestSingleLLMProducer_NotStartedWrapsErrNotStarted(t *testing.T) {
 		spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, RunDir: dir, NotStarted: notStarted}}
 		p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
-		captureLogOutput(t)
+		logcapture.Capture(t)
 
 		_, _, err := p.Call(context.Background())
 		if err == nil {
@@ -161,7 +150,7 @@ func TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn(t *testing.
 		DuringRun: cancel,
 	}
 	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	_, _, err := p.Call(ctx)
 	if err == nil {
@@ -170,7 +159,7 @@ func TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn(t *testing.
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
 	}
-	if buf.Len() != 0 {
+	if buf.String() != "" {
 		t.Errorf("captured log buffer = %q; want empty on the cancellation path", buf.String())
 	}
 }

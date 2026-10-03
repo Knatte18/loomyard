@@ -12,7 +12,6 @@
 package landingshed
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -36,20 +35,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// captureLogOutput redirects logger output into a buffer for the duration of
-// one test, restoring os.Stderr via t.Cleanup -- the test-log-capture-pattern
-// shared decision's inline shape, modeled on
-// internal/loomshed/gatefindings_test.go.
-func captureLogOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 // recordingResolver is the in-package fake standing in for the unexported resolver seam: it records
 // whether Resolve was called and what source it was called with, and returns a scripted result/err.
@@ -355,7 +343,7 @@ func TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause(t *testing.T) {
 	p := &Publish{deps: deps, resolver: res}
 
 	installFailingGitHubClientFactory(t, errors.New("boom"))
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
@@ -387,7 +375,7 @@ func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testin
 	srv.listStatus = http.StatusUnprocessableEntity
 	srv.listBody = `{"message":"server exploded"}`
 	srv.install(t)
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
@@ -418,7 +406,7 @@ func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
 	srv.createStatus = http.StatusUnprocessableEntity
 	srv.createBody = `{"message":"server exploded"}`
 	srv.install(t)
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	requireReason(t, ptr)
@@ -858,7 +846,7 @@ func TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn(t *testing
 			srv := newPublishGitHubServer(t, &order)
 			tt.setup(srv)
 			srv.install(t)
-			buf := captureLogOutput(t)
+			buf := logcapture.Capture(t)
 
 			_, _, err := p.Call(context.Background())
 			if err == nil {

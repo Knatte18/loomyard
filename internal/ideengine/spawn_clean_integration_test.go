@@ -16,8 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const cleanSlug = "some-task"
@@ -34,15 +34,6 @@ func commitFile(t *testing.T, dir, rel, content string) {
 	}
 	gitkit.Git(t, dir, "add", "-f", "--", rel)
 	gitkit.Git(t, dir, "commit", "-m", "add "+rel)
-}
-
-// captureLog routes the logger into a buffer for the test's duration.
-func captureLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
 }
 
 // assertInteractiveChain fails the test unless anchorDir's tasks.json is the interactive chain with absolute commands and --unless-name orch on the add row.
@@ -183,7 +174,7 @@ func TestSpawnSkipsTrackedVSCode(t *testing.T) {
 			commitFile(t, worktreeDir, filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode", "tasks.json")), committed)
 			excludePath := sharedExcludePath(t, worktreeDir)
 			excludeBefore, _ := os.ReadFile(excludePath)
-			logBuf := captureLog(t)
+			logBuf := logcapture.Capture(t)
 
 			if err := Spawn(l, slug); err != nil {
 				t.Fatalf("Spawn: %v", err)
@@ -227,7 +218,7 @@ func TestSpawnPrimeNameFailureOpensBareFolder(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	l := &lyxcwd.Location{RepoName: h.Location.RepoName, HubPath: h.Path, WorktreeName: notGit, AnchorRel: h.Location.AnchorRel}
-	logBuf := captureLog(t)
+	logBuf := logcapture.Capture(t)
 
 	if err := Spawn(l, cleanSlug); err != nil {
 		t.Fatalf("Spawn: %v", err)

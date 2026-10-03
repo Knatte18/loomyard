@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const pendingSendText = "A reviewer notice is waiting — read it and end your turn."
@@ -115,7 +116,7 @@ func TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage(t *testing.T) 
 }
 
 func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	var calls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand"},

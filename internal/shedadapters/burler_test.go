@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -540,7 +541,7 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buf := captureLogOutput(t)
+			buf := logcapture.Capture(t)
 			runDir := t.TempDir()
 			writeJudgedRound(t, runDir, 1)
 			writeFocusFileRaw(t, runDir, 2, tt.focus)

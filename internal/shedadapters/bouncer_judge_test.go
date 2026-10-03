@@ -8,7 +8,6 @@
 package shedadapters
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -267,17 +266,6 @@ func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
 // archive-sibling filenames are computable rather than discovered by directory scan.
 var bouncerJudgeTestClock = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 
-// captureBouncerWarnings redirects logger's stderr sink into a buffer for the duration of t,
-// restoring os.Stderr via t.Cleanup, matching the pattern internal/treadleengine/engine_test.go
-// already establishes for asserting a Warn was logged.
-func captureBouncerWarnings(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
-
 // archivedSiblingPath returns the path archiveStaleOutputs would rename original to when now
 // resolves to instant and no same-second collision exists, mirroring archive.go's own naming
 // scheme.
@@ -437,12 +425,12 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logBuf := captureBouncerWarnings(t)
+			logBuf := logcapture.Capture(t)
 			b, _ := tt.buildBouncer(t)
 
 			outcome, ptr, err := b.Call(context.Background())
 			assertJudgeDegraded(t, outcome, ptr, err)
-			if logBuf.Len() == 0 {
+			if logBuf.String() == "" {
 				t.Error("Call() did not log a warning on a degraded path")
 			}
 		})
@@ -457,14 +445,14 @@ func TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue(t *testing.T
 	}
 	for _, oc := range outcomes {
 		t.Run(string(oc), func(t *testing.T) {
-			logBuf := captureBouncerWarnings(t)
+			logBuf := logcapture.Capture(t)
 			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: oc}}
 			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
 			outcome, ptr, err := b.Call(context.Background())
 			assertJudgeDegraded(t, outcome, ptr, err)
-			if logBuf.Len() == 0 {
+			if logBuf.String() == "" {
 				t.Error("Call() did not log a warning on a degraded path")
 			}
 		})

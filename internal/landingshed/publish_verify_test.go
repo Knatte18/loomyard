@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // publishVerifyFixture is a Publish over a real gate with a fake runner, a fake resolver and a push closure that records whether it ran.
@@ -154,7 +155,7 @@ func TestPublishVerify_ResolverStuck(t *testing.T) {
 func TestPublishVerify_EmptyCommand(t *testing.T) {
 	t.Run("no marker", func(t *testing.T) {
 		fx := newPublishVerifyFixture(t, "", false)
-		buf := captureLogOutput(t)
+		buf := logcapture.Capture(t)
 		outcome, _, err := fx.call(t)
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
@@ -169,7 +170,7 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 	t.Run("with marker", func(t *testing.T) {
 		fx := newPublishVerifyFixture(t, "", true)
 		fx.gate.seedMarker(t)
-		buf := captureLogOutput(t)
+		buf := logcapture.Capture(t)
 		outcome, _, err := fx.call(t)
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)

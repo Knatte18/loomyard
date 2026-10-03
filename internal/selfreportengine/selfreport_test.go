@@ -9,34 +9,20 @@
 package selfreportengine
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// captureLogOutput redirects logger output into a buffer for the duration of
-// one test, restoring os.Stderr via t.Cleanup -- the test-log-capture-pattern
-// shared decision's inline shape, modeled on
-// internal/loomshed/gatefindings_test.go.
-func captureLogOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 // requestCapture describes one HTTP request CreateIssue actually sent: the
 // method and path, plus the decoded JSON body, so a test can assert on
@@ -205,7 +191,7 @@ func TestCreateIssue_NoBodyOmitsField(t *testing.T) {
 // proceeding with a nil client.
 func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	url, number, err := CreateIssue("t", nil, []string{"bug"})
 
@@ -258,7 +244,7 @@ func TestCreateIssue_NonSuccessResponse(t *testing.T) {
 	var captured []requestCapture
 	server := newIssueServer(t, http.StatusUnprocessableEntity, `{"message":"`+errMessage+`"}`, &captured)
 	installGitHubClient(t, server.URL)
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	url, number, err := CreateIssue("t", nil, []string{"bug"})
 

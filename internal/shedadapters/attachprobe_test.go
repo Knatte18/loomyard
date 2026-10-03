@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -278,7 +279,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T)
 }
 
 func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
-	logBuf := captureBouncerWarnings(t)
+	logBuf := logcapture.Capture(t)
 	attach := &shedfake.Shuttle{AttachErr: errors.New("reed state unreadable")}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
@@ -290,7 +291,7 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 	if attach.Called {
 		t.Error("Run was called after a failed probe; want no spawn when liveness could not be determined")
 	}
-	if logBuf.Len() == 0 {
+	if logBuf.String() == "" {
 		t.Error("Call() did not log a warning on the failed probe")
 	}
 	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {

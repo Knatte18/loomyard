@@ -33,6 +33,13 @@ func (b *Buffer) String() string {
 	return b.sb.String()
 }
 
+// Reset discards everything captured so far.
+func (b *Buffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.sb.Reset()
+}
+
 // Capture points logger output at a fresh Buffer and restores os.Stderr and the default verbosity in t.Cleanup.
 func Capture(t testing.TB) *Buffer {
 	t.Helper()

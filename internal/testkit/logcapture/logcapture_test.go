@@ -31,6 +31,18 @@ func TestCaptureVerbose_CapturesInfo(t *testing.T) {
 	}
 }
 
+func TestBuffer_ResetDiscardsEarlierOutput(t *testing.T) {
+	buf := Capture(t)
+	logger.Warn("before-reset")
+	buf.Reset()
+	logger.Warn("after-reset")
+
+	got := buf.String()
+	if strings.Contains(got, "before-reset") || !strings.Contains(got, "after-reset") {
+		t.Errorf("captured %q, want only the line logged after Reset", got)
+	}
+}
+
 func TestCapture_RestoresOutputAfterTest(t *testing.T) {
 	var buf *Buffer
 	t.Run("inner", func(t *testing.T) {

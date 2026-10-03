@@ -2,7 +2,7 @@
 // fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
 // exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
 // touches tmux and so stays hermetic, and pins reconcileLocked's reap log line via
-// captureLogOutput (logcapture_test.go).
+// logcapture.CaptureVerbose.
 
 package reedengine
 
@@ -10,6 +10,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 func equalStringSlices(a, b []string) bool {
@@ -304,7 +306,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
 		e := newTestEngine(t)
 		installFakeTmux(t, e)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
@@ -327,7 +329,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("KillsNothing_LogsNothing", func(t *testing.T) {
 		e := newTestEngine(t)
 		installFakeTmux(t, e)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{}
 		killed, err := e.reconcileLocked(st, nil)
@@ -351,7 +353,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 			}
 			return "", nil
 		})
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}

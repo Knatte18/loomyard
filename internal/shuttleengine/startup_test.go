@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // frozenClock never advances on its own: Now always returns the same fixed instant and Sleep is a
@@ -110,7 +111,7 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
 	if err != nil {
 		t.Fatalf("StartGated() error = %v; want nil", err)
@@ -242,7 +243,7 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 	runner, anchorPath := fx.Runner, fx.Anchor
 
 	outputFile := filepath.Join(t.TempDir(), "out.md")
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
 	if run != nil {
 		t.Errorf("StartGated() run = %+v; want nil", run)

@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestParseClientList mirrors TestParseWindowSize's shape for the sibling parser: a table of
@@ -529,7 +530,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	t.Run("SameSizeClient_NoWarning", func(t *testing.T) {
 		e, fake := newAttachTestEngine(t, goodAttachStrands())
 		fake.answer("list-clients", "tty0 80 24", nil)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -542,7 +543,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	t.Run("DifferentSizeClient_OneWarningLine", func(t *testing.T) {
 		e, fake := newAttachTestEngine(t, goodAttachStrands())
 		fake.answer("list-clients", "tty0 100 40", nil)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -561,7 +562,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	t.Run("ThreeClientsTwoDiffer_TwoWarningLines", func(t *testing.T) {
 		e, fake := newAttachTestEngine(t, goodAttachStrands())
 		fake.answer("list-clients", "tty0 80 24\ntty1 100 40\ntty2 90 30", nil)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -583,7 +584,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	t.Run("ListClientsError_WarnsAndDoesNotChangeBehaviour", func(t *testing.T) {
 		e, fake := newAttachTestEngine(t, goodAttachStrands())
 		fake.answer("list-clients", "", errors.New("boom"))
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -597,7 +598,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 		e, fake := newAttachTestEngine(t, goodAttachStrands())
 		fake.answerFormat("#{window-size}", "manual", nil)
 		fake.answer("list-clients", "tty0 999 999", nil)
-		buf := captureLogOutput(t)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
