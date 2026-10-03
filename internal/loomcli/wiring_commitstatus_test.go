@@ -19,6 +19,11 @@ import (
 
 // TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
 // nil, the seam calls Commit exactly once and Push exactly once, in that order, and returns nil.
+// selfStatusRel is the status file's relative path for the self run.
+func selfStatusRel(location *lyxcwd.Location) string {
+	return shedrun.StatusRel(location, shedrun.SelfRunID)
+}
+
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
@@ -178,7 +183,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 			t.Parallel()
 			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 			tt.setup(t, loomengine.LoomReviewsDir(location))
-			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			want := []string{selfStatusRel(location)}
 			if tt.wantReviews {
 				want = append(want, loomengine.LoomReviewsDirRel())
 			}
@@ -244,7 +249,7 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 			t.Parallel()
 			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 			tt.setup(t, location)
-			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			want := []string{selfStatusRel(location)}
 			if tt.wantLoom {
 				want = append(want, loomengine.LoomDurableDirRel())
 			}
@@ -293,7 +298,7 @@ func TestStatusCommitPathspec_PendingRejectionHoldsTheRound(t *testing.T) {
 				writeFile(t, loomengine.LoomRejectionPath(location), "{}\n")
 			}
 
-			want := []string{shedrun.StatusRel(location, shedrun.SelfRunID)}
+			want := []string{selfStatusRel(location)}
 			if !tt.wantHoldDir {
 				want = append(want, loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel())
 			}

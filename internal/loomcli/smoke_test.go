@@ -209,6 +209,11 @@ func fastDeadlineLoomConfig() string {
 // and runs a real binary, so testing.Testing() is false there and the spawn genuinely fires against
 // this fixture's own hub, which this test then tears down. LYX_REED_WATCHDOG does not suppress it
 // either -- that key reaches the worktree-level watch goroutine, never the process start.
+// smokeStatusRel is the status file's relative path for the self run.
+func smokeStatusRel(loc *lyxcwd.Location) string {
+	return shedrun.StatusRel(loc, shedrun.SelfRunID)
+}
+
 func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -431,7 +436,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 		t.Fatalf("loomshed.Seed: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
 }
@@ -466,7 +471,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit poisoned status: %v", err)
 	}
 }
@@ -485,7 +490,7 @@ func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 		t.Fatalf("write malformed status: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit malformed status: %v", err)
 	}
 }
@@ -894,7 +899,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	if afterCount != beforeCount+1 {
 		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
 	}
-	wantFiles := []string{shedrun.StatusRel(loc, shedrun.SelfRunID)}
+	wantFiles := []string{smokeStatusRel(loc)}
 	if changed := weftHeadChangedFiles(t, weftDir); !slices.Equal(changed, wantFiles) {
 		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
 	}

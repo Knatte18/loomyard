@@ -46,6 +46,11 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 // writeStatusFile writes content at loom's own status path for location, creating the directory the
 // first call needs. It goes through shedrun's own accessor rather than a hand-built join so the test
 // commits exactly the path the seam's own pathspec names.
+// realSeamStatusRel is the status file's relative path for the self run.
+func realSeamStatusRel(location *lyxcwd.Location) string {
+	return shedrun.StatusRel(location, shedrun.SelfRunID)
+}
+
 func writeStatusFile(t *testing.T, location *lyxcwd.Location, content string) {
 	t.Helper()
 	path := shedrun.StatusFile(location, shedrun.SelfRunID)
@@ -106,8 +111,8 @@ func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
 	if got := gitkit.Git(t, weftSibling, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
 		t.Errorf("weft HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, shedrun.StatusRel(location, shedrun.SelfRunID)) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, shedrun.StatusRel(location, shedrun.SelfRunID))
+	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, realSeamStatusRel(location)) {
+		t.Errorf("weft HEAD touched %q; want it to include %q", got, realSeamStatusRel(location))
 	}
 	if got := gitkit.Git(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
 		t.Errorf("unpushed weft commits after the seam = %q; want none — the seam pushes synchronously", got)
@@ -266,7 +271,7 @@ func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(location, shedrun.SelfRunID)) {
+	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
 		t.Errorf("weft HEAD touched %q; want only the status file", got)
 	}
 }
@@ -281,7 +286,7 @@ func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(shedrun.StatusRel(location, shedrun.SelfRunID)) {
+	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
 		t.Errorf("weft HEAD touched %q; want only the status file", got)
 	}
 }

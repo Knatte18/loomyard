@@ -18,6 +18,11 @@ import (
 // the batch: a repeated (producer, state) pair commits and pushes exactly once, not twice, across
 // two calls to the SAME seam instance. It also pins batten's own commit-message prefix, which the
 // shared core's tests cannot, since they render whatever prefix they are given.
+// runStatusRel is the status file's relative path for runID.
+func runStatusRel(loc *lyxcwd.Location, runID string) string {
+	return shedrun.StatusRel(loc, runID)
+}
+
 func TestNewCommitStatusSeam_RepeatedPairCommitsOnce(t *testing.T) {
 	t.Parallel()
 
@@ -191,15 +196,15 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
 
 	got := battenRunCommitPaths(loc, runID)
-	if len(got) != 1 || got[0] != shedrun.StatusRel(loc, runID) {
-		t.Fatalf("battenRunCommitPaths with no seed on disk = %v; want just %q", got, shedrun.StatusRel(loc, runID))
+	if len(got) != 1 || got[0] != runStatusRel(loc, runID) {
+		t.Fatalf("battenRunCommitPaths with no seed on disk = %v; want just %q", got, runStatusRel(loc, runID))
 	}
 
 	if err := shedrun.WriteSeed(loc, runID, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("write seed: %v", err)
 	}
 	got = battenRunCommitPaths(loc, runID)
-	want := []string{shedrun.StatusRel(loc, runID), shedrun.SeedRel(loc, runID)}
+	want := []string{runStatusRel(loc, runID), shedrun.SeedRel(loc, runID)}
 	if len(got) != len(want) {
 		t.Fatalf("battenRunCommitPaths with a seed on disk = %v; want %v", got, want)
 	}

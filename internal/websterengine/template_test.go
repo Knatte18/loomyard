@@ -877,7 +877,7 @@ func TestRenderMasterPrompt_NeverFillsWorktreeRoot(t *testing.T) {
 func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
 
-	got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), "")
+	got, err := renderIntegration(plan, "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), "")
 	if err != nil {
 		t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
 	}
@@ -891,7 +891,7 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 func TestRenderIntegrationPrompt_EmptyLogPathErrors(t *testing.T) {
 	plan := &planparser.Plan{Verify: "go build ./..."}
 
-	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "", "/worktree", newTestStencilsDir(t), ""); err == nil {
+	if _, err := renderIntegration(plan, "", "/worktree", newTestStencilsDir(t), ""); err == nil {
 		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for an empty verify log path")
 	}
 }
@@ -902,9 +902,14 @@ func TestRenderIntegrationPrompt_EmptyLogPathErrors(t *testing.T) {
 func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 	plan := &planparser.Plan{Verify: ""}
 
-	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), ""); err == nil {
+	if _, err := renderIntegration(plan, "/scratch/verify/integration.log", "/worktree", newTestStencilsDir(t), ""); err == nil {
 		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for a plan with no plan-level verify")
 	}
+}
+
+// renderIntegration calls websterengine.RenderIntegrationPrompt with the fixed report path.
+func renderIntegration(plan *planparser.Plan, logPath, worktreeRoot, stencilsDir, notePath string) ([]byte, error) {
+	return websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", logPath, worktreeRoot, stencilsDir, notePath)
 }
 
 // renderIntegrationFixForTest renders the integration-fix prompt with fixed paths and two regressions.
@@ -1245,7 +1250,7 @@ func TestRenderIntegrationPrompt_FrictionDirective(t *testing.T) {
 	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-integration.md")
-		got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath)
+		got, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath)
 		if err != nil {
 			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
 		}
@@ -1254,7 +1259,7 @@ func TestRenderIntegrationPrompt_FrictionDirective(t *testing.T) {
 
 	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
 		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", anchorRoot, stencilsDir, "")
+		got, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, "")
 		if err != nil {
 			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
 		}
@@ -1265,7 +1270,7 @@ func TestRenderIntegrationPrompt_FrictionDirective(t *testing.T) {
 		anchorRoot, stencilsDir := frictionActiveLayout(t)
 		stripFrictionMarker(t, stencilsDir, "webster-template-integration")
 		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-integration.md")
-		if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath); err != nil {
+		if _, err := renderIntegration(plan, "/scratch/verify/integration.log", anchorRoot, stencilsDir, notePath); err != nil {
 			t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error even with a marker-free template", err)
 		}
 	})
