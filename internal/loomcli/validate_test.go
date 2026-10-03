@@ -244,8 +244,7 @@ func strconvBool(b bool) string {
 // glyphPlanFixture writes a syntactically complete, one-card language: go plan under
 // <anchorPath>/_lyx/plan/, whose sole card's Create group targets createTarget, and returns a
 // *loomCLI wired with anchorPath and worktreeRoot -- duplicated from
-// internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture per the
-// duplicate-test-helpers-rather-than-share-them Shared Decision.
+// internal/loomshed/planvalidate_test.go's own seedGlyphPlanFixture.
 func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget string) *loomCLI {
 	t.Helper()
 
@@ -283,8 +282,7 @@ func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget strin
 
 // writeGlyphRepoForCLITest writes files (keyed by repository-relative path) under a fresh
 // t.TempDir() and returns that directory's absolute path -- duplicated from
-// internal/planglyph/repo_test.go's writeFixtureRepo per the
-// duplicate-test-helpers-rather-than-share-them Shared Decision.
+// internal/planglyph/repo_test.go's writeFixtureRepo.
 func writeGlyphRepoForCLITest(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()

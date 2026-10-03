@@ -197,7 +197,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 // <anchorPath>/_lyx/plan/ whose sole card's Create group targets createTarget and, when useTarget
 // is non-empty, whose Uses: field also names useTarget, and returns a *loomCLI wired with
 // anchorPath and worktreeRoot -- duplicated from internal/loomcli/validate_test.go's own
-// glyphPlanFixture per the duplicate-test-helpers-rather-than-share-them Shared Decision, extended
+// glyphPlanFixture, extended
 // with the optional Uses: field this parity table's fifth and sixth fixtures both need to reach the
 // resolve-backed half without the Uses target also tripping the Create-side inversion.
 func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, useTarget string) *loomCLI {
@@ -239,8 +239,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 }
 
 // writeGlyphRepoForParityTest writes files (keyed by repository-relative path) under dir --
-// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo per the
-// duplicate-test-helpers-rather-than-share-them Shared Decision.
+// duplicated from internal/planglyph/repo_test.go's writeFixtureRepo.
 func writeGlyphRepoForParityTest(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
 	for rel, content := range files {
@@ -495,7 +494,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 
 // reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
-// It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan per the duplicate-test-helpers-rather-than-share-them Shared Decision.
+// It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {
 	t.Helper()
 	planDir := planparser.PlanDir(anchorPath)

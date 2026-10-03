@@ -271,8 +271,7 @@ func stripFrictionMarker(t *testing.T, stencilsDir, stencilName string) {
 }
 
 // requireContains fails the test, naming the missing needle, if text does
-// not contain it. Kept package-local rather than shared, since test-helper
-// packages are deliberately not shared across modules.
+// not contain it.
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
