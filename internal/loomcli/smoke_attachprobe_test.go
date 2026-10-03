@@ -42,12 +42,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a
-// provider session. Prepare and ParseEvents carry behaviour; every other method answers the zero
-// value, because the attach path this suite exercises -- Start's run.json persistence, reed's
-// liveness answer, and Wait's events-plus-output-files poll -- never reaches any of them.
+// provider session. Prepare and ParseEvents carry behaviour; every other method is the embedded
+// shuttlefake.Engine's inert answer, because the attach path this suite exercises -- Start's run.json
+// persistence, reed's liveness answer, and Wait's events-plus-output-files poll -- never reaches any
+// of them.
+// It is used through a pointer, since the embedded fake holds a mutex.
 //
 // The script it writes reproduces a real run's completion shape in the order shuttle's Wait requires
 // it: stay quiet for a moment (so the round is in flight when the probe runs), write every declared
@@ -55,12 +58,13 @@ import (
 // only on an event whose tick also finds every output file present, so writing the event first would
 // classify the run asking instead.
 type shellLaunchEngine struct {
+	shuttlefake.Engine
 	// quietSeconds is how long the script waits before writing anything, so the run is genuinely
 	// in flight rather than already complete when the producer's probe runs.
 	quietSeconds int
 }
 
-func (e shellLaunchEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+func (e *shellLaunchEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	eventsPath := filepath.Join(runDir, "events.jsonl")
 
 	script := fmt.Sprintf("#!/bin/sh\nsleep %d\n", e.quietSeconds)
@@ -79,30 +83,11 @@ func (e shellLaunchEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shu
 
 // ParseEvents maps any non-empty events.jsonl content onto a single turn-end event, which is the one
 // provider fact Wait's completion test needs from this seam.
-func (e shellLaunchEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
+func (e *shellLaunchEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
-}
-
-func (e shellLaunchEngine) Startup(_ string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-
-func (e shellLaunchEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e shellLaunchEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e shellLaunchEngine) ComposeSend(_ string) []shuttleengine.PaneInput        { return nil }
-func (e shellLaunchEngine) ModelSwitchSequence(_ string) []shuttleengine.PaneInput {
-	return nil
-}
-
-func (e shellLaunchEngine) AuditForks(_, _ string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-func (e shellLaunchEngine) AuditForksIncremental(_, _ string, _ map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
 }
 
 // refusingBurlerRunner fails the test if a round is ever run through it. It stands in for the
@@ -154,7 +139,7 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	liveSpec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a live burler round",
@@ -263,7 +248,7 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, shellLaunchEngine{quietSeconds: 1}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 1}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for an agent that finishes and is then orphaned",

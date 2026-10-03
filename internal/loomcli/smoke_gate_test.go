@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
 // gateRepromptReadEngine is a shuttleengine.Engine that launches a plain shell script standing in
@@ -47,10 +48,12 @@ import (
 // real behaviour: it types text into the pane and submits it, exactly what the script's own `read`
 // needs to unblock.
 //
-// Every other method matches shellLaunchEngine's own zero-behaviour answers, because the path this
+// Every other method is the embedded shuttlefake.Engine's inert answer, because the path this
 // suite exercises (Start's run.json persistence, reed's liveness answer, Wait's events-plus-
 // output-files poll, and now Send's real delivery) never reaches any of them.
+// It is used through a pointer, since the embedded fake holds a mutex.
 type gateRepromptReadEngine struct {
+	shuttlefake.Engine
 	// quietSeconds is how long the script waits before writing its first, deliberately-invalid
 	// artifact, so the run is genuinely in flight rather than already complete when Wait's first
 	// tick runs.
@@ -66,7 +69,7 @@ type gateRepromptReadEngine struct {
 // gate contract: the shell's own tty driver is what echoes the re-prompt text into the pane's visible
 // viewport, which is the same evidence sendVerified (run.go) demands of a real agent's pane, and the
 // script does not react until that evidence-producing delivery actually lands.
-func (e gateRepromptReadEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+func (e *gateRepromptReadEngine) Prepare(runDir string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	if len(spec.OutputFiles) != 2 {
 		return shuttleengine.Launch{}, fmt.Errorf("gateRepromptReadEngine: want exactly 2 output files (decision record, support log), got %d", len(spec.OutputFiles))
 	}
@@ -106,38 +109,19 @@ func (e gateRepromptReadEngine) Prepare(runDir string, spec shuttleengine.Spec, 
 
 // ParseEvents maps any non-empty events.jsonl content onto a single turn-end event, matching
 // shellLaunchEngine's own reading of this stub's events file.
-func (e gateRepromptReadEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
+func (e *gateRepromptReadEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
 }
 
-func (e gateRepromptReadEngine) Startup(_ string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-
-func (e gateRepromptReadEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e gateRepromptReadEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-
 // ComposeSend types text into the pane and submits it with an Enter, which is what unblocks the
-// script's own `read` -- the one method this stub gives real behaviour, unlike every other method
-// here and unlike shellLaunchEngine's own no-op ComposeSend, which this suite's send-verification
-// path never needs to reach.
-func (e gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneInput {
+// script's own `read` -- the one method this stub gives real behaviour besides Prepare and
+// ParseEvents, unlike shellLaunchEngine's own inert ComposeSend, which this suite's
+// send-verification path never needs to reach.
+func (e *gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
-}
-
-func (e gateRepromptReadEngine) ModelSwitchSequence(_ string) []shuttleengine.PaneInput {
-	return nil
-}
-
-func (e gateRepromptReadEngine) AuditForks(_, _ string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-func (e gateRepromptReadEngine) AuditForksIncremental(_, _ string, _ map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
 }
 
 // TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact proves the one thing no untagged test
@@ -176,7 +160,7 @@ func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	runner := shuttleengine.NewRunner(reedEngine, gateRepromptReadEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, &gateRepromptReadEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	spec := shuttleengine.Spec{
 		Prompt:      "smoke: stand in for a re-prompted discussion writer",
