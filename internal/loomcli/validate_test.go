@@ -9,7 +9,6 @@ package loomcli
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins loomcli's half of the R6-27
@@ -173,13 +173,13 @@ func TestValidateDiscussionCmd(t *testing.T) {
 				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExit, out.String())
 			}
 
-			env := decodeSingleEnvelope(t, out.String())
+			env := envelope.Decode(t, out.String())
 
-			if ok, _ := env["ok"].(bool); ok != tt.wantOK {
-				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOK)
+			if env.OK != tt.wantOK {
+				t.Errorf("envelope ok = %v; want %v", env.OK, tt.wantOK)
 			}
 
-			findings, hasFindings := env["findings"]
+			findings, hasFindings := env.Raw["findings"]
 			if hasFindings != tt.wantFindings {
 				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindings, env)
 			}
@@ -316,11 +316,8 @@ func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 		t.Fatalf("exit code = %d; want 0 (output: %q)", exitCode, out.String())
 	}
 
-	env := decodeSingleEnvelope(t, out.String())
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Fatalf("envelope ok = %v; want true", env["ok"])
-	}
-	findings, hasFindings := env["findings"]
+	env := envelope.RequireOK(t, out.String())
+	findings, hasFindings := env.Raw["findings"]
 	if !hasFindings {
 		t.Fatalf("envelope findings key absent; want the informational finding surfaced on the pass path (envelope: %v)", env)
 	}
@@ -343,14 +340,7 @@ func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 	}
 
-	env := decodeSingleEnvelope(t, out.String())
-	if ok, _ := env["ok"].(bool); ok {
-		t.Fatalf("envelope ok = %v; want false", env["ok"])
-	}
-	errMsg, _ := env["error"].(string)
-	if !strings.Contains(errMsg, "quarry") {
-		t.Errorf("envelope error = %q; want it to name quarry rather than the plan", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "quarry")
 }
 
 // TestValidatePlanCmd_RequireApprovedFlagRegistered asserts the flag itself is registered on the
@@ -376,10 +366,7 @@ func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 	}
-	env := decodeSingleEnvelope(t, out.String())
-	if errMsg, _ := env["error"].(string); !strings.Contains(errMsg, "mutually exclusive") {
-		t.Errorf("envelope error = %q; want it to name the exclusive flags", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "mutually exclusive")
 }
 
 // TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch asserts the --rework verb reports the same findings as PR-Rework's gate when first_card differs from the told number.
@@ -398,8 +385,8 @@ func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testin
 	if exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"}); exitCode != 1 {
 		t.Fatalf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 	}
-	env := decodeSingleEnvelope(t, out.String())
-	if _, ok := env["findings"]; !ok {
+	env := envelope.Decode(t, out.String())
+	if _, ok := env.Raw["findings"]; !ok {
 		t.Fatalf("envelope = %v; want a findings key", env)
 	}
 	if !strings.Contains(result.Findings, "rework-first-card") || !strings.Contains(out.String(), "rework-first-card") {
@@ -481,13 +468,13 @@ func TestValidatePlanCmd(t *testing.T) {
 				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExitAbsent, out.String())
 			}
 
-			env := decodeSingleEnvelope(t, out.String())
+			env := envelope.Decode(t, out.String())
 
-			if ok, _ := env["ok"].(bool); ok != tt.wantOKAbsent {
-				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOKAbsent)
+			if env.OK != tt.wantOKAbsent {
+				t.Errorf("envelope ok = %v; want %v", env.OK, tt.wantOKAbsent)
 			}
 
-			_, hasFindings := env["findings"]
+			_, hasFindings := env.Raw["findings"]
 			if hasFindings != tt.wantFindAbsent {
 				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindAbsent, env)
 			}
@@ -505,13 +492,13 @@ func TestValidatePlanCmd(t *testing.T) {
 				t.Errorf("exit code = %d; want %d (output: %q)", exitCode, tt.wantExitRequire, out.String())
 			}
 
-			env := decodeSingleEnvelope(t, out.String())
+			env := envelope.Decode(t, out.String())
 
-			if ok, _ := env["ok"].(bool); ok != tt.wantOKRequire {
-				t.Errorf("envelope ok = %v; want %v", env["ok"], tt.wantOKRequire)
+			if env.OK != tt.wantOKRequire {
+				t.Errorf("envelope ok = %v; want %v", env.OK, tt.wantOKRequire)
 			}
 
-			findings, hasFindings := env["findings"]
+			findings, hasFindings := env.Raw["findings"]
 			if hasFindings != tt.wantFindRequire {
 				t.Errorf("envelope findings key present = %v; want %v (envelope: %v)", hasFindings, tt.wantFindRequire, env)
 			}
@@ -520,27 +507,6 @@ func TestValidatePlanCmd(t *testing.T) {
 			}
 		})
 	}
-}
-
-// decodeSingleEnvelope asserts that captured is exactly one JSON line -- split on newline,
-// discarding a single trailing empty element -- and decodes it into a map[string]any so the
-// presence or absence of a key can be asserted directly rather than by substring.
-func decodeSingleEnvelope(t *testing.T, captured string) map[string]any {
-	t.Helper()
-
-	lines := strings.Split(captured, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	if len(lines) != 1 {
-		t.Fatalf("captured output is not exactly one line: %q", captured)
-	}
-
-	var env map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
-		t.Fatalf("decode envelope line %q: %v", lines[0], err)
-	}
-	return env
 }
 
 // envelopeContains reports whether v -- expected to be a []any of strings, as JSON decodes the
@@ -580,11 +546,11 @@ func TestValidateDescriptionCmd(t *testing.T) {
 		if exitCode != 0 {
 			t.Errorf("exit code = %d; want 0 (output: %q)", exitCode, out.String())
 		}
-		env := decodeSingleEnvelope(t, out.String())
-		if ok, _ := env["ok"].(bool); !ok {
-			t.Errorf("envelope ok = %v; want true", env["ok"])
+		env := envelope.Decode(t, out.String())
+		if !env.OK {
+			t.Errorf("envelope ok = %v; want true", env.OK)
 		}
-		if got, _ := env["description"].(string); got != c.env.DescriptionPath {
+		if got, _ := env.Raw["description"].(string); got != c.env.DescriptionPath {
 			t.Errorf("envelope description = %q; want %q", got, c.env.DescriptionPath)
 		}
 	})
@@ -597,11 +563,11 @@ func TestValidateDescriptionCmd(t *testing.T) {
 		if exitCode != 1 {
 			t.Errorf("exit code = %d; want 1 (output: %q)", exitCode, out.String())
 		}
-		env := decodeSingleEnvelope(t, out.String())
-		if ok, _ := env["ok"].(bool); ok {
+		env := envelope.Decode(t, out.String())
+		if env.OK {
 			t.Errorf("envelope ok = true; want false")
 		}
-		findings, has := env["findings"]
+		findings, has := env.Raw["findings"]
 		if !has {
 			t.Fatalf("envelope has no findings key: %v", env)
 		}

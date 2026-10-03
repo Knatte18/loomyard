@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -40,12 +41,12 @@ func seedWebsterState(t *testing.T, h *hubforge.Hub, outcome string) {
 }
 
 // runMergeIn runs "merge-in feature" from the prime worktree and returns the exit code and decoded envelope.
-func runMergeIn(t *testing.T, h *hubforge.Hub) (int, map[string]any) {
+func runMergeIn(t *testing.T, h *hubforge.Hub) (int, envelope.Envelope) {
 	t.Helper()
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"merge-in", "feature"})
-	return exitCode, decodeResult(t, &out)
+	return exitCode, envelope.Decode(t, out.String())
 }
 
 // divergeCleanly gives feature and the current branch each a commit on a different file.
@@ -57,12 +58,12 @@ func divergeCleanly(t *testing.T, h *hubforge.Hub) {
 	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
 }
 
-func assertOneWebsterWarning(t *testing.T, envelope map[string]any) {
+func assertOneWebsterWarning(t *testing.T, env envelope.Envelope) {
 	t.Helper()
 
-	raw, present := envelope["warnings"]
+	raw, present := env.Raw["warnings"]
 	if !present {
-		t.Fatalf("envelope has no warnings key: %v", envelope)
+		t.Fatalf("envelope has no warnings key: %v", env)
 	}
 	warnings, ok := raw.([]any)
 	if !ok || len(warnings) != 1 {
@@ -76,11 +77,11 @@ func assertOneWebsterWarning(t *testing.T, envelope map[string]any) {
 	}
 }
 
-func assertNoWarnings(t *testing.T, envelope map[string]any) {
+func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 	t.Helper()
 
-	if _, present := envelope["warnings"]; present {
-		t.Errorf("envelope carries a warnings key = %v; want none", envelope["warnings"])
+	if _, present := env.Raw["warnings"]; present {
+		t.Errorf("envelope carries a warnings key = %v; want none", env.Raw["warnings"])
 	}
 }
 
@@ -89,14 +90,14 @@ func TestMergeIn_WarnsWhileWebsterInFlight(t *testing.T) {
 	seedWebsterState(t, h, "")
 	divergeCleanly(t, h)
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 0 {
-		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, env)
 	}
-	if committed, _ := envelope["committed"].(bool); !committed {
-		t.Errorf("committed = %v; want true", envelope["committed"])
+	if committed, _ := env.Raw["committed"].(bool); !committed {
+		t.Errorf("committed = %v; want true", env.Raw["committed"])
 	}
-	assertOneWebsterWarning(t, envelope)
+	assertOneWebsterWarning(t, env)
 }
 
 func TestMergeIn_ConflictWarnsWhileWebsterInFlight(t *testing.T) {
@@ -105,25 +106,25 @@ func TestMergeIn_ConflictWarnsWhileWebsterInFlight(t *testing.T) {
 	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 1 {
-		t.Fatalf("merge-in = %d; want 1\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 1\nenvelope: %v", exitCode, env)
 	}
-	if conflicts, _ := envelope["conflicts"].([]any); len(conflicts) == 0 {
-		t.Errorf("conflicts = %v; want a non-empty array", envelope["conflicts"])
+	if conflicts, _ := env.Raw["conflicts"].([]any); len(conflicts) == 0 {
+		t.Errorf("conflicts = %v; want a non-empty array", env.Raw["conflicts"])
 	}
-	assertOneWebsterWarning(t, envelope)
+	assertOneWebsterWarning(t, env)
 }
 
 func TestMergeIn_NoWarningsWithoutWebsterState(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	divergeCleanly(t, h)
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 0 {
-		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, env)
 	}
-	assertNoWarnings(t, envelope)
+	assertNoWarnings(t, env)
 }
 
 func TestMergeIn_NoWarningsWhenWebsterDone(t *testing.T) {
@@ -131,11 +132,11 @@ func TestMergeIn_NoWarningsWhenWebsterDone(t *testing.T) {
 	seedWebsterState(t, h, "outcome: done\nstuck_reason: null\nbatches_done: 3\n")
 	divergeCleanly(t, h)
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 0 {
-		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, env)
 	}
-	assertNoWarnings(t, envelope)
+	assertNoWarnings(t, env)
 }
 
 func TestMergeIn_NoWarningsWhenAlreadyUpToDate(t *testing.T) {
@@ -144,14 +145,14 @@ func TestMergeIn_NoWarningsWhenAlreadyUpToDate(t *testing.T) {
 	branchAtCurrentHEADCLI(t, h.PrimeWorktree(), "feature")
 	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 0 {
-		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, env)
 	}
-	if upToDate, _ := envelope["already_up_to_date"].(bool); !upToDate {
-		t.Errorf("already_up_to_date = %v; want true", envelope["already_up_to_date"])
+	if upToDate, _ := env.Raw["already_up_to_date"].(bool); !upToDate {
+		t.Errorf("already_up_to_date = %v; want true", env.Raw["already_up_to_date"])
 	}
-	assertNoWarnings(t, envelope)
+	assertNoWarnings(t, env)
 }
 
 func TestMergeIn_MalformedOutcomeDegradesToNoWarning(t *testing.T) {
@@ -159,12 +160,12 @@ func TestMergeIn_MalformedOutcomeDegradesToNoWarning(t *testing.T) {
 	seedWebsterState(t, h, "outcome: [unterminated\n")
 	divergeCleanly(t, h)
 
-	exitCode, envelope := runMergeIn(t, h)
+	exitCode, env := runMergeIn(t, h)
 	if exitCode != 0 {
-		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, envelope)
+		t.Fatalf("merge-in = %d; want 0\nenvelope: %v", exitCode, env)
 	}
-	if committed, _ := envelope["committed"].(bool); !committed {
-		t.Errorf("committed = %v; want true", envelope["committed"])
+	if committed, _ := env.Raw["committed"].(bool); !committed {
+		t.Errorf("committed = %v; want true", env.Raw["committed"])
 	}
-	assertNoWarnings(t, envelope)
+	assertNoWarnings(t, env)
 }

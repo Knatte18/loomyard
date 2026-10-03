@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // commitOnBranchCLI checks out branch in dir — creating it off whatever is currently checked out when
@@ -74,16 +75,16 @@ func TestRunCLI_MergeInConflictThenContinueConcludes(t *testing.T) {
 		t.Fatalf("RunCLI(merge-in feature) = %d; want 1\noutput: %s", exitCode, mergeInOut.String())
 	}
 
-	envelope := decodeResult(t, &mergeInOut)
-	if ok, _ := envelope["ok"].(bool); ok {
+	mergeInEnv := envelope.Decode(t, mergeInOut.String())
+	if mergeInEnv.OK {
 		t.Errorf("RunCLI(merge-in) ok = true; want false on a conflict envelope")
 	}
-	if partial, present := envelope["partial"]; !present || partial != false {
-		t.Errorf("RunCLI(merge-in) partial = %v (present=%v); want false", envelope["partial"], present)
+	if mergeInEnv.Partial == nil || *mergeInEnv.Partial {
+		t.Errorf("RunCLI(merge-in) partial = %v; want present and false", mergeInEnv.Partial)
 	}
-	conflictsRaw, ok := envelope["conflicts"].([]any)
+	conflictsRaw, ok := mergeInEnv.Raw["conflicts"].([]any)
 	if !ok || len(conflictsRaw) == 0 {
-		t.Fatalf("RunCLI(merge-in) conflicts = %v; want a non-empty array", envelope["conflicts"])
+		t.Fatalf("RunCLI(merge-in) conflicts = %v; want a non-empty array", mergeInEnv.Raw["conflicts"])
 	}
 	conflicts := make([]string, len(conflictsRaw))
 	for i, c := range conflictsRaw {
@@ -92,7 +93,7 @@ func TestRunCLI_MergeInConflictThenContinueConcludes(t *testing.T) {
 	if !sort.StringsAreSorted(conflicts) {
 		t.Errorf("RunCLI(merge-in) conflicts = %v; want lexically sorted", conflicts)
 	}
-	if _, present := envelope["mutations"]; !present {
+	if _, present := mergeInEnv.Raw["mutations"]; !present {
 		t.Errorf("RunCLI(merge-in) output missing 'mutations' key")
 	}
 
@@ -107,12 +108,9 @@ func TestRunCLI_MergeInConflictThenContinueConcludes(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(merge --continue) = %d; want 0\noutput: %s", exitCode, continueOut.String())
 	}
-	continueEnvelope := decodeResult(t, &continueOut)
-	if ok, _ := continueEnvelope["ok"].(bool); !ok {
-		t.Errorf("RunCLI(merge --continue) ok = %v; want true", continueEnvelope["ok"])
-	}
-	if committed, _ := continueEnvelope["committed"].(bool); !committed {
-		t.Errorf("RunCLI(merge --continue) committed = %v; want true", continueEnvelope["committed"])
+	continueEnv := envelope.RequireOK(t, continueOut.String())
+	if committed, _ := continueEnv.Raw["committed"].(bool); !committed {
+		t.Errorf("RunCLI(merge --continue) committed = %v; want true", continueEnv.Raw["committed"])
 	}
 }
 
@@ -138,10 +136,7 @@ func TestRunCLI_MergeInThenMergeAbortRestoresPair(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(merge --abort) = %d; want 0\noutput: %s", exitCode, abortOut.String())
 	}
-	abortEnvelope := decodeResult(t, &abortOut)
-	if ok, _ := abortEnvelope["ok"].(bool); !ok {
-		t.Errorf("RunCLI(merge --abort) ok = %v; want true", abortEnvelope["ok"])
-	}
+	envelope.RequireOK(t, abortOut.String())
 
 	if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD")); got != warpStartSHA {
 		t.Errorf("warp HEAD after merge --abort = %q; want restored pre-merge SHA %q", got, warpStartSHA)
@@ -168,12 +163,9 @@ func TestRunCLI_MergeCleanSquashFromTargetPair(t *testing.T) {
 		t.Fatalf("RunCLI(merge feature --squash) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := decodeResult(t, &out)
-	if ok, _ := envelope["ok"].(bool); !ok {
-		t.Errorf("RunCLI(merge --squash) ok = %v; want true", envelope["ok"])
-	}
-	if committed, _ := envelope["committed"].(bool); !committed {
-		t.Errorf("RunCLI(merge --squash) committed = %v; want true", envelope["committed"])
+	result := envelope.RequireOK(t, out.String())
+	if committed, _ := result.Raw["committed"].(bool); !committed {
+		t.Errorf("RunCLI(merge --squash) committed = %v; want true", result.Raw["committed"])
 	}
 }
 
@@ -197,11 +189,10 @@ func TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired(t *testing.T) {
 		t.Fatalf("RunCLI(merge feature) [would conflict] = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := decodeResult(t, &out)
-	errMsg, _ := envelope["error"].(string)
+	result := envelope.RequireErr(t, out.String(), "")
 	wantErr := `fabricengine: merge produced conflicts and was aborted; run "lyx fabric merge-in" in the source branch's own worktree first, then retry`
-	if errMsg != wantErr {
-		t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", errMsg, wantErr)
+	if result.Error != wantErr {
+		t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", result.Error, wantErr)
 	}
 
 	if got := strings.TrimSpace(gitOutputCLI(t, h.PairWarpWorktree("target"), "rev-parse", "HEAD")); got != warpBefore {
@@ -228,13 +219,9 @@ func TestRunCLI_MergeNonexistentBranchReportsSourceNotFound(t *testing.T) {
 		t.Fatalf("RunCLI(merge nonexistent-branch) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := decodeResult(t, &out)
-	errMsg, _ := envelope["error"].(string)
-	if !strings.Contains(errMsg, "source branch not found") {
-		t.Errorf("RunCLI(merge nonexistent-branch) error = %q; want substring %q", errMsg, "source branch not found")
-	}
-	if strings.Contains(errMsg, "source branch is not fabric-managed") {
-		t.Errorf("RunCLI(merge nonexistent-branch) error = %q; must not claim the weft counterpart is not fabric-managed (unreachable now the weft side is not a merge participant)", errMsg)
+	result := envelope.RequireErr(t, out.String(), "source branch not found")
+	if strings.Contains(result.Error, "source branch is not fabric-managed") {
+		t.Errorf("RunCLI(merge nonexistent-branch) error = %q; must not claim the weft counterpart is not fabric-managed (unreachable now the weft side is not a merge participant)", result.Error)
 	}
 }
 
@@ -252,12 +239,9 @@ func TestRunCLI_MergeInAlreadyUpToDate(t *testing.T) {
 		t.Fatalf("RunCLI(merge-in feature) [already up to date] = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := decodeResult(t, &out)
-	if ok, _ := envelope["ok"].(bool); !ok {
-		t.Errorf("RunCLI(merge-in) [already up to date] ok = %v; want true", envelope["ok"])
-	}
-	if alreadyUpToDate, _ := envelope["already_up_to_date"].(bool); !alreadyUpToDate {
-		t.Errorf("RunCLI(merge-in) [already up to date] already_up_to_date = %v; want true", envelope["already_up_to_date"])
+	result := envelope.RequireOK(t, out.String())
+	if alreadyUpToDate, _ := result.Raw["already_up_to_date"].(bool); !alreadyUpToDate {
+		t.Errorf("RunCLI(merge-in) [already up to date] already_up_to_date = %v; want true", result.Raw["already_up_to_date"])
 	}
 }
 
@@ -293,12 +277,9 @@ func TestRunCLI_MergeRejectsFlagsItWouldOtherwiseIgnore(t *testing.T) {
 			if exitCode != 1 {
 				t.Fatalf("RunCLI(%v) = %d; want 1\noutput: %s", tt.args, exitCode, out.String())
 			}
-			envelope := decodeResult(t, &out)
-			if ok, _ := envelope["ok"].(bool); ok {
-				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
-			}
-			if got, _ := envelope["error"].(string); got != tt.wantErr {
-				t.Errorf("RunCLI(%v) error = %q; want %q", tt.args, got, tt.wantErr)
+			result := envelope.RequireErr(t, out.String(), "")
+			if result.Error != tt.wantErr {
+				t.Errorf("RunCLI(%v) error = %q; want %q", tt.args, result.Error, tt.wantErr)
 			}
 		})
 	}
@@ -355,10 +336,10 @@ func TestRunCLI_MergeStageResolvesAWarpSideConflict(t *testing.T) {
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
 		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
 	}
-	envelope := decodeResult(t, &mergeInOut)
-	conflictsRaw, ok := envelope["conflicts"].([]any)
+	mergeInEnv := envelope.Decode(t, mergeInOut.String())
+	conflictsRaw, ok := mergeInEnv.Raw["conflicts"].([]any)
 	if !ok || len(conflictsRaw) != 1 {
-		t.Fatalf("RunCLI(merge-in) conflicts = %v; want exactly the one conflict this fixture creates", envelope["conflicts"])
+		t.Fatalf("RunCLI(merge-in) conflicts = %v; want exactly the one conflict this fixture creates", mergeInEnv.Raw["conflicts"])
 	}
 	reportedPath, _ := conflictsRaw[0].(string)
 	if reportedPath != conflictPath {
@@ -382,24 +363,21 @@ func TestRunCLI_MergeStageResolvesAWarpSideConflict(t *testing.T) {
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", reportedPath}); exitCode != 0 {
 		t.Fatalf("RunCLI(merge-stage %s) = %d; want 0\noutput: %s", reportedPath, exitCode, stageOut.String())
 	}
-	stageEnvelope := decodeResult(t, &stageOut)
-	if ok, _ := stageEnvelope["ok"].(bool); !ok {
-		t.Errorf("RunCLI(merge-stage) ok = %v; want true", stageEnvelope["ok"])
-	}
-	if _, present := stageEnvelope["mutations"]; !present {
+	stageEnv := envelope.RequireOK(t, stageOut.String())
+	if _, present := stageEnv.Raw["mutations"]; !present {
 		t.Errorf("RunCLI(merge-stage) output missing 'mutations' key; every mutating verb's envelope carries it")
 	}
-	if partial, present := stageEnvelope["partial"]; !present || partial != false {
-		t.Errorf("RunCLI(merge-stage) partial = %v (present=%v); want false", stageEnvelope["partial"], present)
+	if stageEnv.Partial == nil || *stageEnv.Partial {
+		t.Errorf("RunCLI(merge-stage) partial = %v; want present and false", stageEnv.Partial)
 	}
 
 	var continueOut bytes.Buffer
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue"}); exitCode != 0 {
 		t.Fatalf("RunCLI(merge --continue) after merge-stage = %d; want 0\noutput: %s", exitCode, continueOut.String())
 	}
-	continueEnvelope := decodeResult(t, &continueOut)
-	if committed, _ := continueEnvelope["committed"].(bool); !committed {
-		t.Errorf("RunCLI(merge --continue) committed = %v; want true", continueEnvelope["committed"])
+	continueEnv := envelope.Decode(t, continueOut.String())
+	if committed, _ := continueEnv.Raw["committed"].(bool); !committed {
+		t.Errorf("RunCLI(merge --continue) committed = %v; want true", continueEnv.Raw["committed"])
 	}
 }
 
@@ -460,8 +438,8 @@ func TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths(t *testing.T) 
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
 		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (a conflict envelope)\noutput: %s", exitCode, mergeInOut.String())
 	}
-	mergeInEnvelope := decodeResult(t, &mergeInOut)
-	if got := stringSliceField(t, mergeInEnvelope, "conflicts"); len(got) != 2 {
+	mergeInEnv := envelope.Decode(t, mergeInOut.String())
+	if got := stringSliceField(t, mergeInEnv.Raw, "conflicts"); len(got) != 2 {
 		t.Fatalf("RunCLI(merge-in) conflicts = %v; want both warp-side paths conflicted, or this test cannot stage a strict subset", got)
 	}
 
@@ -478,27 +456,24 @@ func TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths(t *testing.T) 
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue"}); exitCode != 1 {
 		t.Fatalf("RunCLI(merge --continue) with one path still unstaged = %d; want 1\noutput: %s", exitCode, continueOut.String())
 	}
-	continueEnvelope := decodeResult(t, &continueOut)
-	if errMsg, _ := continueEnvelope["error"].(string); !strings.Contains(errMsg, "unresolved conflicts remain") {
-		t.Fatalf("RunCLI(merge --continue) error = %q; want the unresolved-conflicts refusal", errMsg)
-	}
-	unresolved := stringSliceField(t, continueEnvelope, "unresolved")
+	continueEnv := envelope.RequireErr(t, continueOut.String(), "unresolved conflicts remain")
+	unresolved := stringSliceField(t, continueEnv.Raw, "unresolved")
 	if len(unresolved) != 1 || unresolved[0] != "conflict-b.txt" {
 		t.Errorf("RunCLI(merge --continue) unresolved = %v; want exactly [conflict-b.txt] — the path the operator has left to resolve", unresolved)
 	}
-	if _, present := continueEnvelope["conflicts"]; present {
+	if _, present := continueEnv.Raw["conflicts"]; present {
 		t.Errorf("RunCLI(merge --continue) carries a %q key; want the remaining paths under \"unresolved\" only, so \"conflicts\" stays the conflict-result discriminator", "conflicts")
 	}
 }
 
-// stringSliceField reads envelope[key] as a JSON array of strings, failing the test when it is absent
+// stringSliceField reads fields[key] as a JSON array of strings, failing the test when it is absent
 // or not an array of strings.
-func stringSliceField(t *testing.T, envelope map[string]any, key string) []string {
+func stringSliceField(t *testing.T, fields map[string]any, key string) []string {
 	t.Helper()
 
-	raw, ok := envelope[key].([]any)
+	raw, ok := fields[key].([]any)
 	if !ok {
-		t.Fatalf("envelope[%q] = %v; want an array", key, envelope[key])
+		t.Fatalf("envelope[%q] = %v; want an array", key, fields[key])
 	}
 	values := make([]string, len(raw))
 	for i, entry := range raw {
@@ -544,10 +519,10 @@ func TestRunCLI_MergeStageEchoesEachPathOnce(t *testing.T) {
 	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &stageOut, []string{"merge-stage", "conflict.txt", "conflict.txt"}); exitCode != 0 {
 		t.Fatalf("RunCLI(merge-stage conflict.txt conflict.txt) = %d; want 0\noutput: %s", exitCode, stageOut.String())
 	}
-	envelope := decodeResult(t, &stageOut)
-	staged, _ := envelope["staged"].([]any)
+	stageEnv := envelope.Decode(t, stageOut.String())
+	staged, _ := stageEnv.Raw["staged"].([]any)
 	if len(staged) != 1 {
-		t.Errorf("RunCLI(merge-stage) staged = %v; want exactly one entry for the duplicated path", envelope["staged"])
+		t.Errorf("RunCLI(merge-stage) staged = %v; want exactly one entry for the duplicated path", stageEnv.Raw["staged"])
 	}
 	if got, _ := staged[0].(string); len(staged) == 1 && got != "conflict.txt" {
 		t.Errorf("RunCLI(merge-stage) staged[0] = %q; want %q", got, "conflict.txt")

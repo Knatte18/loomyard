@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestRunCLI_BypassPushAdvancesBothUpstreams builds weft and warp repos with unpushed commits, then
@@ -60,10 +61,7 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 		t.Fatalf("RunCLI bypass push = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("RunCLI bypass push ok = %v; want true. Error: %v", result["ok"], result["error"])
-	}
+	envelope.RequireOK(t, out.String())
 
 	if gotWeftSHA := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
 		t.Errorf("weft bare %s = %s; want %s (the unpushed commit was not pushed)", weftBranch, gotWeftSHA, wantWeftSHA)
@@ -85,15 +83,8 @@ func TestRunCLI_WarpPathPushOnly(t *testing.T) {
 		t.Errorf("RunCLI --warp-path with non-push returned %d; want 1", exitCode)
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("ok should be false for error; got true")
-	}
-	if errMsg, ok := result["error"].(string); ok {
-		if errMsg != "subcommand requires a worktree context" {
-			t.Errorf("error message = %q; want %q", errMsg, "subcommand requires a worktree context")
-		}
-	} else {
-		t.Errorf("error field missing or not a string")
+	result := envelope.RequireErr(t, out.String(), "")
+	if result.Error != "subcommand requires a worktree context" {
+		t.Errorf("error message = %q; want %q", result.Error, "subcommand requires a worktree context")
 	}
 }

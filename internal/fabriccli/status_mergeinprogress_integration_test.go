@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // TestRunCLI_StatusReportsNoMergeInProgressOnACleanPair asserts that "status" on a pair with no
@@ -29,15 +30,15 @@ func TestRunCLI_StatusReportsNoMergeInProgressOnACleanPair(t *testing.T) {
 		t.Fatalf("RunCLI(status) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	inProgress, present := result["merge_in_progress"]
+	result := envelope.Decode(t, out.String())
+	inProgress, present := result.Raw["merge_in_progress"]
 	if !present {
 		t.Fatalf("RunCLI(status) output missing 'merge_in_progress' key; got %v", result)
 	}
 	if inProgress != false {
 		t.Errorf("RunCLI(status) merge_in_progress = %v; want false", inProgress)
 	}
-	if _, present := result["changes"]; !present {
+	if _, present := result.Raw["changes"]; !present {
 		t.Errorf("RunCLI(status) output missing 'changes' key; got %v", result)
 	}
 }
@@ -63,8 +64,8 @@ func TestRunCLI_StatusReportsMergeInProgressWhileAMergeIsParked(t *testing.T) {
 		t.Fatalf("RunCLI(status) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	inProgress, present := result["merge_in_progress"]
+	result := envelope.Decode(t, out.String())
+	inProgress, present := result.Raw["merge_in_progress"]
 	if !present {
 		t.Fatalf("RunCLI(status) output missing 'merge_in_progress' key; got %v", result)
 	}

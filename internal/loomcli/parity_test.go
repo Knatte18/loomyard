@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -57,12 +58,11 @@ func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
 // false with a "findings" key present is verdictStuck; ok == false without a "findings" key is
 // verdictError. The findings-key presence check is structural, per the envelope-and-exit-contract
 // Shared Decision, never a matter of message wording.
-func cliVerdict(env map[string]any) parityVerdict {
-	ok, _ := env["ok"].(bool)
-	if ok {
+func cliVerdict(env envelope.Envelope) parityVerdict {
+	if env.OK {
 		return verdictDone
 	}
-	if _, hasFindings := env["findings"]; hasFindings {
+	if _, hasFindings := env.Raw["findings"]; hasFindings {
 		return verdictStuck
 	}
 	return verdictError
@@ -138,8 +138,7 @@ func TestGateParity_DiscussionGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateDiscussionCmd(), &out, nil)
-			env := decodeSingleEnvelope(t, out.String())
-			cv := cliVerdict(env)
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf(
@@ -383,8 +382,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, nil)
-			env := decodeSingleEnvelope(t, out.String())
-			cv := cliVerdict(env)
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if tc.wantGate == tc.wantCLI {
 				if pv != cv {
@@ -480,7 +478,7 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateDescriptionCmd(), &out, nil)
-			cv := cliVerdict(decodeSingleEnvelope(t, out.String()))
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf(
@@ -569,7 +567,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"})
-			cv := cliVerdict(decodeSingleEnvelope(t, out.String()))
+			cv := cliVerdict(envelope.Decode(t, out.String()))
 
 			if pv != cv {
 				t.Errorf("parity mismatch: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)", pv, result, err, cv, exitCode, out.String())

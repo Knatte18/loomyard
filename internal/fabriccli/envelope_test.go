@@ -13,17 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
-
-// decodeEnvelope parses one line of JSON envelope output into a generic map.
-func decodeEnvelope(t *testing.T, buf *bytes.Buffer) map[string]any {
-	t.Helper()
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("parse JSON output: %v\noutput: %s", err, buf.String())
-	}
-	return result
-}
 
 // populatedMutations builds a non-empty fabricengine.Mutations value the way a verb's own recorder
 // would: NewMutations, one Append, then Snapshot to freeze it into the value form the helpers take.
@@ -70,29 +61,25 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 				t.Errorf("okWithRecord() = %d; want 0", exitCode)
 			}
 
-			result := decodeEnvelope(t, &out)
-			if ok, _ := result["ok"].(bool); !ok {
-				t.Errorf("ok = %v; want true", result["ok"])
-			}
-			mutations, present := result["mutations"]
+			result := envelope.RequireOK(t, out.String())
+			mutations, present := result.Raw["mutations"]
 			if !present {
 				t.Fatalf("result missing 'mutations' key: %v", result)
 			}
 			if mutations == nil {
 				t.Errorf("mutations = nil; want a non-null array (empty rather than null)")
 			}
-			partial, present := result["partial"]
-			if !present {
+			if result.Partial == nil {
 				t.Fatalf("result missing 'partial' key: %v", result)
 			}
-			if partial != false {
-				t.Errorf("partial = %v; want false on the success path", partial)
+			if *result.Partial {
+				t.Errorf("partial = true; want false on the success path")
 			}
 			for key, want := range tt.fields {
-				if key == "mutations" || key == "partial" {
+				if key == "ok" || key == "mutations" || key == "partial" {
 					continue
 				}
-				got, present := result[key]
+				got, present := result.Raw[key]
 				if !present {
 					t.Errorf("result missing caller field %q; want it unchanged", key)
 					continue
@@ -100,7 +87,7 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 				gotJSON, _ := json.Marshal(got)
 				wantJSON, _ := json.Marshal(want)
 				if string(gotJSON) != string(wantJSON) {
-					t.Errorf("result[%q] = %s; want %s (unchanged)", key, gotJSON, wantJSON)
+					t.Errorf("result.Raw[%q] = %s; want %s (unchanged)", key, gotJSON, wantJSON)
 				}
 			}
 		})
@@ -128,29 +115,24 @@ func TestErrWithRecord_FailureShape(t *testing.T) {
 				t.Errorf("errWithRecord() = %d; want 1", exitCode)
 			}
 
-			result := decodeEnvelope(t, &out)
-			if ok, _ := result["ok"].(bool); ok {
-				t.Errorf("ok = true; want false")
+			result := envelope.RequireErr(t, out.String(), "")
+			if result.Error != wantErr.Error() {
+				t.Errorf("error = %q; want %q", result.Error, wantErr.Error())
 			}
-			errMsg, present := result["error"].(string)
-			if !present || errMsg != wantErr.Error() {
-				t.Errorf("error = %v; want %q present", result["error"], wantErr.Error())
-			}
-			mutations, present := result["mutations"]
+			mutations, present := result.Raw["mutations"]
 			if !present {
 				t.Fatalf("result missing 'mutations' key: %v", result)
 			}
 			if mutations == nil {
 				t.Errorf("mutations = nil; want a non-null array (empty rather than null)")
 			}
-			partial, present := result["partial"]
-			if !present {
+			if result.Partial == nil {
 				t.Fatalf("result missing 'partial' key: %v", result)
 			}
-			if partial != tt.wantPartial {
-				t.Errorf("partial = %v; want %v", partial, tt.wantPartial)
+			if *result.Partial != tt.wantPartial {
+				t.Errorf("partial = %v; want %v", *result.Partial, tt.wantPartial)
 			}
-			if _, hasRefusal := result["refusal"]; hasRefusal {
+			if _, hasRefusal := result.Raw["refusal"]; hasRefusal {
 				t.Errorf("result has 'refusal' key for an ordinary error; want it absent")
 			}
 		})
@@ -170,18 +152,15 @@ func TestOkWithRecord_ReservedKeysOverrideCallerFields(t *testing.T) {
 	}
 	okWithRecord(&out, fabricengine.Mutations{}, fields)
 
-	result := decodeEnvelope(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok = %v; want the reserved true, not the caller's bogus value", result["ok"])
+	result := envelope.RequireOK(t, out.String())
+	if _, isString := result.Raw["mutations"].(string); isString {
+		t.Errorf("mutations = %v; want the reserved array, not the caller's bogus value", result.Raw["mutations"])
 	}
-	if _, isString := result["mutations"].(string); isString {
-		t.Errorf("mutations = %v; want the reserved array, not the caller's bogus value", result["mutations"])
+	if result.Partial == nil || *result.Partial {
+		t.Errorf("partial = %v; want the reserved false, not the caller's bogus value", result.Partial)
 	}
-	if partial, _ := result["partial"].(bool); partial != false {
-		t.Errorf("partial = %v; want the reserved false, not the caller's bogus value", result["partial"])
-	}
-	if errMsg, _ := result["error"].(string); errMsg != "caller-supplied, left alone" {
-		t.Errorf("error = %q; want the caller's own value untouched, since okWithRecord never reserves it", errMsg)
+	if result.Error != "caller-supplied, left alone" {
+		t.Errorf("error = %q; want the caller's own value untouched, since okWithRecord never reserves it", result.Error)
 	}
 }
 
@@ -196,18 +175,15 @@ func TestErrWithRecord_KeysAreAlwaysTheReservedValues(t *testing.T) {
 	wantErr := errors.New("the real failure")
 	errWithRecord(&out, fabricengine.Mutations{}, wantErr)
 
-	result := decodeEnvelope(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("ok = %v; want false", result["ok"])
+	result := envelope.RequireErr(t, out.String(), "")
+	if result.Error != wantErr.Error() {
+		t.Errorf("error = %q; want %q", result.Error, wantErr.Error())
 	}
-	if errMsg, _ := result["error"].(string); errMsg != wantErr.Error() {
-		t.Errorf("error = %q; want %q", errMsg, wantErr.Error())
+	if _, isArray := result.Raw["mutations"].([]any); !isArray {
+		t.Errorf("mutations = %v; want a JSON array", result.Raw["mutations"])
 	}
-	if _, isArray := result["mutations"].([]any); !isArray {
-		t.Errorf("mutations = %v; want a JSON array", result["mutations"])
-	}
-	if partial, _ := result["partial"].(bool); partial != false {
-		t.Errorf("partial = %v; want false for an empty record", partial)
+	if result.Partial == nil || *result.Partial {
+		t.Errorf("partial = %v; want false for an empty record", result.Partial)
 	}
 }
 
@@ -233,25 +209,21 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 				t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
 			}
 
-			result := decodeEnvelope(t, &out)
-			if ok, _ := result["ok"].(bool); ok {
-				t.Errorf("ok = true; want false")
-			}
-			mutations, present := result["mutations"]
+			result := envelope.RequireErr(t, out.String(), "")
+			mutations, present := result.Raw["mutations"]
 			if !present {
 				t.Fatalf("result missing 'mutations' key: %v", result)
 			}
 			if mutations == nil {
 				t.Errorf("mutations = nil; want a non-null array")
 			}
-			partial, present := result["partial"]
-			if !present {
+			if result.Partial == nil {
 				t.Fatalf("result missing 'partial' key: %v", result)
 			}
-			if partial != false {
-				t.Errorf("partial = %v; want the literal false, even against a non-empty record", partial)
+			if *result.Partial {
+				t.Errorf("partial = true; want the literal false, even against a non-empty record")
 			}
-			conflicts, present := result["conflicts"]
+			conflicts, present := result.Raw["conflicts"]
 			if !present {
 				t.Fatalf("result missing 'conflicts' key: %v", result)
 			}
@@ -276,9 +248,9 @@ func TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues(t *testi
 		t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
 	}
 
-	result := decodeEnvelope(t, &out)
+	result := envelope.Decode(t, out.String())
 	wantErr := `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`
-	if errMsg, _ := result["error"].(string); errMsg != wantErr {
-		t.Errorf("error = %q; want %q", errMsg, wantErr)
+	if result.Error != wantErr {
+		t.Errorf("error = %q; want %q", result.Error, wantErr)
 	}
 }
