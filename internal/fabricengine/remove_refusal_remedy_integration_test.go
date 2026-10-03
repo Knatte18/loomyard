@@ -5,8 +5,7 @@
 // Remove runs every refusal before its archive and the archive before every removal (remove.go's header states the order),
 // so an operator told to commit or pass --force has lost nothing and the refusal needs no repair pointer.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -26,10 +26,10 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-refusal-intact"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -60,7 +60,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 		t.Errorf("refusal recorded %d mutations; want 0", n)
 	}
 	assertPairIntact(t, l, slug)
-	assertNoArchiveTag(t, fixture.WeftBare, weftRoot)
+	assertNoArchiveTag(t, h.WeftBare, weftRoot)
 }
 
 // TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
@@ -68,10 +68,10 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-probe-failure"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -90,7 +90,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	if !strings.Contains(err.Error(), "check warp worktree status") {
 		t.Errorf("error does not name the failed probe:\n%s", err.Error())
 	}
-	assertNoArchiveTag(t, fixture.WeftBare, weftRoot)
+	assertNoArchiveTag(t, h.WeftBare, weftRoot)
 	for _, p := range []string{
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
@@ -148,9 +148,9 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	// A plain directory inside the hub: it passes the slug and target-exists checks, then fails at
 	// the dirtiness probe because it is not a git repository at all.

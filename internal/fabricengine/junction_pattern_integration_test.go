@@ -10,9 +10,7 @@
 // (including the single-junction-to-two upgrade path) — is proven against a
 // real second, non-_lyx junction, not merely a loop of length one.
 //
-// Package fabricengine_test to reuse the external-test-package fixture idiom
-// of lifecycle_differential_test.go; shares the single TestMain in
-// testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -55,15 +53,12 @@ func resetWarpJunction(t *testing.T, l *lyxcwd.Location, slug, name string) stri
 // decide which optional junction it expects wired, so any test that wires "_extra" explicitly via
 // WireJunctions must also point RepoWiredNames at "_extra" for that production code to agree with
 // what is actually on disk.
-// A hubforge.Hub-backed case seeds it via hubforge.SeedFabricConfig; the two cases still built on
-// newFabricFixture's gitkit.PairedFixture shape (migrated separately, in the batch's reconcile card)
-// seed it via seedRepoWideExtraFabricConfig below, which takes a bare hub path rather than a
-// *hubforge.Hub.
+// A case seeds it via hubforge.SeedFabricConfig, or via seedRepoWideExtraFabricConfig below, which
+// takes a bare hub path rather than a *hubforge.Hub.
 const extraFabricConfigYAML = "branch_prefix: \"\"\npathspec: _extra\n"
 
 // seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
-// with extraFabricConfigYAML. It is the bare-hub-path counterpart to hubforge.SeedFabricConfig, for
-// the two newFabricFixture-based cases in this file that do not yet hold a *hubforge.Hub.
+// with extraFabricConfigYAML. It is the bare-hub-path counterpart to hubforge.SeedFabricConfig.
 func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -274,10 +269,10 @@ func containsLine(lines []string, name string) bool {
 func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
-	// newFabricFixture's prime pair already has _lyx wired (a junction) and excluded (a
+	// The hub's prime pair already has _lyx wired (a junction) and excluded (a
 	// .git/info/exclude entry) by hubforge.NewHub's CloneAndWire; unwire it first — which clears
 	// both the link and the exclude entry — so this test can simulate the "hand-authored _lyx
 	// content accidentally committed to warp" mistake against a genuinely trackable real directory,
@@ -300,7 +295,7 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxdirs.LyxDirName)
 	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lyx")
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	result, err := topology.Status(l)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -336,8 +331,8 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// Corrupt only the warp worktree's index file so `git ls-files` fails
 	// inside detectWarpPollution, forcing Status down its scan-error branch,
@@ -355,7 +350,7 @@ func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 		t.Fatalf("corrupt warp index file: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	result, err := topology.Status(l)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -383,8 +378,8 @@ func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	warpRaddleDir := filepath.Join(l.WorktreePath(), "_raddle")
 	if err := os.MkdirAll(warpRaddleDir, 0o755); err != nil {
@@ -397,7 +392,7 @@ func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", "_raddle")
 	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _raddle")
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	result, err := topology.Status(l)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -546,13 +541,13 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	t.Parallel()
 
 	const slug = "reconcile-extra-only-drift"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
 	// Reconcile's below) agrees with the junction name this test drifts.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
@@ -608,13 +603,13 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	t.Parallel()
 
 	const slug = "status-extra-unhealthy"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
 	// Status's below) agrees with the junction name this test drifts.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
@@ -632,7 +627,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	if err := fslink.Remove(extraLink); err != nil {
 		t.Fatalf("remove _extra junction: %v", err)
 	}
-	wrongTarget := filepath.Join(fixture.Hub, "not-the-weft-extra-dir")
+	wrongTarget := filepath.Join(h.PrimeWorktree(), "not-the-weft-extra-dir")
 	if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 		t.Fatalf("mkdir wrong target: %v", err)
 	}

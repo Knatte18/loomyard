@@ -7,8 +7,7 @@
 // a case that wires one by hand and expects it gone would be testing behaviour the plan deliberately
 // does not build.
 //
-// Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go),
-// and makeBareRemote (clone_adopt_test.go);
+// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go);
 // shares the single TestMain in testmain_test.go — no new TestMain is added here.
 package fabricengine_test
 
@@ -19,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -72,9 +72,9 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-add"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
@@ -101,9 +101,9 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-reconcile"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}

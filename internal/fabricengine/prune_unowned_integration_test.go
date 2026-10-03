@@ -7,8 +7,7 @@
 // os.RemoveAll it, and `prune --apply` destroyed an ordinary operator directory (and a wholly
 // unrelated git clone) reporting removed:true, ok:true, exit 0, with no --force and no warning.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -20,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named
@@ -29,9 +29,9 @@ import (
 func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	// An ordinary operator directory that is not a git checkout at all and was never fabric's.
 	// WeftWarpSlug("notes-weft") yields ("notes", true), so prune's orphan pass enumerates it.
@@ -86,9 +86,9 @@ func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	clone := filepath.Join(l.HubPath, "proj-weft")
 	if err := os.MkdirAll(clone, 0o755); err != nil {
@@ -132,9 +132,9 @@ func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-owned"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)

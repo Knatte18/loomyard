@@ -5,7 +5,7 @@
 // Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
 // package's own live-state harness consumer actually has.
 //
-// Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go) and the
+// Package fabricengine_test to reuse the
 // broken-origin-remote failure injection gitkit.MustRun/TestAdd_GitFailureCarriesGitsOwnReason
 // already established (add_rollback_adopt_test.go); shares the single TestMain in testmain_test.go.
 
@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices: remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing Remove has mutated nothing and its record is empty.
@@ -26,9 +27,9 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "dirty-warp-remove"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add(%q): %v", slug, err)
@@ -65,8 +66,8 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	t.Parallel()
 
 	const slug = "add-rollback-order"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// Break the warp origin remote so the push at the very end of Add fails after every earlier
 	// step — warp and weft worktree creation, junction wiring — has already landed, forcing
@@ -76,7 +77,7 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	// SkipPush skips Add's pre-flight probes of origin, which would otherwise refuse on the broken URL before any mutation;
 	// step 11's warp push ignores SkipPush, so it still fails after creation.
 	res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})

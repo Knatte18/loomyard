@@ -8,7 +8,7 @@
 // idempotency on a never-wired warp, and preservation of the repo-wide
 // weft:main records for a later reconcile re-wire.
 //
-// Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
+// Package fabricengine_test to reuse seedRepoWideFabricConfig
 // from reconcile_stale_registration_test.go; shares the single TestMain in
 // testmain_test.go.
 
@@ -40,14 +40,14 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-removes-stale"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
 	// wires the same junction name this test's explicit WireJunctions call retargets to,
 	// rather than wiring an extra, unrelated junction on top.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
@@ -96,9 +96,9 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-lyx-and-extra"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
@@ -236,11 +236,11 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-repo-wide-records"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// Record the anchor marker alongside the repo-wide fabric.yaml
-	// newFabricFixture already seeded, mirroring what fabric clone commits
+	// hubforge.NewHub already seeded, mirroring what fabric clone commits
 	// onto weft:main.
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
@@ -249,7 +249,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	}
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
@@ -287,9 +287,9 @@ func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 	const keptSlug = "unwire-sibling-kept"
 	const unwiredSlug = "unwire-sibling-torn-down"
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 	for _, slug := range []string{keptSlug, unwiredSlug} {
 		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add(%s): %v", slug, err)

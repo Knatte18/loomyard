@@ -11,7 +11,7 @@
 // whole Add call now (a) fails closed, (b) writes nothing outside the hub, and (c) never records a
 // launcher file_written that did not land inside the hub.
 //
-// Package fabricengine_test to reuse newFabricFixture and the shared TestMain, matching the convention
+// Package fabricengine_test to reuse the shared TestMain, matching the convention
 // of the other integration tests in this package.
 
 package fabricengine_test
@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink asserts that a launcher directory (or the
@@ -56,8 +57,8 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 			t.Parallel()
 
 			const slug = "toctou-write"
-			fixture := newFabricFixture(t)
-			l := fixture.Layout
+			h := hubforge.NewHub(t, ".")
+			l := h.Location
 
 			// An out-of-hub directory the launcher writes would land in if containment were bypassed.
 			outside := t.TempDir()
@@ -72,7 +73,7 @@ func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
 				t.Fatalf("plant escaping symlink at %s: %v", planted, err)
 			}
 
-			topology := fabricengine.NewTopology(fabricengine.Config{})
+			topology := h.Topology
 			res, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true})
 			if err == nil {
 				t.Fatalf("Add(%q) succeeded through an escaping launcher symlink; want a fail-closed error", slug)

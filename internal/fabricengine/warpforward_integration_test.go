@@ -3,13 +3,11 @@
 // warpforward_integration_test.go is the Tier-2 real-git coverage for the
 // warp-only Fabric methods added in warpforward.go: CheckoutDetached,
 // RestoreBranch, CurrentBranch, IsAncestor, and ResetHard. Each test drives a real paired
-// Fabric built from newFabricFixture's warp worktree and asserts the
+// Fabric built from a hubforge hub's warp worktree and asserts the
 // resulting git state directly — no fake, no mock — since the whole point of
 // this file is proving the thin delegation actually reaches real git.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go, exactly as checkout_rollback_test.go
-// does; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -21,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestFabricWarp_DetachVerifyRestoreRoundTrip proves CheckoutDetached and RestoreBranch round-trip:
@@ -29,8 +28,8 @@ import (
 func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
@@ -39,29 +38,29 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentBranch (before detach): %v", err)
 	}
-	olderSHA := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD")
+	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 	// A later commit on warp gives CheckoutDetached somewhere to detach FROM,
 	// and something the eventual RestoreBranch must land back on top of.
-	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "round-trip.txt", "v1", "round-trip commit")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "round-trip.txt", "v1", "round-trip commit")
 
 	if err := f.CheckoutDetached(olderSHA); err != nil {
 		t.Fatalf("CheckoutDetached(%q): %v", olderSHA, err)
 	}
-	if got := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD"); got != olderSHA {
+	if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != olderSHA {
 		t.Errorf("HEAD SHA after CheckoutDetached = %q; want %q", got, olderSHA)
 	}
 	// A detached HEAD reports the literal "HEAD" for --abbrev-ref, never a
 	// branch name; this is the same signal gitrepo.Repo.CurrentBranch itself
 	// rejects.
-	if got := gitkit.CurrentBranch(t, fixture.Layout.WorktreePath()); got != "HEAD" {
+	if got := gitkit.CurrentBranch(t, h.PrimeWorktree()); got != "HEAD" {
 		t.Errorf("HEAD ref after CheckoutDetached = %q; want %q (detached)", got, "HEAD")
 	}
 
 	if err := f.RestoreBranch(originalBranch); err != nil {
 		t.Fatalf("RestoreBranch(%q): %v", originalBranch, err)
 	}
-	if got := gitkit.CurrentBranch(t, fixture.Layout.WorktreePath()); got != originalBranch {
+	if got := gitkit.CurrentBranch(t, h.PrimeWorktree()); got != originalBranch {
 		t.Errorf("branch after RestoreBranch = %q; want %q (original)", got, originalBranch)
 	}
 }
@@ -71,14 +70,14 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
-	olderSHA := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD")
-	laterSHA := gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "ancestry.txt", "v1", "ancestry commit")
+	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+	laterSHA := gitkit.CommitFile(t, h.PrimeWorktree(), "ancestry.txt", "v1", "ancestry commit")
 
 	if got, err := f.IsAncestor(olderSHA, laterSHA); err != nil || !got {
 		t.Errorf("IsAncestor(older, later) = %v, %v; want true, nil", got, err)
@@ -94,8 +93,8 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
@@ -112,24 +111,24 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
-	olderSHA := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD")
+	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 	// A committed change past olderSHA, with no uncommitted change on top —
 	// ResetHard must still discard the committed history.
-	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
-	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
+	laterPath := filepath.Join(h.PrimeWorktree(), "reset-hard-later.txt")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 
 	if err := f.ResetHard(fabricengine.NewMutations(""), olderSHA); err != nil {
 		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
 	}
 
-	if got := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD"); got != olderSHA {
+	if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != olderSHA {
 		t.Errorf("HEAD SHA after ResetHard = %q; want %q", got, olderSHA)
 	}
 	if _, err := os.Stat(laterPath); !os.IsNotExist(err) {
@@ -145,18 +144,18 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
-	olderSHA := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD")
+	olderSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 	// A committed change past olderSHA, then an uncommitted change on top —
 	// ResetHard must refuse rather than discard either one.
-	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
-	gitkit.CommitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
+	laterPath := filepath.Join(h.PrimeWorktree(), "reset-hard-later.txt")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 	const uncommittedContent = "uncommitted edit"
 	if err := os.WriteFile(laterPath, []byte(uncommittedContent), 0o644); err != nil {
 		t.Fatalf("write uncommitted change: %v", err)
@@ -170,7 +169,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 		t.Errorf("ResetHard(%q) error = %q; want a dirtiness-gate refusal", olderSHA, err)
 	}
 
-	if got := gitkit.RevParse(t, fixture.Layout.WorktreePath(), "HEAD"); got == olderSHA {
+	if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got == olderSHA {
 		t.Errorf("HEAD SHA after refused ResetHard = %q; want the later commit to remain (refusal must not discard history)", got)
 	}
 	gotContent, err := os.ReadFile(laterPath)
@@ -188,13 +187,13 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
-	gitkit.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "--detach")
 
 	if _, err := f.CurrentBranch(); err == nil {
 		t.Fatalf("CurrentBranch() on detached HEAD error = nil; want non-nil")

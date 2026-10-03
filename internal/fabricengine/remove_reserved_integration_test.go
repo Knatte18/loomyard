@@ -6,8 +6,7 @@
 // reached the teardown path and destroyed the hub's weft:main records worktree and the entire weft
 // prime respectively, both reported as success.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
@@ -27,9 +27,9 @@ import (
 func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	weftPrimeSlug := filepath.Base(l.WorktreePath()) + weftname.Suffix
 

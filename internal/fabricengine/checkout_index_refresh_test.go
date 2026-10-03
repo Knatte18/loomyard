@@ -9,8 +9,7 @@
 // and Fabric.Diff bridged against such an answer via weftAnchorForWarpSHA
 // would graft the current branches onto the other branch's history.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
+// Package fabricengine_test; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -22,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
@@ -31,9 +31,9 @@ import (
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	top := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	top := h.Topology
 
 	// Healthy junction so Checkout's wiring step succeeds.
 	slug := filepath.Base(l.WorktreePath())

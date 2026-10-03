@@ -6,8 +6,7 @@
 // index genuinely tracked <anchor>/_lyx/... was reported clean — a false negative in the one verb
 // (`lyx fabric pairs`) that advertises the check.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -19,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -30,8 +30,8 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 
 	const anchor = "backend"
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// Record the subpath anchor so every resolver agrees the hub is anchored at <anchor>.
 	subDir := filepath.Join(l.WorktreePath(), anchor)
@@ -63,7 +63,7 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	}
 	gitkit.MustRun(t, l.WorktreePath(), "git", "add", pollutedRel)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	result, err := topology.Status(anchoredLayout)
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)

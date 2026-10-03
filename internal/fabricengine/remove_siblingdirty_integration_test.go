@@ -2,7 +2,7 @@
 
 // remove_siblingdirty_integration_test.go pins that Remove's no-force refusal of a pair whose other worktree is dirty satisfies errors.Is(err, fabricengine.ErrPairSiblingDirty), and that a pair dirty only on the task side does not.
 //
-// Package fabricengine_test to reuse newFabricFixture from reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRemove_UntrackedDriveReportRefusesWithSiblingDirty leaves a new file inside a not-yet-tracked _lyx/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts the refusal satisfies ErrPairSiblingDirty.
@@ -21,9 +22,9 @@ func TestRemove_UntrackedDriveReportRefusesWithSiblingDirty(t *testing.T) {
 	t.Parallel()
 
 	const slug = "sibling-dirty"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -51,9 +52,9 @@ func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 	t.Parallel()
 
 	const slug = "task-side-dirty"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)

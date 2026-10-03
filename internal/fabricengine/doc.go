@@ -1295,4 +1295,10 @@
 // linking it to its target, so "was this branch merged?" cannot be answered from git alone after a
 // squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
 // git — this is a direct consequence of shipping squash as an option, not a defect in it.
+//
+// **Test layout.**
+// A test builds its hub through `internal/hubforge` only, never a package-local fixture type.
+// Test git plumbing goes through `internal/gitkit` only, never a private helper.
+// A new test file prefers the external `fabricengine_test` package plus `export_test.go` accessors;
+// an internal-package test file states its reason in its header comment.
 package fabricengine

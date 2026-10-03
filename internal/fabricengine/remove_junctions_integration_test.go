@@ -11,9 +11,7 @@
 // discriminator against the old _lyx-hardcoded form: the second junction's
 // nested removal has no _lyx-shaped shortcut to fall back on.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in
-// testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -36,9 +35,9 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-nested-junction"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -83,7 +82,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	}
 
 	// Remove loads the repo-wide config (best-effort) to know which nested
-	// junctions to tear down — newFabricFixture already materialized it at
+	// junctions to tear down — hubforge.NewHub already materialized it at
 	// fabricengine.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
 	// name-load finds the configured pathspec's junctions regardless of this
 	// pair's RelPath, and the happy-path nested teardown below is actually
@@ -111,16 +110,16 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	const slug = "remove-anchored-sweep"
 	const anchor = "backend"
 
-	fixture := newFabricFixture(t)
+	h := hubforge.NewHub(t, ".")
 	// PrimeName resolves the hub from the anchored directory, so it must exist in the prime
 	// worktree before the anchor is recorded — the same precondition CloneHub's own subpath guard
 	// enforces against the freshly cloned warp.
-	if err := os.MkdirAll(filepath.Join(fixture.Layout.WorktreePath(), anchor), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(h.Location.WorktreePath(), anchor), 0o755); err != nil {
 		t.Fatalf("create anchored directory in prime: %v", err)
 	}
-	seedAnchorMarker(t, fixture.Layout.HubPath, anchor)
+	seedAnchorMarker(t, h.Location.HubPath, anchor)
 
-	l, err := lyxcwd.ResolveWorktree(fixture.Layout.WorktreePath())
+	l, err := lyxcwd.ResolveWorktree(h.Location.WorktreePath())
 	if err != nil {
 		t.Fatalf("lyxcwd.ResolveWorktree: %v", err)
 	}
@@ -128,7 +127,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 		t.Fatalf("fixture AnchorRel = %q; want %q — the anchored geometry this test needs is not in place", l.AnchorRel, anchor)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -158,16 +157,16 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "remove-locked-pair"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "lock", weftTarget)
 
 	_, err := topology.Remove(l, slug, true, false)
 	if err == nil {
