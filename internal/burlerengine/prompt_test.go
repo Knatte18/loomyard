@@ -4,7 +4,7 @@
 // phrasing, and each block helper's content lands in its intended instruction file rather than
 // leaking into the orchestrator or a sibling instruction file.
 // It also declares newTestStencilsDir, the package-local test helper every burlerengine test uses to
-// seed a hermetic stencils directory from the shipped stencils package defaults.
+// seed a hermetic stencils directory through `stencilkit`.
 
 package burlerengine
 
@@ -17,45 +17,12 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with burler's five stencils plus the three pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	burlerDir := filepath.Join(dir, "burler")
-	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", burlerDir, err)
-	}
-	files := map[string][]byte{
-		"burler-template-round-orchestrator.md": stencils.BurlerTemplateRoundOrchestrator,
-		"burler-step-1-explore.md":              stencils.BurlerStep1Explore,
-		"burler-step-2-review.md":               stencils.BurlerStep2Review,
-		"burler-step-3-fix.md":                  stencils.BurlerStep3Fix,
-		"burler-focus-directive.md":             stencils.BurlerFocusDirective,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(burlerDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-
-	patternDir := filepath.Join(dir, "pattern")
-	if err := os.MkdirAll(patternDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
-	}
-	patternFiles := map[string][]byte{
-		"pattern-directive-implementer.md":  stencils.PatternDirectiveImplementer,
-		"pattern-directive-review-fix.md":   stencils.PatternDirectiveReviewFix,
-		"pattern-directive-orchestrator.md": stencils.PatternDirectiveOrchestrator,
-	}
-	for name, content := range patternFiles {
-		if err := os.WriteFile(filepath.Join(patternDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 // Placeholder absolute instruction paths every composePrompt call in this

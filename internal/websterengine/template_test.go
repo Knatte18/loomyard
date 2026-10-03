@@ -10,7 +10,7 @@
 // inherited from Master, a full cold-start recovery prompt, and card content delivered by a
 // SourcePath pointer rather than inlined fields.
 // Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds
-// itself: newTestStencilsDir builds a t.TempDir() from the shipped stencils package defaults, per
+// itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per
 // the runtime-read-not-embed Shared Decision.
 // Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
 // a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
@@ -35,34 +35,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with webster's six stencils, copied byte-for-byte
-// from the stencils package's embedded defaults (unstamped), and returns the directory to pass as
-// stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	websterDir := filepath.Join(dir, "webster")
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
-	}
-	files := map[string][]byte{
-		"webster-template-master.md":          stencils.WebsterTemplateMaster,
-		"webster-template-integration.md":     stencils.WebsterTemplateIntegration,
-		"webster-template-integration-fix.md": stencils.WebsterTemplateIntegrationFix,
-		"webster-prefix-fork.md":              stencils.WebsterPrefixFork,
-		"webster-prefix-recovery.md":          stencils.WebsterPrefixRecovery,
-		"webster-body-implementer.md":         stencils.WebsterBodyImplementer,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 // newTestSpecsDir returns a real, non-empty directory to pass as RenderForkPrompt's/
@@ -123,65 +102,10 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 	return got
 }
 
-// seedHubWebsterStencils writes webster's six stencils under hub's real
-// fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils
-// package's embedded defaults — the geometry RenderForkPrompt,
-// RenderRecoveryPrompt, and RenderMasterPrompt now derive internally via
-// fabricengine.StencilsDir(l.HubPath) before reading through
-// stencilstore.Read.
-// Split out from seedHubStencils so a missing-stencil error-path test can
-// seed webster's six without also seeding the three pattern-directive
-// stencils.
-func seedHubWebsterStencils(t *testing.T, hub string) {
-	t.Helper()
-	websterDir := filepath.Join(fabricengine.StencilsDir(hub), "webster")
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
-	}
-	files := map[string][]byte{
-		"webster-template-master.md":          stencils.WebsterTemplateMaster,
-		"webster-template-integration.md":     stencils.WebsterTemplateIntegration,
-		"webster-template-integration-fix.md": stencils.WebsterTemplateIntegrationFix,
-		"webster-prefix-fork.md":              stencils.WebsterPrefixFork,
-		"webster-prefix-recovery.md":          stencils.WebsterPrefixRecovery,
-		"webster-body-implementer.md":         stencils.WebsterBodyImplementer,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-}
-
-// seedHubPatternStencils writes the three pattern-directive stencils under hub's real
-// fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils package's embedded
-// defaults — the same on-disk geometry RenderRecoveryPrompt's and RenderMasterPrompt's now-hoisted
-// pattern.Directive call reads through stencilstore.Read.
-// Split out from seedHubStencils for the same reason as seedHubWebsterStencils.
-func seedHubPatternStencils(t *testing.T, hub string) {
-	t.Helper()
-	patternDir := filepath.Join(fabricengine.StencilsDir(hub), "pattern")
-	if err := os.MkdirAll(patternDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
-	}
-	files := map[string][]byte{
-		"pattern-directive-implementer.md":  stencils.PatternDirectiveImplementer,
-		"pattern-directive-review-fix.md":   stencils.PatternDirectiveReviewFix,
-		"pattern-directive-orchestrator.md": stencils.PatternDirectiveOrchestrator,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(patternDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-}
-
-// seedHubStencils seeds hub with webster's five stencils and the three pattern-directive stencils —
-// everything both testLayout and patternActiveLayout need, since seeding once here covers both.
+// seedHubStencils seeds every registry stencil under hub's real fabricengine.StencilsDir(hub) location, the geometry the render functions derive internally before reading through stencilstore.Read.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	seedHubWebsterStencils(t, hub)
-	seedHubPatternStencils(t, hub)
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 // testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub, seeded
@@ -217,36 +141,13 @@ func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// seedHubFrictionStencils writes the friction-directive-implementer and friction-directive-
-// orchestrator stencils under hub's real fabricengine.StencilsDir(hub) location, byte-for-byte from
-// the stencils package's embedded defaults — the two roles the four websterengine composers
-// resolve (RoleImplementer for the fork/recovery/integration composers, RoleOrchestrator for the
-// master composer).
-func seedHubFrictionStencils(t *testing.T, hub string) {
-	t.Helper()
-	frictionDir := filepath.Join(fabricengine.StencilsDir(hub), "friction")
-	if err := os.MkdirAll(frictionDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", frictionDir, err)
-	}
-	files := map[string][]byte{
-		"friction-directive-implementer.md":  stencils.FrictionDirectiveImplementer,
-		"friction-directive-orchestrator.md": stencils.FrictionDirectiveOrchestrator,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(frictionDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-}
-
 // frictionActiveLayout returns the told anchor root and stencils directory for a real t.TempDir()
-// hub seeded with webster's five stencils and the two friction-directive stencils Tier 2 needs —
-// everything a non-empty notePath call needs to resolve a real friction.Directive.
+// hub seeded with every registry stencil, including the friction-directive pair a non-empty
+// notePath call needs to resolve a real friction.Directive.
 func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
-	seedHubFrictionStencils(t, hub)
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
@@ -842,7 +743,7 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 
-	body := mustImplementerBodyTemplate(t, stencilsDir)
+	body := []byte(stencil.StripLeadingComment(string(mustImplementerBodyTemplate(t, stencilsDir))))
 	if len(body) == 0 {
 		t.Fatalf("ImplementerBodyTemplate() = empty; want non-empty shared body bytes")
 	}
@@ -1048,13 +949,13 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 }
 
 // patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like
-// patternActiveLayout — PATTERN active, webster's five stencils seeded via seedHubWebsterStencils —
-// but deliberately omits the three pattern-directive stencils, so a call site's hoisted
-// pattern.Directive read fails.
+// patternActiveLayout — PATTERN active, every stencil seeded — but then removes the three
+// pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
 func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
-	seedHubWebsterStencils(t, hub)
+	seedHubStencils(t, hub)
+	stencilkit.Remove(t, fabricengine.StencilsDir(hub), "pattern-directive-implementer", "pattern-directive-review-fix", "pattern-directive-orchestrator")
 	dir := filepath.Join(hub, "worktree", "_lyx")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
@@ -1363,10 +1264,7 @@ func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) 
 // substring and no `<!--` at all — the assertion that fails if joinTemplateAssets ever stops
 // stripping the second asset's banner.
 func TestTemplates_ComposedOutputCarriesNoBannerLeak(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := stencilstore.Reconcile(dir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
-		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", dir, err)
-	}
+	dir := stencilkit.Seed(t)
 
 	fork := string(mustForkTemplate(t, dir))
 	requireNotContains(t, fork, "lyx-stencil:")

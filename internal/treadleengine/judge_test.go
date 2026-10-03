@@ -4,7 +4,7 @@
 // missing verdict file, unparseable verdict file) for each of the three calls, asserting the safe
 // default and an empty rationale — never an error, since none of the three functions returns one.
 // It also declares newTestStencilsDir, the package-local test helper every treadleengine test uses
-// to seed a hermetic stencils directory from the shipped stencils package defaults.
+// to seed a hermetic stencils directory through `stencilkit`.
 
 package treadleengine
 
@@ -14,32 +14,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with treadle's four stencils, copied byte-for-byte
-// from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
-
-	dir := t.TempDir()
-	treadleDir := filepath.Join(dir, "treadle")
-	if err := os.MkdirAll(treadleDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", treadleDir, err)
-	}
-	files := map[string][]byte{
-		"treadle-template-judge-circling.md":  stencils.TreadleTemplateJudgeCircling,
-		"treadle-template-judge-milestone.md": stencils.TreadleTemplateJudgeMilestone,
-		"treadle-template-triage.md":          stencils.TreadleTemplateTriage,
-		"treadle-template-targeting.md":       stencils.TreadleTemplateTargeting,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(treadleDir, name), content, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
-		}
-	}
-	return dir
+	return stencilkit.Seed(t)
 }
 
 // errTestShuttle is the scripted Run error fakeJudgeShuttle returns.

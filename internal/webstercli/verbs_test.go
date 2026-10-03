@@ -35,7 +35,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -49,23 +48,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
-// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
-// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs -- webster's prompts are
-// read from disk at call time now, so a fixture hub that is never seeded fails every verb that
-// renders one.
+// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil --
+// webster's prompts are read from disk at call time, so a fixture hub that is never seeded fails
+// every verb that renders one.
 func seedHubStencils(t *testing.T, hub string) {
 	t.Helper()
-	baseDir := fabricengine.StencilsDir(hub)
-	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
-		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
-	}
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 func newScratchRepo(t *testing.T) string {
