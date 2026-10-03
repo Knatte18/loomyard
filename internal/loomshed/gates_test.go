@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -125,7 +126,7 @@ func TestNewDiscussionGate(t *testing.T) {
 		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)
 		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, withoutGoal, "support log")
 
-		buf := captureGateWarnings(t)
+		buf := logcapture.Capture(t)
 		gate := NewDiscussionGate(decisionRecordPath, supportLogPath)
 		result, err := gate()
 		if err != nil {
@@ -195,7 +196,7 @@ func TestNewPlanGate(t *testing.T) {
 		worktreeRoot := t.TempDir()
 		seedFormatInvalidPlanFixture(t, anchorPath)
 
-		buf := captureGateWarnings(t)
+		buf := logcapture.Capture(t)
 		gate := NewPlanGate(anchorPath, worktreeRoot)
 		result, err := gate()
 		if err != nil {
@@ -243,7 +244,7 @@ func TestNewPlanGate(t *testing.T) {
 		// informational create-new-unit finding -- no blocking finding in this plan.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
 
-		buf := captureGateWarnings(t)
+		buf := logcapture.Capture(t)
 		gate := NewPlanGate(anchorPath, worktreeRoot)
 		result, err := gate()
 		if err != nil {

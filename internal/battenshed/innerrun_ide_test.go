@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 func absentThenRunning() []statusResult {
@@ -52,9 +53,7 @@ func TestInnerRun_OpensIDEOnceAfterSpawnBeforeSecondRead(t *testing.T) {
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-	if _, _, err := producer.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v", err)
-	}
+	shedfake.CallOK(t, producer)
 	if opens != 1 {
 		t.Errorf("OpenIDE calls = %d; want 1", opens)
 	}
@@ -97,9 +96,7 @@ func TestInnerRun_ApprovedResumeAfterOpenDoesNotReopen(t *testing.T) {
 	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-	if _, _, err := producer.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v", err)
-	}
+	shedfake.CallOK(t, producer)
 	if *spawnCalls != 1 || opens != 0 {
 		t.Errorf("Spawn calls = %d, OpenIDE calls = %d; want 1 and 0", *spawnCalls, opens)
 	}
@@ -112,9 +109,7 @@ func TestInnerRun_ApprovedResumeWithoutMarkerOpensOnce(t *testing.T) {
 	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-	if _, _, err := producer.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v", err)
-	}
+	shedfake.CallOK(t, producer)
 	if opens != 1 {
 		t.Errorf("OpenIDE calls = %d; want 1", opens)
 	}
@@ -130,9 +125,7 @@ func TestInnerRun_StaleMarkerDoesNotSuppressFreshChildOpen(t *testing.T) {
 	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-	if _, _, err := producer.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v", err)
-	}
+	shedfake.CallOK(t, producer)
 	if opens != 1 {
 		t.Errorf("OpenIDE calls = %d; want 1", opens)
 	}
@@ -147,10 +140,7 @@ func TestInnerRun_OpenErrorIsWarnedNotEscalated(t *testing.T) {
 		_, _, deps := newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
 		deps.OpenIDE = func(ctx context.Context) error { return openErr }
 		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-		outcome, ptr, err := producer.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		outcome, ptr := shedfake.CallOK(t, producer)
 		return outcome, ptr, buf.String(), scratchDir
 	}
 

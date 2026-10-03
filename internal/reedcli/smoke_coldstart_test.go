@@ -27,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // runReedCLINoFatal runs the built lyx binary with args in dir and returns its combined
@@ -115,7 +116,7 @@ func TestSmokeColdAddYieldsTheSameSubstrateAsAnExplicitBoot(t *testing.T) {
 // handover tail took over stdio.
 func TestSmokeColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeVerifyRun records every call the gate makes to its runner seam and returns a scripted result.
@@ -165,7 +167,7 @@ func TestVerifyGate_NoChangeMarkerPresentFail(t *testing.T) {
 
 func TestVerifyGate_EmptyCommand(t *testing.T) {
 	for _, withMarker := range []bool{false, true} {
-		buf := captureLogOutput(t)
+		buf := logcapture.Capture(t)
 		f := newGateFixture(t, "", nil)
 		if withMarker {
 			f.seedMarker(t)
@@ -192,7 +194,7 @@ func TestVerifyGate_EmptyCommand(t *testing.T) {
 }
 
 func TestVerifyGate_EmptyCommandNoChangeMarkerPresent(t *testing.T) {
-	captureLogOutput(t)
+	logcapture.Capture(t)
 	f := newGateFixture(t, "", nil)
 	f.seedMarker(t)
 	reason, err := f.gate.check(context.Background(), "Finalize", "main", false)
@@ -208,7 +210,7 @@ func TestVerifyGate_EmptyCommandNoChangeMarkerPresent(t *testing.T) {
 }
 
 func TestVerifyGate_NilCommand(t *testing.T) {
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 	f := newGateFixture(t, "true", nil)
 	f.gate.command = nil
 	reason, err := f.gate.check(context.Background(), "Publish", "main", true)
@@ -218,7 +220,7 @@ func TestVerifyGate_NilCommand(t *testing.T) {
 	if f.fake.calls != 0 {
 		t.Fatal("runner called")
 	}
-	if buf.Len() != 0 {
+	if buf.String() != "" {
 		t.Fatalf("unexpected log output: %q", buf.String())
 	}
 }

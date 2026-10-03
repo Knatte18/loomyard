@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // suspectFixture is a scratch repo with a tracked file, a git-ignored one, and plan and scratch directories outside it.
@@ -28,10 +30,10 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitwrapMustGit(t, root, "add", ".gitignore")
-	gitwrapMustGit(t, root, "commit", "-m", "ignore")
-	start := strings.TrimSpace(gitwrapMustGit(t, root, "rev-parse", "HEAD"))
-	head := gitwrapCommitFile(t, root, "tracked.txt", "x", "add tracked")
+	gitkit.Git(t, root, "add", ".gitignore")
+	gitkit.Git(t, root, "commit", "-m", "ignore")
+	start := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", "HEAD"))
+	head := gitkit.CommitFile(t, root, "tracked.txt", "x", "add tracked")
 	if err := os.WriteFile(filepath.Join(root, "ignored.log"), []byte("log"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +125,7 @@ func TestCheckSuspectPaths(t *testing.T) {
 		}
 		d, _ := check(t, fx.head, "tracked.txt")
 		expect(t, d, "tracked.txt")
-		gitwrapMustGit(t, root, "commit", "-am", "edit")
+		gitkit.Git(t, root, "commit", "-am", "edit")
 		d, _ = check(t, fx.head, "tracked.txt")
 		expect(t, d, "tracked.txt")
 	})
@@ -137,7 +139,7 @@ func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) 
 	root := fx.geom.WorktreeRoot
 	c0 = fx.start
 	c1 = fx.head
-	c2 = gitwrapCommitFile(t, root, "tracked.txt", "changed by batch one", "batch one")
+	c2 = gitkit.CommitFile(t, root, "tracked.txt", "changed by batch one", "batch one")
 	fx.st.Batches = map[int]*BatchState{
 		2: {Slug: "two", StartSHA: c0, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: c1}},
 		1: {Slug: "one", StartSHA: c1, Terminal: true, Status: DigestStatusDone, Digest: &Digest{HeadSHA: c2}},
@@ -150,7 +152,7 @@ func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) 
 func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 	fx := newSuspectFixture(t)
 	root := fx.geom.WorktreeRoot
-	blob := strings.TrimSpace(gitwrapMustGit(t, root, "rev-parse", fx.head+":tracked.txt"))
+	blob := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", fx.head+":tracked.txt"))
 	bs := &BatchState{SuspectPaths: []SuspectPath{{Path: filepath.Join(root, "gone.txt"), Blob: blob}}}
 
 	reasons, err := checkRecoveredSuspects(fx.geom, fx.st, bs, 1, fx.head)
@@ -273,7 +275,7 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 func committedPastHead(t *testing.T, fx *suspectFixture) {
 	t.Helper()
 	root := fx.geom.WorktreeRoot
-	gitwrapCommitFile(t, root, "tracked.txt", "suspect write", "master commit")
+	gitkit.CommitFile(t, root, "tracked.txt", "suspect write", "master commit")
 	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +306,7 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
 	fx := newSuspectFixture(t)
 	committedPastHead(t, fx)
-	gitwrapMustGit(t, fx.geom.WorktreeRoot, "reset", "--hard", fx.head)
+	gitkit.Git(t, fx.geom.WorktreeRoot, "reset", "--hard", fx.head)
 
 	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
 	if err != nil {

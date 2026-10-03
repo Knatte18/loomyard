@@ -3,11 +3,12 @@
 
 package shedbuild
 
-import "testing"
+import (
+	"testing"
 
-// TestRoutingOf_MatchesNewShedRowForRow asserts RoutingOf's Entry and each projected row's Name,
-// OnDone, OnStuck, Segment and MaxBounces equal the ProducerDef NewShed builds, and that the
-// projection carries no Producer and no shed-level MaxBounces.
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+)
+
 func TestRoutingOf_MatchesNewShedRowForRow(t *testing.T) {
 	const recipeYAML = `
 version: 1
@@ -28,7 +29,7 @@ producers:
   - name: row3
     engine: Stub
 `
-	env := newTestEnv(t)
+	env := envkit.FullEnv(t)
 	shed, err := NewShed([]byte(recipeYAML), env, ShedPaths{MaxBounces: 9})
 	if err != nil {
 		t.Fatalf("NewShed() = _, %v; want nil", err)

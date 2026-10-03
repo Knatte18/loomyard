@@ -2,27 +2,18 @@
 // fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
 // exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
 // touches tmux and so stays hermetic, and pins reconcileLocked's reap log line via
-// captureLogOutput (logcapture_test.go).
+// logcapture.CaptureVerbose.
 
 package reedengine
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
-)
 
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+)
 
 func TestPlanReconcile(t *testing.T) {
 	tests := []struct {
@@ -242,13 +233,13 @@ func TestPlanReconcile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := newReapPolicy(&ReedState{SelvagePaneID: tt.selvagePaneID}, tt.live)
 			gotPlan := planReconcile(tt.strands, tt.live, policy)
-			if !equalStringSlices(gotPlan.clearedGUIDs, tt.wantCleared) {
+			if !slices.Equal(gotPlan.clearedGUIDs, tt.wantCleared) {
 				t.Errorf("planReconcile() clearedGUIDs = %v, want %v", gotPlan.clearedGUIDs, tt.wantCleared)
 			}
-			if !equalStringSlices(gotPlan.deadPanesToKill, tt.wantDeadPanesToKill) {
+			if !slices.Equal(gotPlan.deadPanesToKill, tt.wantDeadPanesToKill) {
 				t.Errorf("planReconcile() deadPanesToKill = %v, want %v", gotPlan.deadPanesToKill, tt.wantDeadPanesToKill)
 			}
-			if !equalStringSlices(gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill) {
+			if !slices.Equal(gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill) {
 				t.Errorf("planReconcile() untrackedPanesToKill = %v, want %v", gotPlan.untrackedPanesToKill, tt.wantUntrackedPanesToKill)
 			}
 			if gotPlan.keptDeadPane != tt.wantSolePane {
@@ -303,10 +294,8 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
-		buf := captureLogOutput(t)
+		installFakeTmux(t, e)
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
@@ -315,7 +304,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reconcileLocked: %v", err)
 		}
-		if !equalStringSlices(killed, []string{"%orphan1", "%orphan2"}) {
+		if !slices.Equal(killed, []string{"%orphan1", "%orphan2"}) {
 			t.Fatalf("killed = %v, want [%%orphan1 %%orphan2]", killed)
 		}
 		out := buf.String()
@@ -328,10 +317,8 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 
 	t.Run("KillsNothing_LogsNothing", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			return "", nil
-		}
-		buf := captureLogOutput(t)
+		installFakeTmux(t, e)
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{}
 		killed, err := e.reconcileLocked(st, nil)
@@ -349,13 +336,13 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 	t.Run("PartialKillFailure_LogsOnlyTheDestroyedPaneAndStillReturnsTheError", func(t *testing.T) {
 		e := newTestEngine(t)
 		killPaneErr := errors.New("kill-pane failed")
-		e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-			if args[0] == "kill-pane" && len(args) >= 3 && args[2] == "%orphan2" {
+		installFakeTmux(t, e).answerFunc("kill-pane", func(args []string) (string, error) {
+			if len(args) >= 3 && args[2] == "%orphan2" {
 				return "", killPaneErr
 			}
 			return "", nil
-		}
-		buf := captureLogOutput(t)
+		})
+		buf := logcapture.CaptureVerbose(t)
 
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		live := []LivePane{{ID: "%selvage", Dead: false}, {ID: "%orphan1", Dead: false}, {ID: "%orphan2", Dead: false}}
@@ -367,7 +354,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 		if !errors.Is(err, killPaneErr) {
 			t.Errorf("reconcileLocked() err = %v, want it to wrap %v", err, killPaneErr)
 		}
-		if !equalStringSlices(killed, []string{"%orphan1"}) {
+		if !slices.Equal(killed, []string{"%orphan1"}) {
 			t.Fatalf("killed = %v, want [%%orphan1] (only the pane destroyed before the failure)", killed)
 		}
 
@@ -458,7 +445,7 @@ func TestClearConflictingPaneBindings(t *testing.T) {
 			st := tt.state
 			st.Strands = append([]Strand(nil), tt.state.Strands...)
 			got := clearConflictingPaneBindings(&st)
-			if !equalStringSlices(got, tt.wantCleared) {
+			if !slices.Equal(got, tt.wantCleared) {
 				t.Errorf("clearConflictingPaneBindings() cleared = %v; want %v", got, tt.wantCleared)
 			}
 			for guid, want := range tt.wantPaneByID {

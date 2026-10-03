@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // writeBatcherConfig writes content as <anchorPath>/_lyx/config/batcher.yaml.
@@ -29,13 +30,7 @@ func TestBatchifier_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, pointer, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
+		pointer := shedfake.RequireOutcome(t, b, shedengine.Done)
 		if pointer != (shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want empty", pointer)
 		}
@@ -46,13 +41,7 @@ func TestBatchifier_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, pointer, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		if !strings.HasPrefix(pointer.Reason, batchifierReasonPrefix) || pointer.Reason == batchifierReasonPrefix {
 			t.Errorf("Call() Reason = %q; want a non-empty cause after %q", pointer.Reason, batchifierReasonPrefix)
 		}
@@ -63,13 +52,7 @@ func TestBatchifier_Call(t *testing.T) {
 		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, _, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	})
 
 	t.Run("AbsentConfigFileMapsToDoneViaTemplateFallback", func(t *testing.T) {
@@ -79,26 +62,14 @@ func TestBatchifier_Call(t *testing.T) {
 		}
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, _, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q — Active falls back to the embedded template", outcome, shedengine.Done)
-		}
+		shedfake.RequireOutcome(t, b, shedengine.Done)
 	})
 
 	t.Run("AbsentLyxDirMapsToDoneViaTemplateFallback", func(t *testing.T) {
 		anchorPath := t.TempDir() // no _lyx/ at all
 
 		b := NewBatchifier("Batchifier", anchorPath)
-		outcome, _, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q — Active falls back to the embedded template", outcome, shedengine.Done)
-		}
+		shedfake.RequireOutcome(t, b, shedengine.Done)
 	})
 
 	t.Run("CancelledContextReturnsErrorNotVerdict", func(t *testing.T) {
@@ -125,10 +96,7 @@ func TestBatchifier_DistinctCausesYieldDistinctReasons(t *testing.T) {
 	reasonFor := func(content string) string {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, content)
-		_, pointer, err := NewBatchifier("Batchifier", anchorPath).Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		_, pointer := shedfake.CallOK(t, NewBatchifier("Batchifier", anchorPath))
 		return pointer.Reason
 	}
 	malformed := reasonFor("active: [not valid yaml\n")

@@ -7,9 +7,7 @@
 // to produce (a live review round reproduced this by making the warp _lyx a real
 // directory so seedLyxJunction refuses). Checkout now rolls back BOTH sides.
 //
-// Package fabricengine_test to reuse newFabricFixture/currentBranchOf/
-// branchExistsAt from reconcile_stale_registration_test.go; shares the single
-// TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -21,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -32,9 +31,9 @@ import (
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	top := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	top := h.Topology
 
 	const targetBranch = "checkout-rollback-target"
 
@@ -49,8 +48,8 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
-	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
+	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
+	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the warp _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
@@ -70,16 +69,16 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 
 	// The all-or-nothing contract: both sides restored to their originals, never
 	// a half-switched pair (warp rolled back but weft stranded on the new branch).
-	if got := currentBranchOf(t, l.WorktreePath()); got != originalWarpBranch {
+	if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
-	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The target weft branch pre-existed this Checkout (adopted, not forked), so
 	// the rollback must NOT have deleted it.
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(targetBranch)) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(targetBranch)) {
 		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.WeftBranchName(targetBranch))
 	}
 }
@@ -92,9 +91,9 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	top := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	top := h.Topology
 
 	const targetBranch = "checkout-rollback-forked"
 
@@ -105,8 +104,8 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	// Only the warp branch exists: the weft side must be forked by Checkout.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
-	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
-	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
+	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
+	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the warp _lyx into a real directory so step 5 fails after the fork.
 	warpLyx := fabricengine.WarpLyxLinkHere(l)
@@ -122,17 +121,17 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 		t.Fatalf("Checkout(%q) error = nil; want a junction-wiring failure (res=%+v)", targetBranch, res)
 	}
 
-	if got := currentBranchOf(t, l.WorktreePath()); got != originalWarpBranch {
+	if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
-	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The branch step 4 forked must be gone: the rolled-back Checkout tears down
 	// exactly what it created.
 	forked := fabricengine.WeftBranchName(targetBranch)
-	if branchExistsAt(t, mustWeftRepoRoot(t, l), forked) {
+	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
 	}
 }
@@ -144,12 +143,10 @@ func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "checkout-stderr"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -157,7 +154,7 @@ func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
 	}
 
 	// The prime worktree holds primeBranch, so switching the task worktree onto it must fail.
-	primeBranch := currentBranchOf(t, l.WorktreePath())
+	primeBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	_, err = topology.Checkout(warpLayout, primeBranch)
 	if err == nil {
 		t.Fatalf("Checkout(%q) = nil error; want a refusal (the branch is checked out elsewhere)", primeBranch)

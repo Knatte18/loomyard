@@ -14,10 +14,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // NewPairedFromPathsForTest re-exports newPaired for fabric_test.go's untagged unit test of the
@@ -185,30 +183,6 @@ func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, br
 //     fabricengine for as long as anything package-fabricengine still calls it unqualified, while the
 //     ForTest wrapper below it gives every migrated file a qualified path to the same logic.
 
-// NewPlainWarpRepoForTest re-exports newPlainWarpRepo (relocated fixture helper, formerly
-// index_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
-// unqualified, and several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
-var NewPlainWarpRepoForTest = newPlainWarpRepo
-
-// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on branch main with one
-// commit — everything RecordCorrespondence/warpSeq needs from a warp repo, without any of fabric's
-// own topology wiring (junctions, weft pairing), which the callers of this helper do not exercise.
-func newPlainWarpRepo(t *testing.T) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
-	return dir
-}
-
 // NewFabricForTest re-exports newFabric (relocated fixture helper, formerly
 // index_integration_test.go): several of the nine relocating files need it before
 // index_integration_test.go's own migration card lands. Distinct from NewPairedFromPathsForTest
@@ -326,49 +300,6 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 	}
 	t.Cleanup(func() { spawnDetachedPushFn = original })
 	return recorder
-}
-
-// NewCommitFixtureForTest re-exports newCommitFixture (relocated fixture helper, formerly
-// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
-// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
-// migrating) call it unqualified; the nine relocating files call the exported form.
-var NewCommitFixtureForTest = newCommitFixture
-
-// newCommitFixture builds a fresh warp/weft pair with the fabric config seeded, returning the Fabric
-// handle and both repo paths.
-func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
-	t.Helper()
-
-	warpPath = newPlainWarpRepo(t)
-	weftPath = newPlainWeftRepo(t)
-	seedFabricConfig(t, warpPath)
-	f = newFabric(t, warpPath, weftPath)
-	return f, warpPath, weftPath
-}
-
-// newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main with a single
-// tracked _lyx/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
-// gitkit's own retired weft-only template for newCommitFixture's four in-package callers, which
-// cannot import the hubforge package.
-func newPlainWeftRepo(t *testing.T) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-
-	lyxDir := filepath.Join(dir, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(lyxDir, "config.yaml"), []byte("test"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
-	return dir
 }
 
 // WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly

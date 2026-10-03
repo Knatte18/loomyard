@@ -73,12 +73,29 @@ No hub-level container is ever junctioned into a worktree. `_board`, `_portals`,
 `internal/gitkit` imports only stdlib, `lyxcwd`, `weftname`, `configengine`, `lyxdirs`.
 
 - `gitkit.CopyRepo` is callable from `lyxcwd` alone; everyone else takes a hub from `hubforge`.
+- Test git plumbing lives in `gitkit`; a package-local `_test.go` helper that shells out to git is a review flag.
+  This is review discipline, not a scan.
 
 ## hubforge Fabric-Fixture Invariant
 
 Every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWire`. No hub is hand-assembled.
 
 - No package in `fabriccli`'s dependency set may import `hubforge`.
+- No test package wraps `hubforge` in its own fixture type; a test takes a `*hubforge.Hub` and reads `h.Topology`, `AddPairWith` and `OpenFabric` directly.
+  Enforcement is review discipline, not a scan.
+
+## Testkit Invariant
+
+A seam faked in two or more packages is shared through one kit package under `internal/testkit/<kit>/`, never duplicated per package and never placed under the package it fakes.
+
+- No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
+  Files under `internal/testkit/` are exempt, so a kit may build on another kit.
+- No non-test file under `internal/testkit/` imports an `internal/*cli` package.
+- No non-test file under `internal/testkit/` imports `os/exec`, `internal/gitexec`, `internal/gitkit`, `internal/hubforge` or `internal/testkit/lyxbin`.
+  `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx`; banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
+- A kit imports only the lowest packages defining the types it fakes; a package an import cycle bars from a kit keeps exactly one local copy; a fixture used by one package stays in that package's `_test.go` files.
+- Enforced by `internal/testkit/enforcement_test.go` for the import rules.
+  Review discipline covers the rest: a kit starts no process, tmux server or agent beyond what its imports allow, and asserts nothing beyond `t.Fatalf` on its own setup, the `shedfake` `Call`/`RequireOutcome` outcome check and the `envelope` `RequireOK`/`RequireErr` shape check.
 
 ## Modelspec Leaf Invariant
 
@@ -356,7 +373,9 @@ Every registered lyx module is exercised by the sandbox suite or explicitly excl
 
 Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 
-- No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `gitkit.Copy*`, `hubforge.NewHub` outside `integration`/`smoke`-tagged files.
+- No `gitexec.Run`/`RunGit`, `exec.Command`/`CommandContext`, `hubforge.NewHub` or gitkit spawn outside `integration`/`smoke`-tagged files.
+- Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
+- Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside `integration`/`smoke`-tagged files.
 - `time.Sleep(...)` ≥ 1s in an untagged file is flagged unless allowlisted.
 
 ## Hermetic Git Test Environment Invariant
@@ -364,6 +383,7 @@ Untagged test files perform no expensive spawns; Tier 1 stays offline and fast.
 Every test package whose tests spawn git runs under the hermetic git test environment.
 
 - `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or is allowlisted (`internal/proc`).
+- A package is git-spawning when a test file references a gitkit spawn, by the same definition Test Tier Purity uses.
 
 ## Dev/Prod Binary Separation
 
@@ -453,6 +473,8 @@ All GitHub authentication goes through `internal/githubclient`; no other product
 ## gitrepo Client Boundary Invariant
 
 `internal/gitrepo` splits local-vs-remote by client: go-git owns local reads; `gitexec` owns anything remote-authenticating or working-tree-mutating.
+
+- The parity oracle `internal/gitrepo/internal/gitoracle` imports only stdlib and `gitexec`, never `gitrepo`, enforced by its leaf test.
 
 ## gitexec Checked-Call Invariant
 

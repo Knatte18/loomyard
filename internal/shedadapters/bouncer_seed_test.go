@@ -7,9 +7,7 @@
 package shedadapters
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -22,69 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// shippedBouncerStencilsFixture builds a stencils fixture directory seeded with the shipped
-// bouncer template bytes taken from the contracts/stencils package's own exported vars, plus a
-// rubric stencil carrying a realistic leading stamp banner.
-func shippedBouncerStencilsFixture(t *testing.T, rubricName, rubricBody string) string {
-	t.Helper()
-	return newBouncerStencilsFixture(t, map[string]string{
-		"bouncer-template-seed":  string(stencils.BouncerTemplateSeed),
-		"bouncer-template-judge": string(stencils.BouncerTemplateJudge),
-		rubricName:               rubricBody,
-	})
-}
-
-// testBouncerConfig builds a BouncerConfig over a fresh run dir and the shipped bouncer stencils,
-// filling every field except Shuttle exactly as newTestBouncer's own literal always has. It exists
-// so a test needing a non-default config field -- the commit seam is the first -- can build one
-// without duplicating the fixture.
-func testBouncerConfig(t *testing.T) BouncerConfig {
-	t.Helper()
-
-	runDir := t.TempDir()
-	stencilsDir := shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nBe thorough and cite evidence.\n")
-	return BouncerConfig{
-		Name:          "gate",
-		RunDir:        runDir,
-		ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   stencilsDir,
-		RubricStencil: "bouncer-template-rubric",
-		Model:         "claude-x",
-		Effort:        "high",
-		Version:       "v1",
-		Now:           fixedClock(time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)),
-	}
-}
-
-// newTestBouncer builds a *Bouncer over a fresh run dir and the shipped bouncer stencils, ready
-// for a seed-mode Call: an empty run dir with no report and no round-1 focus file.
-func newTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
-	t.Helper()
-
-	cfg := testBouncerConfig(t)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	return b, cfg
-}
-
-// testBouncerConfigWithSpecsMarker builds a BouncerConfig like testBouncerConfig, but seeds the
-// rubric with a literal {{.specs_dir}} marker and sets cfg.SpecsDir to specsDir -- the fixture the
-// composed-prompt specs_dir assertions need, since testBouncerConfig's own default rubric carries
-// no marker at all.
-func testBouncerConfigWithSpecsMarker(t *testing.T, specsDir string) BouncerConfig {
-	t.Helper()
-
-	cfg := testBouncerConfig(t)
-	cfg.StencilsDir = shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nCite {{.specs_dir}}.\n\nBe thorough and cite evidence.\n")
-	cfg.SpecsDir = specsDir
-	return cfg
-}
 
 // TestBouncer_SeedCall_ComposedPromptStatesSpecsDir asserts the seed call's composed prompt --
 // where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
@@ -97,27 +34,20 @@ func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
 	}
 
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
 
-	cfg := testBouncerConfigWithSpecsMarker(t, specsDir)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
+	b, _ := newBouncerFixture(t, withSpecsMarker(specsDir), withShuttle(shuttle)).Build()
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, b)
 
-	prompt := shuttle.gotSpec.Prompt
+	prompt := shuttle.GotSpec.Prompt
 	if !strings.Contains(prompt, specsDir) {
 		t.Errorf("seed call composed prompt does not contain the told specs directory %q", specsDir)
 	}
@@ -127,33 +57,27 @@ func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 }
 
 func TestBouncer_SeedCall_HappyPath(t *testing.T) {
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		content := "---\nround: 1\nexclude_lenses: []\nfocus: [\"check the thing\"]\n---\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
-	if !shuttle.called {
+	if !shuttle.Called {
 		t.Error("Call() did not invoke the shuttle seam")
 	}
-	if shuttle.gotSpec.Role != "bouncer-seed" {
-		t.Errorf("recorded spec.Role = %q; want %q", shuttle.gotSpec.Role, "bouncer-seed")
+	if shuttle.GotSpec.Role != "bouncer-seed" {
+		t.Errorf("recorded spec.Role = %q; want %q", shuttle.GotSpec.Role, "bouncer-seed")
 	}
 
 	focusRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
@@ -177,22 +101,16 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 }
 
 func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	// round-1-focus.md present but unparseable, with no report on disk.
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte("not frontmatter at all"), 0o644); err != nil {
 		t.Fatalf("WriteFile(...) = %v; want nil", err)
 	}
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
-	if !shuttle.called {
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
+	if !shuttle.Called {
 		t.Error("Call() treated an unparseable-but-present focus file as a re-bounce (fake not invoked); want a seed call")
 	}
 
@@ -220,56 +138,34 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "SeedTemplateUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					// bouncer-template-seed deliberately absent.
-					"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				return b, cfg
+				return newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						// bouncer-template-seed deliberately absent.
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
 			},
 		},
 		{
 			name: "RubricUnreadable",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					"bouncer-template-seed":  string(stencils.BouncerTemplateSeed),
-					"bouncer-template-judge": string(stencils.BouncerTemplateJudge),
-					// The registered rubric name below is never seeded, so the probe would fail
-					// at construction; give the constructor a readable placeholder rubric and
-					// then delete it before Call so the seed spawn (not construction) fails.
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				if err := os.Remove(filepath.Join(stencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
+				// The constructor needs a readable rubric;
+				// deleting it before Call makes the seed spawn, not construction, fail.
+				b, cfg := newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						"bouncer-template-seed":   string(stencils.BouncerTemplateSeed),
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
+				if err := os.Remove(filepath.Join(cfg.StencilsDir, "bouncer", "bouncer-template-rubric.md")); err != nil {
 					t.Fatalf("Remove(rubric) = %v; want nil", err)
 				}
 				return b, cfg
@@ -278,59 +174,48 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "FillFailure",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				runDir := t.TempDir()
-				stencilsDir := newBouncerStencilsFixture(t, map[string]string{
-					// Declares a marker the Go side does not supply.
-					"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
-					"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
-					"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
-				})
-				cfg := BouncerConfig{
-					Name:          "gate",
-					RunDir:        runDir,
-					ArtifactPaths: []string{filepath.Join(runDir, "artifact.md")},
-					ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-					StencilsDir:   stencilsDir,
-					RubricStencil: "bouncer-template-rubric",
-					Shuttle:       &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}},
-					Now:           fixedClock(time.Now()),
-				}
-				b, err := NewBouncer(cfg)
-				if err != nil {
-					t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-				}
-				return b, cfg
+				return newBouncerFixture(t,
+					withBareConfig(),
+					withStencils(map[string]string{
+						// Declares a marker the Go side does not supply.
+						"bouncer-template-seed":   "# Seed\n\n{{.rubric}} {{.artifacts}} {{.round}} {{.focus_path}} {{.unknown_marker}}\n",
+						"bouncer-template-judge":  string(stencils.BouncerTemplateJudge),
+						"bouncer-template-rubric": "# Rubric\n\nBe thorough.\n",
+					}),
+					withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}),
+					withClock(fixedClock(time.Now())),
+				).Build()
 			},
 		},
 		{
 			name: "RunError",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &fakeShuttle{err: errors.New("run exploded")})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Err: errors.New("run exploded")})).Build()
 			},
 		},
 		{
 			name: "NonOutcomeDone",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}})).Build()
 			},
 		},
 		{
 			name: "AgentWroteNothing",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newTestBouncer(t, &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}})).Build()
 			},
 		},
 		{
 			name: "AgentWroteUnparseableFocus",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-				shuttle.duringRun = func() {
-					path := shuttle.gotSpec.OutputFiles[0]
+				shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+				shuttle.DuringRun = func() {
+					path := shuttle.GotSpec.OutputFiles[0]
 					if err := os.WriteFile(path, []byte("garbage, not frontmatter"), 0o644); err != nil {
 						t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 					}
 				}
-				return newTestBouncer(t, shuttle)
+				return newBouncerFixture(t, withShuttle(shuttle)).Build()
 			},
 		},
 	}
@@ -339,13 +224,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b, cfg := tt.buildBouncer(t)
 
-			outcome, ptr, err := b.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 			if ptr != (shedengine.OutputPointer{}) {
 				t.Errorf("Call() pointer = %+v; want empty", ptr)
 			}
@@ -373,22 +252,16 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 
 func TestBouncer_SeedSideHarvest_SurvivesLateRunError(t *testing.T) {
 	written := "---\nround: 1\nexclude_lenses: []\nfocus: [\"real targeting\"]\n---\nrationale\n"
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, err: errors.New("run failed after write")}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, Err: errors.New("run failed after write")}
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
 	got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
 	if err != nil {
@@ -401,22 +274,16 @@ func TestBouncer_SeedSideHarvest_SurvivesLateRunError(t *testing.T) {
 
 func TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone(t *testing.T) {
 	written := "---\nround: 1\nexclude_lenses: []\nfocus: [\"real targeting\"]\n---\nrationale\n"
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	outcome, _, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
 	got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
 	if err != nil {
@@ -428,25 +295,19 @@ func TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone(t *testing.T) {
 }
 
 func TestBouncer_ReBounce(t *testing.T) {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newTestBouncer(t, shuttle)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 		t.Fatalf("WriteFile(...) = %v; want nil", err)
 	}
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr.Path != "" || ptr.GateAttempts != nil {
 		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam on a re-bounce; want it never called")
 	}
 
@@ -488,42 +349,36 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &fakeShuttle{
-				result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-				attachFound:  tt.attachFound,
-				attachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			shuttle := &shedfake.Shuttle{
+				Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+				AttachFound:  tt.attachFound,
+				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 			}
-			b, cfg := newTestBouncer(t, shuttle)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 			if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 				t.Fatalf("WriteFile(...) = %v; want nil", err)
 			}
 
-			outcome, ptr, err := b.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
-			if !shuttle.attachCalled {
+			if !shuttle.AttachCalled {
 				t.Fatal("Call() returned from the re-bounce without probing for a live seed; a live seed agent would be abandoned in its pane")
 			}
 			wantOutputs := []string{focusPath(cfg.RunDir, 1)}
-			if !slices.Equal(shuttle.gotAttachSpec.OutputFiles, wantOutputs) {
-				t.Errorf("re-bounce probe OutputFiles = %v; want %v -- Attach matches on this set alone, so it must equal the seed spawn's own", shuttle.gotAttachSpec.OutputFiles, wantOutputs)
+			if !slices.Equal(shuttle.GotAttachSpec.OutputFiles, wantOutputs) {
+				t.Errorf("re-bounce probe OutputFiles = %v; want %v -- Attach matches on this set alone, so it must equal the seed spawn's own", shuttle.GotAttachSpec.OutputFiles, wantOutputs)
 			}
-			if shuttle.gotAttachSpec.Role != bouncerSeedRole {
-				t.Errorf("re-bounce probe Role = %q; want %q -- it must describe the same run the seed spawn started", shuttle.gotAttachSpec.Role, bouncerSeedRole)
+			if shuttle.GotAttachSpec.Role != bouncerSeedRole {
+				t.Errorf("re-bounce probe Role = %q; want %q -- it must describe the same run the seed spawn started", shuttle.GotAttachSpec.Role, bouncerSeedRole)
 			}
-			if shuttle.gotAttachSpec.Round != "1" {
-				t.Errorf("re-bounce probe Round = %q; want \"1\"", shuttle.gotAttachSpec.Round)
+			if shuttle.GotAttachSpec.Round != "1" {
+				t.Errorf("re-bounce probe Round = %q; want \"1\"", shuttle.GotAttachSpec.Round)
 			}
 
 			// The branch's own behaviour is unchanged either way: probing is not respawning.
-			if shuttle.called {
+			if shuttle.Called {
 				t.Error("Call() spawned through the shuttle seam on a re-bounce; want the probe only, never a spawn")
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
 			}
 			if ptr.Path != "" {
 				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
@@ -546,31 +401,25 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 // liveness question is never read as "nothing is running": the re-bounce degrades rather than
 // silently proceeding, the same rule awaitLiveJudge's caller already follows.
 func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
-	shuttle := &fakeShuttle{
-		result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		attachErr: errors.New("reed state unreadable"),
+	shuttle := &shedfake.Shuttle{
+		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		AttachErr: errors.New("reed state unreadable"),
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 		t.Fatalf("WriteFile(...) = %v; want nil", err)
 	}
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil -- a degraded probe is a warned Stuck, never an engine error", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr.Path != "" {
 		t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
 	}
 	if want := "shedadapters: bouncer re-bounce seed attach probe failed"; ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want the degrade message %q", ptr.Reason, want)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() spawned through the shuttle seam after a failed probe; want no spawn")
 	}
 }
@@ -685,56 +534,52 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 }
 
 func TestBouncer_SpecIdentity_RoleAndRound(t *testing.T) {
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	shuttle := &shedfake.Shuttle{
+		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, _ := newTestBouncer(t, shuttle)
+	b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
+	shedfake.CallOK(t, b)
+	if shuttle.GotSpec.Role != "bouncer-seed" {
+		t.Errorf("seed call spec.Role = %q; want %q", shuttle.GotSpec.Role, "bouncer-seed")
 	}
-	if shuttle.gotSpec.Role != "bouncer-seed" {
-		t.Errorf("seed call spec.Role = %q; want %q", shuttle.gotSpec.Role, "bouncer-seed")
-	}
-	if shuttle.gotSpec.Round != "1" {
-		t.Errorf("seed call spec.Round = %q; want %q", shuttle.gotSpec.Round, "1")
+	if shuttle.GotSpec.Round != "1" {
+		t.Errorf("seed call spec.Round = %q; want %q", shuttle.GotSpec.Round, "1")
 	}
 }
 
 func TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs(t *testing.T) {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	shuttle.duringRun = func() {
-		path := shuttle.gotSpec.OutputFiles[0]
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	shuttle.DuringRun = func() {
+		path := shuttle.GotSpec.OutputFiles[0]
 		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
+	shedfake.CallOK(t, b)
+	if shuttle.GotSpec.Model != cfg.Model {
+		t.Errorf("recorded spec.Model = %q; want %q", shuttle.GotSpec.Model, cfg.Model)
 	}
-	if shuttle.gotSpec.Model != cfg.Model {
-		t.Errorf("recorded spec.Model = %q; want %q", shuttle.gotSpec.Model, cfg.Model)
+	if shuttle.GotSpec.Effort != cfg.Effort {
+		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.GotSpec.Effort, cfg.Effort)
 	}
-	if shuttle.gotSpec.Effort != cfg.Effort {
-		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.gotSpec.Effort, cfg.Effort)
+	if shuttle.GotSpec.Version != cfg.Version {
+		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, cfg.Version)
 	}
-	if shuttle.gotSpec.Version != cfg.Version {
-		t.Errorf("recorded spec.Version = %q; want %q", shuttle.gotSpec.Version, cfg.Version)
-	}
-	if len(shuttle.gotSpec.OutputFiles) == 0 {
+	if len(shuttle.GotSpec.OutputFiles) == 0 {
 		t.Fatal("recorded spec.OutputFiles is empty")
 	}
-	for _, f := range shuttle.gotSpec.OutputFiles {
+	for _, f := range shuttle.GotSpec.OutputFiles {
 		if !filepath.IsAbs(f) {
 			t.Errorf("recorded spec.OutputFiles entry %q is not absolute", f)
 		}

@@ -10,6 +10,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,11 +57,7 @@ func TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact(t *testing.T) {
 			e.cfg.Mouse = "off"
 			e.cfg.Watchdog = watchdog
 
-			var calls [][]string
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				calls = append(calls, append([]string{}, args...))
-				return "", nil
-			}
+			fake := installFakeTmux(t, e)
 
 			_, err := e.Up()
 			if err == nil {
@@ -69,7 +66,7 @@ func TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact(t *testing.T) {
 			if !strings.Contains(err.Error(), "invalid watchdog value") {
 				t.Errorf("Up() error = %q, want it to name the invalid watchdog value", err)
 			}
-			if len(calls) != 0 {
+			if calls := fake.Calls(); len(calls) != 0 {
 				t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
 			}
 		})
@@ -325,7 +322,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := guids(planResumeLaunches(tt.strands, tt.liveIDs))
-			if !equalStringSlices(got, tt.want) {
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("planResumeLaunches() guids = %v, want %v", got, tt.want)
 			}
 		})

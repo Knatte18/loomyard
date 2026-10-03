@@ -5,8 +5,7 @@
 // discards uncommitted tracked changes with no trace; before the gate, it did so with no dirty
 // check and no --force flag of its own, while `remove` refused the identical state.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestPrune_ProtectsDirtyWeftWorktreeUntilForced builds a stale pair whose weft worktree carries an
@@ -27,21 +27,15 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-dirty"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	tracked := filepath.Join(weftPath, "tracked.md")
-	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", tracked, err)
-	}
-	gitkit.MustRun(t, weftPath, "git", "add", "tracked.md")
-	gitkit.MustRun(t, weftPath, "git", "commit", "-m", "seed tracked file")
+	gitkit.CommitFile(t, weftPath, "tracked.md", "committed\n", "seed tracked file")
 
 	// The uncommitted work a forced removal would discard.
 	const sentinel = "PRUNE-SENTINEL"

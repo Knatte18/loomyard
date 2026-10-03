@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
 func TestLauncherExt(t *testing.T) {
@@ -189,7 +191,7 @@ func TestWriteLaunchers_RunScriptContentAndFilename(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), ".")
+	l := locationkit.Location(hub, "prime", ".")
 	const slug = "test-slug"
 
 	menuPath := menuLauncherPath(l)

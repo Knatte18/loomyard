@@ -1,7 +1,6 @@
 package mergeresolve
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -11,20 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// captureLogOutput redirects logger output into a buffer for the duration of one test, restoring
-// os.Stderr via t.Cleanup -- the same pattern internal/loomshed/gatefindings_test.go uses.
-func captureLogOutput(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return &buf
-}
 
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
 // results/errors.
@@ -86,45 +76,13 @@ func (f *fakeMergeSurface) indexOf(name string) int {
 	return -1
 }
 
-// fakeShuttle records every Spec it was handed and returns one scripted Result/error per call, in
-// order. An optional runHook is invoked with the attempt's 1-based call number and the spec just
-// before the scripted result is returned, letting a test mutate worktree fixture files as if a real
-// session had just edited them.
-type fakeShuttle struct {
-	results []shuttleengine.Result
-	errs    []error
-	runHook func(callNumber int, spec shuttleengine.Spec)
-
-	specs []shuttleengine.Spec
-}
-
-func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-	f.specs = append(f.specs, spec)
-	callNumber := len(f.specs)
-
-	var res shuttleengine.Result
-	if callNumber-1 < len(f.results) {
-		res = f.results[callNumber-1]
-	}
-	var err error
-	if callNumber-1 < len(f.errs) {
-		err = f.errs[callNumber-1]
-	}
-
-	if f.runHook != nil {
-		f.runHook(callNumber, spec)
-	}
-
-	return res, err
-}
-
 // conflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two markers
 // buildConflictSpec fills.
 const conflictStencilFixture = "# Conflict\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
 // newTestDeps returns a Deps wired against fake, shuttle, and a fresh worktree/scratch/stencils
 // directory tree under t.TempDir(), with the conflict stencil fixture seeded.
-func newTestDeps(t *testing.T, fake *fakeMergeSurface, shuttle *fakeShuttle) Deps {
+func newTestDeps(t *testing.T, fake *fakeMergeSurface, shuttle *shedfake.MergeShuttle) Deps {
 	t.Helper()
 
 	root := t.TempDir()
@@ -172,7 +130,7 @@ const resolvedContent = "resolved content, no markers\n"
 
 func TestResolve_CleanMergeNoSession(t *testing.T) {
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -185,8 +143,8 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 	if res.Outcome != OutcomeResolved {
 		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeResolved)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("shuttle was called %d time(s); want 0 for a clean merge", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("shuttle was called %d time(s); want 0 for a clean merge", len(shuttle.Specs))
 	}
 }
 
@@ -196,9 +154,9 @@ func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-	shuttle := &fakeShuttle{
-		results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-		runHook: func(callNumber int, spec shuttleengine.Spec) {
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		DuringRun: func(callNumber int, spec shuttleengine.Spec) {
 			writeConflictedFixture(t, deps, "a.txt", resolvedContent)
 		},
 	}
@@ -236,8 +194,8 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-	shuttle := &fakeShuttle{
-		results: []shuttleengine.Result{
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{
 			{Outcome: shuttleengine.OutcomeDone},
 			{Outcome: shuttleengine.OutcomeDone},
 		},
@@ -256,8 +214,8 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 	if res.Outcome != OutcomeStuck {
 		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
 	}
-	if len(shuttle.specs) != 2 {
-		t.Errorf("shuttle was called %d time(s); want exactly one retry (2 total)", len(shuttle.specs))
+	if len(shuttle.Specs) != 2 {
+		t.Errorf("shuttle was called %d time(s); want exactly one retry (2 total)", len(shuttle.Specs))
 	}
 	if !fake.calledAny("MergeAbort") {
 		t.Error("MergeAbort was never called")
@@ -272,7 +230,7 @@ func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
 		mergeInProgress: true,
 		mergeInResult:   fabricengine.MergeResult{Conflicts: nil},
 	}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -291,7 +249,7 @@ func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
 
 func TestResolve_ForeignMergeStateError_StuckNoAbort(t *testing.T) {
 	fake := &fakeMergeSurface{mergeInErr: &fabricengine.ErrForeignMergeState{}}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -311,7 +269,7 @@ func TestResolve_ForeignMergeStateError_StuckNoAbort(t *testing.T) {
 
 func TestResolve_UnmergeableStateError_StuckWithErrorSurfacedNoAbort(t *testing.T) {
 	fake := &fakeMergeSurface{mergeInErr: &fabricengine.ErrUnmergeableState{}}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -340,7 +298,7 @@ func (unrecognizedMergeError) Error() string { return "unrecognized merge failur
 
 func TestResolve_UnrecognizedMergeInError_CatchAllStuck(t *testing.T) {
 	fake := &fakeMergeSurface{mergeInErr: unrecognizedMergeError{}}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -371,13 +329,13 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 			deps := newTestDeps(t, fake, nil)
 			writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-			shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: tt.outcome, SessionID: "session-1", RunDir: "/run/dir"}}}
+			shuttle := &shedfake.MergeShuttle{Results: []shuttleengine.Result{{Outcome: tt.outcome, SessionID: "session-1", RunDir: "/run/dir"}}}
 			deps.Shuttle = shuttle
 			r, err := New(deps)
 			if err != nil {
 				t.Fatalf("New() error = %v", err)
 			}
-			buf := captureLogOutput(t)
+			buf := logcapture.Capture(t)
 
 			res, err := r.Resolve(context.Background(), "source")
 			if err != nil {
@@ -412,13 +370,13 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-	shuttle := &fakeShuttle{results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDied, SessionID: "session-1", RunDir: "/run/dir"}}}
+	shuttle := &shedfake.MergeShuttle{Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDied, SessionID: "session-1", RunDir: "/run/dir"}}}
 	deps.Shuttle = shuttle
 	r, err := New(deps)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	buf := captureLogOutput(t)
+	buf := logcapture.Capture(t)
 
 	_, err = r.Resolve(context.Background(), "source")
 	if err == nil {
@@ -435,7 +393,7 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 
 func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
 	fake := &fakeMergeSurface{}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -458,7 +416,7 @@ func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
 
 func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{AlreadyUpToDate: true}}
-	shuttle := &fakeShuttle{}
+	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -471,8 +429,8 @@ func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 	if res.Outcome != OutcomeResolved || !res.AlreadyUpToDate {
 		t.Errorf("Resolve() = %+v; want resolved with AlreadyUpToDate", res)
 	}
-	if len(shuttle.specs) != 0 {
-		t.Errorf("shuttle was called %d time(s); want 0", len(shuttle.specs))
+	if len(shuttle.Specs) != 0 {
+		t.Errorf("shuttle was called %d time(s); want 0", len(shuttle.Specs))
 	}
 	if fake.calledAny("MergeContinue") {
 		t.Error("MergeContinue was called; want it never reached")
@@ -485,8 +443,8 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 	deps := newTestDeps(t, fake, nil)
 	writeConflictedFixture(t, deps, "a.txt", conflictedContent)
 
-	shuttle := &fakeShuttle{
-		results: []shuttleengine.Result{
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{
 			{Outcome: shuttleengine.OutcomeDone},
 			{Outcome: shuttleengine.OutcomeDone},
 		},
@@ -501,11 +459,11 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
-	if len(shuttle.specs) != 2 {
-		t.Fatalf("shuttle was called %d time(s); want 2", len(shuttle.specs))
+	if len(shuttle.Specs) != 2 {
+		t.Fatalf("shuttle was called %d time(s); want 2", len(shuttle.Specs))
 	}
-	first := shuttle.specs[0].OutputFiles[0]
-	second := shuttle.specs[1].OutputFiles[0]
+	first := shuttle.Specs[0].OutputFiles[0]
+	second := shuttle.Specs[1].OutputFiles[0]
 	if first == second {
 		t.Errorf("both attempts named the same report path %q; want distinct per-attempt paths", first)
 	}
@@ -521,9 +479,9 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 		t.Fatalf("ScratchDir already exists before Resolve; test setup is invalid")
 	}
 
-	shuttle := &fakeShuttle{
-		results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-		runHook: func(callNumber int, spec shuttleengine.Spec) {
+	shuttle := &shedfake.MergeShuttle{
+		Results: []shuttleengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		DuringRun: func(callNumber int, spec shuttleengine.Spec) {
 			writeConflictedFixture(t, deps, "a.txt", resolvedContent)
 		},
 	}

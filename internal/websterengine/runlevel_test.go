@@ -37,6 +37,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -45,80 +46,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// runFakeReed is a hermetic shuttleengine.ReedOps double: RemoveStrand records
-// every call and retires the guid from the scripted Status result; AddStrand
-// is never reached by Run's own path (Run never registers a strand itself —
-// StartMaster's real implementation would, but the fake Starter below skips
-// straight to a scripted handle) and errors loud if ever called, so a stray
-// call surfaces immediately rather than silently no-opping.
-type runFakeReed struct {
-	mu             sync.Mutex
-	status         reedengine.StatusResult
-	removedStrands []string
-}
-
-func (m *runFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
-	return reedengine.Strand{}, fmt.Errorf("run fake reed: AddStrand is not used by Run's own path")
-}
-
-func (m *runFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removedStrands = append(m.removedStrands, guid)
-	for i, s := range m.status.Strands {
-		if s.GUID == guid {
-			m.status.Strands = append(m.status.Strands[:i], m.status.Strands[i+1:]...)
-			break
-		}
-	}
-	return reedengine.Removed{}, nil
-}
-
-func (m *runFakeReed) Status() (reedengine.StatusResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.status, nil
-}
-
-func (m *runFakeReed) SendText(guid, text string, submit bool) error { return nil }
-func (m *runFakeReed) SendKey(guid, key string) error                { return nil }
-func (m *runFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
-
-var _ shuttleengine.ReedOps = (*runFakeReed)(nil)
-
-// runFakeEngine is a hermetic shuttleengine.Engine double: every method
-// returns a fixed, inert value. Run's own path never reaches any of these —
-// the whole-session fork audit Run reads (Result.ForkAudit) is scripted
-// directly on the fake handle's Result, not produced by calling the engine —
-// so this fake exists only to satisfy RunDeps.Engine's type.
-type runFakeEngine struct{}
-
-func (e *runFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	return shuttleengine.Launch{}, nil
-}
-func (e *runFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) { return nil, nil }
-func (e *runFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupReady
-}
-func (e *runFakeEngine) InterruptSequence() []shuttleengine.PaneInput          { return nil }
-func (e *runFakeEngine) TrustDismissSequence(string) []shuttleengine.PaneInput { return nil }
-func (e *runFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput {
-	return nil
-}
-func (e *runFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *runFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-func (e *runFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*runFakeEngine)(nil)
 
 // runFakeHandle is a hermetic websterengine.MasterHandle double: Wait runs
 // the caller-scripted onWait side effect (if any) — modeling Master writing
@@ -248,7 +178,7 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 // and a fake Starter a test scripts per case.
 type runFixture struct {
 	Deps           websterengine.RunDeps
-	Reed           *runFakeReed
+	Reed           *shuttlefake.Reed
 	Starter        *runFakeStarter
 	Worktree       string
 	PlanDir        string
@@ -260,9 +190,10 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 
 	planDir := seedRunPlanDir(t, numCards)
 	worktree := newScratchRepo(t)
-	commitFile(t, worktree, "base.txt", "base", "base commit")
+	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
-	reed := &runFakeReed{}
+	// Run never registers a strand itself, so a stray AddStrand fails loud.
+	reed := &shuttlefake.Reed{AddErr: errors.New("AddStrand is not used by Run's own path")}
 	starter := &runFakeStarter{}
 	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
@@ -289,7 +220,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
-		Engine:     &runFakeEngine{},
+		Engine:     &shuttlefake.Engine{},
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
 		Batcher:    activeBatcher,
@@ -453,7 +384,7 @@ func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 // the pre-flight gate this batch moves onto planglyph.
 func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
 	addCardUses(t, fx.PlanDir, 1, "sub#Missing")
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -475,7 +406,7 @@ func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
 // Plan-Burler's own gate and the validate-plan/validate CLI verbs.
 func TestRun_InformationalFindingsDoNotRefuseRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
 	addCardCreateTarget(t, fx.PlanDir, 1, "newpkg#Bar")
 
 	wantSessionID := "master-session-informational"
@@ -644,11 +575,11 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 	seedMatchingState(t, fx, st)
 
-	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{
+	fx.Reed.Strands = []reedengine.StrandStatus{
 		{GUID: "prior-master-strand", Live: true},
 		{GUID: "prior-recovery-strand", Live: true},
 		// "absent-recovery-strand" is deliberately absent from Status at all.
-	}}
+	}
 
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
@@ -658,14 +589,14 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 
 	wantRemoved := map[string]bool{"prior-master-strand": true, "prior-recovery-strand": true}
-	for _, guid := range fx.Reed.removedStrands {
+	for _, guid := range fx.Reed.RemovedGUIDs {
 		if guid == "absent-recovery-strand" {
 			t.Errorf("RemoveStrand called for a cleanly-absent strand %q; want it left untouched", guid)
 		}
 		delete(wantRemoved, guid)
 	}
 	if len(wantRemoved) != 0 {
-		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.removedStrands, wantRemoved)
+		t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.RemovedGUIDs, wantRemoved)
 	}
 }
 
@@ -676,29 +607,29 @@ func TestRun_EntryTimeReclaimStopsLiveIntegrationFixStrand(t *testing.T) {
 	seedMatchingState(t, fx, &websterengine.State{
 		IntegrationFix: &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
 	})
-	fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
 	fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
 	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
 		t.Fatalf("Run() error = nil; want the scripted starter error")
 	}
 
-	if len(fx.Reed.removedStrands) != 1 || fx.Reed.removedStrands[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.removedStrands)
+	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", fx.Reed.RemovedGUIDs)
 	}
 }
 
 // TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord proves a dead-strand record and an empty-GUID record remove nothing.
 func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T) {
 	cases := []struct {
-		name   string
-		fix    *websterengine.IntegrationFixState
-		status reedengine.StatusResult
+		name    string
+		fix     *websterengine.IntegrationFixState
+		strands []reedengine.StrandStatus
 	}{
 		{
-			name:   "dead strand",
-			fix:    &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
-			status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}}},
+			name:    "dead strand",
+			fix:     &websterengine.IntegrationFixState{PreFixHead: "abc", StrandGUID: "fix-strand"},
+			strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: false}},
 		},
 		{
 			name: "empty guid",
@@ -709,15 +640,15 @@ func TestRun_EntryTimeReclaimLeavesDeadOrEmptyIntegrationFixRecord(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			fx := newRunFixture(t, 1)
 			seedMatchingState(t, fx, &websterengine.State{IntegrationFix: tc.fix})
-			fx.Reed.status = tc.status
+			fx.Reed.Strands = tc.strands
 			fx.Starter.startErr = fmt.Errorf("stop before spawn")
 
 			if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
 				t.Fatalf("Run() error = nil; want the scripted starter error")
 			}
 
-			if len(fx.Reed.removedStrands) != 0 {
-				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+			if len(fx.Reed.RemovedGUIDs) != 0 {
+				t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
 			}
 		})
 	}
@@ -733,8 +664,8 @@ func TestRun_EntryTimeReclaimWithoutIntegrationFixRecordRemovesNothing(t *testin
 		t.Fatalf("Run() error = nil; want the scripted starter error")
 	}
 
-	if len(fx.Reed.removedStrands) != 0 {
-		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.removedStrands)
+	if len(fx.Reed.RemovedGUIDs) != 0 {
+		t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
 	}
 }
 
@@ -1074,7 +1005,7 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation",
-				Digest: &websterengine.Digest{Status: "done", HeadSHA: strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))}},
+				Digest: &websterengine.Digest{Status: "done", HeadSHA: gitkit.RevParse(t, fx.Worktree, "HEAD")}},
 		},
 	})
 	tracked := filepath.Join(fx.Worktree, "base.txt")
@@ -1127,7 +1058,7 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
 		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
 	}
-	mustGit(t, fx.Worktree, "checkout", "--", "base.txt")
+	gitkit.Git(t, fx.Worktree, "checkout", "--", "base.txt")
 	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); err != nil {
 		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
 	}
@@ -1218,7 +1149,7 @@ func TestRun_DoneWithNestedAgentInIntegrationForkWarns(t *testing.T) {
 		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, AgentCalls: 1},
 	}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
 		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
 			t.Fatalf("write integration report: %v", err)
@@ -1280,7 +1211,7 @@ func TestRun_ForkStateWriteAtRunExit(t *testing.T) {
 				{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true},
 			}
 			fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-				head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+				head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 				report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
 				if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
 					t.Fatalf("write integration report: %v", err)
@@ -1330,7 +1261,7 @@ func TestRun_FabricReferenceInIntegrationForkIsStuck(t *testing.T) {
 		{TranscriptPath: "/transcripts/integration.jsonl", ReportReturned: true, BashCommands: []string{cmd}},
 	}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
-		head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+		head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 		report := "status: OK\nhead_sha: " + head + "\ndeviations: []\n"
 		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte(report), 0o644); err != nil {
 			t.Fatalf("write integration report: %v", err)
@@ -1506,8 +1437,8 @@ func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "false")
 	fx.Deps.OpenBisector = nil
 
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "card2")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
@@ -1606,7 +1537,7 @@ func TestRun_NilOpenBisectorFlakyVerifyKeepsDone(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "true")
 	fx.Deps.OpenBisector = nil
 
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
@@ -1806,7 +1737,7 @@ func TestRun_AcyclicPlanReportsNoCycles(t *testing.T) {
 func TestRun_ResumeWithCompletedCreateCardIsNotRefused(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	// Batch 1's own Create target landed — exactly what a completed Create card leaves behind.
-	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+	gitkit.CommitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "resume-run",
@@ -1965,7 +1896,7 @@ func TestRun_ZeroGateReachesStartMasterUngated(t *testing.T) {
 // and Run must pass the entry validation and reach the Master spawn with no create-already-exists refusal.
 func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	fx := newRunFixture(t, 2)
-	commitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+	gitkit.CommitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "resume-run",
@@ -2125,7 +2056,7 @@ func TestRun_WayForward_ZeroBatches(t *testing.T) {
 
 func TestRun_WayForward_ValidationRefusal(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	commitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
 	cardPath := filepath.Join(fx.PlanDir, "01-batch1.md")
 	original, err := os.ReadFile(cardPath)
 	if err != nil {
@@ -2341,7 +2272,7 @@ func TestRun_WayForward_MissingIntegrationReport(t *testing.T) {
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 	requireWayForward(t, err, "lyx webster run", "re-drives every batch without a done record")
 
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-intwf", result: result, onWait: func() {
 		writeContract()
 		if err := os.WriteFile(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir), []byte("status: OK\nhead_sha: "+head+"\ndeviations: []\n"), 0o644); err != nil {
@@ -2493,7 +2424,7 @@ func TestRun_FingerprintMismatchWayForwardNamesTheEditedCards(t *testing.T) {
 // seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit and one pending finding naming paths, and returns that start commit.
 func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string {
 	t.Helper()
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2509,7 +2440,7 @@ func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
 	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
 	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)
@@ -2539,8 +2470,8 @@ func TestRun_FreshDropsFindingsOnceReset(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
-	mustGit(t, fx.Worktree, "reset", "--hard", start)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	gitkit.Git(t, fx.Worktree, "reset", "--hard", start)
 
 	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
@@ -2604,7 +2535,7 @@ func TestRun_FreshDropsPathlessFinding(t *testing.T) {
 // seedUncheckableState seeds a state with one batch failed on an uncheckable finding, started at the fixture's first commit, and returns that start commit.
 func seedUncheckableState(t *testing.T, fx *runFixture) string {
 	t.Helper()
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2647,7 +2578,7 @@ func TestRun_FreshDropsUncheckableBatch(t *testing.T) {
 func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	start := seedUncheckableState(t, fx)
-	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
@@ -2665,10 +2596,10 @@ func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
 // it refuses naming git merge-base while HEAD is past one of them, and drops the findings once HEAD is an ancestor of every start.
 func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	root := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	left := commitFile(t, fx.Worktree, "left.txt", "l", "left")
-	mustGit(t, fx.Worktree, "reset", "--hard", root)
-	right := commitFile(t, fx.Worktree, "right.txt", "r", "right")
+	root := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	left := gitkit.CommitFile(t, fx.Worktree, "left.txt", "l", "left")
+	gitkit.Git(t, fx.Worktree, "reset", "--hard", root)
+	right := gitkit.CommitFile(t, fx.Worktree, "right.txt", "r", "right")
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2689,7 +2620,7 @@ func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 		t.Errorf("state.json was archived: %v", statErr)
 	}
 
-	mustGit(t, fx.Worktree, "reset", "--hard", root)
+	gitkit.Git(t, fx.Worktree, "reset", "--hard", root)
 	askingMaster(t, fx, "divergent")
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 	requireReachedMaster(t, fx, err)
@@ -2724,8 +2655,8 @@ func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	commitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
-	mustGit(t, fx.Worktree, "checkout", start, "--", "base.txt")
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	gitkit.Git(t, fx.Worktree, "checkout", start, "--", "base.txt")
 	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
 	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)

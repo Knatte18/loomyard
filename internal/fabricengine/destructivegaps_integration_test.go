@@ -9,7 +9,7 @@
 // unit tests (destroy_test.go): those cover the pipeline's hermetic logic (check ordering,
 // containment, zero-value refusals, force's narrow reach) with no git spawn at all.
 //
-// Package fabricengine_test to reuse newFabricFixture and its sibling helpers from
+// Package fabricengine_test to reuse mustWeftRepoRoot from
 // reconcile_stale_registration_test.go, and makeBareRemote from clone_adopt_test.go, matching
 // prune_unowned_integration_test.go's convention; shares the single TestMain in testmain_test.go.
 
@@ -48,8 +48,8 @@ func escapeFabricConfigYAML(escapeName string) string {
 func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	const slug = "gap1-owner"
 
 	escapeLink := filepath.Join(l.HubPath, "gap1-escape")
@@ -186,12 +186,9 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	t.Parallel()
 
 	const slug = "gap3-untracked"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	target := fabricengine.WorktreePath(l, slug)
 	untracked := filepath.Join(target, "untracked-scratch.txt")
@@ -244,12 +241,9 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 			t.Parallel()
 
 			slug := "force-fallback-" + strings.ToLower(tt.name)
-			fixture := newFabricFixture(t)
-			l := fixture.Layout
-			topology := fabricengine.NewTopology(fabricengine.Config{})
-			if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-				t.Fatalf("setup Add: %v", err)
-			}
+			h := hubforge.NewHub(t, ".")
+			l := h.Location
+			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 			target := fabricengine.WorktreePath(l, slug)
 			const sentinel = "UNTRACKED-WORK-NOT-YET-COMMITTED"
@@ -294,12 +288,9 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 	t.Parallel()
 
 	const slug = "ownership-registered"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
 
 	t.Run("AcceptsRegisteredLinkedWorktree", func(t *testing.T) {
@@ -358,12 +349,9 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 	t.Parallel()
 
 	const slug = "ownership-warpcheckout"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	repoDir := l.WorktreePath()
 	linked := fabricengine.WorktreePath(l, slug)
 
@@ -405,8 +393,8 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 
 	t.Run("AcceptsRealHub", func(t *testing.T) {
 		t.Parallel()
-		fixture := newFabricFixture(t)
-		if !fabricengine.LooksLikeHubForTest(fixture.Layout.HubPath) {
+		h := hubforge.NewHub(t, ".")
+		if !fabricengine.LooksLikeHubForTest(h.Location.HubPath) {
 			t.Errorf("LooksLikeHubForTest(real hub) = false; want true")
 		}
 	})
@@ -488,8 +476,8 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	dir := fixture.Layout.WorktreePath()
+	h := hubforge.NewHub(t, ".")
+	dir := h.Location.WorktreePath()
 
 	assertScopes := func(t *testing.T, wantTracked, wantAll bool) {
 		t.Helper()
@@ -566,7 +554,7 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, wef
 		if !strings.Contains(err.Error(), wantSubstring) {
 			t.Errorf("DeleteBranchForTest(%q, force=%v) error = %q; want it to contain %q", branch, force, err, wantSubstring)
 		}
-		if !branchExistsAt(t, weftRoot, branch) {
+		if !gitkit.BranchExists(t, weftRoot, branch) {
 			t.Fatalf("DeleteBranchForTest(%q, force=%v) deleted a branch the gate should have refused", branch, force)
 		}
 	}
@@ -579,8 +567,8 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, wef
 func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	primaryWeft := fabricengine.WeftBranchName("main")
 
@@ -592,8 +580,8 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		// A hub whose board worktree is gone cannot answer "what is the repo's primary weft
 		// branch" at all — the inherited fail-closed direction that must never invert, since these
 		// deletions are irreversible.
-		unreadable := newFabricFixture(t)
-		ul := unreadable.Layout
+		unreadable := hubforge.NewHub(t, ".")
+		ul := unreadable.Location
 		uWeftRoot := mustWeftRepoRoot(t, ul)
 		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
 			t.Fatalf("remove board worktree: %v", err)
@@ -604,10 +592,10 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	})
 
 	t.Run("RefusesCheckedOutBranch", func(t *testing.T) {
-		checkedOut := newFabricFixture(t)
-		cl := checkedOut.Layout
+		checkedOut := hubforge.NewHub(t, ".")
+		cl := checkedOut.Location
 		cWeftRoot := mustWeftRepoRoot(t, cl)
-		topology := fabricengine.NewTopology(fabricengine.Config{})
+		topology := checkedOut.Topology
 		const slug = "branch-ownership-checkedout"
 		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
@@ -627,7 +615,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		if err != nil {
 			t.Fatalf("DeleteBranchForTest(%q) = err %v; want a clean deletion", orphan, err)
 		}
-		if branchExistsAt(t, weftRoot, orphan) {
+		if gitkit.BranchExists(t, weftRoot, orphan) {
 			t.Errorf("branch %q still exists after an accepted deletion", orphan)
 		}
 	})
@@ -643,13 +631,13 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 	t.Parallel()
 
 	const slug = "branch-ownership-rollback-refused"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// No BranchPrefix, and the slug itself carries no "-weft" suffix: the gate's ownedManagedBranch
 	// has no scheme to recognise this warp branch by, so rollbackAdd's own attempt to delete it must
 	// be refused exactly as Cleanup's would be for an equivalently-unmanaged name.
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 
 	// Break the warp origin remote so Add's final push fails after the warp branch and worktree
 	// already exist — the same post-creation-failure injection
@@ -660,7 +648,7 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 		t.Fatalf("Add should have failed (broken origin remote)")
 	}
 
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
 	}
 }

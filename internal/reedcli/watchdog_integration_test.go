@@ -22,7 +22,6 @@ package reedcli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // watchdogIntegrationTmux resolves the configured multiplexer binary, skipping the calling test when
@@ -143,13 +143,7 @@ func TestWatchdogIntegration_SingleInstanceLockContentionAndUnusableLockPath(t *
 	ctx3, cancel3 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel3()
 	_ = cmd3.ExecuteContext(ctx3)
-	var env map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(buf3.Bytes()), &env); err != nil {
-		t.Fatalf("unusable-lock-path output is not valid JSON: %v; got: %q", err, buf3.String())
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("unusable lock path ok = true; want false")
-	}
+	envelope.RequireErr(t, buf3.String(), "")
 
 	cancel1()
 	<-done1

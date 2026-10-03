@@ -258,18 +258,15 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 
 	sourceWarpDir := h.PairWarpWorktree(slug)
 	sourceWeftDir := h.PairWeftSibling(slug)
-	sourceBranch, err := readBranchForTest(t, sourceWarpDir)
-	if err != nil {
-		t.Fatalf("readBranchForTest(%s): %v", sourceWarpDir, err)
-	}
+	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
 	// Conflicting divergence on the warp side only — a weft-root conflict would be unmappable and
 	// self-abort the whole attempt — so MergeIn on the prime leaves a live record naming sourceBranch
 	// rather than concluding immediately.
-	commitOnCurrentBranch(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
-	commitOnCurrentBranch(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
-	commitOnCurrentBranch(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
-	commitOnCurrentBranch(t, h.PrimeWeft(), "prime-only.txt", "prime weft\n", "prime: weft advance")
+	gitkit.CommitFile(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
+	gitkit.CommitFile(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
+	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
+	gitkit.CommitFile(t, h.PrimeWeft(), "prime-only.txt", "prime weft\n", "prime: weft advance")
 
 	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
 	if err != nil {
@@ -296,7 +293,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !branchExistsLocally(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+	if !gitkit.BranchExists(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
 		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
 	}
 
@@ -541,7 +538,7 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 				if err != nil || !found {
 					t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 				}
-				gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+				gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 				sha := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 				st.WarpCommitted = sha
 				if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
@@ -554,7 +551,7 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 			name: "InvisibleConcludeTheRecordNeverLearnedAbout",
 			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
 				t.Helper()
-				gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+				gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 				return fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 			},
 		},
@@ -612,7 +609,7 @@ func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.Git(t, h.PrimeWorktree(), "commit", "--no-edit")
 	st.WarpCommitted = fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 	if err := fabricengine.SaveMergeStateForTest(f, st); err != nil {
 		t.Fatalf("SaveMergeStateForTest() error = %v", err)
@@ -667,16 +664,6 @@ func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 	return record.WarpStart
 }
 
-// isAncestorInCheckout reports whether ref is an ancestor of descendant in dir's checkout, probed
-// with plain git so a test can state the precondition the engine's own pre-lock probe reads.
-func isAncestorInCheckout(t *testing.T, dir, ref, descendant string) bool {
-	t.Helper()
-
-	cmd := exec.Command("git", "merge-base", "--is-ancestor", ref, descendant)
-	cmd.Dir = dir
-	return cmd.Run() == nil
-}
-
 // TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord closes crucible round opus-medium-r2's
 // residual 1: mergeState.bothSidesAlreadyUpToDate, which MergeResult.AlreadyUpToDate is derived
 // from, had no test coverage at all. Hardwiring it to false left the entire suite green.
@@ -702,10 +689,10 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 
 	// This is the whole point of the fixture: an ancestor source would be caught by the pre-lock
 	// probe's hardcoded return and the derived field would never be read.
-	if isAncestorInCheckout(t, h.PrimeWorktree(), "feature", "HEAD") {
+	if gitkit.IsAncestor(t, h.PrimeWorktree(), "feature", "HEAD") {
 		t.Fatal("fixture broken: feature is an ancestor of the warp HEAD, so the pre-lock probe would short-circuit before the derived field is read")
 	}
-	if isAncestorInCheckout(t, h.PrimeWeft(), "feature-weft", "HEAD") {
+	if gitkit.IsAncestor(t, h.PrimeWeft(), "feature-weft", "HEAD") {
 		t.Fatal("fixture broken: feature-weft is an ancestor of the weft HEAD, so the pre-lock probe would short-circuit before the derived field is read")
 	}
 
@@ -769,17 +756,14 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 	sourceWarpDir := h.PairWarpWorktree(sourceSlug)
 	sourceWeftDir := h.PairWeftSibling(sourceSlug)
 
-	sourceBranch, err := readBranchForTest(t, sourceWarpDir)
-	if err != nil {
-		t.Fatalf("readBranchForTest(%s): %v", sourceWarpDir, err)
-	}
+	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
 	// Warp-side-only conflicting divergence, matching the prime-pair test's own reasoning: a weft-root
 	// conflict would be unmappable and self-abort the attempt instead of leaving a live record.
-	commitOnCurrentBranch(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
-	commitOnCurrentBranch(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
-	commitOnCurrentBranch(t, consumerWarpDir, "conflict.txt", "consumer side\n", "consumer: warp conflict")
-	commitOnCurrentBranch(t, consumerWeftDir, "consumer-only.txt", "consumer weft\n", "consumer: weft advance")
+	gitkit.CommitFile(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
+	gitkit.CommitFile(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
+	gitkit.CommitFile(t, consumerWarpDir, "conflict.txt", "consumer side\n", "consumer: warp conflict")
+	gitkit.CommitFile(t, consumerWeftDir, "consumer-only.txt", "consumer weft\n", "consumer: weft advance")
 
 	consumer := openFreshFabric(t, consumerWarpDir)
 	res, err := consumer.MergeIn(sourceBranch)
@@ -814,7 +798,7 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !branchExistsLocally(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+	if !gitkit.BranchExists(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
 		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
 	}
 

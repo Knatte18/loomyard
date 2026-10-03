@@ -88,6 +88,8 @@ var checkedCallPinnedRawSites = map[string]int{
 	"internal/lyxcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,
+
+	"internal/gitrepo/internal/gitoracle": 4, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch
 }
 
 // checkedCallScanRoots are the module-relative directories this guard walks. cmd/ carries zero

@@ -18,47 +18,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// newClearTestBouncerConfig builds a BouncerConfig exactly like testBouncerConfig, except RunDir is
-// a subdirectory the test creates inside t.TempDir() rather than t.TempDir() itself, so an archived
-// sibling this file's clear-triggering tests produce lands inside the temp tree and is cleaned up
-// with it.
-func newClearTestBouncerConfig(t *testing.T) BouncerConfig {
-	t.Helper()
-
-	parent := t.TempDir()
-	runDir := filepath.Join(parent, "run")
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(runDir) = %v; want nil", err)
-	}
-	stencilsDir := shippedBouncerStencilsFixture(t, "bouncer-template-rubric", "# Rubric\n\nBe thorough and cite evidence.\n")
-	return BouncerConfig{
-		Name:          "gate",
-		RunDir:        runDir,
-		ArtifactPaths: []string{filepath.Join(parent, "artifact.md")},
-		ReportName:    func(round int) string { return fmt.Sprintf("round-%d-report.md", round) },
-		StencilsDir:   stencilsDir,
-		RubricStencil: "bouncer-template-rubric",
-		Model:         "claude-x",
-		Effort:        "high",
-		Version:       "v1",
-		Now:           fixedClock(bouncerJudgeTestClock),
-	}
-}
-
-// newClearTestBouncer builds a *Bouncer over newClearTestBouncerConfig's run dir, driven by shuttle.
-func newClearTestBouncer(t *testing.T, shuttle Shuttle) (*Bouncer, BouncerConfig) {
-	t.Helper()
-
-	cfg := newClearTestBouncerConfig(t)
-	cfg.Shuttle = shuttle
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	return b, cfg
-}
 
 // layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the
 // round producer's own review and fixer-report pair (BurlerProducer's artifacts) alongside the
@@ -111,21 +73,15 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 }
 
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q (the clear falls through to the seed path)", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
-	if !shuttle.called {
+	if !shuttle.Called {
 		t.Error("Call() did not invoke the shuttle seam; want the seed spawn the clear falls through to")
 	}
 
@@ -166,21 +122,17 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 }
 
 func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() (first clear) error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, b)
 
 	// Re-approve a second generation in the freshly recreated run dir, under the same injected
 	// clock second, so the second clear's archive target collides with the first.
 	layoutApprovedGeneration(t, cfg, 1)
 
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() (second clear) error = %v; want nil", err)
-	}
+	shedfake.CallOK(t, b)
 
 	first := archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")
 	if _, err := os.Stat(first); err != nil {
@@ -194,44 +146,32 @@ func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
 
 func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	t.Run("InSegmentBlockingReplay", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("BLOCKING"), ledger: bouncerLedgerContent(1),
 		}})
 
-		outcome, ptr, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		wantPointer := ledgerPath(cfg.RunDir, 1)
 		if ptr.Path != wantPointer {
 			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 		}
-		if shuttle.called {
+		if shuttle.Called {
 			t.Error("Call() invoked the shuttle seam on a BLOCKING replay; want it never called")
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
 	})
 
 	t.Run("MidSegmentResumeUnjudgedRound", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
 			{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"), ledger: bouncerLedgerContent(1)},
 			{round: 2, report: bouncerReport(2)},
 		})
 
-		outcome, ptr, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 		}
@@ -242,40 +182,34 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	})
 
 	t.Run("ReBounce_FocusSeededNoReport", func(t *testing.T) {
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
 			t.Fatalf("WriteFile(...) = %v; want nil", err)
 		}
 
-		outcome, ptr, err := b.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 		if ptr.Path != "" || ptr.GateAttempts != nil {
 			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 		}
-		if shuttle.called {
+		if shuttle.Called {
 			t.Error("Call() invoked the shuttle seam on a re-bounce; want it never called")
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
 	})
 
 	t.Run("VerdictWithNoParsableLedger", func(t *testing.T) {
-		logBuf := captureBouncerWarnings(t)
-		shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newClearTestBouncer(t, shuttle)
+		logBuf := logcapture.Capture(t)
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
 			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("APPROVED"),
 		}})
 
 		outcome, ptr, err := b.Call(context.Background())
 		assertJudgeDegraded(t, outcome, ptr, err)
-		if logBuf.Len() == 0 {
+		if logBuf.String() == "" {
 			t.Error("Call() did not log a warning on a degraded path")
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
@@ -284,16 +218,10 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 
 func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
-	b, cfg := newClearTestBouncer(t, shuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q (the call that earns Done must not clear)", outcome, shedengine.Done)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 	wantPointer := ledgerPath(cfg.RunDir, 1)
 	if ptr.Path != wantPointer {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
@@ -317,9 +245,9 @@ func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
 // the two failure causes are mechanically inseparable at this call site. archiveRunDir's own
 // rename-failure contract is unit-tested directly in archive_test.go.
 func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
-	logBuf := captureBouncerWarnings(t)
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newClearTestBouncer(t, shuttle)
+	logBuf := logcapture.Capture(t)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
 
 	parent := filepath.Dir(cfg.RunDir)
@@ -328,20 +256,14 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr.Path != "" || ptr.GateAttempts != nil {
 		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 	}
-	if shuttle.called {
+	if shuttle.Called {
 		t.Error("Call() invoked the shuttle seam after a failed clear; want it never reached")
 	}
-	if logBuf.Len() == 0 {
+	if logBuf.String() == "" {
 		t.Error("Call() did not log a warning on the failed clear")
 	}
 }
@@ -351,8 +273,8 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 // and re-seeds on its very first Call, exactly as an in-process re-entry does. Nothing about the
 // trigger depends on in-memory state, since it reads only what a previous settle wrote to disk.
 func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
-	cfg := newClearTestBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
+	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	layoutApprovedGeneration(t, cfg, 1)
 
 	b, err := NewBouncer(cfg)
@@ -360,13 +282,7 @@ func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
 	}
 
-	outcome, ptr, err := b.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
@@ -384,7 +300,7 @@ func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
-	cfg := newClearTestBouncerConfig(t)
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("APPROVED"), bouncerLedgerContent(1), true)
 	cfg.Shuttle = shuttle
 	cfg.Commit = func() error {
@@ -438,15 +354,15 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 // writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	// Round 1: seed.
-	seedShuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	seedShuttle.duringRun = func() {
-		path := seedShuttle.gotSpec.OutputFiles[0]
+	seedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	seedShuttle.DuringRun = func() {
+		path := seedShuttle.GotSpec.OutputFiles[0]
 		content := "---\nround: 1\nexclude_lenses: []\nfocus: [\"check the thing\"]\n---\n"
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 		}
 	}
-	b, cfg := newClearTestBouncer(t, seedShuttle)
+	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(seedShuttle)).Build()
 
 	outcome, _, err := b.Call(context.Background())
 	if err != nil {
@@ -493,7 +409,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	}
 
 	// Re-entry: the segment is called again with the same, now-APPROVED run directory.
-	reentrySeedShuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	reentrySeedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b.cfg.Shuttle = reentrySeedShuttle
 
 	outcome, ptr, err = b.Call(context.Background())
@@ -506,7 +422,7 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() (re-entry) pointer = %+v; want empty", ptr)
 	}
-	if !reentrySeedShuttle.called {
+	if !reentrySeedShuttle.Called {
 		t.Error("Call() (re-entry) did not invoke the shuttle seam; want the seed spawn")
 	}
 
@@ -535,8 +451,8 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 // the branch that actually fires did not, so an operator whose run suddenly cost a second generation
 // had nothing to read anywhere.
 func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
-	cfg := newClearTestBouncerConfig(t)
-	cfg.Shuttle = &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
+	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
@@ -548,10 +464,8 @@ func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
 		ledger:  bouncerLedgerContent(1),
 	}})
 
-	logBuf := captureBouncerWarnings(t)
-	if _, _, err := b.Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	logBuf := logcapture.Capture(t)
+	shedfake.CallOK(t, b)
 
 	got := logBuf.String()
 	for _, want := range []string{"clearing an already-approved run directory", cfg.Name, "approvedRound=1"} {

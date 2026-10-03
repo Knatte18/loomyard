@@ -2,7 +2,6 @@ package loomcli
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // newReviewStore builds a Store over fresh temp directories.
@@ -39,23 +39,13 @@ func writeReviewFile(t *testing.T, body string) string {
 	return p
 }
 
-// decodeReview decodes the single envelope a review verb wrote.
-func decodeReview(t *testing.T, out *bytes.Buffer) map[string]any {
-	t.Helper()
-	var m map[string]any
-	if err := json.Unmarshal(out.Bytes(), &m); err != nil {
-		t.Fatalf("decode %q: %v", out.String(), err)
-	}
-	return m
-}
-
 // assertReviewRefusal asserts a refused envelope whose message holds wantMsg and a way-forward clause.
 func assertReviewRefusal(t *testing.T, code int, out *bytes.Buffer, wantMsg string) {
 	t.Helper()
 	if code == 0 {
 		t.Fatalf("exit code = 0; want a refusal (output %q)", out.String())
 	}
-	msg, _ := decodeReview(t, out)["error"].(string)
+	msg := envelope.Decode(t, out.String()).Error
 	if !strings.Contains(msg, wantMsg) {
 		t.Errorf("error = %q; want it to contain %q", msg, wantMsg)
 	}
@@ -311,8 +301,7 @@ func TestReviewSlugArg(t *testing.T) {
 // reviewErrMsg decodes the error text of a refused review envelope.
 func reviewErrMsg(t *testing.T, out *bytes.Buffer) string {
 	t.Helper()
-	msg, _ := decodeReview(t, out)["error"].(string)
-	return msg
+	return envelope.Decode(t, out.String()).Error
 }
 
 // rejectCappedRound opens a round with a request carrying cap and rejects it.
@@ -344,11 +333,11 @@ func TestReviewApprove_SupersedesCapRejectOnBlockedRun(t *testing.T) {
 	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateBlocked)); code != 0 {
 		t.Fatalf("exit = %d, output %q", code, out.String())
 	}
-	env := decodeReview(t, &out)
-	if env["action"] != "approve" || env["superseded"] != true {
+	env := envelope.Decode(t, out.String())
+	if env.Raw["action"] != "approve" || env.Raw["superseded"] != true {
 		t.Errorf("envelope = %v; want action approve and superseded true", env)
 	}
-	if msg, _ := env["message"].(string); !strings.Contains(msg, "lyx loom start") {
+	if msg, _ := env.Raw["message"].(string); !strings.Contains(msg, "lyx loom start") {
 		t.Errorf("message = %q; want the way forward lyx loom start", msg)
 	}
 	r, _, _ := s.Latest()
@@ -397,7 +386,7 @@ func TestReviewApprove_OrdinaryApproveIgnoresRunStatus(t *testing.T) {
 	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
 		t.Fatalf("exit = %d, output %q", code, out.String())
 	}
-	if env := decodeReview(t, &out); env["superseded"] != nil {
+	if env := envelope.Decode(t, out.String()); env.Raw["superseded"] != nil {
 		t.Errorf("envelope = %v; an ordinary approve must not report superseded", env)
 	}
 	r, _, _ := s.Latest()

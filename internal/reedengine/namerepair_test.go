@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeNamer is a SessionNamer answering from fixed fields and recording the drift queries it receives.
@@ -41,42 +42,18 @@ func encodeTitledPanes(live []LivePane) string {
 	return out
 }
 
-// newRepairTestEngine persists strands, scripts the fake tmux with live, and returns the engine and its recorded calls.
-func newRepairTestEngine(t *testing.T, strands []Strand, live []LivePane) (*Engine, *[][]string) {
+// newRepairTestEngine persists strands, scripts the fake tmux with live, and returns the engine and its fake.
+func newRepairTestEngine(t *testing.T, strands []Strand, live []LivePane) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
 	if err := SaveState(e.stateDir(), &ReedState{Strands: strands}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
-	calls := &[][]string{}
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		*calls = append(*calls, append([]string{}, args...))
-		switch args[0] {
-		case "list-panes":
-			return encodeTitledPanes(live), nil
-		case "display-message":
-			if args[len(args)-1] == paneGenerationFormat {
-				return "$0|1|1000", nil
-			}
-			return "", nil
-		case "capture-pane":
-			return "idle screen", nil
-		default:
-			return "", nil
-		}
-	}
-	return e, calls
-}
-
-// callsNamed returns the recorded calls whose subcommand is name.
-func callsNamed(calls [][]string, name string) [][]string {
-	var out [][]string
-	for _, c := range calls {
-		if c[0] == name {
-			out = append(out, c)
-		}
-	}
-	return out
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", encodeTitledPanes(live), nil)
+	fake.answerFormat(paneGenerationFormat, "$0|1|1000", nil)
+	fake.answer("capture-pane", "idle screen", nil)
+	return e, fake
 }
 
 func repairStrand(guid, name, pane, session string) Strand {
@@ -104,15 +81,15 @@ func TestPlanTitleRepairs(t *testing.T) {
 }
 
 func TestRepairNames_DriftedTitleIsRewrittenAndLogged(t *testing.T) {
-	logs := captureLogOutput(t)
-	e, calls := newRepairTestEngine(t,
+	logs := logcapture.CaptureVerbose(t)
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "claude"}})
 
 	if err := e.repairNames(nil); err != nil {
 		t.Fatalf("repairNames: %v", err)
 	}
-	sel := callsNamed(*calls, "select-pane")
+	sel := fake.ArgvFor("select-pane")
 	if len(sel) != 1 || !reflect.DeepEqual(sel[0], []string{"select-pane", "-t", "%1", "-T", "tc:s:worker"}) {
 		t.Errorf("select-pane calls = %v, want one -T tc:s:worker on %%1", sel)
 	}
@@ -122,21 +99,21 @@ func TestRepairNames_DriftedTitleIsRewrittenAndLogged(t *testing.T) {
 }
 
 func TestRepairNames_MatchingTitleIsLeftAlone(t *testing.T) {
-	e, calls := newRepairTestEngine(t,
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 
 	if err := e.repairNames(nil); err != nil {
 		t.Fatalf("repairNames: %v", err)
 	}
-	if sel := callsNamed(*calls, "select-pane"); len(sel) != 0 {
+	if sel := fake.ArgvFor("select-pane"); len(sel) != 0 {
 		t.Errorf("select-pane calls = %v, want none", sel)
 	}
 }
 
 func TestRepairNames_SessionNameRenamedOnIdlePane(t *testing.T) {
-	logs := captureLogOutput(t)
-	e, calls := newRepairTestEngine(t,
+	logs := logcapture.CaptureVerbose(t)
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 	namer := &fakeNamer{drift: true, idle: true}
@@ -148,7 +125,7 @@ func TestRepairNames_SessionNameRenamedOnIdlePane(t *testing.T) {
 	if len(namer.queries) != 1 || namer.queries[0] != wantQuery {
 		t.Errorf("drift queries = %v, want [%v]", namer.queries, wantQuery)
 	}
-	keys := callsNamed(*calls, "send-keys")
+	keys := fake.ArgvFor("send-keys")
 	if len(keys) != 2 {
 		t.Fatalf("send-keys calls = %v, want the literal text then Enter", keys)
 	}
@@ -164,40 +141,40 @@ func TestRepairNames_SessionNameRenamedOnIdlePane(t *testing.T) {
 }
 
 func TestRepairNames_BusyPaneTypesNothing(t *testing.T) {
-	e, calls := newRepairTestEngine(t,
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 
 	if err := e.repairNames(&fakeNamer{drift: true, idle: false}); err != nil {
 		t.Fatalf("repairNames: %v", err)
 	}
-	if keys := callsNamed(*calls, "send-keys"); len(keys) != 0 {
+	if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
 		t.Errorf("send-keys calls = %v, want none on a busy pane", keys)
 	}
 }
 
 func TestRepairNames_NoDriftTypesNothing(t *testing.T) {
-	e, calls := newRepairTestEngine(t,
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 
 	if err := e.repairNames(&fakeNamer{drift: false, idle: true}); err != nil {
 		t.Fatalf("repairNames: %v", err)
 	}
-	if keys := callsNamed(*calls, "send-keys"); len(keys) != 0 {
+	if keys := fake.ArgvFor("send-keys"); len(keys) != 0 {
 		t.Errorf("send-keys calls = %v, want none without drift", keys)
 	}
 }
 
 func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 	t.Run("NilNamer", func(t *testing.T) {
-		e, calls := newRepairTestEngine(t,
+		e, fake := newRepairTestEngine(t,
 			[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 			[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 		if err := e.repairNames(nil); err != nil {
 			t.Fatalf("repairNames: %v", err)
 		}
-		if got := callsNamed(*calls, "capture-pane"); len(got) != 0 {
+		if got := fake.ArgvFor("capture-pane"); len(got) != 0 {
 			t.Errorf("capture-pane calls = %v, want none", got)
 		}
 	})
@@ -215,24 +192,16 @@ func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 	})
 }
 
-// TestRepairNames_UnanswerableSessionCheckRepairsNothing pins that a pass which cannot establish the session is up touches no pane.
 func TestRepairNames_UnanswerableSessionCheckRepairsNothing(t *testing.T) {
-	e, calls := newRepairTestEngine(t,
+	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "claude"}})
-	inner := e.tmux.execHook
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		if args[0] == "has-session" {
-			*calls = append(*calls, append([]string{}, args...))
-			return "", errors.New("tmux unreachable")
-		}
-		return inner(capture, args...)
-	}
+	fake.answer("has-session", "", errors.New("tmux unreachable"))
 
 	if err := e.repairNames(nil); err == nil {
 		t.Fatal("repairNames: want the session-check error")
 	}
-	if sel := callsNamed(*calls, "select-pane"); len(sel) != 0 {
+	if sel := fake.ArgvFor("select-pane"); len(sel) != 0 {
 		t.Errorf("select-pane calls = %v, want none on a down session", sel)
 	}
 }

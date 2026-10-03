@@ -25,24 +25,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
-
-// shaOf returns the commit SHA rev names in the repo at dir, failing the test
-// on any git error.
-func shaOf(t *testing.T, dir, rev string) string {
-	t.Helper()
-
-	out, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", rev}, dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("rev-parse %s in %s: err=%v exit=%d", rev, dir, err, exitCode)
-	}
-	return strings.TrimSpace(out)
-}
 
 // mustWeftRepoRoot resolves fabricengine.WeftRepoRoot(l), failing the test on
 // any error — the shared test-package helper for the many call sites across
@@ -80,12 +67,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
-	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
-		t.Fatalf("write precious.txt: %v", err)
-	}
-	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
-	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
-	preciousSHA := shaOf(t, seedDir, "HEAD")
+	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
@@ -111,10 +93,10 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := shaOf(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
@@ -127,7 +109,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreePath(), warpBranch) {
+	if gitkit.BranchExists(t, l.WorktreePath(), warpBranch) {
 		t.Errorf("warp branch %q still exists", warpBranch)
 	}
 }
@@ -173,7 +155,7 @@ func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
 
 	// The bare-slug warp branch is left behind: the gate cannot prove it is fabric's under an empty
 	// prefix, so it refuses deletion rather than risk deleting a user branch of the same name.
-	if !branchExistsAt(t, l.WorktreePath(), slug) {
+	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch %q was deleted by rollback under an empty prefix; the gate must refuse to delete an unprovable bare-slug branch", slug)
 	}
 }
@@ -237,17 +219,14 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
 
 	const slug = "eager-wire-add"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
 	// wires the junction name this test asserts against.
 	seedRepoWideExtraFabricConfig(t, l.HubPath)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	for _, tc := range []struct {
 		name   string
@@ -297,12 +276,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
-	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
-		t.Fatalf("write precious.txt: %v", err)
-	}
-	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
-	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
-	preciousSHA := shaOf(t, seedDir, "HEAD")
+	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so step 11's push fails AFTER step 10b has
@@ -339,10 +313,10 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// The adopted branch still survives the rollback, exactly as the portal-
 	// blocker variant of this scenario asserts.
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := shaOf(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
@@ -355,7 +329,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreePath(), warpBranch) {
+	if gitkit.BranchExists(t, l.WorktreePath(), warpBranch) {
 		t.Errorf("warp branch %q still exists", warpBranch)
 	}
 }

@@ -9,7 +9,6 @@ package hubforge
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -27,34 +26,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// runGit runs a git subcommand in dir and returns its trimmed stdout, failing the test on a non-zero
-// exit.
-func runGit(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git %s in %s: %v", strings.Join(args, " "), dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
 func TestBuildBareTemplate(t *testing.T) {
 	t.Parallel()
 
 	warpBare, weftBare := buildBareTemplate()
 
 	t.Run("WarpHEADResolvesToMain", func(t *testing.T) {
-		head := runGit(t, warpBare, "symbolic-ref", "HEAD")
+		head := gitkit.Git(t, warpBare, "symbolic-ref", "HEAD")
 		if head != "refs/heads/main" {
 			t.Errorf("warp bare HEAD = %q; want refs/heads/main", head)
 		}
 	})
 
 	t.Run("WarpCommitCarriesRootAndBackendEntries", func(t *testing.T) {
-		out := runGit(t, warpBare, "ls-tree", "-r", "--name-only", "main")
+		out := gitkit.Git(t, warpBare, "ls-tree", "-r", "--name-only", "main")
 		entries := strings.Split(out, "\n")
 		var hasRoot, hasBackend bool
 		for _, e := range entries {
@@ -74,7 +59,7 @@ func TestBuildBareTemplate(t *testing.T) {
 	})
 
 	t.Run("WeftBareIsGenuinelyEmpty", func(t *testing.T) {
-		out := runGit(t, weftBare, "for-each-ref")
+		out := gitkit.Git(t, weftBare, "for-each-ref")
 		if out != "" {
 			t.Errorf("weft bare for-each-ref = %q; want no refs at all", out)
 		}
@@ -333,6 +318,49 @@ func TestSeedFabricConfig_CommitsAndLeavesBoardClean(t *testing.T) {
 
 	if status := gitkit.GitStatusPorcelain(t, h.BoardDir()); status != "" {
 		t.Errorf("git status --porcelain at %s = %q; want empty after SeedFabricConfig commits", h.BoardDir(), status)
+	}
+}
+
+func TestAddPairWith_SkipPushKeepsWeftBranchOffTheBare(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+
+	skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
+	skippedWeft := fabricengine.WeftBranchName(skipped.Branch)
+	if skipped.Pushed {
+		t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
+	}
+	if gitkit.BranchExists(t, h.WeftBare, skippedWeft) {
+		t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
+	}
+
+	pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
+	pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
+	if !pushed.Pushed || !gitkit.BranchExists(t, h.WeftBare, pushedWeft) {
+		t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.WeftBare, pushedWeft))
+	}
+}
+
+func TestOpenFabric_OpensThePrimePair(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+	f := OpenFabric(t, h)
+
+	gotSHA, err := f.HeadSHA()
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if want := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); gotSHA != want {
+		t.Errorf("HeadSHA = %s; want the prime warp's HEAD %s", gotSHA, want)
+	}
+	gotBranch, err := f.CurrentBranch()
+	if err != nil {
+		t.Fatalf("CurrentBranch: %v", err)
+	}
+	if want := gitkit.CurrentBranch(t, h.PrimeWorktree()); gotBranch != want {
+		t.Errorf("CurrentBranch = %q; want %q", gotBranch, want)
 	}
 }
 

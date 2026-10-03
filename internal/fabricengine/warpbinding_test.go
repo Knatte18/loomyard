@@ -6,6 +6,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +83,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 		wantEffFn    func(recorded, supplied string) string
 		wantWrite    bool
 		wantErr      bool
+		wantErrIs    error
 		wantErrParts []string
 	}{
 		{
@@ -91,7 +93,8 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			supplied:     "",
 			wantWrite:    false,
 			wantErr:      true,
-			wantErrParts: []string{"has no recorded warp binding", "lyx fabric clone <weft-url> <warp-url>"},
+			wantErrIs:    ErrNoWarpBinding,
+			wantErrParts: []string{"lyx fabric clone <weft-url> <warp-url>"},
 		},
 		{
 			name:     "absent_and_supplied_writes",
@@ -144,7 +147,8 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			supplied:     "git@github.com:u/r.git",
 			wantWrite:    false,
 			wantErr:      true,
-			wantErrParts: []string{"refusing to re-point", "https://github.com/u/r", "git@github.com:u/r.git"},
+			wantErrIs:    ErrWarpBindingMismatch,
+			wantErrParts: []string{"edit " + WarpBindingFileName + " in the hub's _board worktree and commit", "https://github.com/u/r", "git@github.com:u/r.git"},
 		},
 		{
 			name:         "present_and_supplied_different_repo_conflicts",
@@ -153,6 +157,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			supplied:     "https://github.com/u/other",
 			wantWrite:    false,
 			wantErr:      true,
+			wantErrIs:    ErrWarpBindingMismatch,
 			wantErrParts: []string{"https://github.com/u/r", "https://github.com/u/other"},
 		},
 	}
@@ -164,6 +169,9 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("resolveEffectiveWarpURL(%q, %v, %q) error = nil; want error", tt.recorded, tt.found, tt.supplied)
+				}
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("resolveEffectiveWarpURL(%q, %v, %q) error = %v; want errors.Is %v", tt.recorded, tt.found, tt.supplied, err, tt.wantErrIs)
 				}
 				for _, part := range tt.wantErrParts {
 					if !strings.Contains(err.Error(), part) {

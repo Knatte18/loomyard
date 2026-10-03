@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -68,7 +69,7 @@ func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*webster
 	t.Helper()
 	planDir := seedPlanDir(t)
 	worktree := newScratchRepo(t)
-	base := commitFile(t, worktree, "base.txt", "base", "base commit")
+	base := gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 	for _, rec := range recs {
 		if rec.StartSHA == "startsha1" {
 			rec.StartSHA = base
@@ -119,8 +120,8 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 func TestRebaseline_RefusalNamesStartCommitByAncestry(t *testing.T) {
 	deps := rebaselineDeps(t, []batcher.Batch{beginCard(3, "other")}, map[int]*websterengine.BatchState{})
 	root := deps.Geom.WorktreeRoot
-	c0 := strings.TrimSpace(mustGit(t, root, "rev-parse", "HEAD"))
-	c1 := commitFile(t, root, "next.txt", "next", "next commit")
+	c0 := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", "HEAD"))
+	c1 := gitkit.CommitFile(t, root, "next.txt", "next", "next commit")
 	first := doneBatchOne()
 	first.StartSHA = c1
 	second := doneBatchOne()
@@ -451,7 +452,7 @@ func TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330(t *testing.T) {
 	}
 	unbound := st.Batches[1].CardHashes["01-json-flag"]
 
-	headSHA := commitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
+	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
 	writeReport(t, fx.ReportsDir, validReport(headSHA))
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("RecordBatch() error = %v; want nil", err)

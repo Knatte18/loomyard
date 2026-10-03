@@ -10,7 +10,7 @@
 // call — slug validation, portal/launcher teardown, the gate pipeline, the rooted removal — never
 // deletes a file outside the hub through the planted symlink, and preserves the outside content.
 //
-// Package fabricengine_test to reuse newFabricFixture and the shared TestMain, matching the
+// Package fabricengine_test to reuse the shared TestMain, matching the
 // convention of the other integration tests in this package.
 
 package fabricengine_test
@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink builds a real pair, replaces its launcher
@@ -31,13 +32,11 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	t.Parallel()
 
 	const slug = "toctou-launcher"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Build an out-of-hub directory carrying the exact file names removeLaunchers targets, so any
 	// follow-through the removal does would delete them.

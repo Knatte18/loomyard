@@ -48,27 +48,21 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	gitkit.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.Git(t, bare, "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, tempWork, "init", "-b", "main")
+	gitkit.Git(t, tempWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, tempWork, "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
 	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
 
-	readmePath := filepath.Join(tempWork, "README.md")
-	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
-		t.Fatalf("write README: %v", err)
-	}
-
-	gitkit.MustRun(t, tempWork, "git", "add", "README.md")
-	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.CommitFile(t, tempWork, "README.md", "# "+name, "init")
 	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
@@ -76,19 +70,6 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 	}
 
 	return bare
-}
-
-// currentBranch returns the branch checked out at repoPath via `git branch
-// --show-current`, failing the test on any git error.
-func currentBranch(t *testing.T, repoPath string) string {
-	t.Helper()
-	cmd := exec.Command("git", "branch", "--show-current")
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git branch --show-current in %s: %v", repoPath, err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // gitOutput runs a git command in dir and returns its trimmed stdout, failing
@@ -116,16 +97,16 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	gitkit.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.Git(t, bare, "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, tempWork, "init", "-b", "main")
+	gitkit.Git(t, tempWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, tempWork, "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
 	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
@@ -142,8 +123,8 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("write subdir marker: %v", err)
 	}
 
-	gitkit.MustRun(t, tempWork, "git", "add", "README.md", subdir)
-	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.Git(t, tempWork, "add", "README.md", subdir)
+	gitkit.Git(t, tempWork, "commit", "-m", "init")
 	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
@@ -162,21 +143,11 @@ func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents
 	t.Helper()
 
 	scratch := filepath.Join(dir, "scratch-"+branch+"-"+filepath.Base(relPath))
-	gitkit.MustRun(t, dir, "git", "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
-	gitkit.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, scratch, "git", "config", "user.name", "Test")
-	gitkit.MustRun(t, scratch, "git", "checkout", branch)
-
-	target := filepath.Join(scratch, relPath)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		t.Fatalf("mkdir for %s: %v", relPath, err)
-	}
-	if err := os.WriteFile(target, []byte(contents), 0o644); err != nil {
-		t.Fatalf("write %s: %v", relPath, err)
-	}
-	gitkit.MustRun(t, scratch, "git", "add", relPath)
-	gitkit.MustRun(t, scratch, "git", "commit", "-m", "seed "+relPath)
-	gitkit.MustRun(t, scratch, "git", "push", "origin", branch)
+	gitkit.Git(t, dir, "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
+	gitkit.Git(t, scratch, "config", "user.email", "test@test.com")
+	gitkit.Git(t, scratch, "config", "user.name", "Test")
+	gitkit.CommitFileOnBranch(t, scratch, branch, relPath, contents, "seed "+relPath)
+	gitkit.Git(t, scratch, "push", "origin", branch)
 }
 
 // makeEmptyBareRemote creates a bare git repository with no commits at all —
@@ -222,7 +193,7 @@ func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch stri
 		t.Errorf("_board git-common-dir = %q; want %q (same weft repo as weft prime)", boardCommonDir, weftCommonDir)
 	}
 
-	if got := currentBranch(t, boardPath); got != wantBranch {
+	if got := gitkit.Git(t, boardPath, "branch", "--show-current"); got != wantBranch {
 		t.Errorf("_board branch = %q; want %q", got, wantBranch)
 	}
 }
@@ -256,15 +227,11 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	// marker file that only exists on main-weft.
 	seedWork := filepath.Join(fixtures, "seed-weft")
 	gitkit.MustRun(t, fixtures, "git", "clone", filepath.ToSlash(weftBare), "seed-weft")
-	gitkit.MustRun(t, seedWork, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, seedWork, "git", "config", "user.name", "Test")
+	gitkit.Git(t, seedWork, "config", "user.email", "test@test.com")
+	gitkit.Git(t, seedWork, "config", "user.name", "Test")
 	gitkit.MustRun(t, seedWork, "git", "checkout", "-b", "main-weft")
 	markerName := "synced-weft-state.txt"
-	if err := os.WriteFile(filepath.Join(seedWork, markerName), []byte("weft history"), 0o644); err != nil {
-		t.Fatalf("write weft marker: %v", err)
-	}
-	gitkit.MustRun(t, seedWork, "git", "add", markerName)
-	gitkit.MustRun(t, seedWork, "git", "commit", "-m", "weft sync")
+	gitkit.CommitFile(t, seedWork, markerName, "weft history", "weft sync")
 	gitkit.MustRun(t, seedWork, "git", "push", "-u", "origin", "main-weft")
 
 	remoteTip := gitOutput(t, seedWork, "rev-parse", "main-weft")
@@ -290,7 +257,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	// lyxcwd so the assertion cannot rot against clone's own geometry.
 	weftPrime := weftname.SiblingPath(hubPath, "adopt-warp")
 
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.CurrentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 
@@ -350,7 +317,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 
 	weftPrime := weftname.SiblingPath(hubPath, "fresh-warp")
 	want := fabricengine.WeftBranchName("main")
-	if got := currentBranch(t, weftPrime); got != want {
+	if got := gitkit.CurrentBranch(t, weftPrime); got != want {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}
 
@@ -431,7 +398,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	weftPrime := weftname.SiblingPath(hubPath, "orphan-warp")
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.Git(t, weftPrime, "branch", "--show-current"); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 	// The weft prime's suffixed branch must be BORN — a real ref, not merely the checked-out name.
@@ -479,7 +446,7 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
 	weftPrime := weftname.SiblingPath(res.HubPath, "foreign-head-warp")
-	if got := currentBranch(t, weftPrime); got != "main-weft" {
+	if got := gitkit.Git(t, weftPrime, "branch", "--show-current"); got != "main-weft" {
 		t.Errorf("weft prime branch = %q; want %q", got, "main-weft")
 	}
 	if hasNoCommits(t, weftPrime) {

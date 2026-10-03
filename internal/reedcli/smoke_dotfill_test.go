@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // dotRunFloor is the minimum number of consecutive dot-fill characters on one captured line that
@@ -162,7 +163,7 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 
 	tmuxPath := tmuxBinaryPath(t)
 	shellPath := harnessShellBinaryPath(t)
-	lyxExe := buildLyxBinary(t)
+	lyxExe := lyxbin.Build(t)
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

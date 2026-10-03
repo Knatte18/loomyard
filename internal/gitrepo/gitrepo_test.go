@@ -44,8 +44,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 func commitAll(t *testing.T, dir, message string) {
 	t.Helper()
 
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
+	gitkit.Git(t, dir, "add", ".")
+	gitkit.Git(t, dir, "commit", "-m", message)
 }
 
 // runGit runs a git subcommand in dir, returning stdout and stderr.

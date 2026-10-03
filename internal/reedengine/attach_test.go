@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestParseClientList mirrors TestParseWindowSize's shape for the sibling parser: a table of
@@ -58,50 +59,12 @@ func TestParseClientList(t *testing.T) {
 	}
 }
 
-// attachScript describes one scripted tmux round-trip set for AttachArgv: the has-session check, the
-// two effective-value readbacks, and the pane list. A zero-value field means "answer success with an
-// empty/zero value" except where a *Err field is set, which always takes priority for that call.
-type attachScript struct {
-	hasSessionErr error
+const (
+	goodAttachListPanes = "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n"
+	oneAttachListPane   = "%1 0 0 40 20 4321\n"
+)
 
-	windowSize    string
-	windowSizeErr error
-
-	status    string
-	statusErr error
-
-	listPanes    string
-	listPanesErr error
-
-	listClients    string
-	listClientsErr error
-}
-
-// attachRecorder captures every call AttachArgv's pre-flight makes through the execHook seam, so a
-// test can assert both what was called and, where order matters (the pins vs. the status readback),
-// the sequence it happened in.
-type attachRecorder struct {
-	sequence          []string
-	setOptionCalls    [][]string
-	mutationCalls     [][]string
-	setHookCalls      [][]string
-	windowSizeQueried bool
-	liveBoxQueried    bool
-}
-
-// goodAttachScript is the fully-permissive script every degraded-path test starts from and mutates
-// exactly one field of, so each test isolates the single guard it exists to pin.
-func goodAttachScript() attachScript {
-	return attachScript{
-		windowSize: "latest",
-		status:     "off",
-		listPanes:  "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n",
-	}
-}
-
-// goodAttachLive and goodAttachStrands are the pure-Go mirrors of goodAttachScript's listPanes string
-// and the state this file's tests persist via SaveState, used to independently compute the expected
-// planLayout output for comparison, rather than re-deriving it from the same code path under test.
+// goodAttachLive and goodAttachStrands are the pure-Go mirrors of goodAttachListPanes and the state this file's tests persist via SaveState, used to independently compute the expected planLayout output for comparison, rather than re-deriving it from the same code path under test.
 func goodAttachLive() []LivePane {
 	return []LivePane{
 		{ID: "%1", Dead: false, Top: 0, Width: 40, Height: 20, PID: 4321},
@@ -115,74 +78,23 @@ func goodAttachStrands() []Strand {
 	}
 }
 
-// newAttachHook builds the execHook closure a test installs on e.tmux, answering every round trip
-// AttachArgv's pre-flight can issue (has-session, the two geometry pins, both display-message
-// readbacks, list-panes, and the generation probe loadOrInitStateLocked always runs) and recording
-// every call into rec.
-func newAttachHook(script attachScript, rec *attachRecorder) func(capture bool, args ...string) (string, error) {
-	return func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "has-session":
-			rec.sequence = append(rec.sequence, "has-session")
-			return "", script.hasSessionErr
-		case "set-option":
-			call := append([]string{}, args...)
-			rec.setOptionCalls = append(rec.setOptionCalls, call)
-			option := call[len(call)-2]
-			rec.sequence = append(rec.sequence, "set-option:"+option)
-			return "", nil
-		case "display-message":
-			format := args[len(args)-1]
-			switch format {
-			case "#{window-size}":
-				rec.windowSizeQueried = true
-				rec.sequence = append(rec.sequence, "display-message:window-size")
-				return script.windowSize, script.windowSizeErr
-			case "#{status}":
-				rec.sequence = append(rec.sequence, "display-message:status")
-				return script.status, script.statusErr
-			case "#{window_width} #{window_height}":
-				rec.liveBoxQueried = true
-				return "", errors.New("AttachArgv must never query the live window size")
-			default:
-				// The pane-generation probe (loadOrInitStateLocked ->
-				// adoptPaneGenerationLocked) spends its own three-field format here.
-				// Answering it well-formed keeps this hermetic fixture from
-				// spuriously clearing pane bindings via the probe's fail-open path.
-				return "$0|4321|1700000000", nil
-			}
-		case "list-panes":
-			rec.sequence = append(rec.sequence, "list-panes")
-			return script.listPanes, script.listPanesErr
-		case "list-clients":
-			rec.sequence = append(rec.sequence, "list-clients")
-			return script.listClients, script.listClientsErr
-		case "select-layout", "select-pane", "kill-pane", "split-window":
-			rec.mutationCalls = append(rec.mutationCalls, append([]string{}, args...))
-			return "", nil
-		case "set-hook":
-			call := append([]string{}, args...)
-			rec.setHookCalls = append(rec.setHookCalls, call)
-			rec.sequence = append(rec.sequence, "set-hook")
-			return "", nil
-		default:
-			return "", nil
-		}
-	}
-}
-
-// newAttachTestEngine builds a fixture engine with strands persisted to disk (loadOrInitStateLocked
-// reads reed.json from disk, not from an in-memory struct) and its execHook wired to script, returning
-// the engine and the recorder the hook writes into.
-func newAttachTestEngine(t *testing.T, script attachScript, strands []Strand) (*Engine, *attachRecorder) {
+// newAttachTestEngine builds a fixture engine with strands persisted to disk (loadOrInitStateLocked reads reed.json from disk, not from an in-memory struct) and a fakeTmux answering every round trip AttachArgv's pre-flight can issue with the fully-permissive script each degraded-path test starts from and re-scripts exactly one answer of,
+// so each test isolates the single guard it exists to pin.
+func newAttachTestEngine(t *testing.T, strands []Strand) (*Engine, *fakeTmux) {
 	t.Helper()
 	e := newTestEngine(t)
 	if err := SaveState(e.stateDir(), &ReedState{Strands: strands}); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
-	rec := &attachRecorder{}
-	e.tmux.execHook = newAttachHook(script, rec)
-	return e, rec
+	fake := installFakeTmux(t, e)
+	// The pane-generation probe (loadOrInitStateLocked -> adoptPaneGenerationLocked) spends its own three-field format on display-message.
+	// Answering it well-formed keeps this hermetic fixture from spuriously clearing pane bindings via the probe's fail-open path.
+	fake.answer("display-message", "$0|4321|1700000000", nil)
+	fake.answerFormat("#{window-size}", "latest", nil)
+	fake.answerFormat("#{status}", "off", nil)
+	fake.answerFormat(liveBoxFormat, "", errors.New("AttachArgv must never query the live window size"))
+	fake.answer("list-panes", goodAttachListPanes, nil)
+	return e, fake
 }
 
 // wantBareAttachArgv builds the expected five-element degraded argv for e, asserted element by
@@ -209,7 +121,7 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 // bare elements, the one-character ";" separator (length-checked so "\\;" cannot pass), then
 // select-layout/-t/target, then the layout string planLayout itself would produce for the same box.
 func TestAttachArgv_ChainedShape(t *testing.T) {
-	e, _ := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	e, _ := newAttachTestEngine(t, goodAttachStrands())
 	const cols, rows = 80, 24
 
 	got := e.AttachArgv(cols, rows)
@@ -247,14 +159,16 @@ func TestAttachArgv_ChainedShape(t *testing.T) {
 // from the client's told cols/rows, never from a live display-message query, even when the configured
 // e.cfg.Width/Height is a different pair.
 func TestAttachArgv_ToldBoxAndNoLiveQuery(t *testing.T) {
-	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
 	e.cfg.Width, e.cfg.Height = 999, 111 // deliberately distinct from the client size below
 	const cols, rows = 80, 24
 
 	got := e.AttachArgv(cols, rows)
 
-	if rec.liveBoxQueried {
-		t.Fatal("AttachArgv() queried the live #{window_width} #{window_height} pair; want zero live-box round trips")
+	for _, argv := range fake.ArgvFor("display-message") {
+		if argv[len(argv)-1] == liveBoxFormat {
+			t.Fatal("AttachArgv() queried the live #{window_width} #{window_height} pair; want zero live-box round trips")
+		}
 	}
 
 	wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows})
@@ -281,9 +195,8 @@ func TestAttachArgv_ReservedRows(t *testing.T) {
 	const cols, rows = 80, 24
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			script := goodAttachScript()
-			script.status = tt.status
-			e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+			e, fake := newAttachTestEngine(t, goodAttachStrands())
+			fake.answerFormat("#{status}", tt.status, nil)
 
 			got := e.AttachArgv(cols, rows)
 
@@ -303,10 +216,10 @@ func TestAttachArgv_ReservedRows(t *testing.T) {
 // negative. reserved is clamped to rows-1 before the box is built, so the chain still plans a
 // one-row-remaining box rather than handing planLayout/render.Rules a non-positive height.
 func TestAttachArgv_ReservedRowsFloor(t *testing.T) {
-	script := goodAttachScript()
-	script.status = "30"
+	const status = "30"
 	const cols, rows = 80, 24
-	e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
+	fake.answerFormat("#{status}", status, nil)
 
 	got := e.AttachArgv(cols, rows)
 
@@ -316,7 +229,7 @@ func TestAttachArgv_ReservedRowsFloor(t *testing.T) {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
 	if len(got) != 10 || got[9] != wantLayout {
-		t.Fatalf("AttachArgv() with #{status}=%q (rows=%d) = %v, want reserved floored to %d (layout %q)", script.status, rows, got, wantReserved, wantLayout)
+		t.Fatalf("AttachArgv() with #{status}=%q (rows=%d) = %v, want reserved floored to %d (layout %q)", status, rows, got, wantReserved, wantLayout)
 	}
 }
 
@@ -326,23 +239,22 @@ func TestAttachArgv_ReservedRowsFloor(t *testing.T) {
 func TestAttachArgv_ChainGate(t *testing.T) {
 	tests := []struct {
 		name     string
-		mutate   func(*attachScript)
+		mutate   func(*fakeTmux)
 		wantBare bool
 	}{
-		{"WindowSize_Manual_Suppresses", func(s *attachScript) { s.windowSize = "manual" }, true},
-		{"WindowSize_Largest_Suppresses", func(s *attachScript) { s.windowSize = "largest" }, true},
-		{"WindowSize_Garbage_Suppresses", func(s *attachScript) { s.windowSize = "garbage" }, true},
-		{"WindowSize_Error_Suppresses", func(s *attachScript) { s.windowSizeErr = errors.New("boom") }, true},
-		{"Status_Garbage_Suppresses", func(s *attachScript) { s.status = "garbage" }, true},
-		{"Status_Error_Suppresses", func(s *attachScript) { s.statusErr = errors.New("boom") }, true},
-		{"Status_On_DoesNotSuppress", func(s *attachScript) { s.status = "on" }, false},
+		{"WindowSize_Manual_Suppresses", func(f *fakeTmux) { f.answerFormat("#{window-size}", "manual", nil) }, true},
+		{"WindowSize_Largest_Suppresses", func(f *fakeTmux) { f.answerFormat("#{window-size}", "largest", nil) }, true},
+		{"WindowSize_Garbage_Suppresses", func(f *fakeTmux) { f.answerFormat("#{window-size}", "garbage", nil) }, true},
+		{"WindowSize_Error_Suppresses", func(f *fakeTmux) { f.answerFormat("#{window-size}", "latest", errors.New("boom")) }, true},
+		{"Status_Garbage_Suppresses", func(f *fakeTmux) { f.answerFormat("#{status}", "garbage", nil) }, true},
+		{"Status_Error_Suppresses", func(f *fakeTmux) { f.answerFormat("#{status}", "off", errors.New("boom")) }, true},
+		{"Status_On_DoesNotSuppress", func(f *fakeTmux) { f.answerFormat("#{status}", "on", nil) }, false},
 	}
 	const cols, rows = 80, 24
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			script := goodAttachScript()
-			tt.mutate(&script)
-			e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+			e, fake := newAttachTestEngine(t, goodAttachStrands())
+			tt.mutate(fake)
 
 			got := e.AttachArgv(cols, rows)
 
@@ -363,46 +275,43 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 // asserted element by element.
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 	t.Run("ZeroCols", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		e, _ := newAttachTestEngine(t, goodAttachStrands())
 		assertBareArgv(t, e, e.AttachArgv(0, 24))
 	})
 	t.Run("NegativeCols", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		e, _ := newAttachTestEngine(t, goodAttachStrands())
 		assertBareArgv(t, e, e.AttachArgv(-1, 24))
 	})
 	t.Run("ZeroRows", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		e, _ := newAttachTestEngine(t, goodAttachStrands())
 		assertBareArgv(t, e, e.AttachArgv(80, 0))
 	})
 	t.Run("NegativeRows", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		e, _ := newAttachTestEngine(t, goodAttachStrands())
 		assertBareArgv(t, e, e.AttachArgv(80, -1))
 	})
 	t.Run("HasSessionFails", func(t *testing.T) {
-		script := goodAttachScript()
-		script.hasSessionErr = errors.New("boom")
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("has-session", "", errors.New("boom"))
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
 	})
 	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listPanes = "%1 0 0 40 20 4321\n"
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-panes", oneAttachListPane, nil)
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
 	})
 	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachScript(), nil)
+		e, _ := newAttachTestEngine(t, nil)
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
 	})
 	t.Run("ListPanesErrors", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listPanesErr = errors.New("boom")
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-panes", "", errors.New("boom"))
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
 	})
 	t.Run("PlanError_DeferredAnchorRejected", func(t *testing.T) {
 		strands := []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}
-		e, _ := newAttachTestEngine(t, goodAttachScript(), strands)
+		e, _ := newAttachTestEngine(t, strands)
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
 	})
 }
@@ -412,7 +321,7 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 // precedes the #{status} readback, the ordering the told box depends on (pinGeometryOptionsLocked's
 // doc comment: the told box is only correct once the status-line pins have landed and been read back).
 func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
-	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
 	// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
 	// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds and all
 	// eight set-option calls (not the six-call degraded shape) are issued.
@@ -425,24 +334,25 @@ func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
 
 	// The seven status-line options plus the pre-existing window-size pin.
 	const wantSetOptionCalls = 8
-	if len(rec.setOptionCalls) != wantSetOptionCalls {
-		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(rec.setOptionCalls), wantSetOptionCalls, rec.setOptionCalls)
+	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
+		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
 
+	calls := fake.Calls()
 	statusPinIdx, statusReadbackIdx := -1, -1
-	for i, step := range rec.sequence {
-		if step == "set-option:status" && statusPinIdx == -1 {
+	for i, argv := range calls {
+		if argv[0] == "set-option" && argv[len(argv)-2] == "status" && statusPinIdx == -1 {
 			statusPinIdx = i
 		}
-		if step == "display-message:status" && statusReadbackIdx == -1 {
+		if argv[0] == "display-message" && argv[len(argv)-1] == "#{status}" && statusReadbackIdx == -1 {
 			statusReadbackIdx = i
 		}
 	}
 	if statusPinIdx == -1 || statusReadbackIdx == -1 {
-		t.Fatalf("sequence = %v, want both a status pin and a status readback", rec.sequence)
+		t.Fatalf("calls = %v, want both a status pin and a status readback", calls)
 	}
 	if statusPinIdx >= statusReadbackIdx {
-		t.Errorf("sequence = %v, want the status-off pin (index %d) before the #{status} readback (index %d)", rec.sequence, statusPinIdx, statusReadbackIdx)
+		t.Errorf("calls = %v, want the status-off pin (index %d) before the #{status} readback (index %d)", calls, statusPinIdx, statusReadbackIdx)
 	}
 }
 
@@ -453,7 +363,8 @@ func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
 // resize-pin hook, alongside the two geometry pins it already set — so "never mutates" is scoped to
 // the pane set, not to every tmux call this builder makes.
 func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
-	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
+	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
 
 	before, err := LoadState(e.stateDir())
 	if err != nil {
@@ -462,10 +373,6 @@ func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 
 	if got := e.AttachArgv(80, 24); len(got) != 10 {
 		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
-	}
-
-	if len(rec.mutationCalls) != 0 {
-		t.Errorf("AttachArgv() issued mutating tmux calls %v, want none", rec.mutationCalls)
 	}
 
 	after, err := LoadState(e.stateDir())
@@ -481,15 +388,16 @@ func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
 // AttachArgv's pre-flight: a known-good pre-flight issues the set-hook clear (and pin rebuild) after
 // the state and pane list are read, and before the argv is returned.
 func TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead(t *testing.T) {
-	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
 
 	got := e.AttachArgv(80, 24)
 	if len(got) != 10 {
 		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
 	}
 
+	sequence := fake.Sequence("list-panes", "set-hook")
 	listPanesIdx, firstSetHookIdx := -1, -1
-	for i, step := range rec.sequence {
+	for i, step := range sequence {
 		if step == "list-panes" && listPanesIdx == -1 {
 			listPanesIdx = i
 		}
@@ -498,19 +406,20 @@ func TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead(t *testing.T) {
 		}
 	}
 	if listPanesIdx == -1 {
-		t.Fatalf("sequence = %v, want a list-panes call", rec.sequence)
+		t.Fatalf("sequence = %v, want a list-panes call", sequence)
 	}
 	if firstSetHookIdx == -1 {
-		t.Fatalf("sequence = %v, want at least one set-hook call", rec.sequence)
+		t.Fatalf("sequence = %v, want at least one set-hook call", sequence)
 	}
 	if firstSetHookIdx <= listPanesIdx {
-		t.Errorf("sequence = %v, want the first set-hook call (index %d) after list-panes (index %d)", rec.sequence, firstSetHookIdx, listPanesIdx)
+		t.Errorf("sequence = %v, want the first set-hook call (index %d) after list-panes (index %d)", sequence, firstSetHookIdx, listPanesIdx)
 	}
-	if len(rec.setHookCalls) == 0 {
+	setHooks := fake.ArgvFor("set-hook")
+	if len(setHooks) == 0 {
 		t.Fatal("no set-hook calls recorded, want at least the clear")
 	}
-	if !containsArg(rec.setHookCalls[0], "-u") {
-		t.Errorf("first set-hook argv = %v, want the -u clear", rec.setHookCalls[0])
+	if !containsArg(setHooks[0], "-u") {
+		t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
 	}
 }
 
@@ -519,44 +428,32 @@ func TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead(t *testing.T) {
 // install-points-are-two-named-statements-no-guard-moves documents.
 func TestAttachArgv_DegradedPathsInstallNoResizePinHook(t *testing.T) {
 	t.Run("ZeroCols", func(t *testing.T) {
-		e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.mustNotCall("set-hook")
 		assertBareArgv(t, e, e.AttachArgv(0, 24))
-		if len(rec.setHookCalls) != 0 {
-			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
-		}
 	})
 	t.Run("HasSessionFails", func(t *testing.T) {
-		script := goodAttachScript()
-		script.hasSessionErr = errors.New("boom")
-		e, rec := newAttachTestEngine(t, script, goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("has-session", "", errors.New("boom"))
+		fake.mustNotCall("set-hook")
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
-		if len(rec.setHookCalls) != 0 {
-			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
-		}
 	})
 	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listPanes = "%1 0 0 40 20 4321\n"
-		e, rec := newAttachTestEngine(t, script, goodAttachStrands())
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-panes", oneAttachListPane, nil)
+		fake.mustNotCall("set-hook")
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
-		if len(rec.setHookCalls) != 0 {
-			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
-		}
 	})
 	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		e, rec := newAttachTestEngine(t, goodAttachScript(), nil)
+		e, fake := newAttachTestEngine(t, nil)
+		fake.mustNotCall("set-hook")
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
-		if len(rec.setHookCalls) != 0 {
-			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
-		}
 	})
 	t.Run("PlanError_DeferredAnchorRejected", func(t *testing.T) {
 		strands := []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}
-		e, rec := newAttachTestEngine(t, goodAttachScript(), strands)
+		e, fake := newAttachTestEngine(t, strands)
+		fake.mustNotCall("set-hook")
 		assertBareArgv(t, e, e.AttachArgv(80, 24))
-		if len(rec.setHookCalls) != 0 {
-			t.Errorf("set-hook calls = %v, want none", rec.setHookCalls)
-		}
 	})
 }
 
@@ -565,21 +462,14 @@ func TestAttachArgv_DegradedPathsInstallNoResizePinHook(t *testing.T) {
 // single element of the ten-element chained argv, compared element by element against the same argv
 // built with a non-failing hook.
 func TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv(t *testing.T) {
-	e, rec := newAttachTestEngine(t, goodAttachScript(), goodAttachStrands())
-	baseHook := e.tmux.execHook
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
 
 	want := e.AttachArgv(80, 24)
 	if len(want) != 10 {
 		t.Fatalf("baseline AttachArgv() = %v, want the 10-element chained argv", want)
 	}
 
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		if args[0] == "set-hook" {
-			out, _ := baseHook(capture, args...)
-			return out, errors.New("boom")
-		}
-		return baseHook(capture, args...)
-	}
+	fake.answer("set-hook", "", errors.New("boom"))
 
 	got := e.AttachArgv(80, 24)
 	if len(got) != len(want) {
@@ -590,7 +480,7 @@ func TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv(t *testing.T) {
 			t.Errorf("AttachArgv()[%d] = %q, want %q (a failing set-hook must not change the chained argv)", i, got[i], want[i])
 		}
 	}
-	if len(rec.setHookCalls) == 0 {
+	if len(fake.ArgvFor("set-hook")) == 0 {
 		t.Fatal("no set-hook calls recorded despite the failing hook, want the install statement still attempted")
 	}
 }
@@ -633,10 +523,9 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	const cols, rows = 80, 24
 
 	t.Run("SameSizeClient_NoWarning", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listClients = "tty0 80 24"
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
-		buf := captureLogOutput(t)
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-clients", "tty0 80 24", nil)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -647,10 +536,9 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	})
 
 	t.Run("DifferentSizeClient_OneWarningLine", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listClients = "tty0 100 40"
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
-		buf := captureLogOutput(t)
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-clients", "tty0 100 40", nil)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -667,10 +555,9 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	})
 
 	t.Run("ThreeClientsTwoDiffer_TwoWarningLines", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listClients = "tty0 80 24\ntty1 100 40\ntty2 90 30"
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
-		buf := captureLogOutput(t)
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-clients", "tty0 80 24\ntty1 100 40\ntty2 90 30", nil)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -690,10 +577,9 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	})
 
 	t.Run("ListClientsError_WarnsAndDoesNotChangeBehaviour", func(t *testing.T) {
-		script := goodAttachScript()
-		script.listClientsErr = errors.New("boom")
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
-		buf := captureLogOutput(t)
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answer("list-clients", "", errors.New("boom"))
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 
@@ -704,11 +590,10 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 	})
 
 	t.Run("SuppressedChainStillWarns", func(t *testing.T) {
-		script := goodAttachScript()
-		script.windowSize = "manual"
-		script.listClients = "tty0 999 999"
-		e, _ := newAttachTestEngine(t, script, goodAttachStrands())
-		buf := captureLogOutput(t)
+		e, fake := newAttachTestEngine(t, goodAttachStrands())
+		fake.answerFormat("#{window-size}", "manual", nil)
+		fake.answer("list-clients", "tty0 999 999", nil)
+		buf := logcapture.CaptureVerbose(t)
 
 		got := e.AttachArgv(cols, rows)
 

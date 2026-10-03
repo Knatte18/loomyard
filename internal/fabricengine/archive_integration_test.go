@@ -2,7 +2,7 @@
 
 // archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
 //
-// Every hub is built through hubforge.NewHub via newFabricFixture, with the hub's WeftBare as the weft origin.
+// Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -14,18 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
-
-// archiveTipOf returns the full SHA branch points at in the repo at repoRoot.
-func archiveTipOf(t *testing.T, repoRoot, branch string) string {
-	t.Helper()
-
-	out, err := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + branch}, repoRoot)
-	if err != nil {
-		t.Fatalf("rev-parse %s in %s: %v", branch, repoRoot, err)
-	}
-	return strings.TrimSpace(out)
-}
 
 // tagTargetAt returns the SHA the tag names in the repo at repoRoot, or "" when the tag is absent.
 func tagTargetAt(t *testing.T, repoRoot, tag string) string {
@@ -55,11 +45,11 @@ func TestArchiveWeftTip_TagsAndPushesTip(t *testing.T) {
 
 	const slug = "archive-happy"
 	const branch = "archive-happy-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 
 	rec := fabricengine.NewMutations(l.HubPath)
 	tag, reason, err := fabricengine.ArchiveWeftTipForTest(rec, l, slug, branch)
@@ -70,7 +60,7 @@ func TestArchiveWeftTip_TagsAndPushesTip(t *testing.T) {
 	if tag != wantTag || reason != "" {
 		t.Fatalf("archiveWeftTip = (%q, %q); want (%q, empty reason)", tag, reason, wantTag)
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, tag); got != tip {
+	if got := tagTargetAt(t, h.WeftBare, tag); got != tip {
 		t.Errorf("origin tag %s points at %q; want the tip %s", tag, got, tip)
 	}
 	if n := countKind(rec, fabricengine.KindTagPushed); n != 1 {
@@ -91,11 +81,11 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 	t.Parallel()
 
 	const branch = "archive-no-origin-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -121,11 +111,11 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 
 	const slug = "archive-unreachable"
 	const branch = "archive-unreachable-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -140,7 +130,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 	if tag != "" {
 		t.Errorf("tag = %q; want empty on error", tag)
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, wantTag); got != "" {
+	if got := tagTargetAt(t, h.WeftBare, wantTag); got != "" {
 		t.Errorf("the real origin holds tag %s at %s; want none", wantTag, got)
 	}
 	if n := countKind(rec, fabricengine.KindTagPushed); n != 0 {
@@ -154,12 +144,12 @@ func TestArchiveWeftTip_OriginOnlyBranch(t *testing.T) {
 
 	const slug = "archive-origin-only"
 	const branch = "archive-origin-only-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	gitkit.MustRun(t, weftRoot, "git", "branch", "-D", branch)
 
 	rec := fabricengine.NewMutations(l.HubPath)
@@ -171,7 +161,7 @@ func TestArchiveWeftTip_OriginOnlyBranch(t *testing.T) {
 	if tag != wantTag || reason != "" {
 		t.Fatalf("archiveWeftTip = (%q, %q); want (%q, empty reason)", tag, reason, wantTag)
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, tag); got != tip {
+	if got := tagTargetAt(t, h.WeftBare, tag); got != tip {
 		t.Errorf("origin tag %s points at %q; want %s", tag, got, tip)
 	}
 }
@@ -180,8 +170,8 @@ func TestArchiveWeftTip_OriginOnlyBranch(t *testing.T) {
 func TestArchiveWeftTip_MissingBranchIsNoop(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	rec := fabricengine.NewMutations(l.HubPath)
 	tag, reason, err := fabricengine.ArchiveWeftTipForTest(rec, l, "archive-missing", "archive-missing-weft")
@@ -196,11 +186,11 @@ func TestArchiveWeftTip_ClashingTagErrors(t *testing.T) {
 
 	const slug = "archive-clash"
 	const branch = "archive-clash-weft"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
-	tip := archiveTipOf(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 
 	other, err := gitexec.Run([]string{"commit-tree", "-m", "unrelated", "HEAD^{tree}"}, weftRoot)
 	if err != nil {
@@ -214,7 +204,7 @@ func TestArchiveWeftTip_ClashingTagErrors(t *testing.T) {
 	if _, _, err := fabricengine.ArchiveWeftTipForTest(rec, l, slug, branch); err == nil {
 		t.Fatalf("archiveWeftTip error = nil; want a clash error")
 	}
-	if got := tagTargetAt(t, fixture.WeftBare, tag); got != "" {
+	if got := tagTargetAt(t, h.WeftBare, tag); got != "" {
 		t.Errorf("origin holds tag %s at %s; want none pushed", tag, got)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // fakeClock is a Sleep seam a test can hold still: Sleep records calls without ever blocking.
@@ -349,13 +350,7 @@ func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Fatalf("Call() outcome = %v; want Stuck", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if *spawnCalls != 0 {
 		t.Errorf("spawn calls = %d; want 0 against a running status with a confirmed spawn", *spawnCalls)
 	}
@@ -372,15 +367,9 @@ func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
 	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir, testGrace)
 
 	start := time.Now()
-	outcome, _, err := producer.Call(context.Background())
+	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	elapsed := time.Since(start)
 
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %v; want Stuck", outcome)
-	}
 	if clock.sleepCalls != 1 {
 		t.Errorf("Sleep calls = %d; want exactly 1", clock.sleepCalls)
 	}
@@ -407,14 +396,7 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, &fakeClock{})
 			deps.ReviewWait = tt.reviewWait
 
-			outcome, ptr, err := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, t.TempDir(), testGrace).Call(context.Background())
-
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %v; want Stuck", outcome)
-			}
+			ptr := shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 5*time.Second, t.TempDir(), testGrace), shedengine.Stuck)
 			if ptr.Reason != tt.wantReason {
 				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
 			}
@@ -438,13 +420,7 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %v; want Done", outcome)
-	}
+	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
 // TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep value does
@@ -538,13 +514,7 @@ func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 	if _, _, err := NewInnerRun("innerrun", "myslug", failing, time.Millisecond, scratchDir, testGrace).Call(context.Background()); !errors.Is(err, spawnErr) {
 		t.Fatalf("first Call() error = %v; want it to wrap %v", err, spawnErr)
 	}
-	outcome, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
-	if err != nil {
-		t.Fatalf("second Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("second Call() outcome = %v; want Stuck (still running)", outcome)
-	}
+	shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace), shedengine.Stuck)
 	if *spawnCalls != 2 {
 		t.Errorf("spawn calls = %d; want 2 -- the resumed Call must retry the failed spawn", *spawnCalls)
 	}

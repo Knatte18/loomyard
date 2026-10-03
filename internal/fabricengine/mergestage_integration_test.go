@@ -132,9 +132,9 @@ func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T)
 
 	// Seed the file, branch off, delete it on the branch, then modify it on current — a classic
 	// delete/modify conflict when the branch merges into current.
-	commitOnCurrentBranch(t, warpDir, filename, "seed content\n", "seed "+filename)
+	gitkit.CommitFile(t, warpDir, filename, "seed content\n", "seed "+filename)
 	commitOnBranchDeleting(t, warpDir, "feature", filename)
-	commitOnCurrentBranch(t, warpDir, filename, "current content\n", "modify "+filename+" on current")
+	gitkit.CommitFile(t, warpDir, filename, "current content\n", "modify "+filename+" on current")
 
 	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
 
@@ -170,15 +170,15 @@ func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T)
 func commitOnBranchDeleting(t *testing.T, dir, branch, filename string) {
 	t.Helper()
 
-	current := currentBranchName(t, dir)
-	if branchExistsLocally(t, dir, branch) {
+	current := gitkit.CurrentBranch(t, dir)
+	if gitkit.BranchExists(t, dir, branch) {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", branch)
 	} else {
 		gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", branch)
 	}
 
 	gitkit.MustRun(t, dir, "git", "rm", "-q", filename)
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "delete "+filename+" on "+branch)
+	gitkit.Git(t, dir, "commit", "-q", "-m", "delete "+filename+" on "+branch)
 
 	gitkit.MustRun(t, dir, "git", "checkout", "-q", current)
 }

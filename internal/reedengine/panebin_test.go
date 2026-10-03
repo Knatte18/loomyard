@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // withInjectedExecutablePath overrides executablePath for the duration of t, restoring the previous
@@ -132,12 +133,12 @@ func TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone(t *testing.T) {
 }
 
 // TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough overrides executablePath
-// with a function returning an error, captures logs via captureLogOutput, and asserts the launch
+// with a function returning an error, captures logs via logcapture, and asserts the launch
 // command passes through unchanged with a named warning logged.
 func TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough(t *testing.T) {
 	wantErr := errors.New("executable path unresolvable")
 	withInjectedExecutablePath(t, func() (string, error) { return "", wantErr })
-	buf := captureLogOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 
 	const launchCmd = "claude --continue"
 	got := composePaneLaunchLine(shell.Posix(), launchCmd, "strand-guid-1", "", "")
@@ -208,7 +209,7 @@ func TestComposePaneLaunchLine_NameExports(t *testing.T) {
 // TestComposePaneLaunchLine_ExportsSurviveAnExecutableError asserts a failed executable lookup drops only the prelude.
 func TestComposePaneLaunchLine_ExportsSurviveAnExecutableError(t *testing.T) {
 	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
-	captureLogOutput(t)
+	logcapture.CaptureVerbose(t)
 
 	for _, sh := range launchScriptDialects() {
 		got := composePaneLaunchLine(sh, "claude", "g", "tst:driver", "tst:orch")
@@ -322,7 +323,7 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "reed"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	buf := captureLogOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	got := stageLaunchScript(sh, stateDir, "strand-x", "echo hi")
 	if got != "echo hi" {
 		t.Errorf("payload = %q, want the composed line", got)

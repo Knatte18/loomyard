@@ -24,7 +24,8 @@ func resumeSpec() Spec {
 func TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
-	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
 	readyStart(reed, engine.fakeEngine)
 
 	spec := resumeSpec()
@@ -48,7 +49,8 @@ func TestRunnerStart_Resume_RefusalLeavesNoRunDirOrStrand(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	engine.Err = errors.New("session is gone")
-	runner, anchorPath, _ := newTestRunner(t, reed, engine)
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	runner, anchorPath := fx.Runner, fx.Anchor
 
 	_, err := runner.Start(resumeSpec())
 	if err == nil || !strings.Contains(err.Error(), "shuttle: resume check: session is gone") {
@@ -69,7 +71,7 @@ func TestRunnerStart_Resume_WarningReachesRunAndRunStarts(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	engine.Warning = "registry unreadable"
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 	readyStart(reed, engine.fakeEngine)
 
 	run, err := runner.Start(resumeSpec())
@@ -84,7 +86,7 @@ func TestRunnerStart_Resume_WarningReachesRunAndRunStarts(t *testing.T) {
 func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 
 	_, err := runner.Start(resumeSpec())
 	if err == nil || !strings.Contains(err.Error(), "SessionResumer") {
@@ -98,7 +100,7 @@ func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
 func TestRunnerStart_NoResumeSessionID_NeverCallsCheck(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
-	runner, _, _ := newTestRunner(t, reed, engine)
+	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
 	readyStart(reed, engine.fakeEngine)
 
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})

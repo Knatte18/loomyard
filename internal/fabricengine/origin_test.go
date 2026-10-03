@@ -1,5 +1,5 @@
 // origin_test.go — unit tests for the Origin provenance record type and its three path accessors.
-// Every Location here is built by hand exactly as newPortalLauncherTestLocation does, per the Test
+// Every Location here comes from locationkit.Location, per the Test
 // Tier Purity Invariant: no git spawn, no resolution.
 
 package fabricengine
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
 // TestOrigin_JSONRoundTrip asserts that Origin marshals and unmarshals through the parent_branch
@@ -68,7 +70,7 @@ func TestOrigin_ParentWorktreeRoundTrip(t *testing.T) {
 // the record down by the anchor.
 func TestOriginRecordPath_BothAnchors(t *testing.T) {
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	worktreeRoot := filepath.Join(hub, "loomyard")
+	const worktreeName = "loomyard"
 
 	tests := []struct {
 		name      string
@@ -79,7 +81,7 @@ func TestOriginRecordPath_BothAnchors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, tt.anchorRel)
+			l := locationkit.Location(hub, worktreeName, tt.anchorRel)
 			got := OriginRecordPath(l)
 			want := filepath.Join(l.AnchorPath(), OriginRecordRel())
 			if got != want {
@@ -94,7 +96,7 @@ func TestOriginRecordPath_BothAnchors(t *testing.T) {
 // segment is present in the subpath case.
 func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	worktreeRoot := filepath.Join(hub, "loomyard")
+	const worktreeName = "loomyard"
 	const slug = "test-wt"
 
 	tests := []struct {
@@ -106,7 +108,7 @@ func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := newPortalLauncherTestLocation(hub, worktreeRoot, tt.anchorRel)
+			l := locationkit.Location(hub, worktreeName, tt.anchorRel)
 			got := OriginRecordPathFor(l, slug)
 			want := filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
 			if got != want {
@@ -123,9 +125,9 @@ func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
 // end in OriginRecordRel(), the anchor-relative form both accessors are built from.
 func TestOriginRecordRel_IsTheSharedSuffix(t *testing.T) {
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	worktreeRoot := filepath.Join(hub, "loomyard")
+	const worktreeName = "loomyard"
 	const slug = "test-wt"
-	l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
+	l := locationkit.Location(hub, worktreeName, ".")
 
 	rel := OriginRecordRel()
 

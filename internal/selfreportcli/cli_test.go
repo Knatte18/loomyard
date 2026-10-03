@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // requestCapture describes one HTTP request received by a test's issue
@@ -114,18 +115,6 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 	return code, buf.String()
 }
 
-// parseEnvelope unmarshals the single-line JSON written by RunCLI.
-// The test fails immediately when the output is not valid JSON.
-func parseEnvelope(t *testing.T, stdout string) map[string]any {
-	t.Helper()
-	line := strings.TrimSpace(stdout)
-	var env map[string]any
-	if err := json.Unmarshal([]byte(line), &env); err != nil {
-		t.Fatalf("parseEnvelope: %v; raw=%q", err, stdout)
-	}
-	return env
-}
-
 // labelsFromBody extracts the "labels" array from a decoded request body as
 // a []string, preserving order, so tests can assert multi-label ordering
 // survives encoding.
@@ -161,20 +150,20 @@ func TestRunCreate_HappyPath(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "My bug title")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 0 {
 		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Errorf("envelope ok = %v; want true", env["ok"])
+	if !env.OK {
+		t.Errorf("envelope ok = %v; want true", env.OK)
 	}
-	if url, _ := env["url"].(string); url != issueURL {
+	if url, _ := env.Raw["url"].(string); url != issueURL {
 		t.Errorf("envelope url = %q; want %q", url, issueURL)
 	}
 	// JSON numbers decode to float64 in a map[string]any; compare accordingly.
-	if num, _ := env["number"].(float64); num != float64(123) {
-		t.Errorf("envelope number = %v; want float64(123)", env["number"])
+	if num, _ := env.Raw["number"].(float64); num != float64(123) {
+		t.Errorf("envelope number = %v; want float64(123)", env.Raw["number"])
 	}
 
 	if len(captured) != 1 {
@@ -208,13 +197,13 @@ func TestRunCreate_CustomLabels(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "T", "--label", "enhancement", "--label", "p1")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 0 {
 		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Errorf("envelope ok = %v; want true", env["ok"])
+	if !env.OK {
+		t.Errorf("envelope ok = %v; want true", env.OK)
 	}
 	if len(captured) != 1 {
 		t.Fatalf("request count = %d; want 1", len(captured))
@@ -294,13 +283,13 @@ func TestRunCreate_BodyOmitted(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 0 {
 		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Errorf("envelope ok = %v; want true", env["ok"])
+	if !env.OK {
+		t.Errorf("envelope ok = %v; want true", env.OK)
 	}
 	if len(captured) != 1 {
 		t.Fatalf("request count = %d; want 1", len(captured))
@@ -354,17 +343,16 @@ func TestRunCreate_TokenNotResolvable(t *testing.T) {
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 1 {
 		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); ok {
+	if env.OK {
 		t.Errorf("envelope ok = true; want false")
 	}
-	errMsg, _ := env["error"].(string)
-	if !strings.Contains(errMsg, "token") {
-		t.Errorf("error %q does not mention the token-resolution failure", errMsg)
+	if !strings.Contains(env.Error, "token") {
+		t.Errorf("error %q does not mention the token-resolution failure", env.Error)
 	}
 }
 
@@ -379,17 +367,16 @@ func TestRunCreate_NonSuccessResponse(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 1 {
 		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); ok {
+	if env.OK {
 		t.Errorf("envelope ok = true; want false")
 	}
-	errMsg, _ := env["error"].(string)
-	if !strings.Contains(errMsg, errMessage) {
-		t.Errorf("error %q does not contain response message %q", errMsg, errMessage)
+	if !strings.Contains(env.Error, errMessage) {
+		t.Errorf("error %q does not contain response message %q", env.Error, errMessage)
 	}
 }
 
@@ -400,16 +387,15 @@ func TestRunCreate_NetworkFailure(t *testing.T) {
 	installGitHubClientPointedAtDeadAddress(t)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 1 {
 		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); ok {
+	if env.OK {
 		t.Errorf("envelope ok = true; want false")
 	}
-	errMsg, _ := env["error"].(string)
-	if errMsg == "" {
+	if env.Error == "" {
 		t.Errorf("envelope error is empty; want a network-failure message")
 	}
 }
@@ -425,19 +411,19 @@ func TestRunCreate_NumberOmittedWhenZero(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 0 {
 		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
 	}
-	if ok, _ := env["ok"].(bool); !ok {
-		t.Errorf("envelope ok = %v; want true", env["ok"])
+	if !env.OK {
+		t.Errorf("envelope ok = %v; want true", env.OK)
 	}
-	if _, hasURL := env["url"]; !hasURL {
+	if _, hasURL := env.Raw["url"]; !hasURL {
 		t.Errorf("envelope missing url field; got %v", env)
 	}
-	if _, hasNum := env["number"]; hasNum {
-		t.Errorf("envelope has number = %v but the response carried none; want number absent", env["number"])
+	if _, hasNum := env.Raw["number"]; hasNum {
+		t.Errorf("envelope has number = %v but the response carried none; want number absent", env.Raw["number"])
 	}
 }
 
@@ -452,14 +438,14 @@ func TestRunCreate_NumberParsing(t *testing.T) {
 	installGitHubClient(t, server.URL)
 
 	code, stdout := runCLI(t, "create", "T")
-	env := parseEnvelope(t, stdout)
+	env := envelope.Decode(t, stdout)
 
 	if code != 0 {
 		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
 	}
-	num, ok := env["number"].(float64)
+	num, ok := env.Raw["number"].(float64)
 	if !ok {
-		t.Fatalf("envelope number type = %T; want float64", env["number"])
+		t.Fatalf("envelope number type = %T; want float64", env.Raw["number"])
 	}
 	if num != float64(123) {
 		t.Errorf("envelope number = %v; want float64(123)", num)

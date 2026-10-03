@@ -1,6 +1,6 @@
 // entries_singlellm_test.go covers singleLLMEntry: its construction-time validations over Config
 // and Env, and the composed shuttleengine.Spec its shedadapters.SpecSource closure builds, reached
-// by driving the returned producer's Call through a recording fakeShuttle since the closure itself
+// by driving the returned producer's Call through a recording shedfake.Shuttle since the closure itself
 // is unreachable from outside shedadapters.SingleLLMProducer.
 
 package shedrecipe
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // writeStencilFile writes content to the on-disk location stencilstore.Read(dir, name) resolves
@@ -220,7 +221,7 @@ func TestSingleLLMEntry_ConstructionFailures(t *testing.T) {
 	})
 }
 
-// TestSingleLLMEntry_ComposedSpec drives Call through a recording fakeShuttle and asserts the
+// TestSingleLLMEntry_ComposedSpec drives Call through a recording shedfake.Shuttle and asserts the
 // composed shuttleengine.Spec carries the filled prompt, the resolved absolute OutputFiles in
 // Config order, and the Model/Effort/Version/Role/Interactive values from Config. It never
 // pre-creates spec.OutputFiles, since Spec.OutputFiles entries must not exist when a run starts.
@@ -244,16 +245,16 @@ func TestSingleLLMEntry_ComposedSpec(t *testing.T) {
 		t.Fatalf("singleLLMEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
 	if _, _, err := producer.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
-	if len(fake.specs) != 1 {
-		t.Fatalf("fake.specs has %d entries; want 1", len(fake.specs))
+	if len(fake.Specs) != 1 {
+		t.Fatalf("fake.Specs has %d entries; want 1", len(fake.Specs))
 	}
-	spec := fake.specs[0]
+	spec := fake.Specs[0]
 
 	wantPrompt := "Hello world!\n"
 	if spec.Prompt != wantPrompt {
@@ -307,13 +308,13 @@ func TestSingleLLMEntry_ReservedTokenValues(t *testing.T) {
 		t.Fatalf("singleLLMEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 	if _, _, err := producer.Call(context.Background()); err != nil {
 		t.Fatalf("Call() error = %v; want nil", err)
 	}
 
-	prompt := fake.specs[0].Prompt
+	prompt := fake.Specs[0].Prompt
 	for _, want := range []string{env.WorktreeRoot, env.AnchorPath, env.StencilsDir} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt = %q; want it to contain %q", prompt, want)
@@ -344,8 +345,8 @@ func TestSingleLLMEntry_CallTimeUnfilledMarker(t *testing.T) {
 		t.Fatalf("singleLLMEntry() error = %v; want nil", err)
 	}
 
-	fake := env.Shuttle.(*fakeShuttle)
-	fake.result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 	if _, _, err := producer.Call(context.Background()); err == nil {
 		t.Fatalf("Call() error = nil; want non-nil for a marker neither reserved nor in tokens")
 	}

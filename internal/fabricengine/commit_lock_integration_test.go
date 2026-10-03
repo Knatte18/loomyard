@@ -21,35 +21,13 @@ package fabricengine
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
-
-// gitCommitCount runs `git rev-list --count <args...>` in dir and parses the
-// result, failing the test on any git or parse failure. args typically
-// supplies the flags/revision list to count (e.g. "HEAD" or "--merges",
-// "HEAD").
-func gitCommitCount(t *testing.T, dir string, args ...string) int {
-	t.Helper()
-
-	cmd := exec.Command("git", append([]string{"rev-list", "--count"}, args...)...)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-list --count %v in %s: %v", args, dir, err)
-	}
-	count, err := strconv.Atoi(strings.TrimSpace(string(out)))
-	if err != nil {
-		t.Fatalf("parse git rev-list --count output %q: %v", string(out), err)
-	}
-	return count
-}
 
 // weftWriteLockPath returns the path of f's combined commit write lock file,
 // creating the .weft lock directory (idempotently) if it does not already
@@ -123,11 +101,11 @@ func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 		t.Errorf("landed commit count = %d; want %d (both concurrent warp-only commits should land)", landedCount, goroutineCount)
 	}
 
-	totalCommits := gitCommitCount(t, warpPath, "HEAD")
+	totalCommits := gitkit.RevListCount(t, warpPath, "HEAD")
 	if totalCommits != 3 {
 		t.Errorf("warp commit count = %d; want 3 (the fixture's initial commit plus the two concurrent ones)", totalCommits)
 	}
-	mergeCommits := gitCommitCount(t, warpPath, "--merges", "HEAD")
+	mergeCommits := gitkit.RevListCount(t, warpPath, "--merges", "HEAD")
 	if mergeCommits != 0 {
 		t.Errorf("warp merge commit count = %d; want 0 (history should be linear)", mergeCommits)
 	}

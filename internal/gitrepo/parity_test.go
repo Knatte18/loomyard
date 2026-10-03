@@ -14,12 +14,14 @@ package gitrepo_test
 
 import (
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/gitrepo/internal/gitoracle"
 )
 
 // newEmptyRepoFixture builds a repo with an unborn HEAD via `git init -b main`.
@@ -60,17 +62,6 @@ func newRenameFixture(t *testing.T) (dir, oldName, newName string) {
 	gitkit.MustRun(t, dir, "git", "mv", oldName, newName)
 	gitkit.MustRun(t, dir, "git", "commit", "-m", "rename")
 	return dir, oldName, newName
-}
-
-// commitFile writes name under dir with content and commits it directly via
-// the git CLI, bypassing the Repo under test — a repo-shaping helper the
-// parity cases use to build history, not something under test itself.
-func commitFile(t *testing.T, dir, name, content, message string) {
-	t.Helper()
-
-	writeFile(t, dir, name, content)
-	gitkit.MustRun(t, dir, "git", "add", name)
-	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
 // assertParitySHA fails the test unless oracle and impl — the SHAs returned
@@ -189,9 +180,9 @@ func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
 	writeFile(t, dir, "a.txt", "initial")
 	commitAll(t, dir, "init")
 
-	oracleSHA, oracleErr := oracleCurrentSHA(t, dir)
+	oracleSHA, oracleErr := gitoracle.CurrentSHA(t, dir)
 	if oracleErr != nil {
-		t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
+		t.Fatalf("gitoracle.CurrentSHA() error = %v", oracleErr)
 	}
 	implSHA, implErr := repo.CurrentSHA()
 	if implErr != nil {
@@ -202,18 +193,18 @@ func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
 }
 
 // TestCurrentSHA_Parity_UnbornHEAD asserts the oracle and gitrepo's CurrentSHA agree on an unborn
-// HEAD: both map git's ambiguous-HEAD stderr shape to their own sentinel (errOracleNoCommits and
+// HEAD: both map git's ambiguous-HEAD stderr shape to their own sentinel (gitoracle.ErrNoCommits and
 // gitrepo.ErrNoCommits respectively), so the cross-target class comparison — never a raw string
 // comparison, since the two sides never produce byte-identical errors — is what proves agreement.
 func TestCurrentSHA_Parity_UnbornHEAD(t *testing.T) {
 	dir := newEmptyRepoFixture(t)
 
-	_, oracleErr := oracleCurrentSHA(t, dir)
+	_, oracleErr := gitoracle.CurrentSHA(t, dir)
 	_, implErr := gitrepo.New(dir).CurrentSHA()
 
-	assertParityErrClass(t, oracleErr, errOracleNoCommits, implErr, gitrepo.ErrNoCommits)
-	if !errors.Is(oracleErr, errOracleNoCommits) {
-		t.Errorf("oracleCurrentSHA() on unborn HEAD error = %v, want errOracleNoCommits", oracleErr)
+	assertParityErrClass(t, oracleErr, gitoracle.ErrNoCommits, implErr, gitrepo.ErrNoCommits)
+	if !errors.Is(oracleErr, gitoracle.ErrNoCommits) {
+		t.Errorf("gitoracle.CurrentSHA() on unborn HEAD error = %v, want gitoracle.ErrNoCommits", oracleErr)
 	}
 	if !errors.Is(implErr, gitrepo.ErrNoCommits) {
 		t.Errorf("CurrentSHA() on unborn HEAD error = %v, want gitrepo.ErrNoCommits", implErr)
@@ -232,7 +223,7 @@ func TestSHAExists_Parity_CommittedSHA(t *testing.T) {
 		t.Fatalf("CurrentSHA() error = %v", err)
 	}
 
-	assertParityBool(t, oracleSHAExists(t, dir, sha), repo.SHAExists(sha))
+	assertParityBool(t, gitoracle.SHAExists(t, dir, sha), repo.SHAExists(sha))
 }
 
 // TestSHAExists_Parity_MissingAndNonHexSHA asserts the oracle and gitrepo agree that a
@@ -253,7 +244,7 @@ func TestSHAExists_Parity_MissingAndNonHexSHA(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertParityBool(t, oracleSHAExists(t, dir, tt.sha), repo.SHAExists(tt.sha))
+			assertParityBool(t, gitoracle.SHAExists(t, dir, tt.sha), repo.SHAExists(tt.sha))
 		})
 	}
 }
@@ -277,7 +268,7 @@ func TestSHAExists_Parity_TreeOrBlobSHA(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sha := resolveRevOrFatal(t, dir, tt.rev)
-			assertParityBool(t, oracleSHAExists(t, dir, sha), repo.SHAExists(sha))
+			assertParityBool(t, gitoracle.SHAExists(t, dir, sha), repo.SHAExists(sha))
 		})
 	}
 }
@@ -289,19 +280,19 @@ func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 	dir, filename := newNonASCIIFixture(t)
 	since := firstCommitSHA(t, dir)
 
-	oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, since)
+	oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, since)
 	if oracleErr != nil {
-		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+		t.Fatalf("gitoracle.ChangedFilesSince() error = %v", oracleErr)
 	}
-	if !containsPath(oracleFiles, filename) {
-		t.Fatalf("oracleChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
+	if !slices.Contains(oracleFiles, filename) {
+		t.Fatalf("gitoracle.ChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
 	}
 
 	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
 	if implErr != nil {
 		t.Fatalf("ChangedFilesSince() error = %v", implErr)
 	}
-	if !containsPath(implFiles, filename) {
+	if !slices.Contains(implFiles, filename) {
 		t.Fatalf("ChangedFilesSince() = %v, want it to contain verbatim %q", implFiles, filename)
 	}
 
@@ -315,9 +306,9 @@ func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 	dir, oldName, newName := newRenameFixture(t)
 	since := firstCommitSHA(t, dir)
 
-	oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, since)
+	oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, since)
 	if oracleErr != nil {
-		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+		t.Fatalf("gitoracle.ChangedFilesSince() error = %v", oracleErr)
 	}
 	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
 	if implErr != nil {
@@ -325,10 +316,10 @@ func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 	}
 
 	for _, files := range [][]string{oracleFiles, implFiles} {
-		if !containsPath(files, oldName) {
+		if !slices.Contains(files, oldName) {
 			t.Errorf("ChangedFilesSince() = %v, want it to contain the deleted old path %q", files, oldName)
 		}
-		if !containsPath(files, newName) {
+		if !slices.Contains(files, newName) {
 			t.Errorf("ChangedFilesSince() = %v, want it to contain the added new path %q", files, newName)
 		}
 	}
@@ -349,18 +340,6 @@ func TestChangedFilesSince_Parity_NonHexSHA(t *testing.T) {
 	}
 }
 
-// containsPath reports whether haystack contains needle, used to assert a
-// specific path is present in a ChangedFilesSince result without depending on
-// list order.
-func containsPath(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
 // TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states the method can
 // encounter: an ordinary branch, a detached HEAD (must be an error, never an empty string — a
 // caller with no captured branch has no safe ref to hand RestoreBranch), an unborn HEAD
@@ -371,9 +350,9 @@ func TestCurrentBranch_Parity(t *testing.T) {
 		writeFile(t, dir, "a.txt", "initial")
 		commitAll(t, dir, "init")
 
-		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() error = %v", oracleErr)
 		}
 		implBranch, implErr := repo.CurrentBranch()
 		if implErr != nil {
@@ -395,7 +374,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 		}
 		gitkit.MustRun(t, dir, "git", "checkout", "--detach", sha)
 
-		_, oracleErr := oracleCurrentBranch(t, dir)
+		_, oracleErr := gitoracle.CurrentBranch(t, dir)
 		_, implErr := repo.CurrentBranch()
 		assertParityErrPresence(t, oracleErr, implErr)
 		if implErr == nil {
@@ -406,9 +385,9 @@ func TestCurrentBranch_Parity(t *testing.T) {
 	t.Run("UnbornHEAD", func(t *testing.T) {
 		dir := newEmptyRepoFixture(t)
 
-		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() on unborn HEAD error = %v, want nil", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() on unborn HEAD error = %v, want nil", oracleErr)
 		}
 		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
 		if implErr != nil {
@@ -427,11 +406,11 @@ func TestCurrentBranch_Parity(t *testing.T) {
 
 		gitkit.MustRun(t, dir, "git", "checkout", "--orphan", "orphan-branch")
 		gitkit.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
-		commitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
+		gitkit.CommitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
 
-		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() on orphan branch error = %v, want nil", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() on orphan branch error = %v, want nil", oracleErr)
 		}
 		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
 		if implErr != nil {

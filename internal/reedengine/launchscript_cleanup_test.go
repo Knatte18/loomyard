@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // seedLaunchScripts writes a placeholder launch script for each guid and returns the paths in order.
@@ -45,14 +46,7 @@ func assertScriptPresence(t *testing.T, path string, want bool) {
 func newCleanupEngine(t *testing.T, st *ReedState) *Engine {
 	t.Helper()
 	e := newTestEngine(t)
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "display-message":
-			return "$0|4321|1787000000", nil
-		default:
-			return "", nil
-		}
-	}
+	installFakeTmux(t, e).answer("display-message", "$0|4321|1787000000", nil)
 	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
@@ -102,7 +96,7 @@ func TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor(t *testing.T) {
 
 func TestRemoveStrand_NoScriptSucceedsSilently(t *testing.T) {
 	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", "")}})
-	buf := captureLogOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 
 	if _, err := e.RemoveStrand("a", false); err != nil {
 		t.Fatalf("RemoveStrand: %v", err)
@@ -114,13 +108,8 @@ func TestRemoveStrand_NoScriptSucceedsSilently(t *testing.T) {
 
 func TestDown_RemovesStateAndLaunchDir(t *testing.T) {
 	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", "")}})
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		if args[0] == "list-sessions" {
-			// A sibling session keeps Down off the server teardown path.
-			return "sibling-session\n", nil
-		}
-		return "", nil
-	}
+	// A sibling session keeps Down off the server teardown path.
+	installFakeTmux(t, e).answer("list-sessions", "sibling-session\n", nil)
 	seedLaunchScripts(t, e, "a")
 
 	if _, err := e.Down(); err != nil {

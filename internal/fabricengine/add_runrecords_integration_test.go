@@ -4,7 +4,7 @@
 // the records never reach the new worktree's disk, the pair's first weft commit records their deletion,
 // and the adopt path, the parent branch and Add's rollback are untouched by the drop.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers (shaOf, mustWeftRepoRoot, branchExistsAt) and origin_integration_test.go's (gitRevListCount);
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustWeftRepoRoot;
 // it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -42,8 +42,8 @@ func commitRunRecords(t *testing.T, l *lyxcwd.Location, weftDir string) {
 			t.Fatalf("write %s: %v", full, err)
 		}
 	}
-	gitkit.MustRun(t, weftDir, "git", "add", "-A")
-	gitkit.MustRun(t, weftDir, "git", "commit", "-m", "seed run records")
+	gitkit.Git(t, weftDir, "add", "-A")
+	gitkit.Git(t, weftDir, "commit", "-m", "seed run records")
 }
 
 // trackedUnderRoot returns what branch tracks under l's run-records root, read in the repo at dir.
@@ -51,11 +51,7 @@ func trackedUnderRoot(t *testing.T, l *lyxcwd.Location, dir, branch string) stri
 	t.Helper()
 
 	root := filepath.ToSlash(filepath.Join(l.AnchorRel, shedrun.RunsRootRel()))
-	out, err := gitexec.Run([]string{"ls-tree", "-r", "--name-only", branch, "--", root}, dir)
-	if err != nil {
-		t.Fatalf("ls-tree %s %s in %s: %v", branch, root, dir, err)
-	}
-	return strings.TrimSpace(out)
+	return gitkit.Git(t, dir, "ls-tree", "-r", "--name-only", branch, "--", root)
 }
 
 // TestAdd_DropsParentRunRecords seeds two run directories on the parent weft branch and asserts the pair's weft branch is one commit ahead of the fork point, tracks nothing under the root, has no such directory on disk, carries the origin record, and is pushed, while the parent still tracks both.
@@ -69,16 +65,14 @@ func TestAdd_DropsParentRunRecords(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	commitRunRecords(t, l, weftRoot)
-	forkPoint := shaOf(t, weftRoot, parentWeft)
+	forkPoint := gitkit.RevParse(t, weftRoot, parentWeft)
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	weftBranch := fabricengine.WeftBranchName(slug)
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 
-	if got := gitRevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
+	if got := gitkit.RevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
 		t.Errorf("weft branch is %d commits ahead of the fork point; want exactly 1", got)
 	}
 	if got := trackedUnderRoot(t, l, weftRoot, weftBranch); got != "" {
@@ -90,14 +84,14 @@ func TestAdd_DropsParentRunRecords(t *testing.T) {
 	if shown := gitShow(t, weftPath, weftBranch, filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))); !strings.Contains(shown, `"parent_branch": "main"`) {
 		t.Errorf("origin record = %q; want it committed with parent_branch main", shown)
 	}
-	if !branchExistsAt(t, weftRoot, weftBranch) {
+	if !gitkit.BranchExists(t, weftRoot, weftBranch) {
 		t.Fatalf("weft branch %q missing", weftBranch)
 	}
-	if pushed, remote := shaOf(t, weftRoot, "refs/remotes/origin/"+weftBranch), shaOf(t, weftRoot, weftBranch); pushed != remote {
+	if pushed, remote := gitkit.RevParse(t, weftRoot, "refs/remotes/origin/"+weftBranch), gitkit.RevParse(t, weftRoot, weftBranch); pushed != remote {
 		t.Errorf("origin/%s = %s; want the pair's tip %s", weftBranch, pushed, remote)
 	}
 
-	if got := shaOf(t, weftRoot, parentWeft); got != forkPoint {
+	if got := gitkit.RevParse(t, weftRoot, parentWeft); got != forkPoint {
 		t.Errorf("parent weft tip moved: %s -> %s", forkPoint, got)
 	}
 	if got := trackedUnderRoot(t, l, weftRoot, parentWeft); strings.Count(got, "\n") != len(runRecordFiles)-1 || got == "" {
@@ -115,14 +109,12 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 
 	commitRunRecords(t, l, weftRoot)
-	forkPoint := shaOf(t, weftRoot, fabricengine.WeftBranchName("main"))
+	forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName("main"))
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftBranch := fabricengine.WeftBranchName(slug)
-	if got := gitRevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
+	if got := gitkit.RevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
 		t.Errorf("weft branch is %d commits ahead of the fork point; want exactly 1", got)
 	}
 	if got := trackedUnderRoot(t, l, weftRoot, weftBranch); got != "" {
@@ -141,14 +133,12 @@ func TestAdd_NoRunRecordsToDrop(t *testing.T) {
 	l := h.Location
 	const slug = "nothing-to-drop"
 	weftRoot := mustWeftRepoRoot(t, l)
-	forkPoint := shaOf(t, weftRoot, fabricengine.WeftBranchName("main"))
+	forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName("main"))
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftBranch := fabricengine.WeftBranchName(slug)
-	if got := gitRevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
+	if got := gitkit.RevListCount(t, weftRoot, forkPoint+".."+weftBranch); got != 1 {
 		t.Errorf("weft branch is %d commits ahead of the fork point; want exactly 1", got)
 	}
 	out, err := gitexec.Run([]string{"diff", "--name-status", forkPoint, weftBranch}, weftRoot)
@@ -175,9 +165,7 @@ func TestAdd_AdoptKeepsRunRecords(t *testing.T) {
 	commitRunRecords(t, l, seedDir)
 	gitkit.MustRun(t, weftRoot, "git", "worktree", "remove", seedDir)
 
-	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", slug, err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	if got := trackedUnderRoot(t, l, weftRoot, weftBranch); strings.Count(got, "\n") != len(runRecordFiles)-1 || got == "" {
 		t.Errorf("adopted branch tracks %q; want both run records", got)
@@ -198,9 +186,7 @@ func TestAdd_FromTaskPairDropsParentRunRecords(t *testing.T) {
 	const parentSlug, childSlug = "task-parent", "task-child"
 	weftRoot := mustWeftRepoRoot(t, l)
 
-	if _, err := h.Topology.Add(l, parentSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q): %v", parentSlug, err)
-	}
+	hubforge.AddPairWith(t, h, parentSlug, fabricengine.AddOptions{SkipPush: true})
 	commitRunRecords(t, l, fabricengine.WeftWorktreePath(l, parentSlug))
 	if got := trackedUnderRoot(t, l, weftRoot, fabricengine.WeftBranchName(parentSlug)); got == "" {
 		t.Fatalf("setup: parent pair's weft branch tracks no run records")
@@ -233,7 +219,7 @@ func TestAdd_DropRollsBackFully(t *testing.T) {
 	parentWeft := fabricengine.WeftBranchName("main")
 
 	commitRunRecords(t, l, weftRoot)
-	tipBefore := shaOf(t, weftRoot, parentWeft)
+	tipBefore := gitkit.RevParse(t, weftRoot, parentWeft)
 
 	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
 	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
@@ -250,10 +236,10 @@ func TestAdd_DropRollsBackFully(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("weft worktree still exists after rollback (stat err = %v)", err)
 	}
-	if branchExistsAt(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+	if gitkit.BranchExists(t, weftRoot, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("weft branch %q survived the rollback", fabricengine.WeftBranchName(slug))
 	}
-	if got := shaOf(t, weftRoot, parentWeft); got != tipBefore {
+	if got := gitkit.RevParse(t, weftRoot, parentWeft); got != tipBefore {
 		t.Errorf("parent weft tip moved: %s -> %s", tipBefore, got)
 	}
 }

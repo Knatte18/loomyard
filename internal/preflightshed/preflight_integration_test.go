@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // setupPreflightWrapperFixture builds a fully-configured real hub with fabric and junction setup.
@@ -70,13 +71,7 @@ func TestPreflight_AllPreconditionsPass(t *testing.T) {
 	h := setupPreflightWrapperFixture(t)
 
 	p := NewPreflight("Preflight", h.PrimeWorktree())
-	outcome, _, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
+	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
 // TestPreflight_BrokenPreconditionMapsToStuck asserts that a fixture with a deliberately broken
@@ -93,13 +88,7 @@ func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
 	}
 
 	p := NewPreflight("Preflight", h.PrimeWorktree())
-	outcome, ptr, err := p.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-	}
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	report, _, cerr := preflight.Check(h.PrimeWorktree())
 	if cerr != nil {
 		t.Fatalf("preflight.Check error = %v; want nil", cerr)
@@ -115,7 +104,7 @@ func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
 	if err := os.Remove(untracked); err != nil {
 		t.Fatalf("remove untracked file: %v", err)
 	}
-	outcome, _, err = p.Call(context.Background())
+	outcome, _, err := p.Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
 		t.Errorf("re-step Call() = (%q, %v); want Done once the worktree is clean", outcome, err)
 	}

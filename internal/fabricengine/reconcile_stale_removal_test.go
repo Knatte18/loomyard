@@ -15,7 +15,7 @@
 // above) resolve the junction name-set from fabricengine.BoardDir(Hub) alone
 // — no per-pair weft-base fabric.yaml is ever seeded in this file.
 //
-// Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
+// Package fabricengine_test to reuse seedRepoWideFabricConfig
 // from reconcile_stale_registration_test.go; shares the single TestMain in
 // testmain_test.go.
 
@@ -61,8 +61,8 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-add-remove-noop"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
@@ -76,10 +76,8 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("narrow repo-wide pathspec: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -142,12 +140,10 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-correct-noop"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -187,15 +183,13 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	slugs := []string{"converge-all-a", "converge-all-b"}
 	for _, slug := range slugs {
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add(%s): %v", slug, err)
-		}
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	}
 
 	// First Reconcile: Add's own eager wiring (RepoWiredNames, card 20)
@@ -236,19 +230,17 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 // junction-teardown behaviour this task delivers: against the fixture's unmodified default (empty)
 // repo-wide pathspec, an on-disk optional junction is stale by definition and Reconcile removes it,
 // while the _lyx and .lyx structural junctions are left untouched.
-// This deliberately never touches the repo-wide config -- newFabricFixture already seeds
+// This deliberately never touches the repo-wide config -- hubforge.NewHub already seeds
 // fabricengine.ConfigTemplate()'s real empty default, so this is the genuine post-change production
 // shape, not a hand-widened one like the other cases in this file.
 func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-empty-default"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -286,12 +278,10 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	t.Parallel()
 
 	const slug = "stale-removal-failclosed"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -337,12 +327,10 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-reserved"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
@@ -389,7 +377,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	slug := l.WorktreeName
 
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
@@ -420,9 +408,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	// Topology.Remove must still tear down a pair's junctions using the
 	// repo-wide name-set.
 	const removeSlug = "repo-wide-remove-target"
-	if _, err := topology.Add(l, removeSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%s): %v", removeSlug, err)
-	}
+	hubforge.AddPairWith(t, h, removeSlug, fabricengine.AddOptions{SkipPush: true})
 	removeWarpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, removeSlug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", removeSlug, err)
@@ -453,12 +439,10 @@ func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-user-symlink"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -503,12 +487,9 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	t.Parallel()
 
 	const slug = "unwire-user-symlink"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -556,8 +537,8 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-refused"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
@@ -565,10 +546,8 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _other\n"), 0o644); err != nil {
 		t.Fatalf("seed repo-wide pathspec: %v", err)
 	}
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)

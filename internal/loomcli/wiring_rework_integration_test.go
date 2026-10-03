@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -104,7 +105,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 
 	round := func(n int, rejectedAt string, first int, cards [][2]string) {
 		t.Helper()
-		before := mustGitOut(t, weftSibling, "rev-list", "--count", "HEAD")
+		before := gitkit.Git(t, weftSibling, "rev-list", "--count", "HEAD")
 		deps := c.env.Rework
 		deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: rejectedAt, Findings: "fix it\n"}, true, nil
@@ -115,7 +116,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("round %d: PR-Rework Call = %v, %q, %v; want Done", n, outcome, ptr.Reason, err)
 		}
-		after := mustGitOut(t, weftSibling, "rev-list", "--count", "HEAD")
+		after := gitkit.Git(t, weftSibling, "rev-list", "--count", "HEAD")
 		if want := fmt.Sprintf("%d", atoiOrFail(t, before)+1); strings.TrimSpace(after) != want {
 			t.Errorf("round %d: weft commit count %s -> %s; want exactly one commit", n, strings.TrimSpace(before), strings.TrimSpace(after))
 		}
@@ -123,7 +124,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 
 	round1Prior := filepath.ToSlash(filepath.Join(loomengine.LoomReworkDirRel(), "round-1", "prior-generation"))
 	round(1, "2026-09-30T10:00:00Z", 2, [][2]string{{"second-card", "fixes the finding."}})
-	changed := mustGitOut(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	changed := gitkit.Git(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
 	for _, want := range []string{
 		"D\t" + planparser.PlanDirRel() + "/01-first-card.md",
 		"A\t" + round1Prior + "/plan/01-first-card.md",

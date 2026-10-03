@@ -210,7 +210,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err != nil {
 			// resolveEffectiveWarpURL's own message must not attempt to name the weft URL; the
 			// caller prefixes it here.
-			return CloneResult{}, fmt.Errorf("weft %s has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>", opts.WeftURL)
+			return CloneResult{}, &sentinelError{
+				sentinel: ErrNoWarpBinding,
+				msg:      fmt.Sprintf("weft %s has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>", opts.WeftURL),
+			}
 		}
 		effectiveShortname, writeShortname, shortnameWarning, err = resolveEffectiveShortname(probe.RecordedShortname, probe.ShortnameFound, opts.Shortname, probe.freshBind())
 		if err != nil {

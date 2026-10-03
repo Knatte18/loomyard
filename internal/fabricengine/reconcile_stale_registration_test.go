@@ -20,9 +20,7 @@
 // history for reconcile_differential_test.go for the original differential
 // framing.
 //
-// Package fabricengine_test to reuse the external-test-package fixture idiom
-// formerly shared with lifecycle_differential_test.go; shares the single
-// TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -34,7 +32,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -48,13 +45,11 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-reg-recreate"
-	fixture := newFabricFixture(t)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// The drift injection: delete the weft worktree directory out from under
 	// git, exactly as a stray rm would — the registration and branch survive.
@@ -91,42 +86,8 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	if info, err := os.Stat(weftPath); err != nil || !info.IsDir() {
 		t.Fatalf("weft worktree not recreated at %s: %v", weftPath, err)
 	}
-	if got, want := currentBranchOf(t, weftPath), fabricengine.WeftBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, weftPath), fabricengine.WeftBranchName(slug); got != want {
 		t.Errorf("recreated weft worktree branch = %q; want %q", got, want)
-	}
-}
-
-// fabricFixture is the local field-mapping shape newFabricFixture returns over a real hub, replacing
-// the deleted gitkit paired-fixture struct it used to hand-assemble from gitkit's own retired
-// local-pair template.
-// It is a package-local type so this file's many existing callers do not all need to change their
-// field-access pattern.
-type fabricFixture struct {
-	Container string
-	Hub       string
-	Bare      string
-	WeftPrime string
-	WeftBare  string
-	Layout    *lyxcwd.Location
-}
-
-// newFabricFixture returns a fabricFixture-shaped view over a real hub built by hubforge.NewHub.
-// hubforge.NewHub's own CloneAndWire already produces the shape this fixture used to hand-assemble
-// from gitkit's own retired local-pair template — the weft primary checked out on the suffixed
-// primary branch, a real _board worktree on the warp's unsuffixed default branch (the shape CloneHub
-// produces and the shape Cleanup reads the repo's primary weft branch from), and the repo-wide fabric.yaml committed inside
-// it — so this is now a thin field-mapping wrapper over the mapping table's equivalents.
-func newFabricFixture(t *testing.T) fabricFixture {
-	t.Helper()
-
-	h := hubforge.NewHub(t, ".")
-	return fabricFixture{
-		Container: h.Container,
-		Hub:       h.PrimeWorktree(),
-		Bare:      h.WarpBare,
-		WeftPrime: h.PrimeWeft(),
-		WeftBare:  h.WeftBare,
-		Layout:    h.Location,
 	}
 }
 
@@ -136,14 +97,14 @@ func newFabricFixture(t *testing.T) fabricFixture {
 func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
-	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
+	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
 		t.Fatalf("remove weft prime: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	topology := h.Topology
 	result, err := topology.Reconcile(l)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -184,32 +145,6 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
-}
-
-// currentBranchOf returns the branch currently checked out at dir via
-// git rev-parse --abbrev-ref HEAD, failing the test on any git error. Shared
-// by every regression guard in this file plus checkout_rollback_test.go and
-// checkout_index_refresh_test.go, which reference it across the shared
-// fabricengine_test package.
-func currentBranchOf(t *testing.T, dir string) string {
-	t.Helper()
-
-	out, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("rev-parse --abbrev-ref HEAD in %s: err=%v exit=%d", dir, err, exitCode)
-	}
-	return strings.TrimSpace(out)
-}
-
-// branchExistsAt reports whether branch exists as a local ref in the repo at repoRoot.
-func branchExistsAt(t *testing.T, repoRoot, branch string) bool {
-	t.Helper()
-
-	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + branch}, repoRoot)
-	if err != nil {
-		t.Fatalf("rev-parse --verify refs/heads/%s in %s: %v", branch, repoRoot, err)
-	}
-	return exitCode == 0
 }
 
 // findPruneEntryByWeftPath returns the fabricengine.PruneEntry matching
@@ -257,12 +192,10 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 	t.Parallel()
 
 	const slug = "prune-portal-r6"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
 	portalLink := fabricengine.PortalLink(l, slug)
@@ -312,12 +245,10 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		t.Parallel()
 
 		const slug = "prune-stale-reg-f2"
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		topology := fabricengine.NewTopology(fabricengine.Config{})
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add: %v", err)
-		}
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		topology := h.Topology
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
 		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
@@ -355,12 +286,10 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		t.Parallel()
 
 		const slug = "prune-stale-reg-f3"
-		fixture := newFabricFixture(t)
-		l := fixture.Layout
-		topology := fabricengine.NewTopology(fabricengine.Config{})
-		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-			t.Fatalf("setup Add: %v", err)
-		}
+		h := hubforge.NewHub(t, ".")
+		l := h.Location
+		topology := h.Topology
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
 		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
@@ -397,9 +326,9 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	mainWeft := fabricengine.WeftBranchName("main")
 	weftPrime := fabricengine.WeftWorktree(l)
@@ -418,7 +347,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 			t.Errorf("Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
 		}
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), mainWeft) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), mainWeft) {
 		t.Errorf("main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 	}
 }
@@ -429,9 +358,9 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
 	const warpManagedBranch = "cleanup-warp-owned"
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
@@ -448,7 +377,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	if entry.Deleted {
 		t.Errorf("Deleted = true for non-suffixed branch %q; want false even under force", warpManagedBranch)
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
 		t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 	}
 }
@@ -463,12 +392,10 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	t.Parallel()
 
 	const slug = "cleanup-detached-r5"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	// Detach the warp worktree's HEAD so branch-space liveness cannot see the
 	// pair is live; only the checked-out protection stands between Cleanup
@@ -500,7 +427,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	if forcedEntry.Error != "" {
 		t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
 	}
-	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
 	}
 }
@@ -513,12 +440,9 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	t.Parallel()
 
 	const slug = "pairinsync-realdir"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
@@ -558,12 +482,10 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "reconcile-recreated-pair"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
@@ -607,12 +529,10 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "cleanup-dryrun-parity"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -658,7 +578,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 	if !appliedEntry.Deleted {
 		t.Fatalf("--apply did not delete %q without --force; want it deleted (no fold-back gate protects an orphan)", orphan)
 	}
-	if branchExistsAt(t, weftRepoRoot, orphan) {
+	if gitkit.BranchExists(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists in the weft repo after --apply; want deleted", orphan)
 	}
 }
@@ -675,12 +595,10 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "cleanup-force-reserved"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	if _, err := topology.Remove(l, slug, true, false); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -722,10 +640,10 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 			}
 		}
 	}
-	if branchExistsAt(t, weftRepoRoot, orphan) {
+	if gitkit.BranchExists(t, weftRepoRoot, orphan) {
 		t.Errorf("orphan branch %q still exists after Cleanup(apply, force=true); want deleted", orphan)
 	}
-	if !branchExistsAt(t, weftRepoRoot, unmanaged) {
+	if !gitkit.BranchExists(t, weftRepoRoot, unmanaged) {
 		t.Errorf("unmanaged branch %q was deleted by Cleanup(apply, force=true); want it to survive", unmanaged)
 	}
 }
@@ -739,14 +657,12 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	const slug = "portal-repair"
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q) error = %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	portalLink := fabricengine.PortalLink(l, slug)
 	launcherDir := fabricengine.LauncherDir(l, slug)

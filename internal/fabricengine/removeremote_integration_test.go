@@ -5,9 +5,8 @@
 // non-fatal remote-failure partial-teardown guarantee, and the once-per-verb no-origin pre-check
 // shared with Cleanup.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant (via
-// newFabricFixture), using the hub's own WeftBare field as the weft remote to assert against.
-// mustBreakOrigin/mustRemoveOrigin/branchExistsAt are shared with cleanupremote_integration_test.go
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against.
+// mustBreakOrigin/mustRemoveOrigin are shared with cleanupremote_integration_test.go
 // and reconcile_stale_registration_test.go — every assertion here goes through exported API.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -19,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRemove_RemoteTrueDeletesWeftBranchOnRemote covers case 1: remote true deletes the pair's weft
@@ -28,14 +29,12 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-remote-both"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftBranch := fabricengine.WeftBranchName(slug)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	res, err := topology.Remove(l, slug, false, true)
 	if err != nil {
@@ -47,7 +46,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	if res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchError = %q; want empty", res.RemoteBranchError)
 	}
-	if branchExistsAt(t, fixture.WeftBare, weftBranch) {
+	if gitkit.BranchExists(t, h.WeftBare, weftBranch) {
 		t.Errorf("weft branch %q still exists on the remote after Remove(remote=true)", weftBranch)
 	}
 
@@ -68,14 +67,12 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-remote-off"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftBranch := fabricengine.WeftBranchName(slug)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -84,7 +81,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	if res.RemoteBranchDeleted {
 		t.Errorf("RemoteBranchDeleted = true; want false — remote is opt-in")
 	}
-	if !branchExistsAt(t, fixture.WeftBare, weftBranch) {
+	if !gitkit.BranchExists(t, h.WeftBare, weftBranch) {
 		t.Errorf("weft branch %q no longer exists on the remote after Remove(remote=false)", weftBranch)
 	}
 }
@@ -98,14 +95,12 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 	t.Parallel()
 
 	const slug = "remove-remote-fail"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	mustBreakOrigin(t, weftRoot)
 
@@ -128,14 +123,12 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 	t.Parallel()
 
 	const slug = "remove-no-origin"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add(%q): %v", slug, err)
-	}
+	topology := h.Topology
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	mustRemoveOrigin(t, weftRoot)
 

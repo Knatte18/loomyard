@@ -2,8 +2,7 @@
 
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
-// real hub built by hubforge.NewHub, commit --help's fixed-message/Warp-SHA-trailer prose,
-// pull --help's both-sides/reconcile prose, and the WEFT_SKIP_PUSH env-to-SyncOptions
+// real hub built by hubforge.NewHub, and the WEFT_SKIP_PUSH env-to-SyncOptions
 // mapping on push — this package exercises both the topology and content-sync verb
 // families against the one fabric command tree.
 
@@ -11,7 +10,6 @@ package fabriccli_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -64,16 +63,6 @@ func setupCLIRepo(t *testing.T) *hubforge.Hub {
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: wt-\npathspec: _lyx\n")
 	return h
-}
-
-// decodeResult parses RunCLI's JSON output into a generic map.
-func decodeResult(t *testing.T, buf *bytes.Buffer) map[string]any {
-	t.Helper()
-	var result map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("parse JSON output: %v\noutput: %s", err, buf.String())
-	}
-	return result
 }
 
 // TestRunCLI_NoArgs verifies that "lyx fabric" with no subcommand prints the subcommand listing
@@ -114,13 +103,7 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 		t.Errorf("RunCLI with unknown subcommand returned %d; want 1", exitCode)
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("RunCLI(unknown) ok = true; want false")
-	}
-	if errMsg, _ := result["error"].(string); !strings.Contains(errMsg, "unknown") {
-		t.Errorf("RunCLI(unknown) error = %q; want \"unknown\" substring", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "unknown")
 }
 
 // TestRunCLI_WeftPathPushOnly verifies that --weft-path with a non-push subcommand returns exit 1
@@ -135,16 +118,9 @@ func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 		t.Errorf("RunCLI --weft-path with non-push returned %d; want 1", exitCode)
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("ok should be false for error; got true")
-	}
-	if errMsg, ok := result["error"].(string); ok {
-		if errMsg != "subcommand requires a worktree context" {
-			t.Errorf("error message = %q; want %q", errMsg, "subcommand requires a worktree context")
-		}
-	} else {
-		t.Errorf("error field missing or not a string")
+	result := envelope.RequireErr(t, out.String(), "")
+	if result.Error != "subcommand requires a worktree context" {
+		t.Errorf("error message = %q; want %q", result.Error, "subcommand requires a worktree context")
 	}
 }
 
@@ -159,11 +135,11 @@ func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 		t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("RunCLI(pairs) ok = %v; want true", result["ok"])
+	result := envelope.Decode(t, out.String())
+	if !result.OK {
+		t.Errorf("RunCLI(pairs) ok = %v; want true", result.OK)
 	}
-	if _, hasPairs := result["pairs"]; !hasPairs {
+	if _, hasPairs := result.Raw["pairs"]; !hasPairs {
 		t.Errorf("RunCLI(pairs) output missing 'pairs' key; got %v", result)
 	}
 }
@@ -207,10 +183,10 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 		t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	pairs, ok := result["pairs"].([]any)
+	result := envelope.Decode(t, out.String())
+	pairs, ok := result.Raw["pairs"].([]any)
 	if !ok || len(pairs) == 0 {
-		t.Fatalf("RunCLI(pairs) 'pairs' = %v; want a non-empty array", result["pairs"])
+		t.Fatalf("RunCLI(pairs) 'pairs' = %v; want a non-empty array", result.Raw["pairs"])
 	}
 
 	var found map[string]any
@@ -242,80 +218,6 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CommitHelp asserts that "fabric commit --help" output documents the fixed commit
-// message and the Warp-SHA trailer,
-// and does not advertise a --message flag that does not exist.
-func TestRunCLI_CommitHelp(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"commit", "--help"})
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(commit --help) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-
-	if !strings.Contains(got, "weft sync") {
-		t.Errorf("commit --help output missing fixed message string %q; got:\n%s", "weft sync", got)
-	}
-	if !strings.Contains(got, "Warp-SHA") {
-		t.Errorf("commit --help output missing %q trailer wording; got:\n%s", "Warp-SHA", got)
-	}
-	if strings.Contains(got, "--message") {
-		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
-	}
-}
-
-// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the both-sides pull/reconcile
-// behaviour — a help-accuracy assertion in the same style as TestRunCLI_CommitHelp, guarding
-// against the CLI/Cobra Invariant's "stale help is review-blocking" obligation now that pull drives
-// the unified Fabric.Pull instead of the weft-only PullWeft.
-func TestRunCLI_PullHelp(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"pull", "--help"})
-
-	if exitCode != 0 {
-		t.Errorf("RunCLI(pull --help) = %d; want 0", exitCode)
-	}
-
-	got := out.String()
-
-	if !strings.Contains(got, "Pulls both sides of the pair") {
-		t.Errorf("pull --help output missing both-sides Long text; got:\n%s", got)
-	}
-	if !strings.Contains(got, "reconcile") {
-		t.Errorf("pull --help output missing reconcile wording; got:\n%s", got)
-	}
-	if !strings.Contains(got, "rewrite") {
-		t.Errorf("pull --help output missing warp-history-rewrite wording; got:\n%s", got)
-	}
-}
-
-// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty and itself names the
-// both-sides/reconcile behaviour, building the command tree via the fabriccli.Command() seam (the
-// CLI/Cobra Invariant's "Short on every command" obligation, checked directly against pull's own
-// Short rather than via --help output, where Long supersedes Short).
-func TestRunCLI_PullShortNonEmpty(t *testing.T) {
-	t.Parallel()
-
-	root := fabriccli.Command()
-	pull, _, err := root.Find([]string{"pull"})
-	if err != nil {
-		t.Fatalf("root.Find([pull]) error: %v", err)
-	}
-
-	if pull.Short == "" {
-		t.Errorf("pullCmd.Short is empty; want a non-empty both-sides summary")
-	}
-	if !strings.Contains(pull.Short, "reconcil") {
-		t.Errorf("pullCmd.Short = %q; want it to mention reconcile behaviour", pull.Short)
-	}
-}
-
 // TestRunCLI_EnvMapToOption tests that the CLI edge properly maps WEFT_SKIP_PUSH to SyncOptions on
 // the push verb.
 // Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
@@ -344,10 +246,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 		t.Logf("output: %s", out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Errorf("ok should be true; got false. Error: %v", result["error"])
-	}
+	envelope.RequireOK(t, out.String())
 }
 
 // TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern is the card-40 regression
@@ -381,10 +280,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 		t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("RunCLI(sync) ok = %v; want true; output: %s", result["ok"], out.String())
-	}
+	envelope.RequireOK(t, out.String())
 
 	tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "log", "-1", "--name-only", "--pretty=format:"))
 	if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
@@ -422,14 +318,7 @@ func TestRunCLI_CloneAcceptsOneOrTwoArgs(t *testing.T) {
 				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
 			}
 
-			result := decodeResult(t, &out)
-			if ok, _ := result["ok"].(bool); ok {
-				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
-			}
-			errMsg, _ := result["error"].(string)
-			if !strings.Contains(errMsg, "usage: lyx fabric clone") {
-				t.Errorf("RunCLI(%v) error = %q; want \"usage: lyx fabric clone\" substring", tt.args, errMsg)
-			}
+			envelope.RequireErr(t, out.String(), "usage: lyx fabric clone")
 		})
 	}
 }
@@ -512,22 +401,19 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Fatalf("RunCLI(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("RunCLI(clone) ok = %v; want true; output: %s", result["ok"], out.String())
-	}
-	hubPath, _ := result["hub"].(string)
+	result := envelope.RequireOK(t, out.String())
+	hubPath, _ := result.Raw["hub"].(string)
 	if hubPath == "" {
 		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", result)
 	}
-	if anchor, _ := result["anchor"].(string); anchor != "backend" {
+	if anchor, _ := result.Raw["anchor"].(string); anchor != "backend" {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
 	}
-	if warp, _ := result["warp"].(string); warp != filepath.ToSlash(warpBare) {
+	if warp, _ := result.Raw["warp"].(string); warp != filepath.ToSlash(warpBare) {
 		t.Errorf("RunCLI(clone) warp = %q; want %q", warp, filepath.ToSlash(warpBare))
 	}
-	if recorded, ok := result["warp_binding_recorded"].(bool); !ok || !recorded {
-		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result["warp_binding_recorded"])
+	if recorded, ok := result.Raw["warp_binding_recorded"].(bool); !ok || !recorded {
+		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result.Raw["warp_binding_recorded"])
 	}
 
 	// The prime warp worktree's structural junctions (_lyx and .lyx) must be
@@ -596,43 +482,32 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("RunCLI(clone) ok = %v; want true; output: %s", result["ok"], out.String())
-	}
-	if anchor, _ := result["anchor"].(string); anchor != "." {
+	result := envelope.RequireOK(t, out.String())
+	if anchor, _ := result.Raw["anchor"].(string); anchor != "." {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, ".")
 	}
 }
 
-// TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm asserts that a one-positional clone against a
-// local bare weft fixture carrying no recorded binding exits 1 through the output.Err envelope,
-// with a message naming both the unbound-binding condition and the two-argument form's exact
-// invocation as the remedy. makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
-// the unborn-HEAD case the weft-candidate guard admits on its own, so --force-bootstrap is not
-// needed here.
-func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
+// TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft carrying no recorded binding, and requires the envelope's error to equal the engine's own refusal text exactly.
+// The refusal's wording is owned by fabricengine's TestCloneHub_UnboundWeftNamesTwoArgForm.
+func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
 	fixtures := t.TempDir()
-	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft")
+	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
 
-	cloneParent := t.TempDir()
+	_, engineErr := fabricengine.CloneHub(t.TempDir(), fabricengine.CloneOptions{WeftURL: weftBare})
+	if !errors.Is(engineErr, fabricengine.ErrNoWarpBinding) {
+		t.Fatalf("CloneHub(%s) error = %v; want errors.Is ErrNoWarpBinding", weftBare, engineErr)
+	}
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", cloneParent, filepath.ToSlash(weftBare)})
+	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", t.TempDir(), weftBare})
 	if exitCode != 1 {
 		t.Fatalf("RunCLI(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("RunCLI(clone <weft-url>) ok = true; want false")
-	}
-	errMsg, _ := result["error"].(string)
-	if !strings.Contains(errMsg, "has no recorded warp binding") {
-		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"has no recorded warp binding\" substring", errMsg)
-	}
-	if !strings.Contains(errMsg, "lyx fabric clone <weft-url> <warp-url>") {
-		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"lyx fabric clone <weft-url> <warp-url>\" substring", errMsg)
+	result := envelope.RequireErr(t, out.String(), "")
+	if result.Error != engineErr.Error() {
+		t.Errorf("RunCLI(clone <weft-url>) error = %q; want the engine's %q", result.Error, engineErr.Error())
 	}
 }
 
@@ -654,20 +529,6 @@ func TestRunCLI_MergeHelp(t *testing.T) {
 	}
 }
 
-// TestRunCLI_MergeInHelp asserts "fabric merge-in --help" has a non-empty Short.
-func TestRunCLI_MergeInHelp(t *testing.T) {
-	t.Parallel()
-
-	root := fabriccli.Command()
-	mergeIn, _, err := root.Find([]string{"merge-in"})
-	if err != nil {
-		t.Fatalf("root.Find([merge-in]) error: %v", err)
-	}
-	if mergeIn.Short == "" {
-		t.Errorf("merge-in.Short is empty; want a non-empty summary")
-	}
-}
-
 // TestRunCLI_MergeContinueRejectsExtraArg asserts "merge --continue extra-arg" fails with a
 // usage-shaped error envelope: the custom Args validator rejects a positional argument in
 // --continue/--abort mode.
@@ -680,14 +541,7 @@ func TestRunCLI_MergeContinueRejectsExtraArg(t *testing.T) {
 		t.Fatalf("RunCLI(merge --continue extra-arg) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("RunCLI(merge --continue extra-arg) ok = true; want false")
-	}
-	errMsg, _ := result["error"].(string)
-	if !strings.Contains(errMsg, "usage:") {
-		t.Errorf("RunCLI(merge --continue extra-arg) error = %q; want a usage-shaped message", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "usage:")
 }
 
 // TestRunCLI_MergeContinueAndAbortTogetherFail asserts "merge --continue --abort" fails with a
@@ -705,12 +559,11 @@ func TestRunCLI_MergeContinueAndAbortTogetherFail(t *testing.T) {
 		t.Fatalf("RunCLI(merge --continue --abort) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
+	result := envelope.Decode(t, out.String())
+	if result.OK {
 		t.Errorf("RunCLI(merge --continue --abort) ok = true; want false")
 	}
-	errMsg, _ := result["error"].(string)
-	if errMsg == "" {
+	if result.Error == "" {
 		t.Errorf("RunCLI(merge --continue --abort) error is empty; want a usage-shaped message naming the mutual exclusion")
 	}
 }
@@ -754,8 +607,8 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
 	}
-	cloneResult := decodeResult(t, &cloneOut)
-	hubPath, _ := cloneResult["hub"].(string)
+	cloneResult := envelope.Decode(t, cloneOut.String())
+	hubPath, _ := cloneResult.Raw["hub"].(string)
 	if hubPath == "" {
 		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 	}
@@ -773,14 +626,11 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", exitCode, reconcileOut.String())
 	}
 
-	result := decodeResult(t, &reconcileOut)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("RunCLI(reconcile) ok = %v; want true; output: %s", result["ok"], reconcileOut.String())
-	}
-	if binding, _ := result["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecorded) {
+	result := envelope.RequireOK(t, reconcileOut.String())
+	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecorded) {
 		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecorded)
 	}
-	if _, present := result["pairs"]; !present {
+	if _, present := result.Raw["pairs"]; !present {
 		t.Errorf("RunCLI(reconcile) output missing 'pairs' key; want it present and unchanged in shape")
 	}
 
@@ -809,8 +659,8 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
 	}
-	cloneResult := decodeResult(t, &cloneOut)
-	hubPath, _ := cloneResult["hub"].(string)
+	cloneResult := envelope.Decode(t, cloneOut.String())
+	hubPath, _ := cloneResult.Raw["hub"].(string)
 	if hubPath == "" {
 		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
 	}
@@ -831,14 +681,11 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed backfill push must be non-fatal)\noutput: %s", exitCode, reconcileOut.String())
 	}
 
-	result := decodeResult(t, &reconcileOut)
-	if ok, _ := result["ok"].(bool); !ok {
-		t.Fatalf("RunCLI(reconcile) ok = %v; want true; output: %s", result["ok"], reconcileOut.String())
-	}
-	if binding, _ := result["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecordFailed) {
+	result := envelope.RequireOK(t, reconcileOut.String())
+	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecordFailed) {
 		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecordFailed)
 	}
-	if detail, _ := result["warp_binding_detail"].(string); detail == "" {
+	if detail, _ := result.Raw["warp_binding_detail"].(string); detail == "" {
 		t.Errorf("RunCLI(reconcile) warp_binding_detail is empty; want a non-empty push-failure message")
 	}
 }
@@ -858,11 +705,7 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 	if exitCode == 0 {
 		t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", out.String())
 	}
-	result := decodeResult(t, &out)
-	errMsg, _ := result["error"].(string)
-	if !strings.Contains(errMsg, "weft sibling of a pair") {
-		t.Errorf("RunCLI(pairs) error = %q; want the specific weft-sibling refusal, not the generic gate error", errMsg)
-	}
+	envelope.RequireErr(t, out.String(), "weft sibling of a pair")
 }
 
 // TestRunCLI_Reconcile_HealsMissingRepoWideConfig pins reconcile's self-healing of the repo-wide
@@ -918,11 +761,11 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 			if exitCode != 0 {
 				t.Fatalf("RunCLI(%v) = %d; want 0\noutput: %s", tt.args, exitCode, out.String())
 			}
-			result := decodeResult(t, &out)
-			if _, present := result["mutations"]; present {
+			result := envelope.Decode(t, out.String())
+			if _, present := result.Raw["mutations"]; present {
 				t.Errorf("RunCLI(%v) output has a 'mutations' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
 			}
-			if _, present := result["partial"]; present {
+			if _, rawPartial := result.Raw["partial"]; rawPartial || result.Partial != nil {
 				t.Errorf("RunCLI(%v) output has a 'partial' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
 			}
 		})
@@ -970,14 +813,14 @@ func TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject(t *testing.
 		t.Fatalf("RunCLI(remove) = %d; want 1 (a drifted portal junction must be refused)\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	if ok, _ := result["ok"].(bool); ok {
+	result := envelope.Decode(t, out.String())
+	if result.OK {
 		t.Errorf("RunCLI(remove) ok = true; want false")
 	}
-	if errMsg, _ := result["error"].(string); errMsg == "" {
+	if result.Error == "" {
 		t.Errorf("RunCLI(remove) output missing non-empty 'error'; want the flattened error string alongside the refusal object")
 	}
-	refusal, ok := result["refusal"].(map[string]any)
+	refusal, ok := result.Raw["refusal"].(map[string]any)
 	if !ok {
 		t.Fatalf("RunCLI(remove) output missing 'refusal' object; got %v", result)
 	}
@@ -994,7 +837,7 @@ func TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject(t *testing.
 	if check, _ := refusal["check"].(string); check != string(fabricengine.CheckOwnership) {
 		t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckOwnership)
 	}
-	if _, present := result["mutations"]; !present {
+	if _, present := result.Raw["mutations"]; !present {
 		t.Errorf("RunCLI(remove) output missing 'mutations' key on the failure path")
 	}
 }
@@ -1060,8 +903,8 @@ func TestRunCLI_CloneIntoFlagCreatesHubAtDirectory(t *testing.T) {
 		t.Fatalf("RunCLIIn(clone --into) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	hubPath, _ := result["hub"].(string)
+	result := envelope.Decode(t, out.String())
+	hubPath, _ := result.Raw["hub"].(string)
 	if hubPath == "" {
 		t.Fatalf("RunCLIIn(clone --into) output missing non-empty 'hub' key; got %v", result)
 	}
@@ -1092,8 +935,8 @@ func TestRunCLI_CloneWithoutIntoFlagUsesResolvedCwd(t *testing.T) {
 		t.Fatalf("RunCLIIn(clone)= %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	result := decodeResult(t, &out)
-	hubPath, _ := result["hub"].(string)
+	result := envelope.Decode(t, out.String())
+	hubPath, _ := result.Raw["hub"].(string)
 	if hubPath == "" {
 		t.Fatalf("RunCLIIn(clone) output missing non-empty 'hub' key; got %v", result)
 	}

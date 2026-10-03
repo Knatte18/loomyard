@@ -2,7 +2,7 @@
 
 // remove_siblingdirty_integration_test.go pins that Remove's no-force refusal of a pair whose other worktree is dirty satisfies errors.Is(err, fabricengine.ErrPairSiblingDirty), and that a pair dirty only on the task side does not.
 //
-// Package fabricengine_test to reuse newFabricFixture from reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRemove_UntrackedDriveReportRefusesWithSiblingDirty leaves a new file inside a not-yet-tracked _lyx/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts the refusal satisfies ErrPairSiblingDirty.
@@ -21,13 +22,11 @@ func TestRemove_UntrackedDriveReportRefusesWithSiblingDirty(t *testing.T) {
 	t.Parallel()
 
 	const slug = "sibling-dirty"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	reports := filepath.Join(fabricengine.WeftWorktreePath(l, slug), "_lyx", "shed", slug, "drive-reports")
 	if err := os.MkdirAll(reports, 0o755); err != nil {
@@ -51,21 +50,15 @@ func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
 	t.Parallel()
 
 	const slug = "task-side-dirty"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	topology := h.Topology
 
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
 	tracked := filepath.Join(warpPath, "tracked.md")
-	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", tracked, err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", "tracked.md")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-m", "seed tracked file")
+	gitkit.CommitFile(t, warpPath, "tracked.md", "committed\n", "seed tracked file")
 	if err := os.WriteFile(tracked, []byte("committed\nuncommitted\n"), 0o644); err != nil {
 		t.Fatalf("dirty %s: %v", tracked, err)
 	}

@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
@@ -82,13 +83,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		commit := &planCommitRecorder{}
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Done)
 		if pointer != inner.pointer {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
@@ -108,13 +103,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		commit := &planCommitRecorder{}
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if pointer != (shedengine.OutputPointer{}) {
 			t.Errorf("Call() pointer = %+v; want the zero value", pointer)
 		}
@@ -132,13 +121,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		commit := &planCommitRecorder{}
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
-		outcome, pointer, err := p.Call(context.Background())
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
+		pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if pointer != inner.pointer {
 			t.Errorf("Call() pointer = %+v; want %+v", pointer, inner.pointer)
 		}
@@ -219,9 +202,7 @@ func TestPlanWrite_Call(t *testing.T) {
 		commit := &planCommitRecorder{}
 
 		p := NewPlanWrite("Plan-Write", inner, commit.Commit)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
+		shedfake.CallOK(t, p)
 
 		for _, name := range []string{"00-overview.md", "01-card-one.md"} {
 			if _, err := os.Stat(filepath.Join(planDir, name)); err != nil {
@@ -503,13 +484,7 @@ func TestPlanWrite_PassesStuckReasonThrough(t *testing.T) {
 				pointer: shedengine.OutputPointer{Path: tt.path, Reason: "the inner cause"},
 			}
 			p := NewPlanWrite("Plan-Write", inner, (&planCommitRecorder{}).Commit)
-			outcome, pointer, err := p.Call(context.Background())
-			if err != nil {
-				t.Fatalf("Call() error = %v; want nil", err)
-			}
-			if outcome != shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-			}
+			pointer := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if pointer.Reason != "the inner cause" {
 				t.Errorf("Call() Reason = %q; want %q", pointer.Reason, "the inner cause")
 			}

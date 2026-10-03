@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestFabricHeadSHA_TracksWorktreeHead asserts HeadSHA equals git rev-parse HEAD of the task worktree
@@ -15,22 +17,22 @@ import (
 func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFabricFixture(t)
-	f, err := fabricengine.Open(fixture.Layout)
+	h := hubforge.NewHub(t, ".")
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
-	dir := fixture.Layout.WorktreePath()
+	dir := h.PrimeWorktree()
 
 	before, err := f.HeadSHA()
 	if err != nil {
 		t.Fatalf("HeadSHA (before): %v", err)
 	}
-	if want := currentSHAOf(t, dir); before != want {
+	if want := gitkit.RevParse(t, dir, "HEAD"); before != want {
 		t.Errorf("HeadSHA before commit = %q; want %q", before, want)
 	}
 
-	newSHA := commitFile(t, dir, "headsha.txt", "x", "headsha commit")
+	newSHA := gitkit.CommitFile(t, dir, "headsha.txt", "x", "headsha commit")
 
 	after, err := f.HeadSHA()
 	if err != nil {

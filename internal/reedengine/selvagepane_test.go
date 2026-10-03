@@ -344,27 +344,19 @@ func TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
 	const newPaneID = "%1"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
-	var splitArgs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return listPanesOut, nil
-		case "split-window":
-			splitArgs = append([]string{}, args...)
-			// A genuinely new pane id, distinct from the pre-split live set, so
-			// the silent-split guard (validateSplitCreatedNewPane) does not
-			// reject the call.
-			return newPaneID + "\n", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", listPanesOut, nil)
+	// A genuinely new pane id, distinct from the pre-split live set, so
+	// the silent-split guard (validateSplitCreatedNewPane) does not
+	// reject the call.
+	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
 		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
+	splitArgs := fake.LastArgv("split-window")
 	found := false
 	for i, arg := range splitArgs {
 		if arg != "-c" {
@@ -397,21 +389,13 @@ func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) 
 	const existingPaneID = "%0"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return listPanesOut, nil
-		case "split-window":
-			// psmux silent failure: exit 0, no new pane, an EXISTING pane's id
-			// printed on stdout. Trusting it would bind Selvage to %0.
-			return existingPaneID + "\n", nil
-		default:
-			// send-keys / kill-pane etc. — only reached if the guard is
-			// (wrongly) bypassed; succeed so the missing-guard regression
-			// returns nil and this test's error assertion catches it.
-			return "", nil
-		}
-	}
+	// Every other verb (send-keys, kill-pane) is only reached if the guard is (wrongly) bypassed;
+	// the fake answers it empty so the missing-guard regression returns nil and this test's error assertion catches it.
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", listPanesOut, nil)
+	// psmux silent failure: exit 0, no new pane, an EXISTING pane's id
+	// printed on stdout. Trusting it would bind Selvage to %0.
+	fake.answer("split-window", existingPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	err := e.ensureSelvagePaneLocked(st)
@@ -451,31 +435,27 @@ func TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit(t *t
 	retiled := tallPaneID + " 0 0 100 24 4321\n" + oneRowBottomPaneID + " 0 25 100 25 4322\n"
 
 	reTiled := false
-	splitAttempts := 0
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			if reTiled {
-				return retiled, nil
-			}
-			return wedged, nil
-		case "select-layout":
-			if len(args) < 2 || args[len(args)-1] != "even-vertical" {
-				return "", fmt.Errorf("unexpected select-layout args %v; want the built-in even-vertical layout", args)
-			}
-			reTiled = true
-			return "", nil
-		case "split-window":
-			splitAttempts++
-			if !reTiled {
-				// tmux's real refusal against a one-row pane: exit 1, no pane.
-				return "", errors.New("exit status 1: no space for new pane")
-			}
-			return rebuiltSelvagePaneID + "\n", nil
-		default:
-			return "", nil
+	fake := installFakeTmux(t, e)
+	fake.answerFunc("list-panes", func([]string) (string, error) {
+		if reTiled {
+			return retiled, nil
 		}
-	}
+		return wedged, nil
+	})
+	fake.answerFunc("select-layout", func(args []string) (string, error) {
+		if len(args) < 2 || args[len(args)-1] != "even-vertical" {
+			return "", fmt.Errorf("unexpected select-layout args %v; want the built-in even-vertical layout", args)
+		}
+		reTiled = true
+		return "", nil
+	})
+	fake.answerFunc("split-window", func([]string) (string, error) {
+		if !reTiled {
+			// tmux's real refusal against a one-row pane: exit 1, no pane.
+			return "", errors.New("exit status 1: no space for new pane")
+		}
+		return rebuiltSelvagePaneID + "\n", nil
+	})
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
@@ -484,7 +464,7 @@ func TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit(t *t
 	if !reTiled {
 		t.Errorf("ensureSelvagePaneLocked never issued the even-vertical re-tile; without it the retried split has no room either")
 	}
-	if splitAttempts != 2 {
+	if splitAttempts := fake.Count("split-window"); splitAttempts != 2 {
 		t.Errorf("split-window attempts = %d; want exactly 2 (one refused, one retried behind the re-tile)", splitAttempts)
 	}
 	if st.SelvagePaneID != rebuiltSelvagePaneID {
@@ -506,31 +486,19 @@ func TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *t
 	const newPaneID = "%1"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
-	var splitArgs []string
-	sendKeysCalls := 0
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return listPanesOut, nil
-		case "split-window":
-			splitArgs = append([]string{}, args...)
-			// A genuinely new pane id, distinct from the pre-split live set, so
-			// the silent-split guard (validateSplitCreatedNewPane) does not
-			// reject the call.
-			return newPaneID + "\n", nil
-		case "send-keys":
-			sendKeysCalls++
-			return "", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", listPanesOut, nil)
+	// A genuinely new pane id, distinct from the pre-split live set, so
+	// the silent-split guard (validateSplitCreatedNewPane) does not
+	// reject the call.
+	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
 		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
+	splitArgs := fake.LastArgv("split-window")
 	fIndex := -1
 	for i, arg := range splitArgs {
 		if arg == "-F" {
@@ -551,7 +519,7 @@ func TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *t
 	if launchArg != e.cfg.Shell {
 		t.Errorf("split-window trailing command argument = %q, want %q (e.cfg.Shell, launched the same way new-session launches the session's first pane)", launchArg, e.cfg.Shell)
 	}
-	if sendKeysCalls != 0 {
+	if sendKeysCalls := fake.Count("send-keys"); sendKeysCalls != 0 {
 		t.Errorf("send-keys calls = %d, want 0 (Selvage must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
 	}
 }
@@ -570,16 +538,9 @@ func TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch(t *testing.T) {
 	const newPaneID = "%1"
 	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
 
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return listPanesOut, nil
-		case "split-window":
-			return newPaneID + "\n", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", listPanesOut, nil)
+	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
@@ -609,28 +570,24 @@ func TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *test
 	retiled := tallPaneID + " 0 0 100 24 4321\n" + oneRowBottomPaneID + " 0 25 100 25 4322\n"
 
 	reTiled := false
-	var retriedSplitArgs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			if reTiled {
-				return retiled, nil
-			}
-			return wedged, nil
-		case "select-layout":
-			reTiled = true
-			return "", nil
-		case "split-window":
-			if !reTiled {
-				// tmux's real refusal against a one-row pane: exit 1, no pane.
-				return "", errors.New("exit status 1: no space for new pane")
-			}
-			retriedSplitArgs = append([]string{}, args...)
-			return rebuiltSelvagePaneID + "\n", nil
-		default:
-			return "", nil
+	fake := installFakeTmux(t, e)
+	fake.answerFunc("list-panes", func([]string) (string, error) {
+		if reTiled {
+			return retiled, nil
 		}
-	}
+		return wedged, nil
+	})
+	fake.answerFunc("select-layout", func([]string) (string, error) {
+		reTiled = true
+		return "", nil
+	})
+	fake.answerFunc("split-window", func([]string) (string, error) {
+		if !reTiled {
+			// tmux's real refusal against a one-row pane: exit 1, no pane.
+			return "", errors.New("exit status 1: no space for new pane")
+		}
+		return rebuiltSelvagePaneID + "\n", nil
+	})
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
@@ -639,6 +596,8 @@ func TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *test
 	if st.SelvagePaneID != rebuiltSelvagePaneID {
 		t.Fatalf("SelvagePaneID = %q; want %q (the pane the retried split created)", st.SelvagePaneID, rebuiltSelvagePaneID)
 	}
+
+	retriedSplitArgs := fake.LastArgv("split-window")
 
 	if len(retriedSplitArgs) == 0 {
 		t.Fatalf("the retried split-window call was never recorded")
@@ -662,24 +621,16 @@ func TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag(t *test
 	const newPaneID = "%2"
 	listPanesOut := topPaneID + " 0 0 100 10 4321\n" + bottomPaneID + " 0 10 100 10 4322\n"
 
-	var splitArgs []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "list-panes":
-			return listPanesOut, nil
-		case "split-window":
-			splitArgs = append([]string{}, args...)
-			return newPaneID + "\n", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installFakeTmux(t, e)
+	fake.answer("list-panes", listPanesOut, nil)
+	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
 		t.Fatalf("ensureSelvagePaneLocked: %v", err)
 	}
 
+	splitArgs := fake.LastArgv("split-window")
 	for _, arg := range splitArgs {
 		if arg == "-b" {
 			t.Errorf("split-window argv %v carries -b; want no -b (Selvage now splits below, not above)", splitArgs)

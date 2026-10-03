@@ -16,9 +16,7 @@ package fabriccli_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // remoteEnvelopeCreateOrphanBranch creates branch in the weft repo at weftRoot, pointed at HEAD, with
@@ -56,24 +55,6 @@ func remoteEnvelopeRemoveOrigin(t *testing.T, repoRoot string) {
 	gitkit.MustRun(t, repoRoot, "git", "remote", "remove", "origin")
 }
 
-// remoteEnvelopeBranchExists reports whether branch exists at repoRoot.
-func remoteEnvelopeBranchExists(t *testing.T, repoRoot, branch string) bool {
-	t.Helper()
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = repoRoot
-	return cmd.Run() == nil
-}
-
-// remoteEnvelopeDecode unmarshals out into a JSON envelope map, failing the test on decode error.
-func remoteEnvelopeDecode(t *testing.T, out *bytes.Buffer) map[string]any {
-	t.Helper()
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode envelope: %v\noutput: %s", err, out.String())
-	}
-	return envelope
-}
-
 // TestRunCLI_CleanupRemoteAloneWithoutApplyDeletesNothing covers scenario 1: --remote alone on
 // cleanup, without --apply, performs no deletion on either side and exits 0 — the flag-matrix corner
 // an operator is most likely to get wrong, and the one the help text now promises explicitly.
@@ -94,10 +75,10 @@ func TestRunCLI_CleanupRemoteAloneWithoutApplyDeletesNothing(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --remote) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	if !remoteEnvelopeBranchExists(t, weftRoot, branch) {
+	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed locally by cleanup --remote with no --apply", branch)
 	}
-	if !remoteEnvelopeBranchExists(t, h.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.WeftBare, branch) {
 		t.Errorf("branch %q was removed on the remote by cleanup --remote with no --apply", branch)
 	}
 }
@@ -122,12 +103,12 @@ func TestRunCLI_RemoveRemoteSuccessEnvelopeCarriesRemoteBranchDeleted(t *testing
 		t.Fatalf("RunCLI(remove --remote %s) = %d; want 0\noutput: %s", slug, exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	if _, present := envelope["remote_branch_deleted"]; !present {
+	env := envelope.Decode(t, out.String())
+	if _, present := env.Raw["remote_branch_deleted"]; !present {
 		t.Errorf("envelope has no \"remote_branch_deleted\" key\noutput: %s", out.String())
 	}
-	if deleted, _ := envelope["remote_branch_deleted"].(bool); !deleted {
-		t.Errorf("envelope remote_branch_deleted = %v; want true", envelope["remote_branch_deleted"])
+	if deleted, _ := env.Raw["remote_branch_deleted"].(bool); !deleted {
+		t.Errorf("envelope remote_branch_deleted = %v; want true", env.Raw["remote_branch_deleted"])
 	}
 }
 
@@ -155,18 +136,18 @@ func TestRunCLI_CleanupRemoteFailureExitsNonZero(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --apply --remote) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	if ok, _ := envelope["ok"].(bool); ok {
+	env := envelope.Decode(t, out.String())
+	if env.OK {
 		t.Errorf("envelope ok = true; want false\noutput: %s", out.String())
 	}
-	if partial, _ := envelope["partial"].(bool); partial {
+	if env.Partial != nil && *env.Partial {
 		t.Errorf("envelope partial = true; want false — the failed archive precedes every deletion\noutput: %s", out.String())
 	}
-	if _, present := envelope["refusal"]; present {
+	if _, present := env.Raw["refusal"]; present {
 		t.Errorf("envelope carries a \"refusal\" key; want none — a synthesised error is never a gate refusal\noutput: %s", out.String())
 	}
 
-	entries, ok := envelope["entries"].([]any)
+	entries, ok := env.Raw["entries"].([]any)
 	if !ok || len(entries) == 0 {
 		t.Fatalf("envelope has no non-empty \"entries\" array\noutput: %s", out.String())
 	}
@@ -208,8 +189,8 @@ func TestRunCLI_CleanupAllProtectedEntriesExitZero(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --apply) with only protected/unmanaged entries = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	entries, ok := envelope["entries"].([]any)
+	env := envelope.Decode(t, out.String())
+	entries, ok := env.Raw["entries"].([]any)
 	if !ok || len(entries) == 0 {
 		t.Fatalf("envelope has no non-empty \"entries\" array\noutput: %s", out.String())
 	}
@@ -260,12 +241,12 @@ func TestRunCLI_CleanupLocalFailureExitsNonZero(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --apply) with a locked ref = %d; want 1\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	if ok, _ := envelope["ok"].(bool); ok {
+	env := envelope.Decode(t, out.String())
+	if env.OK {
 		t.Errorf("envelope ok = true; want false\noutput: %s", out.String())
 	}
 
-	entries, ok := envelope["entries"].([]any)
+	entries, ok := env.Raw["entries"].([]any)
 	if !ok {
 		t.Fatalf("envelope has no \"entries\" array\noutput: %s", out.String())
 	}
@@ -305,12 +286,8 @@ func TestRunCLI_PruneProtectedOrUnownedEntryStillExitsZero(t *testing.T) {
 		t.Fatalf("RunCLI(prune) with an unowned entry = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	if ok, _ := envelope["ok"].(bool); !ok {
-		t.Errorf("envelope ok = false; want true\noutput: %s", out.String())
-	}
-
-	entries, ok := envelope["entries"].([]any)
+	env := envelope.RequireOK(t, out.String())
+	entries, ok := env.Raw["entries"].([]any)
 	if !ok {
 		t.Fatalf("envelope has no \"entries\" array\noutput: %s", out.String())
 	}
@@ -353,13 +330,13 @@ func TestRunCLI_CleanupNoOriginUnderApplyAndRemoteExitsZero(t *testing.T) {
 		t.Fatalf("RunCLI(cleanup --apply --remote) with no origin = %d; want 0\noutput: %s", exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	reason, _ := envelope["remote_skipped_reason"].(string)
+	env := envelope.Decode(t, out.String())
+	reason, _ := env.Raw["remote_skipped_reason"].(string)
 	if reason == "" {
 		t.Errorf("envelope remote_skipped_reason is empty; want a reason naming the missing origin remote\noutput: %s", out.String())
 	}
 
-	entries, ok := envelope["entries"].([]any)
+	entries, ok := env.Raw["entries"].([]any)
 	if !ok {
 		t.Fatalf("envelope has no \"entries\" array\noutput: %s", out.String())
 	}
@@ -395,12 +372,12 @@ func TestRunCLI_RemoveNoOriginUnderRemoteExitsZero(t *testing.T) {
 		t.Fatalf("RunCLI(remove --remote %s) with no origin = %d; want 0\noutput: %s", slug, exitCode, out.String())
 	}
 
-	envelope := remoteEnvelopeDecode(t, &out)
-	reason, _ := envelope["remote_skipped_reason"].(string)
+	env := envelope.Decode(t, out.String())
+	reason, _ := env.Raw["remote_skipped_reason"].(string)
 	if reason == "" {
 		t.Errorf("envelope remote_skipped_reason is empty; want a reason naming the missing origin remote\noutput: %s", out.String())
 	}
-	if remoteErr, _ := envelope["remote_branch_error"].(string); remoteErr != "" {
+	if remoteErr, _ := env.Raw["remote_branch_error"].(string); remoteErr != "" {
 		t.Errorf("envelope remote_branch_error = %q; want empty when the pre-check itself skipped", remoteErr)
 	}
 }

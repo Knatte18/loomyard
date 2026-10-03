@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// fakeShuttle is declared once, in fixture_test.go, and reused here as a non-nil seam value and,
-// as a nil *fakeShuttle, a typed-nil interface value.
+// shedfake.Shuttle serves here as a non-nil seam value and, as a nil *shedfake.Shuttle, a typed-nil interface value.
 
 func TestRequireAbsRoot(t *testing.T) {
 	tests := []struct {
@@ -75,14 +75,14 @@ func TestRequireSeam(t *testing.T) {
 	})
 
 	t.Run("NonNilValue", func(t *testing.T) {
-		s := &fakeShuttle{}
+		s := &shedfake.Shuttle{}
 		if err := requireSeam("MyEntry", "MyField", s); err != nil {
 			t.Errorf("requireSeam() error = %v; want nil", err)
 		}
 	})
 
 	t.Run("TypedNilConcretePointerStoredInInterface", func(t *testing.T) {
-		var s shedadapters.Shuttle = (*fakeShuttle)(nil)
+		var s shedadapters.Shuttle = (*shedfake.Shuttle)(nil)
 		err := requireSeam("MyEntry", "MyField", s)
 		if err == nil {
 			t.Fatalf("requireSeam() error = nil; want non-nil -- this is the case a direct nil comparison misses")

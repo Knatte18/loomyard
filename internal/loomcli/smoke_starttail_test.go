@@ -3,7 +3,7 @@
 // smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
 // the attach tail's strand set -- on the unseeded fixture, which resolveSeedDriver seeds llm, it adds neither a loom-operator strand nor a status strand -- and the watchdog spawn's gate position -- that it fires even under --no-attach, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
 //
-// It reuses this package's existing smoke fixtures throughout: buildLyxBinary, newWiredPairFixture,
+// It reuses this package's existing smoke fixtures throughout: sharedLyxBinary, newWiredPairFixture,
 // registerBootstrapTeardown, probeReedEngine, statusStrandCount, and tmuxBinaryPath, rather than
 // building a second rig. Like its siblings it drives the real built cmd/lyx binary as a subprocess,
 // never RunCLI in-process, per this package's smoke suite doc comment: `lyx loom start` spawns its
@@ -24,7 +24,7 @@ import (
 // The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
 func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
@@ -51,7 +51,7 @@ func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 // one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := buildLyxBinary(t)
+	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 

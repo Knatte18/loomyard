@@ -8,6 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // wantSequenceEntry pairs one expected history-row name with its expected shedengine.Outcome.
@@ -88,6 +89,16 @@ var wantSequenceOrder = []wantSequenceEntry{
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
+	var commitDiscussionCalls, commitPlanCalls int
+	env.CommitDiscussion = func() error {
+		commitDiscussionCalls++
+		return nil
+	}
+	env.CommitPlan = func() error {
+		commitPlanCalls++
+		return nil
+	}
+
 	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
@@ -135,28 +146,27 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	// This is the scenario proof that the Discussion-Bouncer commit_seam is genuinely reached through
 	// a real Shed run: both the Discussion-Write row's own commit and the Discussion-Bouncer row's
 	// approval commit invoke CommitDiscussion, so the count is 2, not 1.
-	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
-	if loomShuttle.commitDiscussionCalls != 2 {
-		t.Errorf("fakeLoomShuttle.commitDiscussionCalls = %d; want exactly 2 after a clean run (Discussion-Write's commit plus Discussion-Bouncer's approval commit)", loomShuttle.commitDiscussionCalls)
+	if commitDiscussionCalls != 2 {
+		t.Errorf("CommitDiscussion calls = %d; want exactly 2 after a clean run (Discussion-Write's commit plus Discussion-Bouncer's approval commit)", commitDiscussionCalls)
 	}
 
 	// This is the scenario proof that the Plan-Bouncer commit_seam is genuinely reached through a
 	// real Shed run: both the Plan-Write row's own commit and the Plan-Bouncer row's approval commit
 	// invoke CommitPlan, so the count is 2, not 1.
-	if loomShuttle.commitPlanCalls != 2 {
-		t.Errorf("fakeLoomShuttle.commitPlanCalls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", loomShuttle.commitPlanCalls)
+	if commitPlanCalls != 2 {
+		t.Errorf("CommitPlan calls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", commitPlanCalls)
 	}
 
 	// The scenario checks that all three review segments genuinely ran rather than being silently
 	// short-circuited: the fake burler ran exactly three rounds (one per segment), and the fake
 	// shuttle recorded exactly three bouncer-judge spawns -- the judge calls whose fixture-scripted
 	// APPROVED verdicts are what advanced the run past each segment.
-	loomBurler := env.Burler.(*fakeLoomBurler)
-	if loomBurler.calls != 3 {
-		t.Errorf("fakeLoomBurler.calls = %d; want exactly 3 after a clean run", loomBurler.calls)
+	loomBurler := env.Burler.(*shedfake.BurlerRunner)
+	if loomBurler.Calls != 3 {
+		t.Errorf("burler Calls = %d; want exactly 3 after a clean run", loomBurler.Calls)
 	}
-	if loomShuttle.bouncerJudgeCalls != 3 {
-		t.Errorf("fakeLoomShuttle.bouncerJudgeCalls = %d; want exactly 3 after a clean run", loomShuttle.bouncerJudgeCalls)
+	if judgeCalls := countRole(env.Shuttle.(*shedfake.Shuttle), "bouncer-judge"); judgeCalls != 3 {
+		t.Errorf("bouncer-judge spawns = %d; want exactly 3 after a clean run", judgeCalls)
 	}
 
 	// This is the regression proof for F7: parse the fixture's own plan and assert Approved is

@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // countingProducer is a shedengine.ShedProducer fake that always reports Done and counts every
@@ -225,13 +226,13 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // Discussion-Validate is gone, and with it the standalone-validator vehicle this test used to drive:
 // a real, repeatably bounceable producer pair is what this test needs, and the Discussion-Review
 // segment's mutual on_stuck pair (Discussion-Bouncer/Discussion-Burler) is the one this task's new
-// writer-row gates have no bearing on -- fakeLoomBurler never reads burlerengine.RunOpts.Gate at
+// writer-row gates have no bearing on -- the loom burler never reads burlerengine.RunOpts.Gate at
 // all -- so it is what remains, matching the same assertion shape over a pair that still exists.
 // This test asserts only that routing continues at the declared target after one Stuck -- the
 // budget-exhaustion property belongs to TestBounceRouting_BudgetExhaustionBlocks below.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeLoomShuttle).bouncerVerdict = "BLOCKING"
+	blockBouncerJudge(env)
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -297,10 +298,10 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 //
 // Discussion-Validate is no longer this test's vehicle.
 // Discussion-Write now carries its own "gates" entry named "discussion" (resolveGateSpec, internal/shedrecipe/entries_gate.go), which calls the exact same discussionparser.Validate function Discussion-Validate's own Call does -- so a Discussion-Write whose redo never fixes its artifact fails its OWN gate on every bounce, and Discussion-Write carries no on_stuck, so that failure blocks the whole run on the very first bounce rather than letting Discussion-Validate cycle it repeatedly.
-// Discussion-Bouncer's mutual on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this task's new gates -- fakeLoomBurler, this fixture's shedadapters.BurlerRunner fake, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer pair under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
+// Discussion-Bouncer's mutual on_stuck with Discussion-Burler (segment: Discussion-Review) has no such dependency on this task's new gates -- the loom burler, this fixture's shedfake.BurlerRunner, never reads burlerengine.RunOpts.Gate at all -- so it is what remains a genuinely, repeatably bounceable real producer pair under the new design, matching the property this test exists to prove (a real producer's per-episode bounce budget is consumed and exhausted, never a fake standing in for a generic engine mechanism the recipe's own graph never exercises).
 //
 // The budget here is per-producer and episode-scoped, counted from the persisted history[] -- never
-// a run-wide counter. f.bouncerVerdict = "BLOCKING" makes the judge round reject on every pass, so
+// a run-wide counter. blockBouncerJudge makes the judge round reject on every pass, so
 // Discussion-Bouncer never returns Done and its episode (the run of its own history entries since
 // its last Done) is therefore the whole run: every Stuck entry it authors counts. Discussion-Burler,
 // the producer it bounces to, consumes none of Discussion-Bouncer's own budget -- each producer's
@@ -322,7 +323,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	const discussionBouncerMaxBounces = 5
 
 	_, env, paths := buildSequenceFixture(t)
-	env.Shuttle.(*fakeLoomShuttle).bouncerVerdict = "BLOCKING"
+	blockBouncerJudge(env)
 
 	shed, err := New(env, paths)
 	if err != nil {
@@ -376,7 +377,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
+	loomShuttle := env.Shuttle.(*shedfake.Shuttle)
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
@@ -404,11 +405,11 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 		t.Errorf("Discussion-Write outcome = %q; want %q -- a respawned run must itself report Done, never report Done off bare pre-existing file existence", got, shedengine.Done)
 	}
 
-	if loomShuttle.attachCalls == 0 {
-		t.Errorf("fakeLoomShuttle.attachCalls = 0; want > 0 -- the probe must run before any archive-and-respawn decision")
+	if !loomShuttle.AttachCalled {
+		t.Errorf("Attach was never called; want it called -- the probe must run before any archive-and-respawn decision")
 	}
-	if loomShuttle.discussionRunCalls == 0 {
-		t.Errorf("fakeLoomShuttle.discussionRunCalls = 0; want > 0 -- with Attach reporting not-found, Discussion-Write must respawn a fresh agent")
+	if countRole(loomShuttle, "discussion") == 0 {
+		t.Errorf("discussion Run calls = 0; want > 0 -- with Attach reporting not-found, Discussion-Write must respawn a fresh agent")
 	}
 }
 
@@ -424,10 +425,13 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 
-	loomShuttle := env.Shuttle.(*fakeLoomShuttle)
-	loomShuttle.attachFound = true
-	loomShuttle.attachRole = "discussion"
-	loomShuttle.attachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	// The found answer is scoped to the discussion role: this one shuttle serves every row the run drives through it,
+	// and an unscoped found answer would also intercept every other row's own Attach probe and skip its Run, starving it of the output files only Run writes.
+	loomShuttle := env.Shuttle.(*shedfake.Shuttle)
+	loomShuttle.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	loomShuttle.DuringAttach = func() {
+		loomShuttle.AttachFound = loomShuttle.GotAttachSpec.Role == "discussion"
+	}
 
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameDiscussionWrite, false)
 
@@ -455,11 +459,11 @@ func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
 		t.Errorf("Discussion-Write outcome = %q; want %q -- attaching to a live matching run whose Outcome is OutcomeDone must report Done", got, shedengine.Done)
 	}
 
-	if loomShuttle.discussionRunCalls != 0 {
-		t.Errorf("fakeLoomShuttle.discussionRunCalls = %d; want 0 -- an attached run must not respawn a second agent", loomShuttle.discussionRunCalls)
+	if got := countRole(loomShuttle, "discussion"); got != 0 {
+		t.Errorf("discussion Run calls = %d; want 0 -- an attached run must not respawn a second agent", got)
 	}
-	if loomShuttle.attachCalls == 0 {
-		t.Errorf("fakeLoomShuttle.attachCalls = 0; want > 0 -- the probe must have run to find the live match")
+	if !loomShuttle.AttachCalled {
+		t.Errorf("Attach was never called; want it called -- the probe must have run to find the live match")
 	}
 
 	if _, err := os.Stat(env.DecisionRecordPath); err != nil {

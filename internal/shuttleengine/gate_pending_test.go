@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const pendingSendText = "A reviewer notice is waiting — read it and end your turn."
@@ -40,7 +41,7 @@ func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...
 		t.Fatalf("seed events: %v", err)
 	}
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: captures}
-	runner := newWaitTestRunner(t, reed, readyAgentEngine(), Config{PollIntervalMS: 1, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30})
+	fx := newFixture(t, reed, readyAgentEngine(), withConfig(gateConfig))
 	stubInputSleep(t)
 
 	f := &pendingFixture{reed: reed, eventsPath: eventsPath, fc: newFakeClock(time.Now())}
@@ -49,15 +50,11 @@ func newPendingFixture(t *testing.T, spec GateSpec, captures []string, steps ...
 		wrapped = append(wrapped, func() { step(f) })
 	}
 	mc := &multiStepClock{fakeClock: f.fc, steps: wrapped}
-	f.run = &Run{
-		runner:   runner,
-		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		runDir:   runDir,
-		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
-		clock:    mc,
-		deadline: mc.Now().Add(time.Hour),
-		gate:     spec,
-	}
+	f.run = fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, mc.Now().Add(time.Hour)),
+		withRunGate(spec))
 	return f
 }
 
@@ -119,7 +116,7 @@ func TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage(t *testing.T) 
 }
 
 func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
-	buf := captureLoggerOutput(t)
+	buf := logcapture.CaptureVerbose(t)
 	var calls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true, Send: pendingSendText, SendFailedWayForward: "tell the parent by hand"},
@@ -253,7 +250,8 @@ func TestGatePending_ContractViolationsAreErrors(t *testing.T) {
 
 func TestAttachGated_PendingReplayedDoneThenPollTickReevaluates(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}, CaptureQueue: sendCaptures(pendingSendText)}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, readyAgentEngine(), Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, readyAgentEngine(), withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 	stubInputSleep(t)
 
@@ -291,7 +289,8 @@ func TestAttachGated_PendingReplayedDoneThenPollTickReevaluates(t *testing.T) {
 
 func TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	runner, _, dotLyxDir, runRoot := newAttachTestRunner(t, reed, &fakeEngine{}, Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1})
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
 	outputFile := filepath.Join(runRoot, "out.md")

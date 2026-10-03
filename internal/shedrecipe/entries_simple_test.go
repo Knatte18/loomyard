@@ -12,21 +12,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/mergeresolve"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
-
-// fakeLandingShuttle is a minimal mergeresolve.Shuttle fake satisfying NewPublish's and
-// NewFinalize's non-nil Deps.Shuttle requirement. It is never actually invoked by this file's
-// tests, which never drive an entry past its own construction step.
-type fakeLandingShuttle struct{}
-
-var _ mergeresolve.Shuttle = fakeLandingShuttle{}
-
-func (fakeLandingShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
-	return shuttleengine.Result{}, nil
-}
 
 // nilFabricOpener is a landingshed pair-opener closure fake. It returns a typed-nil
 // *fabricengine.Fabric and a nil error, which legally satisfies NewPublish/NewFinalize -- both
@@ -53,18 +41,15 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		PushBranch:       func() error { return nil },
 		OpenFabric:       nilFabricOpener,
 		OpenParentFabric: nilFabricOpener,
-		Shuttle:          fakeLandingShuttle{},
+		Shuttle:          &shedfake.MergeShuttle{},
 	}
 }
 
-// validGateDeps is validLandingDeps with the three fields landingshed.NewPRGate additionally requires: both decision-record paths and a TaskHead closure.
-func validGateDeps(t *testing.T) landingshed.Deps {
-	t.Helper()
-	deps := validLandingDeps(t)
+// armPRGate adds the three fields landingshed.NewPRGate requires on top of validLandingDeps: both decision-record paths and a TaskHead closure.
+func armPRGate(deps *landingshed.Deps) {
 	deps.ApprovalPath = filepath.Join(deps.ScratchDir, "approval.json")
 	deps.RejectionPath = filepath.Join(deps.ScratchDir, "rejection.json")
 	deps.TaskHead = func() (string, error) { return "head", nil }
-	return deps
 }
 
 // zeroEnvField returns a copy of env with the named field set to its Go zero value.
@@ -151,7 +136,8 @@ func simpleEntryCases() []simpleEntryCase {
 			entry:       prGateEntry,
 			buildEnv: func(t *testing.T) Env {
 				env := newTestEnv(t)
-				env.Landing = validGateDeps(t)
+				env.Landing = validLandingDeps(t)
+				armPRGate(&env.Landing)
 				return env
 			},
 			validatedFields: nil,
@@ -345,7 +331,8 @@ func TestPublishEntry_LandingRejected(t *testing.T) {
 func TestPRGateEntry(t *testing.T) {
 	t.Run("BuildsPRGate", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Landing = validGateDeps(t)
+		env.Landing = validLandingDeps(t)
+		armPRGate(&env.Landing)
 		producer, err := prGateEntry("row-name", Config{}, env)
 		if err != nil {
 			t.Fatalf("prGateEntry() error = %v; want nil", err)
@@ -357,7 +344,8 @@ func TestPRGateEntry(t *testing.T) {
 
 	t.Run("NilTaskHead", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Landing = validGateDeps(t)
+		env.Landing = validLandingDeps(t)
+		armPRGate(&env.Landing)
 		env.Landing.TaskHead = nil
 		_, err := prGateEntry("row-name", Config{}, env)
 		if err == nil {

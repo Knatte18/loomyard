@@ -465,7 +465,7 @@ func TestValidateIfAbsent(t *testing.T) {
 	}
 }
 
-// addIfAbsentHook builds an execHook answering the tmux round trips AddStrand's --if-absent path
+// installIfAbsentTmux installs a fakeTmux answering the tmux round trips AddStrand's --if-absent path
 // makes before it ever reaches a no-op return: has-session (the session is up), display-message (a
 // stable pane generation, so loadOrInitStateLocked's adoptPaneGenerationLocked stamp check never
 // clears the fixture's bindings), and list-panes (paneLines, both the substrate snapshot
@@ -474,19 +474,12 @@ func TestValidateIfAbsent(t *testing.T) {
 // both run against the identical fixture session). paneLines must therefore carry at least one pane
 // line whenever a case wants AddStrand to see the session as already usable and skip the boot path,
 // even when that pane is not any strand's own PaneID.
-func addIfAbsentHook(paneLines string) func(capture bool, args ...string) (string, error) {
-	return func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "has-session":
-			return "", nil
-		case "display-message":
-			return "$0|4321|1787000000", nil
-		case "list-panes":
-			return paneLines, nil
-		default:
-			return "", nil
-		}
-	}
+func installIfAbsentTmux(t *testing.T, e *Engine, paneLines string) *fakeTmux {
+	t.Helper()
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "$0|4321|1787000000", nil)
+	fake.answer("list-panes", paneLines, nil)
+	return fake
 }
 
 // TestAddStrand_IfAbsent_MatchedAliveNoOps pins the alive no-op branch at the engine-call level:
@@ -494,7 +487,7 @@ func addIfAbsentHook(paneLines string) func(capture bool, args ...string) (strin
 // spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
 func TestAddStrand_IfAbsent_MatchedAliveNoOps(t *testing.T) {
 	e := newTestEngine(t)
-	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+	installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
 	persisted := Strand{
 		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
@@ -534,7 +527,7 @@ func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
 	// A header-only pane line (no strand's own PaneID) so ensureSessionLocked's substrate probe finds
 	// the session already usable and never boots: the hidden-only decision must not depend on any
 	// pane being alive, since it is chosen regardless of aliveness.
-	e.tmux.execHook = addIfAbsentHook("%0 0 0 100 20 4321\n")
+	installIfAbsentTmux(t, e, "%0 0 0 100 20 4321\n")
 
 	persisted := Strand{
 		GUID: "hidden-guid", Name: "tc:tslug:claude",
@@ -597,19 +590,9 @@ func TestLiveStrandNamed(t *testing.T) {
 	}
 }
 
-// recordingIfAbsentHook wraps addIfAbsentHook and records every tmux subcommand it answers.
-func recordingIfAbsentHook(paneLines string, cmds *[]string) func(capture bool, args ...string) (string, error) {
-	inner := addIfAbsentHook(paneLines)
-	return func(capture bool, args ...string) (string, error) {
-		*cmds = append(*cmds, args[0])
-		return inner(capture, args...)
-	}
-}
-
 func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
 	e := newTestEngine(t)
-	var cmds []string
-	e.tmux.execHook = recordingIfAbsentHook("%1 0 0 100 20 4321\n", &cmds)
+	fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
 	orch := Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
 	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{orch}}); err != nil {
@@ -630,7 +613,7 @@ func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
 	if !skipped || got != orch {
 		t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, orch)
 	}
-	for _, c := range cmds {
+	for _, c := range fake.Sequence() {
 		if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
 			t.Errorf("tmux %s issued by a skipped add", c)
 		}
@@ -655,7 +638,7 @@ func TestAddStrandUnless_NotLiveAdds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+			installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 			if err := SaveState(e.stateDir(), &ReedState{Strands: tt.persisted}); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}
@@ -683,13 +666,12 @@ func TestAddStrandUnless_NotLiveAdds(t *testing.T) {
 
 func TestAddStrandUnless_UnformableNameRefusesBeforeTmux(t *testing.T) {
 	e := newTestEngine(t)
-	var cmds []string
-	e.tmux.execHook = recordingIfAbsentHook("%1 0 0 100 20 4321\n", &cmds)
+	fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
 	if _, _, err := e.AddStrandUnless(AddSpec{Display: render.Display{Anchor: render.AnchorHidden}}, "Bad Name"); err == nil {
 		t.Fatal("AddStrandUnless(unformable name) = nil error, want a refusal")
 	}
-	if len(cmds) != 0 {
+	if cmds := fake.Sequence(); len(cmds) != 0 {
 		t.Errorf("tmux commands issued before refusal: %v", cmds)
 	}
 }
@@ -877,11 +859,7 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			e.geom.NameShortname, e.geom.NameSlug = tt.shortname, tt.slug
-			var calls int
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				calls++
-				return "", nil
-			}
+			fake := installFakeTmux(t, e)
 
 			spec := hiddenSpec("worker", "")
 			_, addErr := e.AddStrand(spec)
@@ -891,7 +869,7 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 					t.Errorf("%s error = %v, want it to contain %q", op, err, tt.wantText)
 				}
 			}
-			if calls != 0 {
+			if calls := len(fake.Calls()); calls != 0 {
 				t.Errorf("tmux commands issued = %d, want 0 (a refused call never boots tmux)", calls)
 			}
 		})
@@ -902,7 +880,7 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 // so it hits the strand an add by full name created.
 func TestAddStrand_IfAbsent_RoleSegmentMatchesFullName(t *testing.T) {
 	e := newTestEngine(t)
-	e.tmux.execHook = addIfAbsentHook("%1 0 0 100 20 4321\n")
+	installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
 	persisted := Strand{
 		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
@@ -1083,7 +1061,7 @@ func TestPaneIDsInSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := paneIDsInSession(tt.paneIDs, live)
-			if !equalStringSlices(got, tt.want) {
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("paneIDsInSession(%v, live) = %v; want %v", tt.paneIDs, got, tt.want)
 			}
 		})
@@ -1115,12 +1093,7 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
-			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-				if args[0] == "list-panes" {
-					return tt.listPanesOut, nil
-				}
-				return "", nil
-			}
+			installFakeTmux(t, e).answer("list-panes", tt.listPanesOut, nil)
 
 			paneID, err := e.resolvePaneInThisSessionLocked(st, "a")
 			if tt.wantErrFragment == "" {
@@ -1146,7 +1119,7 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 // helper: paneIDsInSession is only worth having if RemoveStrand's kill-pane loop actually consults
 // it, and the destructive shape the R5 review reproduced live was a kill-pane issued against a
 // sibling worktree's live pane.
-// It drives the whole op through TmuxCmd's execHook seam, recording every kill-pane target.
+// It drives the whole op through the fake tmux, recording every kill-pane target.
 func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -1155,22 +1128,7 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	const thisSessionPane = "%1"
 	const siblingPane = "%7"
 
-	var killed []string
-	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
-		switch args[0] {
-		case "has-session":
-			return "", nil
-		case "display-message":
-			return "$0|4321|1787000000", nil
-		case "list-panes":
-			return thisSessionPane + " 0 0 100 20 4321\n", nil
-		case "kill-pane":
-			killed = append(killed, args[len(args)-1])
-			return "", nil
-		default:
-			return "", nil
-		}
-	}
+	fake := installIfAbsentTmux(t, e, thisSessionPane+" 0 0 100 20 4321\n")
 
 	st := &ReedState{
 		SelvagePaneID: thisSessionPane,
@@ -1184,6 +1142,10 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 		t.Fatalf("RemoveStrand: %v", err)
 	}
 
+	var killed []string
+	for _, argv := range fake.ArgvFor("kill-pane") {
+		killed = append(killed, argv[len(argv)-1])
+	}
 	for _, id := range killed {
 		if id == siblingPane {
 			t.Fatalf("RemoveStrand issued kill-pane against %s, a pane outside this worktree's session; killed=%v", siblingPane, killed)

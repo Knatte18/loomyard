@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 // scriptedResolver returns results[i] on the i-th Resolve call, clamped to the last entry.
@@ -38,7 +39,7 @@ type finalizeVerifyFixture struct {
 func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallResult) *finalizeVerifyFixture {
 	t.Helper()
 	fx := &finalizeVerifyFixture{gate: newGateFixture(t, "go test ./...", nil)}
-	deps := newFinalizeDeps(t)
+	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { fx.markedDone++; return nil }
 	if len(results) == 0 {
 		results = []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}
@@ -71,11 +72,7 @@ func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 func TestFinalizeVerify_TreeChangedFail(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
 	fx.gate.fake.code = 1
-	outcome, ptr, err := fx.fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
-	}
-	requireFinalizeReason(t, ptr)
+	requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
 	fx.requireNotLanded(t)
 	if !fx.gate.markerExists(t) {
 		t.Error("marker missing after a failed verify")
@@ -84,10 +81,7 @@ func TestFinalizeVerify_TreeChangedFail(t *testing.T) {
 
 func TestFinalizeVerify_TreeChangedPass(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
-	outcome, _, err := fx.fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
 	if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
 		t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))
 	}
@@ -100,10 +94,7 @@ func TestFinalizeVerify_UpToDateWithMarkerFail(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(true)})
 	fx.gate.seedMarker(t)
 	fx.gate.fake.code = 1
-	outcome, _, err := fx.fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck)
 	if fx.gate.fake.calls != 1 {
 		t.Errorf("runner calls = %d; want 1", fx.gate.fake.calls)
 	}
@@ -116,10 +107,7 @@ func TestFinalizeVerify_UpToDateWithMarkerFail(t *testing.T) {
 func TestFinalizeVerify_UpToDateWithMarkerPass(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(true)})
 	fx.gate.seedMarker(t)
-	outcome, _, err := fx.fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = (%q, %v); want (Done, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
 	if fx.gate.fake.calls != 1 {
 		t.Errorf("runner calls = %d; want 1", fx.gate.fake.calls)
 	}
@@ -141,10 +129,7 @@ func TestFinalizeVerify_RetryMergeInRunsGateAgain(t *testing.T) {
 			fx.gate.fake.code = 1
 		}
 	}
-	outcome, _, err := fx.fz.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = (%q, %v); want (Stuck, nil)", outcome, err)
-	}
+	shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck)
 	if fx.gate.fake.calls != 2 {
 		t.Errorf("runner calls = %d; want 2", fx.gate.fake.calls)
 	}

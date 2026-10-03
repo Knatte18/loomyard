@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
 func awaitingStatus() []statusResult {
@@ -34,10 +35,7 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
-	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
+	outcome, ptr := shedfake.CallOK(t, producer)
 	if outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Errorf("Call() = %v exempt=%v; want an exempt Stuck", outcome, ptr.BudgetExempt)
 	}
@@ -394,9 +392,7 @@ func TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background()); err != nil {
-		t.Fatalf("Call() error = %v", err)
-	}
+	shedfake.CallOK(t, NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace))
 	if _, err := os.Stat(doneSeenFile(scratchDir, "innerrun")); !os.IsNotExist(err) {
 		t.Fatalf("done-seen marker stat = %v; want it removed by a running Call", err)
 	}

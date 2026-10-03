@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -150,7 +151,7 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+			head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
 			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: "+head+"\ndeviations: []\n"), 0o644); err != nil {
 				t.Fatalf("write integration report: %v", err)
@@ -203,12 +204,12 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 	fx := newRunFixture(t, 3)
 	appendIntegrationVerify(t, fx.PlanDir, "test ! -f bad.marker")
 
-	originalBranch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+	originalBranch := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
-	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+	sha3 := gitkit.CommitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
@@ -275,7 +276,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 		t.Errorf("summary.md does not name the localized offending card; got:\n%s", summaryData)
 	}
 
-	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+	branch := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 	if branch != originalBranch {
 		t.Errorf("HEAD branch after bisect = %q; want restored to %q", branch, originalBranch)
 	}
@@ -431,9 +432,9 @@ func seedVerifyScripts(t *testing.T, worktree string) {
 	failure := func(test string) string {
 		return "printf -- '--- FAIL: " + test + " (0.00s)\\n    x_test.go:1: " + test + " failed\\nFAIL\\nFAIL\\texample/pkg\\t0.01s\\n'\n"
 	}
-	commitFile(t, worktree, "verify.sh", "if [ -f bad.marker ]; then\n"+failure("TestBad")+"exit 1\nfi\n", "verify script")
-	commitFile(t, worktree, "always.sh", failure("TestAlways")+"exit 1\n", "always-failing script")
-	commitFile(t, worktree, "dirty.sh", "echo dirty >> base.txt\necho x > untracked.txt\n"+failure("TestAlways")+"exit 1\n", "dirtying script")
+	gitkit.CommitFile(t, worktree, "verify.sh", "if [ -f bad.marker ]; then\n"+failure("TestBad")+"exit 1\nfi\n", "verify script")
+	gitkit.CommitFile(t, worktree, "always.sh", failure("TestAlways")+"exit 1\n", "always-failing script")
+	gitkit.CommitFile(t, worktree, "dirty.sh", "echo dirty >> base.txt\necho x > untracked.txt\n"+failure("TestAlways")+"exit 1\n", "dirtying script")
 }
 
 // failedSuite scripts one run whose integration fork reports FAILED.
@@ -496,7 +497,7 @@ func (f *fakeFixStarter) StartFix(spec shuttleengine.Spec) (websterengine.Master
 			if outcome != shuttleengine.OutcomeDone {
 				return
 			}
-			status, head := websterengine.ReportStatusFailed, strings.TrimSpace(mustGit(f.t, f.worktree, "rev-parse", "HEAD"))
+			status, head := websterengine.ReportStatusFailed, strings.TrimSpace(gitkit.Git(f.t, f.worktree, "rev-parse", "HEAD"))
 			if f.work != nil {
 				status, head = f.work(f.t)
 			}
@@ -542,7 +543,7 @@ func runFailedSuite(t *testing.T, fx *runFixture, s failedSuite) (websterengine.
 		reportStatus = websterengine.ReportStatusFailed
 	}
 
-	head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	outcome := "outcome: done\nstuck_reason: null\n"
 	if s.masterOutcome == "stuck" {
 		outcome = "outcome: stuck\nstuck_reason: \"master says stuck\"\n"
@@ -610,7 +611,7 @@ func hasEscalationRecord(t *testing.T, fx *runFixture) bool {
 // assertOnBranch fails unless the worktree is back on branch.
 func assertOnBranch(t *testing.T, fx *runFixture, branch string) {
 	t.Helper()
-	if got := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD")); got != branch {
+	if got := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD")); got != branch {
 		t.Errorf("HEAD branch = %q; want restored to %q", got, branch)
 	}
 }
@@ -626,8 +627,8 @@ func TestIntegrationStage_Flaky_DoneKeepsDone(t *testing.T) {
 	bis := &countingBisector{FabricBisector: gitrepo.New(fx.Worktree)}
 	fx.Deps.OpenBisector = func() (websterengine.FabricBisector, error) { return bis, nil }
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog})
 	if err != nil {
@@ -668,8 +669,8 @@ func TestIntegrationStage_Flaky_NoFrictionNoteWithoutDir(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "true")
 	fx.Deps.FrictionDir = ""
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog}); err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -691,8 +692,8 @@ func TestIntegrationStage_Flaky_FrictionNoteFailureKeepsDone(t *testing.T) {
 	}
 	fx.Deps.FrictionDir = blocker
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog})
 	if err != nil {
@@ -717,10 +718,10 @@ func TestIntegrationStage_PreExisting_DoneKeepsDone(t *testing.T) {
 	seedVerifyScripts(t, fx.Worktree)
 	bis := &countingBisector{FabricBisector: gitrepo.New(fx.Worktree)}
 	fx.Deps.OpenBisector = func() (websterengine.FabricBisector, error) { return bis, nil }
-	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+	branch := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	result, err := runFailedSuite(t, fx, failedSuite{
 		batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done",
@@ -756,12 +757,12 @@ func TestIntegrationStage_Regression_DemotesDone(t *testing.T) {
 	fx := newRunFixture(t, 3)
 	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
 	seedVerifyScripts(t, fx.Worktree)
-	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+	branch := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
-	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
-	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+	sha3 := gitkit.CommitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
 
 	result, err := runFailedSuite(t, fx, failedSuite{
 		batches: [][]string{{sha1}, {sha2}, {sha3}}, startSHA: start, masterOutcome: "done",
@@ -800,8 +801,8 @@ func TestIntegrationStage_MasterStuck_KeepsStuckAndGetsTriage(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "stuck", forkLog: flakyForkLog})
 	if err != nil {
@@ -825,10 +826,10 @@ func TestIntegrationStage_BaselineIsBatchOneStartSHA(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
 	seedVerifyScripts(t, fx.Worktree)
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	c1 := commitFile(t, fx.Worktree, "bad.marker", "bad", "batch 1 first commit breaks a test")
-	c2 := commitFile(t, fx.Worktree, "card1.txt", "one", "batch 1 second commit")
-	c3 := commitFile(t, fx.Worktree, "card2.txt", "two", "batch 2")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	c1 := gitkit.CommitFile(t, fx.Worktree, "bad.marker", "bad", "batch 1 first commit breaks a test")
+	c2 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "batch 1 second commit")
+	c3 := gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "batch 2")
 
 	result, err := runFailedSuite(t, fx, failedSuite{
 		batches: [][]string{{c1, c2}, {c3}}, startSHA: start, masterOutcome: "done",
@@ -854,9 +855,9 @@ func TestIntegrationStage_BaselineIsEarliestStartSHA(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "sh verify.sh")
 	seedVerifyScripts(t, fx.Worktree)
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	c2 := commitFile(t, fx.Worktree, "bad.marker", "bad", "batch 2, begun first, breaks a test")
-	c1 := commitFile(t, fx.Worktree, "card1.txt", "one", "batch 1, begun on top of batch 2")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	c2 := gitkit.CommitFile(t, fx.Worktree, "bad.marker", "bad", "batch 2, begun first, breaks a test")
+	c1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "batch 1, begun on top of batch 2")
 
 	result, err := runFailedSuite(t, fx, failedSuite{
 		batches: [][]string{{c1}, {c2}}, startSHA: c2, laterStartSHAs: map[int]string{2: start}, masterOutcome: "done",
@@ -879,10 +880,10 @@ func TestIntegrationStage_DirtyBaselineRunRestoresBranch(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "sh dirty.sh")
 	seedVerifyScripts(t, fx.Worktree)
-	branch := strings.TrimSpace(mustGit(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
+	branch := strings.TrimSpace(gitkit.Git(t, fx.Worktree, "symbolic-ref", "--short", "HEAD"))
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	result, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done"})
 	if err != nil {
@@ -900,8 +901,8 @@ func TestIntegrationStage_MissingForkLogDoesNotError(t *testing.T) {
 	appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
 	seedVerifyScripts(t, fx.Worktree)
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 
 	if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done"}); err != nil {
 		t.Fatalf("Run() error = %v; want nil for a missing fork log", err)
@@ -922,10 +923,10 @@ func TestIntegrationStage_MissingForkLogDoesNotError(t *testing.T) {
 // command itself). The honest answer is the "unknown" offender the empty-shas path already reports.
 func TestBisectAndEscalate_UnattributableFailureBlamesNoCard(t *testing.T) {
 	worktree := newScratchRepo(t)
-	sha1 := commitFile(t, worktree, "card1.txt", "one", "card1")
-	sha2 := commitFile(t, worktree, "card2.txt", "two", "card2")
-	sha3 := commitFile(t, worktree, "card3.txt", "three", "card3")
-	originalBranch := strings.TrimSpace(mustGit(t, worktree, "symbolic-ref", "--short", "HEAD"))
+	sha1 := gitkit.CommitFile(t, worktree, "card1.txt", "one", "card1")
+	sha2 := gitkit.CommitFile(t, worktree, "card2.txt", "two", "card2")
+	sha3 := gitkit.CommitFile(t, worktree, "card3.txt", "three", "card3")
+	originalBranch := strings.TrimSpace(gitkit.Git(t, worktree, "symbolic-ref", "--short", "HEAD"))
 
 	websterDir := t.TempDir()
 	if err := os.WriteFile(summaryparser.Path(websterDir), []byte("# Batches shipped\n"), 0o644); err != nil {
@@ -948,7 +949,7 @@ func TestBisectAndEscalate_UnattributableFailureBlamesNoCard(t *testing.T) {
 		t.Errorf("escalated record Slug = %q; want %q — no recorded card SHA failed, so none may be named", escalated.Slug, "unknown")
 	}
 
-	branch := strings.TrimSpace(mustGit(t, worktree, "symbolic-ref", "--short", "HEAD"))
+	branch := strings.TrimSpace(gitkit.Git(t, worktree, "symbolic-ref", "--short", "HEAD"))
 	if branch != originalBranch {
 		t.Errorf("HEAD branch after bisect = %q; want restored to %q", branch, originalBranch)
 	}
@@ -980,18 +981,18 @@ func newRegressionScene(t *testing.T, planInWorktree bool) *regressionScene {
 			if err != nil {
 				t.Fatal(err)
 			}
-			commitFile(t, fx.Worktree, filepath.Join("plan", e.Name()), string(data), "plan "+e.Name())
+			gitkit.CommitFile(t, fx.Worktree, filepath.Join("plan", e.Name()), string(data), "plan "+e.Name())
 		}
 		fx.PlanDir = filepath.Join(fx.Worktree, "plan")
 		fx.Deps.Geom.PlanDir = fx.PlanDir
 	}
 	seedVerifyScripts(t, fx.Worktree)
 
-	start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
+	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	shas := []string{
-		commitFile(t, fx.Worktree, "card1.txt", "one", "card1"),
-		commitFile(t, fx.Worktree, "card2.txt", "two", "card2"),
-		commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug"),
+		gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1"),
+		gitkit.CommitFile(t, fx.Worktree, "card2.txt", "two", "card2"),
+		gitkit.CommitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug"),
 	}
 	return &regressionScene{
 		fx:    fx,
@@ -1004,9 +1005,9 @@ func newRegressionScene(t *testing.T, planInWorktree bool) *regressionScene {
 // commitFix commits the removal of bad.marker, the fix for the scene's regression, and returns the commit.
 func commitFix(t *testing.T, worktree string) string {
 	t.Helper()
-	mustGit(t, worktree, "rm", "-q", "bad.marker")
-	mustGit(t, worktree, "commit", "-m", "fix the regression")
-	return strings.TrimSpace(mustGit(t, worktree, "rev-parse", "HEAD"))
+	gitkit.Git(t, worktree, "rm", "-q", "bad.marker")
+	gitkit.Git(t, worktree, "commit", "-m", "fix the regression")
+	return strings.TrimSpace(gitkit.Git(t, worktree, "rev-parse", "HEAD"))
 }
 
 // fixerReporting returns a fix strand that runs work and reports OK at the head work returns.
@@ -1123,7 +1124,7 @@ func TestIntegrationStage_FixAttempt_UnfixedEscalates(t *testing.T) {
 			wantCommit: true,
 			build: func(t *testing.T, sc *regressionScene) *fakeFixStarter {
 				return fixerReporting(t, sc.fx.Worktree, func(t *testing.T) string {
-					return commitFile(t, sc.fx.Worktree, "unrelated.txt", "x", "unrelated change")
+					return gitkit.CommitFile(t, sc.fx.Worktree, "unrelated.txt", "x", "unrelated change")
 				})
 			},
 		},
@@ -1210,14 +1211,14 @@ func TestIntegrationStage_FixAttempt_RefusedCommitsEscalate(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return commitFile(t, sc.fx.Worktree, "plan/01-batch1.md", string(data)+"\nstrand note\n", "touch the plan")
+				return gitkit.CommitFile(t, sc.fx.Worktree, "plan/01-batch1.md", string(data)+"\nstrand note\n", "touch the plan")
 			},
 		},
 		{
 			name:       "commit touches _lyx",
 			wantDetail: "_lyx",
 			work: func(t *testing.T, sc *regressionScene) string {
-				return commitFile(t, sc.fx.Worktree, "_lyx/notes.md", "x", "touch _lyx")
+				return gitkit.CommitFile(t, sc.fx.Worktree, "_lyx/notes.md", "x", "touch _lyx")
 			},
 		},
 		{
@@ -1232,7 +1233,7 @@ func TestIntegrationStage_FixAttempt_RefusedCommitsEscalate(t *testing.T) {
 				if err := os.WriteFile(card, append(data, []byte("\nstrand note\n")...), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				return strings.TrimSpace(mustGit(t, sc.fx.Worktree, "rev-parse", "HEAD"))
+				return strings.TrimSpace(gitkit.Git(t, sc.fx.Worktree, "rev-parse", "HEAD"))
 			},
 		},
 		{
@@ -1242,7 +1243,7 @@ func TestIntegrationStage_FixAttempt_RefusedCommitsEscalate(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(sc.fx.Worktree, "junk.txt"), []byte("x"), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				return strings.TrimSpace(mustGit(t, sc.fx.Worktree, "rev-parse", "HEAD"))
+				return strings.TrimSpace(gitkit.Git(t, sc.fx.Worktree, "rev-parse", "HEAD"))
 			},
 		},
 		{
@@ -1333,7 +1334,7 @@ func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
 		if err := websterengine.SaveState(sc.fx.Deps.Geom.WebsterDir, sc.fx.Deps.Geom.ScratchDir, st); err != nil {
 			t.Fatalf("SaveState() error = %v", err)
 		}
-		sc.fx.Reed.status = reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}}
+		sc.fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "fix-strand", Live: true}}
 	}
 	sc.suite.fixer = fixer
 
@@ -1341,8 +1342,8 @@ func TestIntegrationStage_FixAttempt_UnrecordedStrandIsRemoved(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fix-strand") {
 		t.Fatalf("Run() error = %v; want the record error naming the fix strand", err)
 	}
-	if len(sc.fx.Reed.removedStrands) != 1 || sc.fx.Reed.removedStrands[0] != "fix-strand" {
-		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.removedStrands)
+	if len(sc.fx.Reed.RemovedGUIDs) != 1 || sc.fx.Reed.RemovedGUIDs[0] != "fix-strand" {
+		t.Errorf("RemoveStrand calls = %v; want exactly [fix-strand]", sc.fx.Reed.RemovedGUIDs)
 	}
 }
 
@@ -1373,8 +1374,8 @@ func TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt(t *testi
 	t.Run("flaky", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		appendIntegrationVerify(t, fx.PlanDir, "true")
-		start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-		sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+		start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+		sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 		fixer := newFakeFixStarter(t, fx.Worktree)
 
 		if _, err := runFailedSuite(t, fx, failedSuite{batches: [][]string{{sha1}}, startSHA: start, masterOutcome: "done", forkLog: flakyForkLog, fixer: fixer}); err != nil {
@@ -1388,8 +1389,8 @@ func TestIntegrationStage_FixAttempt_NonRegressionVerdictsMakeNoAttempt(t *testi
 		fx := newRunFixture(t, 1)
 		appendIntegrationVerify(t, fx.PlanDir, "sh always.sh")
 		seedVerifyScripts(t, fx.Worktree)
-		start := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-		sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+		start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+		sha1 := gitkit.CommitFile(t, fx.Worktree, "card1.txt", "one", "card1")
 		fixer := newFakeFixStarter(t, fx.Worktree)
 
 		if _, err := runFailedSuite(t, fx, failedSuite{
