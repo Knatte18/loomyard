@@ -192,7 +192,8 @@ func headTree(worktree string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// readRecord reads the record at path; an absent, unreadable or malformed record reads as none, which only costs a re-run.
+// readRecord reads the record at path.
+// An absent, unreadable or malformed record reads as none, which only costs a re-run.
 func readRecord(path string) (record, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {

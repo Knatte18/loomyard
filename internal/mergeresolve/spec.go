@@ -19,8 +19,8 @@ import (
 // conflictStencilName is the registered name of the conflict-resolution prompt (card 18/19).
 const conflictStencilName = "landing-template-conflict"
 
-// reportNamePrefix is the filename prefix every attempt's resolution report shares, followed by the
-// attempt number and ".md"; the report path builder and Resolve's stale-report glob both use it.
+// reportNamePrefix is the filename prefix every attempt's resolution report shares, followed by the attempt number and ".md".
+// The report path builder and Resolve's stale-report glob both use it.
 const reportNamePrefix = "conflict-resolution-r"
 
 // buildConflictSpec builds the shuttleengine.Spec for one conflict-resolution attempt: attempt

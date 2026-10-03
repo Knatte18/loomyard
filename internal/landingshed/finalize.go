@@ -335,7 +335,8 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 }
 
 // gateStop maps one gate call's result onto mergeInStep's return.
-// stop is false when the gate passed; otherwise the other values are what mergeInStep returns at once:
+// stop is false when the gate passed.
+// Otherwise the other values are what mergeInStep returns at once:
 // a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
 func (fz *Finalize) gateStop(ctx context.Context, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if err != nil {

@@ -1,6 +1,7 @@
 // verify.go implements the `verify` webster verb: the self-check of the webster verify gate and of Webster-Burler's verify gate.
 // It parses the plan, then calls verifytree.Verify over the worktree with the plan's `## verify:` command, the same call both gates make.
-// A pass or skip is ok; a dirty tree or a failing command is an error envelope carrying a `findings` key, the shape the gate-parity test maps onto a stuck verdict.
+// A pass or skip is ok.
+// A dirty tree or a failing command is an error envelope carrying a `findings` key, the shape the gate-parity test maps onto a stuck verdict.
 
 package webstercli
 

@@ -57,7 +57,8 @@ func WriteVerifyGateReport(path string, r VerifyGateReport) error {
 }
 
 // cardHint returns the labels, in trail order, whose commit changed a file directly in the directory of a failing package.
-// shas and labels are the parallel trail accumulatedCardSHAs returns; changedPaths lists the repository-relative paths one commit changed.
+// shas and labels are the parallel trail accumulatedCardSHAs returns.
+// changedPaths lists the repository-relative paths one commit changed.
 // A failing package maps to a worktree directory through modulePath, go.mod's module path.
 // An opaque identity, or a package outside the module, contributes no directory, so it contributes no hint.
 // The hint claims only that a card touched a failing package; Merriam judges it with the plan in hand.

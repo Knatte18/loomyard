@@ -254,7 +254,8 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 }
 
 // gateStop maps one gate call's result onto Call's return.
-// stop is false when the gate passed, so Call proceeds; otherwise the other values are what Call returns at once:
+// stop is false when the gate passed, so Call proceeds.
+// Otherwise the other values are what Call returns at once:
 // a cancellation or an infrastructure fault as an error, a Stuck reason as a Stuck verdict.
 func (p *Publish) gateStop(ctx context.Context, reason string, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if err != nil {

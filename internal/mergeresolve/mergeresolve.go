@@ -157,8 +157,8 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 	return Result{}, fmt.Errorf("mergeresolve: resolveConflicts: exhausted attempts without a terminal result")
 }
 
-// clearStaleReports removes every resolution report an earlier Resolve call left in the scratch
-// directory. An absent scratch directory has nothing to clear.
+// clearStaleReports removes every resolution report an earlier Resolve call left in the scratch directory.
+// An absent scratch directory has nothing to clear.
 func (r *Resolver) clearStaleReports() error {
 	entries, err := os.ReadDir(r.deps.ScratchDir)
 	if errors.Is(err, fs.ErrNotExist) {

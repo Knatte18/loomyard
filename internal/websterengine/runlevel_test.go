@@ -1581,7 +1581,8 @@ func TestRun_VerifyGateExhaustedEndsStuck(t *testing.T) {
 func TestRun_FlakyVerifyKeepsDoneWithWarning(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	counter := filepath.Join(t.TempDir(), "runs")
-	// The first run records itself and fails; the rerun sees the record and passes.
+	// The first run records itself and fails.
+	// The rerun sees the record and passes.
 	verifyGateFixture(t, fx, "if [ -f "+counter+" ]; then exit 0; fi; : > "+counter+"; printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1")
 
 	fx.Starter.handle = &runFakeHandle{

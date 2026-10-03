@@ -290,17 +290,14 @@
 // cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
 // from a fork's own thin RenderForkPrompt, since the recovery strand
 // inherits no session context (see the fork-context-hygiene Shared
-// Decision). The call that spawns the recovery strand first waits for its
-// provider to come up (normally seconds, bounded by startup_timeout_s), and
-// every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus
-// one poll tick) and returns a terminal digest: the budget outlasts the
-// timeout measured from spawn, so a strand that never reports classifies dead
-// on its timeout and the call returns. A re-entrant call finds the strand
-// already recorded in state and skips straight to the wait. Merriam runs the
-// call as a backgrounded Bash command, ends its turn and acts on the
-// completion notification; only an operator's shorter --wait can return a
-// running snapshot. This mirrors classify.go's dead/timeout/stuck
-// classification.
+// Decision).
+// The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
+// and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
+// the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
+// A re-entrant call finds the strand already recorded in state and skips straight to the wait.
+// Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
+// Only an operator's shorter --wait can return a running snapshot.
+// This mirrors classify.go's dead/timeout/stuck classification.
 //
 // # digest persistence carries batch context forward
 //

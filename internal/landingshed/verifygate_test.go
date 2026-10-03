@@ -29,7 +29,8 @@ type fakeVerifyTree struct {
 	onVerify    func()
 }
 
-// dirtyAt scripts the dirty paths the i-th (zero-based) clean-tree check reports; every other check reports a clean tree.
+// dirtyAt scripts the dirty paths the i-th (zero-based) clean-tree check reports.
+// Every other check reports a clean tree.
 func (f *fakeVerifyTree) dirtyAt(i int, paths ...string) {
 	for len(f.dirtyScript) <= i {
 		f.dirtyScript = append(f.dirtyScript, nil)

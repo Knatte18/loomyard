@@ -104,7 +104,9 @@ type verifyGateSeams struct {
 }
 
 // NewVerifyGate returns the must-pass shuttleengine.Gate Run adds to Merriam's spec, with the notes Run applies after the wait.
-// geom is the told Geometry; attempts is the cap the entry's budget carries, shown in the findings; batches is the run's execution order, which orders the card hint.
+// geom is the told Geometry.
+// attempts is the cap the entry's budget carries, shown in the findings.
+// batches is the run's execution order, which orders the card hint.
 // parentBranch lets a clean parent merge made while fixing pass the commit check, and is nil in standalone mode, where no merge is accepted.
 // frictionDir is where the flaky note goes, empty when friction is off.
 //

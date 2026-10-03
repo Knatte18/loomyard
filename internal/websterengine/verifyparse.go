@@ -56,7 +56,8 @@ func ParseVerifyFailures(output string) []VerifyFailure {
 // A test identity is "<package>.<test path>", naming the deepest failing test or subtest as go test prints it, so a failing TestX/a and a failing TestX/b are distinct identities.
 // A package identity is "<package>" and marks a failure no named test explains:
 // a build or setup failure, a failing package with no failing test, or a test binary that crashed (a panic, a fatal error, a timeout) or exited before reporting its result, which also hides every test it never ran.
-// Each test and package identity carries its import path in Package; the opaque identity has none.
+// Each test and package identity carries its import path in Package.
+// The opaque identity has none.
 // When neither is found, one opaque identity (opaqueFailureID) carries the output tail.
 func parseVerifyFailures(output string, passed bool) []VerifyFailure {
 	if passed {

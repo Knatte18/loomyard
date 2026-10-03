@@ -154,8 +154,8 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // friction.Directive error swallowed as a Warn rather than propagated.
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
-// cardGates is the caller-rendered per-card gate command list (renderCardGates), filled into the
-// body's required card_gates marker; the plan is not a parameter, per the fork-context-hygiene rule.
+// cardGates is the caller-rendered per-card gate command list (renderCardGates), filled into the body's required card_gates marker.
+// The plan is not a parameter, per the fork-context-hygiene rule.
 func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
@@ -261,7 +261,8 @@ func VerifyFixTemplate(stencilsDir string) ([]byte, error) {
 const verifyFixPromptFileName = "verify-fix.md"
 
 // RenderVerifyFixPrompt fills webster-body-verify-fix for the verify-gate fixer fork, read from stencilsDir.
-// reportPath is the verify-gate report the fork reads (VerifyGateReportPath); the fork never names a record path.
+// reportPath is the verify-gate report the fork reads (VerifyGateReportPath).
+// The fork never names a record path.
 // Returns an error if reportPath is empty.
 // planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;

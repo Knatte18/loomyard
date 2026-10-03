@@ -570,11 +570,11 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // otherwise a batch ending in EventWaiting is still running (the session is
 // waiting on its own background work), so it returns outcome == "" with the
 // offset already advanced.
-// The exception is a gated run (len(run.gate) > 0): its waiting turn end is not an arrival even
-// when every output file exists, because the files may be left over from an earlier arrival
-// while the session works on in the background, and the next real turn end is the boundary.
-// The deferral holds only while the session is live; the run deadline and the liveness checks
-// still classify Done from the files and evaluate the gate one final time.
+// The exception is a gated run (len(run.gate) > 0): its waiting turn end is not an arrival even when every output file exists,
+// because the files may be left over from an earlier arrival while the session works on in the background,
+// and the next real turn end is the boundary.
+// The deferral holds only while the session is live.
+// The run deadline and the liveness checks still classify Done from the files and evaluate the gate one final time.
 // Returns outcome == "" when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)

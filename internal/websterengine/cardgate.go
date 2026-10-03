@@ -52,7 +52,8 @@ func holdsGoFile(dir string) bool {
 	return false
 }
 
-// renderCardGates renders one line per card in declared order, pairing the card pointer with its gate command; pointers are spelled as renderCardPointers spells them.
+// renderCardGates renders one line per card in declared order, pairing the card pointer with its gate command.
+// Pointers are spelled as renderCardPointers spells them.
 func renderCardGates(plan *planparser.Plan, cards []planparser.Card, planDirDisplay, worktree string) string {
 	lines := make([]string, 0, len(cards))
 	for _, c := range cards {

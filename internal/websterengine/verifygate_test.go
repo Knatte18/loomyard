@@ -19,9 +19,11 @@ type gateFake struct {
 	head      string
 	commits   []string
 	rejection [2]string
-	// results are the verify results, consumed one per verify call; the last one repeats.
+	// results are the verify results, consumed one per verify call.
+	// The last one repeats.
 	results []verifytree.Result
-	// logs are the verify logs, consumed one per read; the last one repeats.
+	// logs are the verify logs, consumed one per read.
+	// The last one repeats.
 	logs []string
 
 	verifyCalls    int

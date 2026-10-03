@@ -246,7 +246,8 @@ func commitsSince(worktree, base string) ([]string, error) {
 
 // fixCommitRejection walks the commits from base to HEAD and returns the first that is neither a non-merge commit nor a clean parent merge, with the reason it does not qualify.
 // It returns empty strings when every commit qualifies.
-// The parent tips are resolved once, on the first merge the walk meets; a resolution error rejects that merge with the error as the reason, so a nil parentBranch accepts no merge.
+// The parent tips are resolved once, on the first merge the walk meets.
+// A resolution error rejects that merge with the error as the reason, so a nil parentBranch accepts no merge.
 // An error is a failure to read the commits, never a rejection.
 func fixCommitRejection(worktree, base string, parentBranch ParentBranchFunc) (commit, reason string, err error) {
 	commits, err := commitsSince(worktree, base)
