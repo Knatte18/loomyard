@@ -100,3 +100,52 @@ func TestPollEventsTick_WaitingWithOutputFilesIsDone(t *testing.T) {
 		t.Errorf("outcome = %q, want %q", outcome, OutcomeDone)
 	}
 }
+
+func TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, eventsFileName)
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+	if err := os.WriteFile(eventsPath, []byte("WAIT:background work\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	gateCalls := 0
+	gate := func() (GateResult, error) {
+		gateCalls++
+		return GateResult{Passed: true}, nil
+	}
+
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
+	fc := newFakeClock(time.Now())
+	mc := &multiStepClock{fakeClock: fc, steps: []func(){
+		func() { appendEventsLine(t, eventsPath, "STOP:done") },
+	}}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(mc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+
+	outcome, _, err := run.pollEventsTick()
+	if err != nil {
+		t.Fatalf("pollEventsTick error: %v", err)
+	}
+	if outcome != "" {
+		t.Errorf("outcome = %q, want empty (a gated waiting turn end is not an arrival)", outcome)
+	}
+	if gateCalls != 0 {
+		t.Errorf("gate evaluated %d times on the waiting turn end, want 0", gateCalls)
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+	}
+	if gateCalls != 1 {
+		t.Errorf("gate evaluated %d times, want exactly 1 after the next stop", gateCalls)
+	}
+}
