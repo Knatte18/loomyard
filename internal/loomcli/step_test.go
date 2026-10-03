@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -90,12 +91,18 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 
 	c := &loomCLI{
 		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."},
+		cfg:      loomengine.Config{Selfreport: true},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       lockPath,
 			StatusPath:     filepath.Join(dir, "status.json"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		},
 	}
+	handoffPath := loomengine.LoomStepHandoff(c.location)
+	if err := os.MkdirAll(filepath.Dir(handoffPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(handoffPath), err)
+	}
+	recordStepHandoff(handoffPath, loomengine.LoomStepHandoffLock(c.location), 1, shedengine.StateRunning)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(loomVerbCommand(c, "step"), &out, nil)
@@ -118,5 +125,11 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 
 	if _, err := os.Stat(c.shedPaths.StatusPath); err == nil {
 		t.Errorf("status file exists at %q after a busy refusal; the bootstrap must not have run", c.shedPaths.StatusPath)
+	}
+	if _, err := os.Stat(handoffPath); err != nil {
+		t.Errorf("step clean-handoff marker %q = %v after a busy refusal; want it left in place", handoffPath, err)
+	}
+	if c.entryObservation != (loomengine.EntryObservation{}) {
+		t.Errorf("entryObservation = %+v after a busy refusal; want zero", c.entryObservation)
 	}
 }

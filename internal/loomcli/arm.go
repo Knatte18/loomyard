@@ -46,7 +46,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -338,6 +337,29 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	return nil
 }
 
+// anomalyDeps builds the deps Tier 1 anomaly filing runs on, for loomPostRun under run and loomAfterStep under step alike.
+// FileIssue is c.fileIssue, the one filing seam.
+func (c *loomCLI) anomalyDeps(ctx context.Context, runErr error) selfreportDeps {
+	return selfreportDeps{
+		Ctx:            ctx,
+		Selfreport:     c.cfg.Selfreport,
+		Entry:          c.entryObservation,
+		StatusPath:     c.shedPaths.StatusPath,
+		StatusLockPath: c.shedPaths.StatusLockPath,
+		MarkerPath:     loomengine.LoomSelfreportFiled(c.location),
+		MarkerLockPath: loomengine.LoomSelfreportFiledLock(c.location),
+		RunErr:         runErr,
+		IsLedgerPath:   shedadapters.IsLedgerPath,
+		ReadLedger:     shedadapters.ReadLedger,
+		FileIssue:      c.fileIssue,
+	}
+}
+
+// observeStepEntry sets c.entryObservation exactly as loomPreRun does, for a step that is about to run its shed.
+func (c *loomCLI) observeStepEntry() {
+	c.entryObservation = observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+}
+
 // loomPostRun implements the PostRun hook for loom's spec: it fires detectAndFileAnomalies
 // unconditionally -- including on the hard-error arm, which is why PostRun itself runs
 // unconditionally -- and then returns the envelope's "friction" key.
@@ -350,19 +372,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 // and `run` merges it onto its error envelope as onto its success envelope.
 // RunAwaiting and RunPaused write nothing.
 func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, runErr error) map[string]any {
-	detectAndFileAnomalies(selfreportDeps{
-		Ctx:            ctx,
-		Selfreport:     c.cfg.Selfreport,
-		Entry:          c.entryObservation,
-		StatusPath:     c.shedPaths.StatusPath,
-		StatusLockPath: c.shedPaths.StatusLockPath,
-		MarkerPath:     loomengine.LoomSelfreportFiled(c.location),
-		MarkerLockPath: loomengine.LoomSelfreportFiledLock(c.location),
-		RunErr:         runErr,
-		IsLedgerPath:   shedadapters.IsLedgerPath,
-		ReadLedger:     shedadapters.ReadLedger,
-		FileIssue:      selfreportengine.CreateIssue,
-	})
+	detectAndFileAnomalies(c.anomalyDeps(ctx, runErr))
 
 	frictionStatus := frictionengine.StatusSkipped
 	switch {
@@ -390,6 +400,9 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // Step never adds or removes the status strand:
 // removal needs the driver, which step must not read,
 // and an unconditional removal would strip the band from a halted go run an operator steps by hand.
+//
+// On success it takes the entry observation (observeStepEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the step clean-handoff marker and the previous step's completed aftermath matches it rather than reading as a crash.
+// The observation is what loomAfterStep's Tier 1 filing reads.
 //
 // Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
 // No bootstrap sub-step makes a remote call today (the seed-and-commit stage commits without pushing),
@@ -445,6 +458,9 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	// Released immediately, before the producer call: the lock must never be held across a
 	// minutes-long LLM row.
 	_ = bootstrapLock.Release()
+
+	// Last, so a step this hook refuses, busy or at the bootstrap, neither observes nor consumes the clean-handoff marker.
+	c.observeStepEntry()
 
 	return "", nil
 }

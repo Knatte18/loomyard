@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -32,10 +34,61 @@ import (
 )
 
 // haltFixture is a receiver with Tier 2 on, seeded stencils, the selfreport knob off and a shuttle answering done.
+// Its fileIssue is a recording fake, and the shuttle fake's DuringRun logs to the same event log, so a test can assert the order of a filing against the reflection.
 type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
+
+	mu     sync.Mutex
+	events []string
+	filed  []filedCall
+	// haltNote is the halt note's text as the latest reflection saw it.
+	haltNote string
+}
+
+// record appends one event to the log.
+func (f *haltFixture) record(event string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, event)
+}
+
+// filedTitles returns the titles the fake filer recorded, in order.
+func (f *haltFixture) filedTitles() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var titles []string
+	for _, call := range f.filed {
+		titles = append(titles, call.title)
+	}
+	return titles
+}
+
+// eventLog returns a copy of the event log.
+func (f *haltFixture) eventLog() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.events)
+}
+
+// requireFiledOnce fails unless exactly one issue was filed and its title contains want.
+func (f *haltFixture) requireFiledOnce(t *testing.T, want string) {
+	t.Helper()
+
+	titles := f.filedTitles()
+	if len(titles) != 1 || !strings.Contains(titles[0], want) {
+		t.Fatalf("filed titles = %q; want exactly one containing %q", titles, want)
+	}
+}
+
+// requireNothingFiled fails when the fake filer recorded anything.
+func (f *haltFixture) requireNothingFiled(t *testing.T) {
+	t.Helper()
+
+	if titles := f.filedTitles(); len(titles) != 0 {
+		t.Errorf("filed titles = %q; want none", titles)
+	}
 }
 
 func newHaltFixture(t *testing.T) *haltFixture {
@@ -50,9 +103,11 @@ func newHaltFixture(t *testing.T) *haltFixture {
 	}
 
 	loc := locationkit.Location(root, "warp", ".")
-	archiveParent := filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc))
-	if err := os.MkdirAll(archiveParent, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", archiveParent, err)
+	// The filed-title marker and the step clean-handoff marker keep their lock files in this directory too.
+	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomSelfreportFiledLock(loc)), filepath.Dir(loomengine.LoomStepHandoffLock(loc))} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
 	}
 
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -68,8 +123,57 @@ func newHaltFixture(t *testing.T) *haltFixture {
 		},
 		reflectionShuttle: shuttle,
 	}
-	return &haltFixture{c: c, shuttle: shuttle, frictionDir: frictionDir}
+	f := &haltFixture{c: c, shuttle: shuttle, frictionDir: frictionDir}
+	c.fileIssue = func(title string, body *string, labels []string) (string, int, error) {
+		f.record("file: " + title)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.filed = append(f.filed, filedCall{title: title, labels: labels})
+		return "https://example.invalid/issues/1", 1, nil
+	}
+	// A reflection archives the notes it covers, so the halt note is read while the reflection runs.
+	shuttle.DuringRun = func() {
+		f.record("reflect")
+		matches, _ := filepath.Glob(filepath.Join(frictionDir, "loom-halt*.md"))
+		for _, path := range matches {
+			if b, err := os.ReadFile(path); err == nil {
+				f.mu.Lock()
+				f.haltNote = string(b)
+				f.mu.Unlock()
+			}
+		}
+	}
+	return f
 }
+
+// tierOneOn turns the selfreport knob on, so Tier 1 anomaly filing runs.
+func (f *haltFixture) tierOneOn() {
+	f.c.cfg.Selfreport = true
+}
+
+// requireFiledBeforeReflection fails unless the event log is one filing followed by one reflection.
+func (f *haltFixture) requireFiledBeforeReflection(t *testing.T, title string) {
+	t.Helper()
+
+	events := f.eventLog()
+	if len(events) != 2 || !strings.HasPrefix(events[0], "file: ") || !strings.Contains(events[0], title) || events[1] != "reflect" {
+		t.Errorf("event log = %q; want the filing of %q, then the reflection", events, title)
+	}
+}
+
+// haltNoteText returns the halt note's text as the latest reflection saw it.
+func (f *haltFixture) haltNoteText(t *testing.T) string {
+	t.Helper()
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.haltNote == "" {
+		t.Fatal("no reflection saw a halt note")
+	}
+	return f.haltNote
+}
+
+const tierOneLine = "Tier 1 anomaly filing files the halt event itself; file only the lyx problems behind it."
 
 // seedStatus seeds the status file and sets its producer, state and error.
 func (f *haltFixture) seedStatus(t *testing.T, producer string, st shedengine.State, errText string) {
@@ -329,11 +433,18 @@ func (f *haltFixture) stepEnvelopeOver(t *testing.T, p shedengine.ShedProducer) 
 	t.Helper()
 
 	f.seedStatus(t, loomshed.NameWebster, shedengine.StateRunning, "")
+	return f.stepOver(t, nil, []shedengine.ProducerDef{{Name: loomshed.NameWebster, Producer: p}})
+}
+
+// stepOver drives the generic step body over f.c.specFor("step") against the status file as it stands, with PreStep set to preStep (nil clears it) and BuildShed replaced by a shed over producers.
+func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (string, error), producers []shedengine.ProducerDef) (map[string]any, int) {
+	t.Helper()
+
 	spec := f.c.specFor("step")
-	spec.Hooks.PreStep = nil
+	spec.Hooks.PreStep = preStep
 	spec.BuildShed = func() (*shedengine.Shed, error) {
 		return &shedengine.Shed{
-			Producers:      []shedengine.ProducerDef{{Name: loomshed.NameWebster, Producer: p}},
+			Producers:      producers,
 			StatusPath:     f.c.shedPaths.StatusPath,
 			LockPath:       f.c.shedPaths.LockPath,
 			StatusLockPath: f.c.shedPaths.StatusLockPath,
@@ -412,5 +523,187 @@ func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
 	}
 	if len(f.shuttle.Specs) != 1 {
 		t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	}
+}
+
+// stuckProducer and failingProducer are the two producers whose halts Tier 1 files.
+var (
+	stuckProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+	})
+	failingProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return "", shedengine.OutputPointer{}, errors.New("producer exploded")
+	})
+	doneProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return shedengine.Done, shedengine.OutputPointer{}, nil
+	})
+)
+
+func TestStep_TierOne_StuckProducerFilesEscalationBeforeReflection(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.tierOneOn()
+
+	envelope, _ := f.stepEnvelopeOver(t, stuckProducer)
+
+	f.requireFiledOnce(t, "escalation-to-human")
+	if title := f.filedTitles()[0]; !strings.Contains(title, loomshed.NameWebster) {
+		t.Errorf("filed title = %q; want it to name %q", title, loomshed.NameWebster)
+	}
+	f.requireFiledBeforeReflection(t, "escalation-to-human")
+	if envelope["friction"] != frictionengine.StatusReflected {
+		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
+	}
+	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
+		t.Errorf("halt note %q does not carry the Tier 1 line", got)
+	}
+
+	f.stepOver(t, nil, []shedengine.ProducerDef{{Name: loomshed.NameWebster, Producer: stuckProducer}})
+	f.requireFiledOnce(t, "escalation-to-human")
+}
+
+func TestStep_TierOne_ProducerErrorFilesHardFailureBeforeReflection(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.tierOneOn()
+
+	f.stepEnvelopeOver(t, failingProducer)
+
+	f.requireFiledOnce(t, "producer-hard-failure")
+	f.requireFiledBeforeReflection(t, "producer-hard-failure")
+}
+
+func TestLoomAfterStep_TierOne_CrashResumeFilesAndWritesNoNote(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.tierOneOn()
+	f.seedStatus(t, "Discussion-Write", shedengine.StateRunning, "")
+	f.c.entryObservation = crashResumeEntry()
+	res := shedengine.StepResult{State: shedengine.StateRunning}
+
+	if got := f.c.loomAfterStep(context.Background(), res, nil); got != frictionengine.StatusSkipped {
+		t.Errorf("loomAfterStep() = %q; want %q", got, frictionengine.StatusSkipped)
+	}
+
+	f.requireFiledOnce(t, "crash-resume")
+	f.requireNoNotesNoSpawn(t)
+}
+
+// handoffSteps runs two generic steps over a shed whose first row returns Done and leaves the run running, with the status seeded once and PreStep taking the entry observation as the real hook does.
+// beforeSecond runs between the two steps.
+func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
+	t.Helper()
+
+	producers := []shedengine.ProducerDef{
+		{Name: "Row-A", Producer: doneProducer, OnDone: "Row-B"},
+		{Name: "Row-B", Producer: doneProducer},
+	}
+	preStep := func(context.Context) (string, error) {
+		f.c.observeStepEntry()
+		return "", nil
+	}
+
+	f.seedStatus(t, "Row-A", shedengine.StateRunning, "")
+	f.stepOver(t, preStep, producers)
+	beforeSecond()
+	f.stepOver(t, preStep, producers)
+}
+
+func TestStep_TierOne_HandoffMarkerSuppressesCrashResume(t *testing.T) {
+	t.Parallel()
+
+	t.Run("MarkerKept", func(t *testing.T) {
+		t.Parallel()
+
+		f := newHaltFixture(t)
+		f.tierOneOn()
+
+		f.handoffSteps(t, func() {})
+
+		f.requireNothingFiled(t)
+	})
+
+	t.Run("MarkerRemoved", func(t *testing.T) {
+		t.Parallel()
+
+		f := newHaltFixture(t)
+		f.tierOneOn()
+
+		f.handoffSteps(t, func() {
+			if err := os.Remove(loomengine.LoomStepHandoff(f.c.location)); err != nil {
+				t.Fatalf("Remove(step handoff marker) = %v; want nil", err)
+			}
+		})
+
+		f.requireFiledOnce(t, "crash-resume")
+	})
+}
+
+func TestLoomAfterStep_TierOne_SkipsFileNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		setup func(f *haltFixture) context.Context
+		err   error
+	}{
+		{"Busy", func(f *haltFixture) context.Context { return context.Background() }, fmt.Errorf("%w: lock", shedengine.ErrShedBusy)},
+		{"KnobOff", func(f *haltFixture) context.Context { f.c.cfg.Selfreport = false; return context.Background() }, nil},
+		{"CancelledNoCrash", func(f *haltFixture) context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newHaltFixture(t)
+			f.tierOneOn()
+			f.seedStatus(t, loomshed.NameWebster, shedengine.StateBlocked, "stuck")
+			ctx := tt.setup(f)
+
+			f.c.loomAfterStep(ctx, shedengine.StepResult{State: shedengine.StatePaused}, tt.err)
+
+			f.requireNothingFiled(t)
+		})
+	}
+}
+
+func TestWriteHaltNote_TierOneLineFollowsTheKnob(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "stuck"}
+
+	f.c.loomAfterStep(context.Background(), res, nil)
+	if got := f.haltNoteText(t); strings.Contains(got, "Tier 1") {
+		t.Errorf("halt note with the knob off = %q; want no Tier 1 line", got)
+	}
+
+	f.tierOneOn()
+	f.c.loomAfterStep(context.Background(), res, nil)
+	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
+		t.Errorf("halt note with the knob on = %q; want the Tier 1 line", got)
+	}
+}
+
+func TestLoomPostRun_TierOne_BlockedFilesThroughTheSeam(t *testing.T) {
+	t.Parallel()
+
+	f := newHaltFixture(t)
+	f.tierOneOn()
+	f.seedStatus(t, loomshed.NameWebster, shedengine.StateBlocked, "stuck")
+	res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
+
+	f.c.loomPostRun(context.Background(), res, nil)
+
+	f.requireFiledOnce(t, "escalation-to-human")
+	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
+		t.Errorf("halt note %q does not carry the Tier 1 line", got)
 	}
 }
