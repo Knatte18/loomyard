@@ -44,7 +44,7 @@ type Request struct {
 
 // SessionResult reports EndSession's outcome.
 type SessionResult struct {
-	// Ended is true when a session was ended.
+	// Ended is true when the session end ran: Engine.Down on a present task worktree, which reports true whether or not a session existed, or a session found and reaped by name on a gone one.
 	Ended bool
 	// AbandonedSession names a foreign session reed's Down reported and did not kill; empty in every ordinary teardown.
 	AbandonedSession string
