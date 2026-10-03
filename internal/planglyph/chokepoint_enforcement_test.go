@@ -11,12 +11,15 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
+
+// planglyphScanMinFiles is the plausible floor for how many production .go files internal/planglyph
+// holds; below it a scan has read the wrong directory.
+const planglyphScanMinFiles = 5
 
 // chokepointGuardedFuncs names the one function each pinned selector must be called from.
 var chokepointGuardedFuncs = map[string]string{
@@ -69,50 +72,21 @@ func chokepointCallSitesIn(astFile *ast.File) []string {
 
 // TestChokepointCallSites_PinnedToTheirGuardedFunctions verifies that every planglyph production
 // .go file's Resolve call sits inside resolveTargets and every quarry.Name call sits inside
-// CanonicalizeHandles. It spawns no process, so it carries no build tag, and resolves the repo
-// root from runtime.Caller(0) exactly as the cliwire precedent
-// (internal/cliwire/bannedecl_enforcement_test.go) does. _test.go files are skipped: the invariant
-// is about production wiring, not test helpers.
+// CanonicalizeHandles. It spawns no process, so it carries no build tag. _test.go files are
+// skipped: the invariant is about production wiring, not test helpers.
 func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine planglyph source directory location")
-	}
-	planglyphDir := filepath.Dir(thisFile)
-
 	var failures []string
 
-	err := filepath.WalkDir(planglyphDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, perr := parser.ParseFile(fset, path, nil, 0)
-		if perr != nil {
-			t.Fatalf("parse %s: %v", path, perr)
-		}
-
-		relPath, _ := filepath.Rel(planglyphDir, path)
-		for _, hit := range chokepointCallSitesIn(astFile) {
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/planglyph"}}, func(f *scankit.File) {
+		for _, hit := range chokepointCallSitesIn(f.AST(t, 0)) {
 			parts := strings.SplitN(hit, ": ", 2)
 			sel, enclosing := parts[0], parts[1]
 			if enclosing != chokepointGuardedFuncs[sel] {
-				failures = append(failures, relPath+": "+hit)
+				failures = append(failures, f.Rel+": "+hit)
 			}
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("walk %s: %v", planglyphDir, err)
-	}
+	scankit.RequireFloor(t, scanned, planglyphScanMinFiles, "planglyph chokepoint scan")
 
 	if len(failures) > 0 {
 		t.Errorf("planglyph chokepoint invariant violated: %v -- route a new resolve call through "+

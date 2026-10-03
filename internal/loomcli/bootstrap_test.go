@@ -7,10 +7,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table
@@ -596,7 +595,11 @@ func scanFileForDriverFieldReads(path string) ([]driverFieldRead, error) {
 		// catches that.
 		return nil, nil //nolint:nilerr
 	}
+	return driverFieldReadsIn(fset, astFile), nil
+}
 
+// driverFieldReadsIn is scanFileForDriverFieldReads' matcher over an already-parsed file.
+func driverFieldReadsIn(fset *token.FileSet, astFile *ast.File) []driverFieldRead {
 	seedTyped := map[string]bool{}
 	ast.Inspect(astFile, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -651,54 +654,33 @@ func scanFileForDriverFieldReads(path string) ([]driverFieldRead, error) {
 			return true
 		})
 	}
-	return found, nil
+	return found
 }
 
-// scanRepoForDriverFieldReads walks every production (non-test) .go file under repoRoot, skipping
-// .git, testdata, and internal/shedrun (the sole legitimate parser and writer of the Seed struct, per
-// the Shed Run-Directory Invariant), and returns every driver-field read scanFileForDriverFieldReads
-// finds, each stamped with its repo-root-relative, slash-normalized path.
-func scanRepoForDriverFieldReads(t *testing.T, repoRoot string) []driverFieldRead {
+// driverScanMinFiles is the plausible floor for how many production .go files the module holds
+// outside internal/shedrun; below it the walk has read the wrong tree.
+const driverScanMinFiles = 100
+
+// scanRepoForDriverFieldReads walks every production (non-test) .go file in the module, skipping
+// internal/shedrun (the sole legitimate parser and writer of the Seed struct, per the Shed
+// Run-Directory Invariant), and returns every driver-field read driverFieldReadsIn finds, each
+// stamped with its repo-root-relative, slash-normalized path, together with the count of files
+// scanned.
+func scanRepoForDriverFieldReads(t *testing.T) ([]driverFieldRead, int) {
 	t.Helper()
 	var all []driverFieldRead
 
-	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+		if strings.HasPrefix(f.Rel, "internal/shedrun/") {
+			return
 		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
+		astFile := f.AST(t, 0)
+		for _, r := range driverFieldReadsIn(f.FileSet(), astFile) {
+			r.relPath = f.Rel
+			all = append(all, r)
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(repoRoot, path)
-		if relErr != nil {
-			return relErr
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == "internal/shedrun" || strings.HasPrefix(rel, "internal/shedrun/") {
-			return nil
-		}
-
-		found, scanErr := scanFileForDriverFieldReads(path)
-		if scanErr != nil {
-			return scanErr
-		}
-		for _, f := range found {
-			f.relPath = rel
-			all = append(all, f)
-		}
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("scan repo for driver field reads: %v", err)
-	}
-	return all
+	return all, scanned
 }
 
 // driverFieldReadCarveOuts are the production functions, outside internal/loomcli and
@@ -715,8 +697,11 @@ func scanRepoForDriverFieldReads(t *testing.T, repoRoot string) []driverFieldRea
 // restore the defect it was added for: silently discarding a typed --driver against a seeded run.
 //
 // Every other new entry needs the same explicit justification here, next to the one it joins.
-var driverFieldReadCarveOuts = map[string]bool{
-	"internal/battencli/arm.go:refuseAdoptedSeed": true,
+var driverFieldReadCarveOuts = []scankit.Entry{
+	{
+		Key: "internal/battencli/arm.go:refuseAdoptedSeed",
+		Why: "compares a typed --driver against the run's recorded one and refuses on the envelope; selects no spawn and gates no behaviour",
+	},
 }
 
 // TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField is the Driver Choice
@@ -726,15 +711,10 @@ var driverFieldReadCarveOuts = map[string]bool{
 // fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
 // verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine test file location")
-	}
-	// Three levels up from internal/loomcli/bootstrap_test.go -> repo root.
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	found, scanned := scanRepoForDriverFieldReads(t)
+	scankit.RequireFloor(t, scanned, driverScanMinFiles, "driver-field-read scan")
 
-	found := scanRepoForDriverFieldReads(t, repoRoot)
-
+	carveOuts := scankit.NewAllowlist(driverFieldReadCarveOuts)
 	var outside []driverFieldRead
 	sawLoomcli := false
 	for _, f := range found {
@@ -742,11 +722,12 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 			sawLoomcli = true
 			continue
 		}
-		if driverFieldReadCarveOuts[f.relPath+":"+f.function] {
+		if carveOuts.Allowed(f.relPath + ":" + f.function) {
 			continue
 		}
 		outside = append(outside, f)
 	}
+	carveOuts.RequireNoStale(t)
 
 	if len(outside) > 0 {
 		locs := make([]string, 0, len(outside))

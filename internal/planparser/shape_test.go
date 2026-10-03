@@ -17,21 +17,38 @@
 // so a refGate constant with NO ledger entry contributed no iteration and passed, leaving lookup to
 // panic at runtime inside a live CLI verb (crucible round opus5-high-r1, F1).
 //
-// The AST-parsing tests follow the idiom of internal/cliwire/bannedecl_enforcement_test.go: stdlib
-// go/parser only, repo root resolved from runtime.Caller(0), production files only (this file
-// itself is a _test.go file and is never parsed as a scan target).
+// The AST-parsing tests read production files through scankit, found from the module root
+// (this file itself is a _test.go file and is never parsed as a scan target).
 
 package planparser
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
+
+// planparserProdFile parses the named production file directly under internal/planparser through
+// scankit and returns its AST with its module-relative path.
+func planparserProdFile(t *testing.T, name string) (*ast.File, string) {
+	t.Helper()
+
+	want := "internal/planparser/" + name
+	var astFile *ast.File
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/planparser"}, Shallow: true}, func(f *scankit.File) {
+		if f.Rel == want {
+			astFile = f.AST(t, 0)
+		}
+	})
+	scankit.RequireFloor(t, scanned, 1, "planparser production-file lookup")
+	if astFile == nil {
+		t.Fatalf("%s not found", want)
+	}
+	return astFile, want
+}
 
 // refKindConstNamesInDeclarationOrder parses internal/planparser/classify.go and returns the
 // identifiers declared in its refKind-typed const block, in declaration order -- the same order
@@ -39,17 +56,7 @@ import (
 func refKindConstNamesInDeclarationOrder(t *testing.T) []string {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine planparser source directory location")
-	}
-	classifyPath := filepath.Join(filepath.Dir(thisFile), "classify.go")
-
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, classifyPath, nil, 0)
-	if err != nil {
-		t.Fatalf("parse %s: %v", classifyPath, err)
-	}
+	astFile, _ := planparserProdFile(t, "classify.go")
 
 	var names []string
 	for _, decl := range astFile.Decls {
@@ -144,17 +151,7 @@ func TestRefKindEnumMatchesAllRefKinds(t *testing.T) {
 func refGateValuesDeclared(t *testing.T) []refGate {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine planparser source directory location")
-	}
-	shapePath := filepath.Join(filepath.Dir(thisFile), "shape.go")
-
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, shapePath, nil, 0)
-	if err != nil {
-		t.Fatalf("parse %s: %v", shapePath, err)
-	}
+	astFile, shapePath := planparserProdFile(t, "shape.go")
 
 	var gates []refGate
 	for _, decl := range astFile.Decls {

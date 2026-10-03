@@ -5,11 +5,6 @@ package shedcli
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"io/fs"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -17,7 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
+
+// tableScanMinFiles is the plausible floor for how many production .go files internal/shedcli holds.
+const tableScanMinFiles = 3
 
 // allGenericVerbs names the four generic subcommands shedverbs.Verbs returns, in the order its own
 // doc comment declares them. It is hardcoded here rather than derived by building a throwaway
@@ -171,53 +170,24 @@ func TestLookup_UnknownNameNamesTheAvailableRecipes(t *testing.T) {
 // Register-shaped function exists, mirroring internal/shedrecipe's own registry shape and
 // internal/shedverbs' own seam test style.
 func TestTable_NoInitNoRegisterSeam(t *testing.T) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine shedcli source directory location")
-	}
-	pkgDir := filepath.Dir(file)
-
 	var initFound []string
 	var registerFound []string
 
-	err := filepath.WalkDir(pkgDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-
-		fset := token.NewFileSet()
-		astFile, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Logf("warning: failed to parse %s: %v", path, err)
-			return nil
-		}
-
-		relPath, _ := filepath.Rel(pkgDir, path)
-
-		for _, decl := range astFile.Decls {
+	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedcli"}}, func(f *scankit.File) {
+		for _, decl := range f.AST(t, 0).Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Recv != nil {
 				continue
 			}
 			if fn.Name.Name == "init" {
-				initFound = append(initFound, relPath)
+				initFound = append(initFound, f.Rel)
 			}
 			if strings.HasPrefix(fn.Name.Name, "Register") && fn.Name.IsExported() {
-				registerFound = append(registerFound, relPath+": "+fn.Name.Name)
+				registerFound = append(registerFound, f.Rel+": "+fn.Name.Name)
 			}
 		}
-
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("failed to walk shedcli directory: %v", err)
-	}
+	scankit.RequireFloor(t, scanned, tableScanMinFiles, "shedcli table scan")
 
 	if len(initFound) > 0 {
 		sort.Strings(initFound)
