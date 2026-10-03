@@ -430,7 +430,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	t.Run("CurrentSHA", func(t *testing.T) {
 		oracleGot, oracleErr := gitoracle.CurrentSHA(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
+			t.Fatalf("gitoracle.CurrentSHA() error = %v", oracleErr)
 		}
 		implGot, implErr := repo.CurrentSHA()
 		if implErr != nil {
@@ -447,7 +447,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	t.Run("CurrentBranch_OnBranch", func(t *testing.T) {
 		oracleGot, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() error = %v", oracleErr)
 		}
 		implGot, implErr := repo.CurrentBranch()
 		if implErr != nil {
@@ -475,7 +475,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 	t.Run("ChangedFilesSince", func(t *testing.T) {
 		oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, fx.sharedSHA)
 		if oracleErr != nil {
-			t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+			t.Fatalf("gitoracle.ChangedFilesSince() error = %v", oracleErr)
 		}
 		implFiles, implErr := repo.ChangedFilesSince(fx.sharedSHA)
 		if implErr != nil {

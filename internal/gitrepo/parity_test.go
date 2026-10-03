@@ -182,7 +182,7 @@ func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
 
 	oracleSHA, oracleErr := gitoracle.CurrentSHA(t, dir)
 	if oracleErr != nil {
-		t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
+		t.Fatalf("gitoracle.CurrentSHA() error = %v", oracleErr)
 	}
 	implSHA, implErr := repo.CurrentSHA()
 	if implErr != nil {
@@ -282,10 +282,10 @@ func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 
 	oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, since)
 	if oracleErr != nil {
-		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+		t.Fatalf("gitoracle.ChangedFilesSince() error = %v", oracleErr)
 	}
 	if !slices.Contains(oracleFiles, filename) {
-		t.Fatalf("oracleChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
+		t.Fatalf("gitoracle.ChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
 	}
 
 	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
@@ -308,7 +308,7 @@ func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 
 	oracleFiles, oracleErr := gitoracle.ChangedFilesSince(t, dir, since)
 	if oracleErr != nil {
-		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+		t.Fatalf("gitoracle.ChangedFilesSince() error = %v", oracleErr)
 	}
 	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
 	if implErr != nil {
@@ -352,7 +352,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 
 		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() error = %v", oracleErr)
 		}
 		implBranch, implErr := repo.CurrentBranch()
 		if implErr != nil {
@@ -387,7 +387,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 
 		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() on unborn HEAD error = %v, want nil", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() on unborn HEAD error = %v, want nil", oracleErr)
 		}
 		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
 		if implErr != nil {
@@ -410,7 +410,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 
 		oracleBranch, oracleErr := gitoracle.CurrentBranch(t, dir)
 		if oracleErr != nil {
-			t.Fatalf("oracleCurrentBranch() on orphan branch error = %v, want nil", oracleErr)
+			t.Fatalf("gitoracle.CurrentBranch() on orphan branch error = %v, want nil", oracleErr)
 		}
 		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
 		if implErr != nil {
