@@ -15,11 +15,11 @@
 // tests; seedPersistentPreRunFixture and its three tests are the deliberate
 // exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
 // WEFT_SKIP_GIT=1 is set on every test that reaches a
-// fabricSync call, so no real weft sibling worktree is needed; the one test
+// fabricSync call, so no real records sibling worktree is needed; the one test
 // that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves
 // WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or
 // fabricengine error text -- the failure a reached fabricSync would stamp
-// in this weft-less geometry.
+// in this records-less geometry.
 
 package webstercli
 
@@ -181,13 +181,13 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 // resolvePersistentPreRun doc comment makes: the fabric-handle opener is built as a closure and
 // stored on c, but is never itself called during pre-run wiring.
 // The fixture carries a hub-level board directory (so preflight.HubPresent selects hub mode) but no
-// weft sibling worktree at all -- fabricengine.Open stat-checks that sibling, so an eager call here
+// records sibling worktree at all -- fabricengine.Open stat-checks that sibling, so an eager call here
 // would stat-fail and surface as a non-nil error from the "status" verb below (one of the three
 // healthy-but-unwired locations the doc comment names). Reaching exit 0 is therefore itself the
 // behavioural half of the proof; c.openFabric != nil is the structural half.
 func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	container := t.TempDir()
-	worktree := filepath.Join(container, "warp")
+	worktree := filepath.Join(container, "pair")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
 		t.Fatalf("mkdir worktree: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	gitkit.Git(t, worktree, "config", "user.name", "Test User")
 	gitkit.Git(t, worktree, "config", "user.email", "test@example.com")
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
-	// A hub-level board directory -- with no weft sibling anywhere near it -- is what selects hub
+	// A hub-level board directory -- with no records sibling anywhere near it -- is what selects hub
 	// mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats
 	// <hub>/_board/_lyx.
 	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lyx"), 0o755); err != nil {
@@ -213,7 +213,7 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	exitCode := clihelp.ExecuteIn(parent, worktree, &out, []string{"status"})
 
 	if exitCode != 0 {
-		t.Fatalf("status = %d; want 0 (an eager fabricengine.Open would stat-fail on the weft-less fixture worktree), output: %s", exitCode, out.String())
+		t.Fatalf("status = %d; want 0 (an eager fabricengine.Open would stat-fail on the records-less fixture worktree), output: %s", exitCode, out.String())
 	}
 	if c.openFabric == nil {
 		t.Fatal("c.openFabric = nil after PersistentPreRunE; want a wired opener closure")
@@ -696,7 +696,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 // yet), proving the running envelope touches neither status nor digest fields;
 // the second call ATTACHES to the already-spawned strand and, once the report has landed in
 // between, classifies terminal, proving the digest envelope and that state.json/the report were
-// both weft-committed by then.
+// both committed to the records side by then.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -767,14 +767,14 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 }
 
-// TestRunCmd_ErrRunBusySkipsWeftBackstop proves the ErrRunBusy refusal never reaches Master's own
+// TestRunCmd_ErrRunBusySkipsRecordsBackstop proves the ErrRunBusy refusal never reaches Master's own
 // spawn and never runs the exit-time fabric backstop -- WEFT_SKIP_GIT is deliberately left UNSET here
-// so that an accidental fabricSync call would fail loudly: with no weft sibling on disk,
+// so that an accidental fabricSync call would fail loudly: with no records sibling on disk,
 // fabricengine.Open's stat validation errors and run's envelope would carry "fabric sync failed" plus
 // fabricengine's missing-path text, both asserted absent below. (The pre-cutover evidence --
-// weftengine creating the weft lock dir on disk -- no longer exists: fabric creates nothing before
+// the retired records engine creating its lock dir on disk -- no longer exists: fabric creates nothing before
 // validation, so output text is the reachable-fabricSync signal now.)
-func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
+func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	fx := newVerbsFixture(t)
 	starter := &verbsFakeMasterStarter{}
 	fx.CLI.masterStarter = starter
@@ -800,10 +800,10 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	if starter.called {
 		t.Error("MasterStarter.StartMaster was reached while run.lock was held; want zero calls")
 	}
-	// A reached fabricSync in this weft-less geometry fails at
+	// A reached fabricSync in this records-less geometry fails at
 	// fabricengine.Open and stamps both strings below into the envelope --
 	// their absence is the post-cutover proof the backstop never ran. (The
-	// old proof, weftengine's on-disk lock-dir creation, no longer exists:
+	// old proof, the retired records engine's on-disk lock-dir creation, no longer exists:
 	// fabric creates nothing before its path validation.)
 	if strings.Contains(out.String(), "fabric sync failed") {
 		t.Errorf("output mentions a fabric sync failure; ErrRunBusy must skip the fabric backstop entirely: %q", out.String())

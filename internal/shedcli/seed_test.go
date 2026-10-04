@@ -20,7 +20,7 @@ import (
 // otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate
 // with nothing to gate).
 func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || found {
 		t.Fatalf("precondition: ReadSeed = (found=%v, err=%v); want (false, nil)", found, err)
@@ -71,7 +71,7 @@ func TestResolveSeedDriver(t *testing.T) {
 // TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames asserts an unresolvable --recipe value
 // refuses via this package's own lookup, naming the available recipes.
 func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	_, err := writeSeed(loc, "some-slug", "bogus-recipe", "", nil)
 	if err == nil {
@@ -99,7 +99,7 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 	}
 
 	t.Run("RefusingRuleWritesNothing", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		_, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, "", nil)
 		if !errors.Is(err, refusal) {
 			t.Fatalf("writeSeed(batten) = %v; want the recipe's own refusal", err)
@@ -110,7 +110,7 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 	})
 
 	t.Run("NilRuleWrites", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, "", nil); err != nil {
 			t.Fatalf("writeSeed(loom) = %v; want nil", err)
 		}
@@ -135,7 +135,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	}
 
 	t.Run("EmptyBootstrapVerbRefuses", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		_, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, shedrun.DriverLLM, nil)
 		if err == nil {
 			t.Fatal("writeSeed(driver=llm) = nil; want a refusal naming the missing bootstrap verb")
@@ -152,14 +152,14 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	})
 
 	t.Run("NonEmptyBootstrapVerbAccepts", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		if _, err := writeSeed(loc, "some-slug", shedrun.RecipeLoom, shedrun.DriverLLM, nil); err != nil {
 			t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
 		}
 	})
 
 	t.Run("EmptyBootstrapVerbDefaultsToGo", func(t *testing.T) {
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 		driver, err := writeSeed(loc, "some-slug", shedrun.RecipeBatten, "", nil)
 		if err != nil {
 			t.Fatalf("writeSeed(no driver) = %v; want nil", err)
@@ -173,7 +173,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 // TestWriteSeed_LLMDriverOnTheRealTableRoundTrips covers the real table: seeding the loom recipe
 // with the llm driver succeeds, and the seed reads back carrying that value.
 func TestWriteSeed_LLMDriverOnTheRealTableRoundTrips(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverLLM, nil); err != nil {
 		t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
@@ -228,7 +228,7 @@ func TestParseSeedParams_WellFormedEntriesParse(t *testing.T) {
 // TestWriteSeed_IdempotentAgainstAnIdenticalSeed asserts calling writeSeed twice with the identical
 // seed is a no-op the second time.
 func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
 
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
@@ -242,7 +242,7 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
 // TestWriteSeed_RefusesADisagreeingSeed asserts writeSeed refuses when an existing seed disagrees
 // with the incoming one.
 func TestWriteSeed_RefusesADisagreeingSeed(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, nil); err != nil {
 		t.Fatalf("writeSeed (first) = %v; want nil", err)

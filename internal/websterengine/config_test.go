@@ -2,7 +2,7 @@
 // overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
 // absent _lyx/ degrades to the embedded template,
 // seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.LoadOrTemplate
+// t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate
 // only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays
 // untagged and spawn-free (Test Tier Purity Invariant).
 

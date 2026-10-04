@@ -25,10 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newWarpWeftPair builds a hub with "warp" and "warp-weft" git repos and returns the layout.
-func newWarpWeftPair(t *testing.T) (*lyxcwd.Location, string) {
+// newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
+func newPairFixture(t *testing.T) (*lyxcwd.Location, string) {
 	t.Helper()
-	return newWarpWeftPairAt(t, ".")
+	return newPairFixtureAt(t, ".")
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml.
@@ -46,9 +46,9 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 }
 
 // seedFabricAnchor records relPath as the .lyx-anchor marker under hub's
-// board directory, so Fabric.Commit's own lyxcwd.ResolveWorktree(warpPath)
-// call resolves l.AnchorRel to relPath instead of falling back to a
-// cwd-derived "." -- Commit re-resolves geometry from f.warpPath itself
+// board directory, so Fabric.Commit's own lyxcwd.ResolveWorktree call on the code path
+// resolves l.AnchorRel to relPath instead of falling back to a
+// cwd-derived "." -- Commit re-resolves geometry from the fabric's own code path
 // rather than trusting the *lyxcwd.Location fabricSync already holds, so
 // a nested-AnchorRel fixture must record the anchor for real git to classify
 // correctly.
@@ -65,10 +65,10 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	}
 }
 
-// newWarpWeftPairAt is newWarpWeftPair with an explicit layout.AnchorRel: the
-// weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the warp's own
+// newPairFixtureAt is newPairFixture with an explicit layout.AnchorRel: the
+// records-side _lyx is seeded at <records>/<relPath>/_lyx, mirroring the code side's own
 // repo-subpath geometry, and the returned layout's AnchorPath() points at the
-// matching warp subdirectory. Alongside state.json it seeds the three machine-local
+// matching code subdirectory. Alongside state.json it seeds the three machine-local
 // artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the
 // mirrored subpath under ".lyx", outside the committed "_lyx" pathspec, so a caller can
 // assert on what the commit did and did not pick up. It also seeds a sibling module's
@@ -76,13 +76,18 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // carrying that module's own durable state.json under "_lyx" plus its pause flag under
 // ".lyx", so a caller can assert that a webster commit keeps the sibling module's runtime
 // state out while still carrying its durable state.
-func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
+func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := t.TempDir()
-	warp := filepath.Join(hub, "warp")
-	weft := filepath.Join(hub, "warp-weft")
-	for _, dir := range []string{warp, weft} {
+	layout := &lyxcwd.Location{
+		HubPath:      hub,
+		WorktreeName: "pair",
+		AnchorRel:    relPath,
+	}
+	code := layout.WorktreePath()
+	records := fabricengine.WeftWorktree(layout)
+	for _, dir := range []string{code, records} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
@@ -90,23 +95,23 @@ func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		gitkit.Git(t, dir, "config", "user.name", "Test User")
 		gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 	}
-	gitkit.CommitFile(t, warp, "base.txt", "base", "warp base commit")
-	gitkit.CommitFile(t, weft, "base.txt", "base", "weft base commit")
+	gitkit.CommitFile(t, code, "base.txt", "base", "code base commit")
+	gitkit.CommitFile(t, records, "base.txt", "base", "records base commit")
 
-	// Uncommitted changes under the webster pathspec, so CommitWeft has
+	// Uncommitted changes under the webster pathspec, so the records commit has
 	// something real to commit.
-	websterDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "webster")
+	websterDir := filepath.Join(records, relPath, lyxdirs.LyxDirName, "webster")
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft _lyx: %v", err)
+		t.Fatalf("mkdir records _lyx: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write weft state.json: %v", err)
+		t.Fatalf("write records state.json: %v", err)
 	}
 
 	// The three machine-local artifacts, mirrored under ".lyx" -- outside the committed pathspec.
-	websterScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "webster")
+	websterScratchDir := filepath.Join(records, relPath, lyxdirs.DotLyxDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterScratchDir, "prompts"), 0o755); err != nil {
-		t.Fatalf("mkdir weft .lyx: %v", err)
+		t.Fatalf("mkdir records .lyx: %v", err)
 	}
 	for name, content := range map[string]string{
 		"mutate.lock":                    "lock",
@@ -114,51 +119,47 @@ func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		filepath.Join("prompts", "1.md"): "rendered fork prompt",
 	} {
 		if err := os.WriteFile(filepath.Join(websterScratchDir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write weft %s: %v", name, err)
+			t.Fatalf("write records %s: %v", name, err)
 		}
 	}
 
 	// The sibling loom module's own tree, in the same shared geometry: its
 	// durable state must still ride a webster commit, its run lock must not.
-	loomDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "loom")
+	loomDir := filepath.Join(records, relPath, lyxdirs.LyxDirName, "loom")
 	if err := os.MkdirAll(loomDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft loom dir: %v", err)
+		t.Fatalf("mkdir records loom dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(loomDir, "status.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write weft loom status.json: %v", err)
+		t.Fatalf("write records loom status.json: %v", err)
 	}
 
-	loomScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "loom")
+	loomScratchDir := filepath.Join(records, relPath, lyxdirs.DotLyxDirName, "loom")
 	if err := os.MkdirAll(loomScratchDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft loom scratch dir: %v", err)
+		t.Fatalf("mkdir records loom scratch dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(loomScratchDir, "run.lock"), []byte("locked"), 0o644); err != nil {
-		t.Fatalf("write weft loom run lock: %v", err)
+		t.Fatalf("write records loom run lock: %v", err)
 	}
 
 	seedRepoWideFabricConfig(t, hub)
 	seedFabricAnchor(t, hub, filepath.ToSlash(relPath))
 
-	return &lyxcwd.Location{
-		HubPath:      hub,
-		WorktreeName: filepath.Base(warp),
-		AnchorRel:    relPath,
-	}, weft
+	return layout, records
 }
 
 // TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error
 // branch passes committed through instead of forcing it to false: with a directory squatting on the
-// correspondence index path, the weft commit itself lands but RecordCorrespondence fails, and
+// correspondence index path, the records commit itself lands but RecordCorrespondence fails, and
 // fabricSync must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
 // caller gets to know that alongside the error.
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
-	layout, weft := newWarpWeftPair(t)
+	layout, records := newPairFixture(t)
 
 	// A directory where RecordCorrespondence expects its index file makes
 	// the record step fail after the commit has already landed.
-	if err := os.MkdirAll(filepath.Join(weft, ".git", "fabric-corrindex.json"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(records, ".git", "fabric-corrindex.json"), 0o755); err != nil {
 		t.Fatalf("squat corrindex path: %v", err)
 	}
 
@@ -174,9 +175,9 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 
 	// The commit must genuinely exist with the webster message stem -- the
 	// committed=true report above is about this commit, not a phantom.
-	subject := strings.TrimSpace(gitkit.Git(t, weft, "log", "-1", "--format=%s"))
+	subject := strings.TrimSpace(gitkit.Git(t, records, "log", "-1", "--format=%s"))
 	if subject != "webster: corr-fail probe" {
-		t.Errorf("weft HEAD subject = %q; want %q", subject, "webster: corr-fail probe")
+		t.Errorf("records HEAD subject = %q; want %q", subject, "webster: corr-fail probe")
 	}
 }
 
@@ -192,7 +193,7 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
 // ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
 // happening to be omitted from this one commit.
-// WEFT_SKIP_PUSH is set because the scratch weft repo has no remote;
+// WEFT_SKIP_PUSH is set because the scratch records repo has no remote;
 // the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
@@ -209,7 +210,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "")
 			t.Setenv("WEFT_SKIP_PUSH", "1")
-			layout, weft := newWarpWeftPairAt(t, tt.relPath)
+			layout, records := newPairFixtureAt(t, tt.relPath)
 			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
 			committed, err := fabricSync(open, layout.AnchorRel, "depth probe")
@@ -229,7 +230,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 				base = prefix + lyxdirs.LyxDirName
 				scratchBase = prefix + lyxdirs.DotLyxDirName
 			}
-			committedFiles := strings.Fields(gitkit.Git(t, weft, "show", "--name-only", "--format=", "HEAD"))
+			committedFiles := strings.Fields(gitkit.Git(t, records, "show", "--name-only", "--format=", "HEAD"))
 
 			// Loom's durable status.json rides a webster commit (the two
 			// modules share one _lyx); only the machine-local artifacts of
@@ -246,20 +247,20 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			for _, present := range wantPresent {
 				if !containsString(committedFiles, present) {
-					t.Errorf("weft commit at RelPath %q = %v; want it to contain %q", tt.relPath, committedFiles, present)
+					t.Errorf("records commit at RelPath %q = %v; want it to contain %q", tt.relPath, committedFiles, present)
 				}
 			}
 			for _, absent := range wantAbsent {
 				if containsString(committedFiles, absent) {
-					t.Errorf("weft commit at RelPath %q = %v; want it to EXCLUDE the machine-local %q", tt.relPath, committedFiles, absent)
+					t.Errorf("records commit at RelPath %q = %v; want it to EXCLUDE the machine-local %q", tt.relPath, committedFiles, absent)
 				}
 			}
 
 			// The excluded artifacts must also stay untracked, not merely be
 			// left out of this one commit.
 			for _, absent := range wantAbsent {
-				if tracked := strings.TrimSpace(gitkit.Git(t, weft, "ls-files", "--", absent)); tracked != "" {
-					t.Errorf("weft ls-files %q = %q; want it untracked", absent, tracked)
+				if tracked := strings.TrimSpace(gitkit.Git(t, records, "ls-files", "--", absent)); tracked != "" {
+					t.Errorf("records ls-files %q = %q; want it untracked", absent, tracked)
 				}
 			}
 		})

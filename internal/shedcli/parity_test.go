@@ -59,7 +59,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// lyxcwdResolveWorktreeForTest resolves cwd -- a pair's warp worktree root -- into a *lyxcwd.Location
+// lyxcwdResolveWorktreeForTest resolves cwd -- a pair's code worktree root -- into a *lyxcwd.Location
 // via lyxcwd.ResolveWorktree, which applies no cwd gate: the caller here holds a worktree root, not
 // an acting cwd, exactly as internal/battencli's own taskWorktreeLocation does.
 func lyxcwdResolveWorktreeForTest(t *testing.T, cwd string) (*lyxcwd.Location, error) {
