@@ -49,12 +49,12 @@ const (
 	RoleJudge
 )
 
-// The background pointer "pattern/" lives in the directive stencil files below rather than in Go, and
-// stays a plain fixed literal there too — never interpolated from patternDirName or any path.
-// That is what keeps this package's own tests' and every consumer template test's fixed-string
-// equality and substring comparisons meaningful.
+// The background pointer "pattern/" lives in the directive stencil files below rather than in Go,
+// and stays a plain fixed literal there too — never interpolated from patternDirName or any path.
+// That is what keeps this package's own tests' and every consumer template test's
+// fixed-string equality and substring comparisons meaningful.
 //
-// implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil and
+// implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil,
 // designerDirectiveStencil and judgeDirectiveStencil name the stencil Directive reads for each Role,
 // one constant per role so each name is written exactly once.
 const (
@@ -76,13 +76,14 @@ var (
 	readFile = os.ReadFile
 )
 
-// Directive returns the role's directive text to inject into the agent's prompt, read from
-// stencilsDir, stripped of its leading banner and carrying the PATTERN overview inlined at its marker.
+// Directive returns the role's directive text to inject into the agent's prompt,
+// read from stencilsDir, stripped of its leading banner and carrying the PATTERN overview inlined at its marker.
 // It returns ("", nil) with no read attempted for an empty worktreeRoot, and for an inactive PATTERN:
 // an absent File(worktreeRoot), a directory in its place, or whitespace-only content.
 // An unknown or zero role also returns ("", nil), and the stencil is never read.
-// It returns ("", err) when the file's stat fails for a reason other than not-existing, when reading
-// an existing file fails, or when PATTERN is active, role is known, and the stencil read or fill fails.
+// It returns ("", err) when the file's stat fails for a reason other than not-existing,
+// when reading an existing file fails,
+// or when PATTERN is active, role is known, and the stencil read or fill fails.
 // Any other content is inlined verbatim, however malformed; format violations are the checker's job.
 func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
 	if worktreeRoot == "" {

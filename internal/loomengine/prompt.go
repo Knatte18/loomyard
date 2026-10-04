@@ -15,9 +15,10 @@ import (
 // composePrompt builds the discussion producer's interview prompt by reading the
 // "loom-template-discussion" stencil from stencilsDir and filling it with the four required
 // top-level marker values plus the optional pattern_directive and friction_directive markers.
-// patternDirective is the caller-resolved PATTERN directive -- an empty string means PATTERN is
-// inactive, and renders as nothing. frictionDirective is the caller-resolved Tier 2 note directive
-// for this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
+// patternDirective is the caller-resolved PATTERN directive -- an empty string means PATTERN is inactive,
+// and renders as nothing.
+// frictionDirective is the caller-resolved Tier 2 note directive for this run --
+// an empty string means Tier 2 is off or the read failed, and renders as nothing.
 func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {

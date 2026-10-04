@@ -844,18 +844,16 @@ func importsWeftname(f *ast.File) bool {
 	return false
 }
 
-// TestEnforcement_FabricVocabulary is the machine check that keeps the fabric-weft-visibility
-// leak this task closes from reopening. The bare-token rule fails any file in
-// fabricVocabularyFailures's scope, outside the owner set, that contains "weft" or "warp" (in an
-// identifier, a string literal or a comment) beyond the vocabExempt spellings; the scope is every
-// test file, the non-test Go and the doc files under the roots it names, and the root CLAUDE.md
-// and README.md, minus vocabScanAllowlist.
+// TestEnforcement_FabricVocabulary is the machine check that keeps the fabric-weft-visibility leak this task closes from reopening.
+// The bare-token rule fails any file in fabricVocabularyFailures's scope, outside the owner set,
+// that contains "weft" or "warp" (in an identifier, a string literal or a comment) beyond the vocabExempt spellings;
+// the scope is every test file, the non-test Go and the doc files under the roots it names,
+// and the root CLAUDE.md and README.md, minus vocabScanAllowlist.
 // The host-phrase rule fails any production file or markdown body in its scope, owner set or not --
 // host is retired, not merely scoped, so the owner set never carves out a host hit.
-// The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports
-// internal/weftname, except weftnameTestImporter, which tests weftname.SiblingPath.
-// The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather
-// than silently skipped.
+// The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,
+// except weftnameTestImporter, which tests weftname.SiblingPath.
+// The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather than silently skipped.
 func TestEnforcement_FabricVocabulary(t *testing.T) {
 	parseWithComments := func(t *testing.T, src string) *ast.File {
 		t.Helper()

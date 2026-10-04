@@ -1,5 +1,5 @@
-// vocabscan_test.go runs fabricVocabularyFailures over t.TempDir() fixtures, so the extended
-// bare weft/warp scan is proven to fail and pass where it should independently of the real tree.
+// vocabscan_test.go runs fabricVocabularyFailures over t.TempDir() fixtures,
+// so the extended bare weft/warp scan is proven to fail and pass where it should independently of the real tree.
 
 package lyxcwd
 

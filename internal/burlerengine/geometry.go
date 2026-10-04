@@ -20,8 +20,8 @@ type Geometry struct {
 	// AnchorPath is the base the per-round .lyx/burler instruction directory joins onto.
 	AnchorPath string
 	// RepoRoot is the directory holding PATTERN.md and go.mod, the repository's worktree root.
-	// It is told separately because WorktreeRoot is the anchor path in hub mode, which is not
-	// the repo root for a subpath-anchored hub.
+	// It is told separately because WorktreeRoot is the anchor path in hub mode,
+	// which is not the repo root for a subpath-anchored hub.
 	// An empty RepoRoot yields no PATTERN directive.
 	RepoRoot string
 }

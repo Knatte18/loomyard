@@ -1,6 +1,6 @@
-// doc.go carries the package godoc for pattern: the active check, why the overview is inlined while
-// background files stay pointers, why the roles differ, and the stencil read path
-// Directive uses to produce that directive text.
+// doc.go carries the package godoc for pattern:
+// the active check, why the overview is inlined while background files stay pointers, why the roles differ,
+// and the stencil read path Directive uses to produce that directive text.
 
 // Package pattern answers one question for every code-touching lyx agent —
 // is PATTERN active in this worktree, and what should the agent be told? —
@@ -43,18 +43,15 @@
 // saves it a read turn, and keeps the prompt prefix cache-stable.
 // The background files stay a fixed relative `pattern/` pointer in the stencil's own body,
 // never an interpolated absolute path built from the caller-supplied root:
-// an absolute path would vary per worktree, which would make the fixed
-// directive strings unable to be compared for equality (or matched by
-// substring) across worktrees the way this package's own tests, and any
-// consumer's tests, need to.
+// an absolute path would vary per worktree,
+// which would make the fixed directive strings unable to be compared for equality (or matched by substring) across worktrees
+// the way this package's own tests, and any consumer's tests, need to.
 //
 // # The stencil read path
 //
-// Directive is told a stencilsDir, reads the role's stencil through
-// stencilstore.Read, strips the leading banner with
-// stencil.StripLeadingComment, fills the overview marker with stencil.Fill,
-// and returns an error rather than an empty string when an
-// active PATTERN's stencil cannot be read or filled.
+// Directive is told a stencilsDir, reads the role's stencil through stencilstore.Read,
+// strips the leading banner with stencil.StripLeadingComment, fills the overview marker with stencil.Fill,
+// and returns an error rather than an empty string when an active PATTERN's stencil cannot be read or filled.
 // The read is lazy: no stencil read is attempted on an empty root, an inactive PATTERN, or an unknown role.
 //
 // # The PATTERN format
