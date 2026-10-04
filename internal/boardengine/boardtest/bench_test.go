@@ -46,7 +46,7 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("mkdir _lyx/config: %v", err)
 	}
 	configPath := configengine.ConfigFile(dir, "board")
-	if err := os.WriteFile(configPath, []byte("path: board\nreadme: Home.md\ndesign_prefix: proposal-\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("path: board\nreadme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [undecided]\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
 
