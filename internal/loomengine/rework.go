@@ -27,6 +27,9 @@ import (
 // reworkStencilName is the registered name of the rework stencil.
 const reworkStencilName = "loom-template-rework"
 
+// reworkRole is the agent-name role this module's PR-Rework spawn carries.
+const reworkRole = "rework"
+
 // reworkPaths are the told paths composeReworkPrompt fills into the rework stencil.
 type reworkPaths struct {
 	rejection      string
@@ -124,7 +127,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
 		Interactive: false,
-		Role:        "rework",
+		Role:        reworkRole,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil
 }

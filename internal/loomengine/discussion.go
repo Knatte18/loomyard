@@ -19,6 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// discussionRole is the agent-name role this module's Discussion-Write spawn carries.
+const discussionRole = "discussion"
+
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
 func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
@@ -77,7 +80,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		Version:       resolved.Params["version"],
 		Interactive:   !autonomous,
 		AwaitOperator: !autonomous,
-		Role:          "discussion",
+		Role:          discussionRole,
 		Timeout:       time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
 	}, nil
 }
