@@ -223,7 +223,7 @@ func TestVerbRefusals(t *testing.T) {
 // TestSpecFor_ScratchAndFrictionDir asserts specFor tells the generic verbs the run's scratch
 // directory and the friction directory, and tolerates a receiver with no location.
 func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	t.Run("ScratchDirFromLocationAndRunID", func(t *testing.T) {
 		c := &loomCLI{location: loc, runID: "self"}

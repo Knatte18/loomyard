@@ -4,7 +4,7 @@
 // ensureStatusStrand's own resolveStatusStrandAction branches are covered directly through that pure
 // function in bootstrap_test.go rather than re-covered here through a real reed engine.
 //
-// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) always needs a real git-backed weft
+// seedAndCommitBootstrap's own step 1 (fabricengine.ReadOrigin) always needs a real git-backed records
 // sibling to succeed -- even on the record-already-found path -- so no test in this file drives the
 // whole function past bootstrapStageOrigin; TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists
 // below documents that wall directly. Card 13's own seed-write coverage (the recipe/driver/param
@@ -52,7 +52,7 @@ func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 // produces the same stage and the same error both times, proving the second call never surfaces a
 // hard failure the first call did not already surface.
 //
-// The receiver's location has no real fabric behind it (no git repository, no weft sibling), so both
+// The receiver's location has no real fabric behind it (no git repository, no records sibling), so both
 // calls fail at bootstrapStageOrigin -- the first sub-step that genuinely needs a real fabric to
 // proceed past -- rather than reaching bootstrapStageSeed or bootstrapStageCommit. Driving this
 // helper far enough to observe loomshed.Seed's own ErrSeedExists tolerance would need a real git
@@ -60,7 +60,7 @@ func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 // new-tests-stay-untagged-and-pure Shared Decision); that deeper coverage belongs to a tagged suite.
 func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
 		shedPaths: shedbuild.ShedPaths{
@@ -69,8 +69,8 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 		},
 	}
 
-	parent1, _, stage1, err1 := c.seedAndCommitBootstrap("warp", "main")
-	parent2, _, stage2, err2 := c.seedAndCommitBootstrap("warp", "main")
+	parent1, _, stage1, err1 := c.seedAndCommitBootstrap("pair", "main")
+	parent2, _, stage2, err2 := c.seedAndCommitBootstrap("pair", "main")
 
 	if stage1 != stage2 {
 		t.Errorf("seedAndCommitBootstrap stage diverged across two calls: first = %d, second = %d", stage1, stage2)
@@ -113,7 +113,7 @@ func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
 // re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo)); err != nil {
 		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
@@ -213,12 +213,12 @@ func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
 // producer row.
 //
 // buildLoomShed opens the fabric as its first act (fabricengine.Open), which this untagged suite's
-// receiver -- with no real git repository or weft sibling behind its location -- cannot satisfy. Per
+// receiver -- with no real git repository or records sibling behind its location -- cannot satisfy. Per
 // this card's own skip-rather-than-fabric instruction, the test skips with a stated reason instead of
 // standing up a real fabric fixture.
 func TestBuildLoomShed_OutputShape(t *testing.T) {
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
 		location: loc,
 		shedPaths: shedbuild.ShedPaths{

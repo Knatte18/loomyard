@@ -116,7 +116,7 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 func TestWireLightweight_CommitStatusFilled(t *testing.T) {
 	t.Parallel()
 
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	c.wireLightweight(location, location.AnchorPath())
@@ -132,7 +132,7 @@ func TestWireLightweight_CommitStatusFilled(t *testing.T) {
 func TestWire_CommitStatusFilled(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -181,7 +181,7 @@ func TestStatusCommitPathspec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tt.setup(t, loomengine.LoomReviewsDir(location))
 			want := []string{selfStatusRel(location)}
 			if tt.wantReviews {
@@ -247,7 +247,7 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tt.setup(t, location)
 			want := []string{selfStatusRel(location)}
 			if tt.wantLoom {
@@ -290,7 +290,7 @@ func TestStatusCommitPathspec_PendingRejectionHoldsTheRound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			writeFile(t, filepath.Join(loomengine.LoomReworkDir(location), "round-1", "record.json"), tt.record)
 			writeFile(t, filepath.Join(loomengine.LoomReviewsDir(location), "plan", "round-1-review.md"), "x\n")
 			writeFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "report.md"), "x\n")

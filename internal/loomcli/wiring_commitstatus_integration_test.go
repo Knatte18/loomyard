@@ -25,18 +25,18 @@ import (
 
 // realSeamFixture builds a hub, adds one pair, seeds a status file at loom's own status path, and
 // returns the seam wired to that pair through loomCommitStatusDeps — the same call wire() makes —
-// plus the pair's weft sibling path for direct git inspection.
-func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lyxcwd.Location, weftSibling string) {
+// plus the pair's records sibling path for direct git inspection.
+func realSeamFixture(t *testing.T) (seam func(producer, state string) error, location *lyxcwd.Location, recordsSibling string) {
 	t.Helper()
 
 	hub := hubforge.NewHub(t, ".")
 	const slug = "commitstatus"
 	hubforge.AddPair(t, hub, slug)
-	warpWorktree := hub.PairWarpWorktree(slug)
+	codeWorktree := hub.PairWarpWorktree(slug)
 
-	location, err := lyxcwd.ResolveWorktree(warpWorktree)
+	location, err := lyxcwd.ResolveWorktree(codeWorktree)
 	if err != nil {
-		t.Fatalf("ResolveWorktree(%s) error = %v; want nil", warpWorktree, err)
+		t.Fatalf("ResolveWorktree(%s) error = %v; want nil", codeWorktree, err)
 	}
 	writeStatusFile(t, location, `{"current_producer":"seed","state":"running"}`)
 
@@ -62,23 +62,23 @@ func writeStatusFile(t *testing.T, location *lyxcwd.Location, content string) {
 	}
 }
 
-// startForeignMergeInWeft leaves a live MERGE_HEAD in the weft sibling by running plain git there —
-// the operator behaviour the Fabric Git Invariant's own carve-out permits, and the only way weft
+// startForeignMergeInRecords leaves a live MERGE_HEAD in the records sibling by running plain git there —
+// the operator behaviour the Fabric Git Invariant's own carve-out permits, and the only way the records side
 // merge state exists at all now that no fabric verb puts it there.
-func startForeignMergeInWeft(t *testing.T, weftSibling string) {
+func startForeignMergeInRecords(t *testing.T, recordsSibling string) {
 	t.Helper()
-	current := gitkit.CurrentBranch(t, weftSibling)
-	gitkit.Git(t, weftSibling, "checkout", "-q", "-b", "foreign-side")
-	if err := os.WriteFile(filepath.Join(weftSibling, "foreign.txt"), []byte("foreign\n"), 0o644); err != nil {
+	current := gitkit.CurrentBranch(t, recordsSibling)
+	gitkit.Git(t, recordsSibling, "checkout", "-q", "-b", "foreign-side")
+	if err := os.WriteFile(filepath.Join(recordsSibling, "foreign.txt"), []byte("foreign\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(foreign.txt) error = %v; want nil", err)
 	}
-	gitkit.Git(t, weftSibling, "add", "foreign.txt")
-	gitkit.Git(t, weftSibling, "commit", "-q", "-m", "foreign side commit")
-	gitkit.Git(t, weftSibling, "checkout", "-q", current)
-	gitkit.Git(t, weftSibling, "merge", "--no-commit", "--no-ff", "foreign-side")
+	gitkit.Git(t, recordsSibling, "add", "foreign.txt")
+	gitkit.Git(t, recordsSibling, "commit", "-q", "-m", "foreign side commit")
+	gitkit.Git(t, recordsSibling, "checkout", "-q", current)
+	gitkit.Git(t, recordsSibling, "merge", "--no-commit", "--no-ff", "foreign-side")
 
-	if !mergeHeadPresent(t, weftSibling) {
-		t.Fatal("no MERGE_HEAD in the weft sibling after a plain-git merge --no-commit; the fixture proves nothing without one")
+	if !mergeHeadPresent(t, recordsSibling) {
+		t.Fatal("no MERGE_HEAD in the records sibling after a plain-git merge --no-commit; the fixture proves nothing without one")
 	}
 }
 
@@ -94,28 +94,28 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 }
 
 // TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes asserts the ordinary disposition against a
-// real pair: the seam lands a real weft commit carrying the status file under the transition's own
+// real pair: the seam lands a real records commit carrying the status file under the transition's own
 // message, and leaves nothing unpushed.
 func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
-	before := gitkit.RevParse(t, weftSibling, "HEAD")
+	seam, location, recordsSibling := realSeamFixture(t)
+	before := gitkit.RevParse(t, recordsSibling, "HEAD")
 
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam(Discussion-Write, running) error = %v; want nil", err)
 	}
 
-	after := gitkit.RevParse(t, weftSibling, "HEAD")
+	after := gitkit.RevParse(t, recordsSibling, "HEAD")
 	if after == before {
-		t.Fatalf("weft HEAD = %q; want it moved off %q — the seam must land a real commit", after, before)
+		t.Fatalf("records HEAD = %q; want it moved off %q — the seam must land a real commit", after, before)
 	}
-	if got := gitkit.Git(t, weftSibling, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
-		t.Errorf("weft HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
+	if got := gitkit.Git(t, recordsSibling, "log", "-1", "--format=%s"); got != "loom: Discussion-Write -> running" {
+		t.Errorf("records HEAD subject = %q; want %q", got, "loom: Discussion-Write -> running")
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, realSeamStatusRel(location)) {
-		t.Errorf("weft HEAD touched %q; want it to include %q", got, realSeamStatusRel(location))
+	if got := gitkit.Git(t, recordsSibling, "show", "--name-only", "--format=", "HEAD"); !strings.Contains(got, realSeamStatusRel(location)) {
+		t.Errorf("records HEAD touched %q; want it to include %q", got, realSeamStatusRel(location))
 	}
-	if got := gitkit.Git(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
-		t.Errorf("unpushed weft commits after the seam = %q; want none — the seam pushes synchronously", got)
+	if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got != "" {
+		t.Errorf("unpushed records commits after the seam = %q; want none — the seam pushes synchronously", got)
 	}
 }
 
@@ -123,22 +123,22 @@ func TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes(t *testing.T) {
 // against a real foreign merge: nothing is committed, nothing is staged into the operator's index,
 // and their MERGE_HEAD survives untouched.
 func TestCommitStatusSeam_Real_MidMergeSkipsWithoutTouchingTheMerge(t *testing.T) {
-	seam, _, weftSibling := realSeamFixture(t)
-	startForeignMergeInWeft(t, weftSibling)
-	before := gitkit.RevParse(t, weftSibling, "HEAD")
-	stagedBefore := gitkit.Git(t, weftSibling, "diff", "--cached", "--name-only")
+	seam, _, recordsSibling := realSeamFixture(t)
+	startForeignMergeInRecords(t, recordsSibling)
+	before := gitkit.RevParse(t, recordsSibling, "HEAD")
+	stagedBefore := gitkit.Git(t, recordsSibling, "diff", "--cached", "--name-only")
 
 	if err := seam("Discussion-Write", "running"); err != nil {
-		t.Fatalf("seam(...) error = %v; want nil — a mid-merge weft skips, it does not halt the run", err)
+		t.Fatalf("seam(...) error = %v; want nil — a mid-merge records side skips, it does not halt the run", err)
 	}
 
-	if got := gitkit.RevParse(t, weftSibling, "HEAD"); got != before {
-		t.Errorf("weft HEAD = %q; want unchanged %q — the skip must commit nothing", got, before)
+	if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got != before {
+		t.Errorf("records HEAD = %q; want unchanged %q — the skip must commit nothing", got, before)
 	}
-	if !mergeHeadPresent(t, weftSibling) {
+	if !mergeHeadPresent(t, recordsSibling) {
 		t.Error("MERGE_HEAD is gone after the seam ran; want the operator's merge left exactly as it was")
 	}
-	if got := gitkit.Git(t, weftSibling, "diff", "--cached", "--name-only"); got != stagedBefore {
+	if got := gitkit.Git(t, recordsSibling, "diff", "--cached", "--name-only"); got != stagedBefore {
 		t.Errorf("staged paths = %q; want unchanged %q — the skip must not stage the status file into the operator's merge index", got, stagedBefore)
 	}
 }
@@ -150,9 +150,9 @@ func TestCommitStatusSeam_Real_MidMergeSkipsWithoutTouchingTheMerge(t *testing.T
 // Before the re-probe existed this returned git's "cannot do a partial commit during a merge" and
 // halted the whole run. It must now resolve as the skip, with the operator's merge intact.
 func TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting(t *testing.T) {
-	_, location, weftSibling := realSeamFixture(t)
-	startForeignMergeInWeft(t, weftSibling)
-	before := gitkit.RevParse(t, weftSibling, "HEAD")
+	_, location, recordsSibling := realSeamFixture(t)
+	startForeignMergeInRecords(t, recordsSibling)
+	before := gitkit.RevParse(t, recordsSibling, "HEAD")
 
 	deps := loomCommitStatusDeps(location, shedrun.SelfRunID)
 	realMergeActive := deps.MergeActive
@@ -171,25 +171,25 @@ func TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting(t *t
 	if probes != 2 {
 		t.Errorf("MergeActive called %d time(s); want exactly 2 — the pre-commit probe and the re-probe that explains its failure", probes)
 	}
-	if got := gitkit.RevParse(t, weftSibling, "HEAD"); got != before {
-		t.Errorf("weft HEAD = %q; want unchanged %q", got, before)
+	if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got != before {
+		t.Errorf("records HEAD = %q; want unchanged %q", got, before)
 	}
-	if !mergeHeadPresent(t, weftSibling) {
+	if !mergeHeadPresent(t, recordsSibling) {
 		t.Error("MERGE_HEAD is gone after the lost race; want the operator's merge left exactly as it was")
 	}
 }
 
 // TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays asserts the push-warns disposition
-// against a genuinely diverged weft remote: the seam returns nil, the local commit stays, and the
+// against a genuinely diverged records remote: the seam returns nil, the local commit stays, and the
 // branch is left behind its origin for the next transition to catch up.
 func TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays(t *testing.T) {
-	seam, _, weftSibling := realSeamFixture(t)
+	seam, _, recordsSibling := realSeamFixture(t)
 
-	// Advance the weft remote out from under the local sibling, so the seam's push is rejected for
+	// Advance the records remote out from under the local sibling, so the seam's push is rejected for
 	// the ordinary reason: another machine got there first.
 	clone := t.TempDir()
-	branch := gitkit.CurrentBranch(t, weftSibling)
-	origin := gitkit.Git(t, weftSibling, "remote", "get-url", "origin")
+	branch := gitkit.CurrentBranch(t, recordsSibling)
+	origin := gitkit.Git(t, recordsSibling, "remote", "get-url", "origin")
 	gitkit.Git(t, clone, "clone", "-q", "-b", branch, origin, ".")
 	gitkit.Git(t, clone, "config", "user.email", "rogue@example.test")
 	gitkit.Git(t, clone, "config", "user.name", "rogue")
@@ -200,15 +200,15 @@ func TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays(t *testing.T) 
 	gitkit.Git(t, clone, "commit", "-q", "-m", "rogue advance")
 	gitkit.Git(t, clone, "push", "-q", "origin", branch)
 
-	before := gitkit.RevParse(t, weftSibling, "HEAD")
+	before := gitkit.RevParse(t, recordsSibling, "HEAD")
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam(...) error = %v; want nil — a rejected push warns and continues", err)
 	}
-	if got := gitkit.RevParse(t, weftSibling, "HEAD"); got == before {
-		t.Errorf("weft HEAD = %q; want it moved off %q — the commit lands even though the push is rejected", got, before)
+	if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
+		t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the push is rejected", got, before)
 	}
-	if got := gitkit.Git(t, weftSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
-		t.Error("unpushed weft commits after a rejected push = none; want the local commit still unpushed, waiting for the next transition")
+	if got := gitkit.Git(t, recordsSibling, "log", "--oneline", "@{u}..HEAD"); got == "" {
+		t.Error("unpushed records commits after a rejected push = none; want the local commit still unpushed, waiting for the next transition")
 	}
 }
 
@@ -216,15 +216,15 @@ func TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays(t *testing.T) 
 // failures that are NOT gitrepo.ErrPushRejected — an unreachable remote is the offline case the
 // disposition exists for, and it must not halt the run either.
 func TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo(t *testing.T) {
-	seam, _, weftSibling := realSeamFixture(t)
-	gitkit.Git(t, weftSibling, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "does-not-exist.git"))
+	seam, _, recordsSibling := realSeamFixture(t)
+	gitkit.Git(t, recordsSibling, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "does-not-exist.git"))
 
-	before := gitkit.RevParse(t, weftSibling, "HEAD")
+	before := gitkit.RevParse(t, recordsSibling, "HEAD")
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam(...) error = %v; want nil — an unreachable remote warns and continues, exactly as a rejection does", err)
 	}
-	if got := gitkit.RevParse(t, weftSibling, "HEAD"); got == before {
-		t.Errorf("weft HEAD = %q; want it moved off %q — the commit lands even though the push failed", got, before)
+	if got := gitkit.RevParse(t, recordsSibling, "HEAD"); got == before {
+		t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the push failed", got, before)
 	}
 }
 
@@ -240,9 +240,9 @@ func writeReviewsDirFile(t *testing.T, location *lyxcwd.Location, rel, content s
 	}
 }
 
-// TestCommitStatusSeam_Real_CommitsTheRoundRecord asserts a round's files written before a transition land in the weft HEAD commit and leave the reviews directory clean.
+// TestCommitStatusSeam_Real_CommitsTheRoundRecord asserts a round's files written before a transition land in the records HEAD commit and leave the reviews directory clean.
 func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	files := []string{"plan/round-1-review.md", "plan/round-1-fixer-report.md", "plan/round-1-focus.md"}
 	for _, f := range files {
 		writeReviewsDirFile(t, location, f, "record\n")
@@ -252,33 +252,33 @@ func TestCommitStatusSeam_Real_CommitsTheRoundRecord(t *testing.T) {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
 
-	got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD")
+	got := gitkit.Git(t, recordsSibling, "show", "--name-only", "--format=", "HEAD")
 	for _, f := range files {
 		want := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), f))
 		if !strings.Contains(got, want) {
-			t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
+			t.Errorf("records HEAD touched %q; want it to include %q", got, want)
 		}
 	}
-	if st := gitkit.Git(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomReviewsDirRel())); st != "" {
-		t.Errorf("weft status under the reviews directory = %q; want clean", st)
+	if st := gitkit.Git(t, recordsSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomReviewsDirRel())); st != "" {
+		t.Errorf("records status under the reviews directory = %q; want clean", st)
 	}
 }
 
 // TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus asserts a run with no reviews directory commits the status file alone.
 func TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
-		t.Errorf("weft HEAD touched %q; want only the status file", got)
+	if got := gitkit.Git(t, recordsSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
+		t.Errorf("records HEAD touched %q; want only the status file", got)
 	}
 }
 
 // TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus asserts the recipe-build state — the reviews root holding only an empty segment directory — neither errors nor widens the commit.
 func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	if err := os.MkdirAll(filepath.Join(loomengine.LoomReviewsDir(location), "plan"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -286,14 +286,14 @@ func TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus(t *testing.T
 	if err := seam("Discussion-Write", "running"); err != nil {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
-	if got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
-		t.Errorf("weft HEAD touched %q; want only the status file", got)
+	if got := gitkit.Git(t, recordsSibling, "show", "--name-only", "--format=", "HEAD"); got != filepath.ToSlash(realSeamStatusRel(location)) {
+		t.Errorf("records HEAD touched %q; want only the status file", got)
 	}
 }
 
 // TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion asserts a committed round file renamed to a timestamped sibling is recorded as both an addition and a deletion by the next commit.
 func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	writeReviewsDirFile(t, location, "plan/round-1-review.md", "record\n")
 	if err := seam("Plan-Review", "running"); err != nil {
 		t.Fatalf("first seam error = %v; want nil", err)
@@ -307,13 +307,13 @@ func TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion(t *testin
 		t.Fatalf("second seam error = %v; want nil", err)
 	}
 
-	got := gitkit.Git(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	got := gitkit.Git(t, recordsSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
 	prefix := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), "plan")) + "/"
 	if !strings.Contains(got, "A\t"+prefix+"round-1-review-20260101T000000.md") {
-		t.Errorf("weft HEAD = %q; want the timestamped sibling added", got)
+		t.Errorf("records HEAD = %q; want the timestamped sibling added", got)
 	}
 	if !strings.Contains(got, "D\t"+prefix+"round-1-review.md") {
-		t.Errorf("weft HEAD = %q; want the original deleted", got)
+		t.Errorf("records HEAD = %q; want the original deleted", got)
 	}
 }
 
@@ -328,9 +328,9 @@ func writeRecordFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports asserts a friction note and a drive report written before a transition land in the weft HEAD commit and leave both directories clean.
+// TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports asserts a friction note and a drive report written before a transition land in the records HEAD commit and leave both directories clean.
 func TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	writeRecordFile(t, filepath.Join(loomengine.LoomFrictionDir(location), "note.md"), "friction\n")
 	writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "report.md"), "report\n")
 
@@ -338,25 +338,25 @@ func TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports(t *testing.T) {
 		t.Fatalf("seam error = %v; want nil", err)
 	}
 
-	got := gitkit.Git(t, weftSibling, "show", "--name-only", "--format=", "HEAD")
+	got := gitkit.Git(t, recordsSibling, "show", "--name-only", "--format=", "HEAD")
 	for _, want := range []string{
 		filepath.ToSlash(filepath.Join(loomengine.LoomDurableDirRel(), "friction", "note.md")),
 		filepath.ToSlash(filepath.Join(shedrun.DriveReportsRel(location, shedrun.SelfRunID), "report.md")),
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("weft HEAD touched %q; want it to include %q", got, want)
+			t.Errorf("records HEAD touched %q; want it to include %q", got, want)
 		}
 	}
 	for _, dir := range []string{loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, shedrun.SelfRunID)} {
-		if st := gitkit.Git(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(dir)); st != "" {
-			t.Errorf("weft status under %s = %q; want clean", dir, st)
+		if st := gitkit.Git(t, recordsSibling, "status", "--porcelain", "--", filepath.ToSlash(dir)); st != "" {
+			t.Errorf("records status under %s = %q; want clean", dir, st)
 		}
 	}
 }
 
 // TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion asserts a committed friction directory renamed to a timestamped sibling is recorded as both an addition and a deletion, leaving the loom durable directory clean.
 func TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	writeRecordFile(t, filepath.Join(loomengine.LoomFrictionDir(location), "note.md"), "friction\n")
 	if err := seam("Plan-Write", "running"); err != nil {
 		t.Fatalf("first seam error = %v; want nil", err)
@@ -370,22 +370,22 @@ func TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion(t
 		t.Fatalf("second seam error = %v; want nil", err)
 	}
 
-	got := gitkit.Git(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	got := gitkit.Git(t, recordsSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
 	prefix := filepath.ToSlash(loomengine.LoomDurableDirRel()) + "/"
 	if !strings.Contains(got, "A\t"+prefix+"friction-20260101T000000/note.md") {
-		t.Errorf("weft HEAD = %q; want the archive sibling added", got)
+		t.Errorf("records HEAD = %q; want the archive sibling added", got)
 	}
 	if !strings.Contains(got, "D\t"+prefix+"friction/note.md") {
-		t.Errorf("weft HEAD = %q; want the old friction path deleted", got)
+		t.Errorf("records HEAD = %q; want the old friction path deleted", got)
 	}
-	if st := gitkit.Git(t, weftSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomDurableDirRel())); st != "" {
-		t.Errorf("weft status under the loom durable directory = %q; want clean", st)
+	if st := gitkit.Git(t, recordsSibling, "status", "--porcelain", "--", filepath.ToSlash(loomengine.LoomDurableDirRel())); st != "" {
+		t.Errorf("records status under the loom durable directory = %q; want clean", st)
 	}
 }
 
 // TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound asserts that, with a rejection pending, a status commit lands neither the review run directory's deletion nor any round-<N>/ file, and that the next status commit after the rejection clears records both.
 func TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound(t *testing.T) {
-	seam, location, weftSibling := realSeamFixture(t)
+	seam, location, recordsSibling := realSeamFixture(t)
 	reviewRel := "plan/round-1-review.md"
 	writeReviewsDirFile(t, location, reviewRel, "record\n")
 	// A file in another run directory keeps the reviews root non-empty after the move, so the released commit still names it.
@@ -410,7 +410,7 @@ func TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound(t *testing.T) {
 		t.Fatalf("held seam error = %v; want nil", err)
 	}
 	reviewPath := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), reviewRel))
-	if got := gitkit.Git(t, weftSibling, "ls-tree", "-r", "--name-only", "HEAD"); !strings.Contains(got, reviewPath) {
+	if got := gitkit.Git(t, recordsSibling, "ls-tree", "-r", "--name-only", "HEAD"); !strings.Contains(got, reviewPath) {
 		t.Errorf("HEAD tree lacks %q; want the review run directory still held while the rejection is pending", reviewPath)
 	} else if strings.Contains(got, filepath.ToSlash(loomengine.LoomReworkDirRel())+"/round-1/") {
 		t.Errorf("HEAD tree holds a round-1 file while the rejection is pending:\n%s", got)
@@ -422,11 +422,11 @@ func TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound(t *testing.T) {
 	if err := seam("Plan-Review", "done"); err != nil {
 		t.Fatalf("released seam error = %v; want nil", err)
 	}
-	got := gitkit.Git(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	got := gitkit.Git(t, recordsSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
 	if !strings.Contains(got, "D\t"+reviewPath) {
-		t.Errorf("weft HEAD = %q; want the review run directory's deletion recorded once the rejection cleared", got)
+		t.Errorf("records HEAD = %q; want the review run directory's deletion recorded once the rejection cleared", got)
 	}
 	if !strings.Contains(got, "A\t"+filepath.ToSlash(loomengine.LoomReworkDirRel())+"/round-1/record.json") {
-		t.Errorf("weft HEAD = %q; want round-1/record.json recorded once the rejection cleared", got)
+		t.Errorf("records HEAD = %q; want round-1/record.json recorded once the rejection cleared", got)
 	}
 }

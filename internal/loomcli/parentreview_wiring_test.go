@@ -69,7 +69,7 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			if tc.shortname != "" {
 				boardDir := fabricengine.BoardDir(loc.HubPath)
 				if err := os.MkdirAll(boardDir, 0o755); err != nil {
@@ -126,7 +126,7 @@ func TestDiscussionCommitPathspec_IncludesParentReviewDir(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tc.setup(loomengine.LoomParentReviewDir(loc))
 			if got := discussionCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("discussionCommitPathspec() = %v; want %v", got, tc.want)
