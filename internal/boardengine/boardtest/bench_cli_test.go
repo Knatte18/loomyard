@@ -19,10 +19,13 @@ package boardtest
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // seedWikiRepo seeds a board (via seedWiki) and initialises a git repo at its
@@ -33,6 +36,10 @@ import (
 func seedWikiRepo(tb testing.TB, n int) string {
 	tb.Helper()
 	dir := seedWiki(tb, n)
+	// The CLI reads the board from <hub>/_board, and the hub is the repo root's parent.
+	if err := os.Rename(filepath.Join(dir, "board"), filepath.Join(filepath.Dir(dir), fabricengine.BoardDirName)); err != nil {
+		tb.Fatalf("move board to hub: %v", err)
+	}
 	for _, args := range [][]string{
 		{"init"},
 		{"config", "user.email", "bench@lyx.test"},

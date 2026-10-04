@@ -8,7 +8,6 @@ package boardengine
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // Task is the canonical record stored in board.json.
@@ -16,8 +15,9 @@ type Task struct {
 	ID        int      `json:"id"`
 	Slug      string   `json:"slug"`
 	Title     string   `json:"title"`
-	Tier      int      `json:"tier"`             // roadmap tier, MinTier..MaxTier; the renderer alone maps it to a name
-	Type      string   `json:"type"`             // entry kind, one of entryTypes
+	Kind      string   `json:"kind"`             // KindTask or KindNote
+	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
+	Issues    []int    `json:"issues"`           // numbers of the inbox issues this entry records; a number is not checked against GitHub
 	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`
@@ -28,29 +28,17 @@ type Task struct {
 }
 
 const (
-	// MinTier and MaxTier bound Task.Tier; DefaultTier is the lowest-priority tier.
-	MinTier     = 1
-	MaxTier     = 3
-	DefaultTier = 3
-
-	// DefaultType is the entry kind applied when a payload omits type.
-	DefaultType = "feature"
+	// KindTask is an entry that can run; KindNote is an idea or observation.
+	KindTask = "task"
+	KindNote = "note"
 )
 
-// entryTypes is the closed set of Task.Type values.
-var entryTypes = []string{"feature", "bug", "chore", "design"}
-
-// validateTask checks the tier range and the type set of a built Task.
+// validateTask checks that the Kind of a built Task is one of the two kinds.
 func validateTask(t Task) error {
-	if t.Tier < MinTier || t.Tier > MaxTier {
-		return fmt.Errorf("tier %d is out of range: must be %d..%d", t.Tier, MinTier, MaxTier)
+	if t.Kind != KindTask && t.Kind != KindNote {
+		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
 	}
-	for _, et := range entryTypes {
-		if t.Type == et {
-			return nil
-		}
-	}
-	return fmt.Errorf("type %q is not one of %s (a recipe name belongs in \"recipe\")", t.Type, strings.Join(entryTypes, ", "))
+	return nil
 }
 
 // ShortNameOrSlug returns t.ShortName when non-empty, otherwise t.Slug.
@@ -92,8 +80,9 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 
 	task := Task{
 		ID:        nextID,
-		Tier:      DefaultTier,
-		Type:      DefaultType,
+		Kind:      KindNote,
+		Labels:    []string{},
+		Issues:    []int{},
 		DependsOn: []string{},
 		Isolated:  false,
 		Brief:     "",
@@ -113,6 +102,12 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 
 	task.ID = nextID
 	task.Slug = slugStr
+	if task.Labels == nil {
+		task.Labels = []string{}
+	}
+	if task.Issues == nil {
+		task.Issues = []int{}
+	}
 
 	if err := validateTask(task); err != nil {
 		return Task{}, err
@@ -149,6 +144,13 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	err = json.Unmarshal(mergedJSON, &result)
 	if err != nil {
 		return Task{}, fmt.Errorf("unmarshal merged: %w", err)
+	}
+
+	if result.Labels == nil {
+		result.Labels = []string{}
+	}
+	if result.Issues == nil {
+		result.Issues = []int{}
 	}
 
 	if result.Slug == "" {

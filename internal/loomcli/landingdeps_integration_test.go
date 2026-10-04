@@ -62,7 +62,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 	markDone, board, slug := markDoneFixture(t)
 
-	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Mark done"}); err != nil {
+	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Mark done", "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("UpsertTask error = %v; want nil", err)
 	}
 	if err := markDone(); err != nil {

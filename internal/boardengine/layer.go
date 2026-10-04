@@ -140,7 +140,7 @@ type TaskWithLayer struct {
 }
 
 // RenderOrder returns tasks in README order.
-// Non-done entries come first, by tier; done entries follow.
+// Open tasks come first, then open notes, then done entries.
 // Within each section, entries order by dependency layer, then by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
@@ -174,8 +174,8 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		if doneI != doneJ {
 			return doneJ
 		}
-		if !doneI && result[i].Tier != result[j].Tier {
-			return result[i].Tier < result[j].Tier
+		if !doneI && result[i].Kind != result[j].Kind {
+			return result[i].Kind == KindTask
 		}
 		bucketI := bucketOrder[result[i].Layer]
 		bucketJ := bucketOrder[result[j].Layer]

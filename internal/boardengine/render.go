@@ -1,12 +1,12 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like a roadmap: one section per tier (Tasks, Next Up, Notes), each split into dependency layers, then Done, each entry one numbered item.
-// The tier names and their meaning lines are declared here alone;
-// the data holds only the tier number.
+// The README reads like a roadmap: Tasks split into dependency layers, Notes with one subsection per type label, then Done, each entry one numbered item showing its labels.
+// The section names and their meaning lines are declared here alone;
+// the data holds only the kind and the labels.
 // No I/O — the caller writes the files.
 // The design files are built by renderDesigns;
-// each opens with a header naming the entry's slug, tier section, type and status, then the stored body unchanged.
+// each opens with a header naming the entry's slug, kind, labels and status, then the stored body unchanged.
 // RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so
 // that renamed or removed outputs are cleaned up on the next render.
 
@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -88,7 +89,7 @@ func Render(tasks []Task, out Outputs) (map[string]string, error) {
 	}
 
 	result := map[string]string{
-		out.Readme: renderTasksSection(ordered, out.DesignPrefix),
+		out.Readme: renderTasksSection(ordered, out.DesignPrefix, out.Types),
 	}
 
 	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
@@ -103,25 +104,43 @@ type readmeSection struct {
 	meaning string
 }
 
-// tierSections maps a tier number to its README section; this is the only place tier numbers become words.
-var tierSections = map[int]readmeSection{
-	1: {"Tasks", "Concrete and claimable; only an entry here can run."},
-	2: {"Next Up", "Planned next, but not yet concretized."},
-	3: {"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."},
-}
+// The README's Tasks, Notes and Done sections, declared here alone.
+var (
+	tasksSection = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
+	notesSection = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
+	doneSection  = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
+)
 
-// doneSection is the README section holding every done entry, whatever its tier.
-var doneSection = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
+// otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
+const otherNotesHeading = "Other"
 
-// tierName is the section name of a tier, or "tier N" for a tier outside MinTier..MaxTier.
-func tierName(tier int) string {
-	if s, ok := tierSections[tier]; ok {
-		return s.name
+// kindName is the capitalised display name of an entry kind.
+func kindName(kind string) string {
+	if kind == KindTask {
+		return "Task"
 	}
-	return fmt.Sprintf("tier %d", tier)
+	return "Note"
 }
 
-// metaLine is `slug` · [middle ·] type[ · status], the design doc header's metadata line.
+// typeHeading is the Notes subsection heading of a type label: the name capitalised, with an s appended.
+func typeHeading(typeLabel string) string {
+	if typeLabel == "" {
+		return "s"
+	}
+	return strings.ToUpper(typeLabel[:1]) + typeLabel[1:] + "s"
+}
+
+// noteType is the first configured type label t carries, in types order, or "" when it carries none.
+func noteType(t Task, types []string) string {
+	for _, typeLabel := range types {
+		if slices.Contains(t.Labels, typeLabel) {
+			return typeLabel
+		}
+	}
+	return ""
+}
+
+// metaLine is `slug` · [middle ·] [labels ·] [status], the design doc header's metadata line.
 func metaLine(t Task, middle ...string) string {
 	return metaLineWithSlug(t, "`"+t.Slug+"`", middle...)
 }
@@ -129,19 +148,21 @@ func metaLine(t Task, middle ...string) string {
 // metaLineWithSlug is metaLine with the slug already rendered, so the README can make it a link.
 func metaLineWithSlug(t Task, slug string, middle ...string) string {
 	parts := append([]string{slug}, middle...)
-	parts = append(parts, t.Type)
+	if len(t.Labels) > 0 {
+		parts = append(parts, strings.Join(t.Labels, ", "))
+	}
 	if t.Status != nil {
 		parts = append(parts, *t.Status)
 	}
 	return strings.Join(parts, " · ")
 }
 
-// renderTasksSection builds the README: a title, an intro, one section per tier split into dependency layers, then Done when any entry is done.
-func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
+// renderTasksSection builds the README: a title, an intro, Tasks split into dependency layers, Notes split by type label, then Done when any entry is done.
+func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []string) string {
 	lines := []string{
 		"# Board",
 		"",
-		"Entries grouped by tier, then by dependency layer.",
+		"Tasks are grouped by dependency layer and notes by type.",
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
 		"",
 	}
@@ -168,25 +189,43 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string) string {
 		lines = append(lines, "")
 	}
 
-	for tier := MinTier; tier <= MaxTier; tier++ {
-		sec := tierSections[tier]
-		lines = append(lines, "## "+sec.name, "", sec.meaning, "")
-		var entries []TaskWithLayer
-		for _, twl := range ordered {
-			if !isDone(twl.Task) && twl.Tier == tier {
-				entries = append(entries, twl)
-			}
+	lines = append(lines, "## "+tasksSection.name, "", tasksSection.meaning, "")
+	var tasks []TaskWithLayer
+	for _, twl := range ordered {
+		if !isDone(twl.Task) && twl.Kind == KindTask {
+			tasks = append(tasks, twl)
 		}
-		for start := 0; start < len(entries); {
-			end := start
-			for end < len(entries) && entries[end].Layer == entries[start].Layer {
-				end++
-			}
-			layer := layerSection(entries[start].Layer)
-			lines = append(lines, "### "+layer.name, "", layer.meaning, "")
-			writeEntries(entries[start:end])
-			start = end
+	}
+	for start := 0; start < len(tasks); {
+		end := start
+		for end < len(tasks) && tasks[end].Layer == tasks[start].Layer {
+			end++
 		}
+		layer := layerSection(tasks[start].Layer)
+		lines = append(lines, "### "+layer.name, "", layer.meaning, "")
+		writeEntries(tasks[start:end])
+		start = end
+	}
+
+	lines = append(lines, "## "+notesSection.name, "", notesSection.meaning, "")
+	byType := make(map[string][]TaskWithLayer)
+	for _, twl := range ordered {
+		if !isDone(twl.Task) && twl.Kind == KindNote {
+			typeLabel := noteType(twl.Task, types)
+			byType[typeLabel] = append(byType[typeLabel], twl)
+		}
+	}
+	for _, typeLabel := range append(slices.Clone(types), "") {
+		entries := byType[typeLabel]
+		if len(entries) == 0 {
+			continue
+		}
+		heading := otherNotesHeading
+		if typeLabel != "" {
+			heading = typeHeading(typeLabel)
+		}
+		lines = append(lines, "### "+heading, "")
+		writeEntries(entries)
 	}
 
 	var done []TaskWithLayer
@@ -273,7 +312,7 @@ func renderDesigns(entries []Task, designPrefix string) map[string]string {
 		if e.Body == "" {
 			continue
 		}
-		header := []string{"# " + e.Title, "", metaLine(e, tierName(e.Tier)), ""}
+		header := []string{"# " + e.Title, "", metaLine(e, kindName(e.Kind)), ""}
 		if len(e.DependsOn) > 0 {
 			deps := make([]string, len(e.DependsOn))
 			for i, d := range e.DependsOn {

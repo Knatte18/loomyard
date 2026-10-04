@@ -1,45 +1,4 @@
-// Package boardengine provides a one-shot, daemonless file-locked task tracker.
-// Board is the only entry point callers use.
-// Anyone adds notes, the orchestrator curates.
-//
-// Board holds one store, board.json, whose entries carry a tier and a type.
-// A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,
-// and a pre-upgrade binary's later done marks are folded into the store, so a long-running old driver keeps working until the legacy files are retired.
-//
-// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.
-// After each write, a detached background sync process (see sync.go) is launched to commit and push
-// changes to the remote.
-// The write returns immediately without waiting for the sync.
-// Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
-//
-// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls,
-// under board's own board.lock/board.push.lock write and push locks.
-//
-// Storage: board lives at weft:main, never a separate repo.
-// fabricengine enforces one uniform branch-naming scheme with no exceptions: a warp branch <branch>
-// is always paired with weft branch <branch>-weft.
-// That means no task's weft branch can ever be named exactly the warp's own default branch (every
-// paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name
-// permanently unclaimed by the pairing convention and reserved exclusively for board.
-// This repo's earlier design considered and rejected two alternatives before landing here: a
-// separate third repo for board is extra git-identity overhead for something that doesn't need its
-// own identity;
-// and GitHub wiki rendering (an intermediate idea) requires whichever repo holds the wiki to be
-// public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never
-// the warp/warp repo — disqualifying for private consulting work, where the warp repo's
-// wiki-serving repo would have had to go public just to render board's front page.
-//
-// The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches
-// simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged),
-// plus weft:main for board access — never paired with any warp branch.
-// No other worktree checks out weft:main directly.
-//
-// Consequence for fabric: weft:main has no corresponding warp branch, so the Warp-SHA trailer /
-// correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not
-// apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
-// fabric.Commit.
-//
-// The board is the roadmap: it carries the planned work, the next-up work and the someday work.
+// board.go — Board, the facade every caller uses over a board directory; the package documentation is in doc.go.
 
 package boardengine
 
@@ -57,6 +16,7 @@ import (
 type Board struct {
 	boardPath string
 	out       Outputs
+	vocab     Vocabulary
 	skipGit   bool
 	skipPush  bool
 }
@@ -66,6 +26,7 @@ func New(cfg Config) *Board {
 	return &Board{
 		boardPath: cfg.Path,
 		out:       cfg.Outputs(),
+		vocab:     cfg.Vocabulary(),
 		skipGit:   cfg.SkipGit,
 		skipPush:  cfg.SkipPush,
 	}
@@ -100,6 +61,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	defer lock.Release()
 
 	store := NewStore(b.boardPath)
+	store.vocab = &b.vocab
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -227,6 +189,7 @@ func (b *Board) HealthCheck() error {
 // loadStore loads the one store for a read, persisting nothing.
 func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
+	store.vocab = &b.vocab
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -247,7 +210,22 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	return task, found, nil
 }
 
-func (b *Board) ListTasksBrief() ([]BriefTask, error) {
+// checkFilterLabels refuses a filter label that is in neither list of the vocabulary and that no entry carries.
+// A path-only Board has no config to check against and accepts every label.
+func (b *Board) checkFilterLabels(store *Store, labels []string) error {
+	if b.out.Readme == "" {
+		return nil
+	}
+	for _, label := range labels {
+		if !b.vocab.Known(label) && !store.anyEntryCarries(label) {
+			return fmt.Errorf("filter label %q is in neither the types nor the labels list of board.yaml and no entry carries it: add it to board.yaml, or filter by a configured label", label)
+		}
+	}
+	return nil
+}
+
+// ListTasksBrief returns the tasks carrying every label in labels, or all tasks when labels is empty.
+func (b *Board) ListTasksBrief(labels []string) ([]BriefTask, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -256,8 +234,11 @@ func (b *Board) ListTasksBrief() ([]BriefTask, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := b.checkFilterLabels(store, labels); err != nil {
+		return nil, err
+	}
 
-	return store.ListTasksBrief(), nil
+	return store.ListTasksBrief(labels), nil
 }
 
 func (b *Board) ListTasksFull() ([]Task, error) {
@@ -273,11 +254,18 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
-// Promote moves the entry identified by slug to a lower tier number under the write lock;
-// a nil target means one tier lower.
-func (b *Board) Promote(slug string, target *int) (Task, error) {
+// Promote makes the entry identified by idOrSlug a task under the write lock.
+// An entry that is already a task is returned unchanged without a write.
+func (b *Board) Promote(idOrSlug any) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		return store.Promote(slug, target)
+		task, changed, err := store.Promote(idOrSlug)
+		if err != nil {
+			return nil, err
+		}
+		if !changed {
+			return noWrite{result: task}, nil
+		}
+		return task, nil
 	}, nil)
 	if err != nil {
 		return Task{}, err
@@ -297,8 +285,8 @@ func (b *Board) Prune() ([]string, error) {
 	return result.([]string), nil
 }
 
-// Find returns the entries whose slug, title, brief or body contains text, persisting nothing.
-func (b *Board) Find(text string) ([]BriefTask, error) {
+// Find returns the entries whose slug, title, brief or body contains text and that carry every label in labels, persisting nothing.
+func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -307,7 +295,10 @@ func (b *Board) Find(text string) ([]BriefTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	return store.Find(text), nil
+	if err := b.checkFilterLabels(store, labels); err != nil {
+		return nil, err
+	}
+	return store.Find(text, labels), nil
 }
 
 // RetireLegacy ends the pre-upgrade compatibility window under the write lock.
@@ -342,24 +333,4 @@ func (b *Board) RetireLegacy() error {
 		return nil
 	})
 	return err
-}
-
-// PromoteNote moves the entry identified by idOrSlug to tier 1 under the write lock.
-// An entry already at tier 1 is returned unchanged without a write.
-func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
-	target := MinTier
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		current, found := store.GetTask(idOrSlug)
-		if !found {
-			return nil, fmt.Errorf("task not found: %v", idOrSlug)
-		}
-		if current.Tier <= MinTier {
-			return noWrite{result: current}, nil
-		}
-		return store.Promote(idOrSlug, &target)
-	}, nil)
-	if err != nil {
-		return Task{}, err
-	}
-	return result.(Task), nil
 }

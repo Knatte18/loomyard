@@ -9,6 +9,7 @@ package boardengine
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -24,6 +25,9 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
+	// Types are the type labels; Labels are every other configured label.
+	Types  []string `yaml:"types"`
+	Labels []string `yaml:"labels"`
 	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry;
 	// ApplySkipEnv is the fold every CLI entry calls.
 	SkipGit  bool
@@ -34,6 +38,8 @@ type Config struct {
 type Outputs struct {
 	Readme       string
 	DesignPrefix string
+	// Types is the configured type-label order, which the renderer sorts Notes sections by.
+	Types []string
 }
 
 // Outputs returns the Outputs derived from a Config.
@@ -41,7 +47,30 @@ func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:       c.Readme,
 		DesignPrefix: c.DesignPrefix,
+		Types:        c.Types,
 	}
+}
+
+// Vocabulary is the one answer to "is this a type label" and "is this label configured".
+// The zero value, a path-only Config's vocabulary, knows no label.
+type Vocabulary struct {
+	Types  []string
+	Labels []string
+}
+
+// Vocabulary returns the label vocabulary configured in c.
+func (c Config) Vocabulary() Vocabulary {
+	return Vocabulary{Types: c.Types, Labels: c.Labels}
+}
+
+// IsType reports whether label is a configured type label.
+func (v Vocabulary) IsType(label string) bool {
+	return slices.Contains(v.Types, label)
+}
+
+// Known reports whether label is configured, as a type or as a plain label.
+func (v Vocabulary) Known(label string) bool {
+	return v.IsType(label) || slices.Contains(v.Labels, label)
 }
 
 // LoadConfig loads and unmarshals the board module configuration.

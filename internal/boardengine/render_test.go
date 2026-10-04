@@ -1,6 +1,6 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README and design-doc goldens over the tier-section layout: an entry per tier, an empty tier, done and abandoned entries, dependencies, bodies, and the omitted Done section.
+// README and design-doc goldens over the kind-and-label layout: tasks in layers, notes grouped by type with an Other group, done and abandoned entries, dependencies, bodies, and the omitted Done section and empty Notes subsections.
 // Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
 // across consecutive renders,
 // and a missing or corrupt manifest degrades gracefully.
@@ -48,8 +48,8 @@ func TestRenderToDisk(t *testing.T) {
 	}
 
 	tasks := []boardengine.Task{
-		{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "proposal A"},
-		{ID: 1, Slug: "b", Title: "B", Tier: 1, Type: "feature"}, // no body → no design-doc file
+		{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "proposal A"},
+		{ID: 1, Slug: "b", Title: "B", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}, // no body → no design-doc file
 	}
 
 	for _, tt := range tests {
@@ -106,7 +106,7 @@ func seedManifest(t *testing.T, dir string, names []string) {
 func TestRenderToDiskManifestCleanup(t *testing.T) {
 	t.Run("ReadmeRename", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
 
 		// First render produces Home.md and seeds the manifest with it.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
@@ -130,7 +130,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("ProposalPrefixChange", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "body"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "body"}}
 
 		// First render with prefix "proposal-" produces proposal-a.md.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
@@ -157,7 +157,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("BodyLoss", func(t *testing.T) {
 		dir := t.TempDir()
-		task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature", Body: "original body"}
+		task := boardengine.Task{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "original body"}
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 
 		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
@@ -181,7 +181,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("UnrelatedFileNotRemoved", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
 
 		// A hand-added file in the board dir that was never produced by a render.
 		readme := filepath.Join(dir, "NOTES.md")
@@ -205,7 +205,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("NoManifestSeedsAndRemovesNothing", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
 
 		// A file that looks like an orphan under the old glob approach but is absent
 		// from the manifest because no manifest exists yet (pre-upgrade state).
@@ -231,7 +231,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 	t.Run("CorruptManifestDoesNotFailWrite", func(t *testing.T) {
 		dir := t.TempDir()
-		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Tier: 1, Type: "feature"}}
+		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
 
 		// Write a corrupt manifest; RenderToDisk must treat it as absent (no cleanup)
 		// and overwrite it with the current render set.
@@ -249,39 +249,44 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 	})
 }
 
-// readmeFixture holds an entry in tiers 1 and 3, leaving tier 2 empty, plus a done entry that another entry depends on, an abandoned entry, a body, an isolated entry and a two-layer chain inside tier 1.
+// readmeTypes is the type-label order the README goldens render Notes sections in.
+var readmeTypes = []string{"bug", "enhancement"}
+
+// readmeFixture holds tasks and notes with labels, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, and a note whose type label is not in readmeTypes.
 func readmeFixture() []boardengine.Task {
+	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
-		{ID: 1, Slug: "base", Title: "Base work", Tier: 1, Type: "feature", Brief: "The foundation."},
-		{ID: 2, Slug: "top", Title: "Top work", Tier: 1, Type: "bug", Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
-		{ID: 6, Slug: "alone", Title: "Alone work", Tier: 1, Type: "chore", Isolated: true},
-		{ID: 3, Slug: "idea", Title: "An idea", Tier: 3, Type: "design"},
-		{ID: 4, Slug: "dropped", Title: "Dropped idea", Tier: 3, Type: "chore", Status: stringPtr("abandoned"), Brief: "No longer wanted."},
-		{ID: 5, Slug: "shipped", Title: "Shipped work", Tier: 1, Type: "feature", Status: stringPtr("done")},
+		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation."},
+		{ID: 2, Slug: "top", Title: "Top work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
+		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true},
+		{ID: 3, Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}},
+		{ID: 4, Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted."},
+		{ID: 7, Slug: "stray", Title: "Stray note", Kind: note, Labels: []string{"retired"}},
+		{ID: 5, Slug: "shipped", Title: "Shipped work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr("done")},
 	}
 }
 
-// TestRenderReadmeGolden pins the README for a fixture with an entry per tier, an empty tier 2, a done entry, an abandoned tier-3 entry, a slug linked to its design doc, After and Before lines that leave out a done dependency, an isolated entry, and a two-layer chain in one section.
+// TestRenderReadmeGolden pins the README for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, labels on every line, After and Before lines that leave out a done dependency, an isolated task, and a two-layer chain.
 func TestRenderReadmeGolden(t *testing.T) {
-	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
+	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 
 	want := "# Board\n" +
 		"\n" +
-		"Entries grouped by tier, then by dependency layer.\n" +
+		"Tasks are grouped by dependency layer and notes by type.\n" +
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
 		"## Tasks\n" +
 		"\n" +
-		"Concrete and claimable; only an entry here can run.\n" +
+		"Concrete and claimable; only a task can run.\n" +
 		"\n" +
 		"### Layer A\n" +
 		"\n" +
 		"Waits on nothing open; can start now, in parallel.\n" +
 		"\n" +
-		"1. **Base work** — `base` · feature\n" +
+		"1. **Base work** — `base` · enhancement\n" +
 		"   - The foundation.\n" +
 		"   - **Before:** `top`\n" +
 		"\n" +
@@ -289,7 +294,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"\n" +
 		"Starts when every entry it names under After is done.\n" +
 		"\n" +
-		"1. **Top work** — [`top`](design-top.md) · bug · running\n" +
+		"1. **Top work** — [`top`](design-top.md) · bug, area · running\n" +
 		"   - Builds on base.\n" +
 		"   - **After:** `base`\n" +
 		"\n" +
@@ -297,83 +302,84 @@ func TestRenderReadmeGolden(t *testing.T) {
 		"\n" +
 		"Depends on nothing and nothing depends on it, by design.\n" +
 		"\n" +
-		"1. **Alone work** — `alone` · chore\n" +
-		"\n" +
-		"## Next Up\n" +
-		"\n" +
-		"Planned next, but not yet concretized.\n" +
+		"1. **Alone work** — `alone` · enhancement\n" +
 		"\n" +
 		"## Notes\n" +
 		"\n" +
 		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 		"\n" +
-		"### Layer A\n" +
+		"### Bugs\n" +
 		"\n" +
-		"Waits on nothing open; can start now, in parallel.\n" +
-		"\n" +
-		"1. **An idea** — `idea` · design\n" +
-		"1. **Dropped idea** — `dropped` · chore · abandoned\n" +
+		"1. **Dropped idea** — `dropped` · bug · abandoned\n" +
 		"   - No longer wanted.\n" +
+		"\n" +
+		"### Enhancements\n" +
+		"\n" +
+		"1. **An idea** — `idea` · enhancement, undecided\n" +
+		"\n" +
+		"### Other\n" +
+		"\n" +
+		"1. **Stray note** — `stray` · retired\n" +
 		"\n" +
 		"## Done\n" +
 		"\n" +
 		"Finished, awaiting `lyx board prune`.\n" +
 		"\n" +
-		"1. **Shipped work** — `shipped` · feature · done\n"
+		"1. **Shipped work** — `shipped` · enhancement · done\n"
 	if got := result["README.md"]; got != want {
 		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
 	}
+	for _, retired := range []string{"Next Up", "tier", "Tier"} {
+		if strings.Contains(result["README.md"], retired) {
+			t.Errorf("README still mentions %q", retired)
+		}
+	}
 }
 
-// TestRenderReadmeNoDoneSection asserts the Done section is omitted when no entry is done.
+// TestRenderReadmeNoDoneSection asserts the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 func TestRenderReadmeNoDoneSection(t *testing.T) {
-	tasks := []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Tier: 2, Type: "chore"}}
-	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
+	tasks := []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}}
+	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 
 	want := "# Board\n" +
 		"\n" +
-		"Entries grouped by tier, then by dependency layer.\n" +
+		"Tasks are grouped by dependency layer and notes by type.\n" +
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 		"\n" +
 		"## Tasks\n" +
 		"\n" +
-		"Concrete and claimable; only an entry here can run.\n" +
-		"\n" +
-		"## Next Up\n" +
-		"\n" +
-		"Planned next, but not yet concretized.\n" +
-		"\n" +
-		"### Layer A\n" +
-		"\n" +
-		"Waits on nothing open; can start now, in parallel.\n" +
-		"\n" +
-		"1. **A** — `a` · chore\n" +
+		"Concrete and claimable; only a task can run.\n" +
 		"\n" +
 		"## Notes\n" +
 		"\n" +
-		"Not tasks: ideas and observations, merged into a task when one is promoted.\n"
+		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+		"\n" +
+		"### Enhancements\n" +
+		"\n" +
+		"1. **A** — `a` · enhancement\n"
 	got := result["README.md"]
 	if got != want {
 		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
 	}
-	if strings.Contains(got, "## Done") {
-		t.Errorf("README should omit ## Done when no entry is done:\n%s", got)
+	if strings.Contains(got, "## Done") || strings.Contains(got, "### Bugs") || strings.Contains(got, "### Other") {
+		t.Errorf("README should omit ## Done and empty Notes subsections:\n%s", got)
 	}
 }
 
 // TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
 func TestRenderDesignDocGoldens(t *testing.T) {
+	task, note := boardengine.KindTask, boardengine.KindNote
 	tasks := []boardengine.Task{
-		{ID: 1, Slug: "linked", Title: "Linked", Tier: 1, Type: "feature", Body: "linked body"},
-		{ID: 2, Slug: "bare", Title: "Bare", Tier: 2, Type: "chore"},
-		{ID: 3, Slug: "main", Title: "Main", Tier: 2, Type: "bug", Status: stringPtr("active"),
+		{ID: 1, Slug: "linked", Title: "Linked", Kind: task, Labels: []string{"enhancement"}, Body: "linked body"},
+		{ID: 2, Slug: "bare", Title: "Bare", Kind: task, Labels: []string{"bug"}},
+		{ID: 3, Slug: "main", Title: "Main", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("active"),
 			DependsOn: []string{"linked", "bare"}, Body: "line one\n\n  indented\nline three"},
-		{ID: 4, Slug: "plain", Title: "Plain", Tier: 3, Type: "design", Body: "just a body"},
+		{ID: 4, Slug: "plain", Title: "Plain", Kind: note, Labels: []string{"enhancement"}, Body: "just a body"},
 	}
-	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-"})
+	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -384,13 +390,13 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 	}{
 		{
 			file: "design-main.md",
-			want: "# Main\n\n`main` · Next Up · bug · active\n\n" +
+			want: "# Main\n\n`main` · Task · bug, area · active\n\n" +
 				"Depends on: [`linked`](design-linked.md), `bare`\n\n" +
 				"line one\n\n  indented\nline three",
 		},
 		{
 			file: "design-plain.md",
-			want: "# Plain\n\n`plain` · Notes · design\n\njust a body",
+			want: "# Plain\n\n`plain` · Note · enhancement\n\njust a body",
 		},
 	}
 	for _, tt := range tests {
@@ -411,11 +417,11 @@ func TestRenderCustomOutputs(t *testing.T) {
 	t.Run("TestRenderConfigurableHomeFilename", func(t *testing.T) {
 		// Test that Render uses configured Readme filename instead of "Home.md"
 		task := boardengine.Task{
-			ID:    1,
-			Slug:  "test-task",
-			Title: "Test Task",
-			Tier:  1,
-			Type:  "feature",
+			ID:     1,
+			Slug:   "test-task",
+			Title:  "Test Task",
+			Kind:   boardengine.KindTask,
+			Labels: []string{"enhancement"},
 		}
 		out := boardengine.Outputs{
 			Readme:       "README.md",
@@ -437,12 +443,12 @@ func TestRenderCustomOutputs(t *testing.T) {
 	t.Run("TestRenderConfigurableProposalPrefix", func(t *testing.T) {
 		// Test that Render uses configured design prefix
 		task := boardengine.Task{
-			ID:    1,
-			Slug:  "test-task",
-			Title: "Test Task",
-			Tier:  1,
-			Type:  "feature",
-			Body:  "Proposal body",
+			ID:     1,
+			Slug:   "test-task",
+			Title:  "Test Task",
+			Kind:   boardengine.KindTask,
+			Labels: []string{"enhancement"},
+			Body:   "Proposal body",
 		}
 		out := boardengine.Outputs{
 			Readme:       "Home.md",

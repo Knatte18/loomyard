@@ -33,7 +33,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 100)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	const (
@@ -92,7 +92,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 					return
 				}
 
-				tasks, err := w.ListTasksBrief()
+				tasks, err := w.ListTasksBrief(nil)
 				if err != nil {
 					t.Errorf("reader ListTasksBrief: %v", err)
 					return
@@ -129,7 +129,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 0)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	const writers = 16
@@ -139,7 +139,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 		go func(n int) {
 			defer wg.Done()
 			slug := "w-" + strconv.Itoa(n)
-			if _, err := w.UpsertTask(map[string]any{"slug": slug, "title": slug}); err != nil {
+			if _, err := w.UpsertTask(map[string]any{"slug": slug, "title": slug, "labels": []string{"bug"}}); err != nil {
 				t.Errorf("writer %d: %v", n, err)
 			}
 		}(i)
@@ -169,7 +169,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	cwd := seedWiki(b, 100)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	stop := make(chan struct{})

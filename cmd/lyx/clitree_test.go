@@ -47,14 +47,6 @@ func argsFor(cmd *cobra.Command) []string {
 // An entry fails once its invocation meets the invariant, and an entry naming a group that no longer exists fails as stale.
 var cliTreeFindings = []scankit.Entry{
 	{
-		Key: "board notes#bare",
-		Why: "the alias group emits the \"not initialized here\" envelope outside a wired fabric ahead of its listing, and exits 1",
-	},
-	{
-		Key: "board notes#bogus",
-		Why: "emits the \"not initialized here\" envelope before the unknown-subcommand one, so the output holds two documents",
-	},
-	{
 		Key: "config#bare",
 		Why: "refuses with \"not a git repository\" instead of listing its verbs",
 	},

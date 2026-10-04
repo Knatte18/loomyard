@@ -131,7 +131,7 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	}
 	cfg.Path = h.BoardDir()
 	b := boardengine.New(cfg)
-	if _, err := b.UpsertTask(map[string]any{"slug": slug, "title": slug, "recipe": recipeType}); err != nil {
+	if _, err := b.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": "task", "labels": []string{"bug"}, "recipe": recipeType}); err != nil {
 		t.Fatalf("seed board task %q: %v", slug, err)
 	}
 }
