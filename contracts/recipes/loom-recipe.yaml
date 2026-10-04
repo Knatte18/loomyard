@@ -100,7 +100,7 @@ producers:
       rubric_stencil: loom-rubric-discussion-review
       # commit_seam is required rather than optional here: Discussion-Burler runs fix-scope: overlay
       # and an overlay round runs no git at all, and nothing else in this segment commits, so without
-      # the seam every approved fix would stay uncommitted in the weft working tree.
+      # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: discussion
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
@@ -136,7 +136,7 @@ producers:
             section contract over the discussion artifact pair is already enforced by this round's
             own gate over this round's own output, so re-deriving it here is duplicated work.
         rubric_stencil: loom-rubric-discussion-review
-        # fix-scope: overlay, not source: the target paths above are weft content reached through the
+        # fix-scope: overlay, not source: the target paths above are fabric records content reached through the
         # junction, and the Fabric Git Invariant reserves committing that class of file to the loop
         # owner, never an agent. Discussion-Bouncer's commit_seam: discussion key is what actually
         # commits this round's approved settle.
@@ -172,7 +172,7 @@ producers:
       rubric_stencil: loom-rubric-plan-review
       # commit_seam is required rather than optional here: Plan-Burler runs fix-scope: overlay and
       # an overlay round runs no git at all, and nothing else in this segment commits, so without
-      # the seam every approved fix would stay uncommitted in the weft working tree.
+      # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: plan
       # approve_seam: plan is set on this row and no other -- it is the only row in the whole list
       # that knows the plan passed review. The approved settle writes the approval flag through
@@ -236,8 +236,8 @@ producers:
             the review round is judging, and this row already has write access to the overview
             because it runs fix-scope: overlay with the plan directory in its target paths.
         rubric_stencil: loom-rubric-plan-review
-        # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is weft
-        # content reached through the junction, and the Fabric Git Invariant reserves committing that
+        # fix-scope: overlay, matching the Discussion-Burler row above. The plan directory is fabric
+        # records content reached through the junction, and the Fabric Git Invariant reserves committing that
         # class of file to the loop owner, never an agent.
         fix-scope: overlay
         # tool-use is required: the round walks the plan directory's card files (the set is

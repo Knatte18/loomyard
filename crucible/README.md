@@ -243,7 +243,7 @@ Six serial rounds against `fabric` after the slice 1–10 v2 rewrite.
 | Round | Model | Effort | What it did |
 |------:|-------|--------|-------------|
 | R1 | Opus  | high   | 23 findings; self-reported "ready to merge" and the operator rejected that outright |
-| R2 | Fable | high   | 17 findings; `pull` destroying uncommitted warp work via `ResetHard` while returning `ok:true` |
+| R2 | Fable | high   | 17 findings; `pull` destroying uncommitted code-side work via `ResetHard` while returning `ok:true` |
 | R3 | Opus  | high   | 6 findings; hostile-slug `remove`, plus a 40-cell dirty-worktree matrix |
 | R4 | Opus  | medium | **three graded sweeps instead of a fourth review** — closed two defect classes with counted evidence |
 | R5 | Opus  | medium | 15 findings, 2 BLOCKING, in three regions no prior round had ever driven |

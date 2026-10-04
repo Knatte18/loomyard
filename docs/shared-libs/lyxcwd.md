@@ -11,7 +11,7 @@ The cap is an allowlist enforced by `internal/lyxcwd/leaf_enforcement_test.go` (
 
 The cwd-≠-worktree-root bug recurs because path math is scattered: each module re-derives the worktree root and cwd relationship ad hoc.
 A single, minimal resolver makes correctness structural, not a matter of discipline — but it stops there.
-Every per-module path (weft siblings, junctions, `_lyx/plan`, portals, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
+Every per-module path (records siblings, junctions, `_lyx/plan`, portals, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
 
 ## Exported API
 
@@ -73,15 +73,15 @@ and the worktree path is a direct child of `HubPath` by construction, so both ar
   under the strict cwd gate this equals `cwd` after a successful `Resolve`.
 
 That is the entire exported surface.
-No other accessor, weft path, junction path, or per-module subdirectory constructor lives here — see "What moved out", below.
+No other accessor, records path, junction path, or per-module subdirectory constructor lives here — see "What moved out", below.
 
 ## What moved out
 
 Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
-Weft-sibling paths and junction construction (`WeftWorktree`, `WarpLyxLink`, `WarpJunctions`, portal and launcher paths,
+Records-sibling paths and junction construction (`WeftWorktree`, `WarpLyxLink`, the junction-set helpers, portal and launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
-The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the full, current per-token ownership map.
+The records-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the full, current per-token ownership map.
 
 ## Design principles
 
@@ -107,14 +107,14 @@ That follow-up pulls `logger` initialization rework in with it and is out of sco
 **`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The scan uses a substring check on the raw file bytes (after blanking comments) and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, `-weft`, `-LYXHUB`, `_portals`, `_launchers`, `_lyx`, `.lyx`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, the records-sibling suffix, `-LYXHUB`, `_portals`, `_launchers`, `_lyx`, `.lyx`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
 Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.
 - An operand of a binary `+` (`token.ADD`) expression.
 - The value of a string `const` declaration.
 
-Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boardroom` or `-weft-bare` are not flagged.
+Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boardroom` or a suffix-extended name are not flagged.
 Test files (`*_test.go`) are excluded from the scan — test geometry is a code-review obligation, not machine-enforced.
 A `scanned_non_empty` sub-test guards against a misconfigured walk that would silently produce a vacuous pass.
 

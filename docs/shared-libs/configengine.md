@@ -11,7 +11,7 @@ This is the one place that knows the `_lyx/` layout and enforces strict validati
 │   ├── config/         git-TRACKED config files (only source of live values)
 │   │   ├── board.yaml      (must match board module template)
 │   │   ├── worktree.yaml   (must match worktree module template)
-│   │   └── weft.yaml       (must match weft module template)
+│   │   └── fabric.yaml     (must match fabric module template)
 │   ├── discussion.md    lyx task discussion (artifact)
 │   ├── plan.md         lyx task plan (artifact)
 │   └── reviews/        lyx code reviews (artifact directory)
@@ -111,9 +111,9 @@ Callers never see raw YAML or unexpanded tokens.
 ## Migration from old format
 
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
-Running `lyx config reconcile --apply` from the warp worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the warp `_lyx` is a directory junction into the weft worktree's `_lyx`, a single warp `lyx config reconcile` reaches all config files (board, worktree, and weft).
-No separate command in the weft sibling is needed.
+Running `lyx config reconcile --apply` from the code worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
+Because the code worktree's `_lyx` is a directory junction into its records sibling's `_lyx`, a single `lyx config reconcile` there reaches all config files (board, worktree, and fabric).
+No separate command in the records sibling is needed.
 
 ## Exported functions
 
@@ -133,7 +133,7 @@ Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a sp
 
 ### `ConfigFileRel(module string) string`
 
-Returns `filepath.Join(LyxDirName, "config", module+".yaml")` — the anchor-relative form used to build weft commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
+Returns `filepath.Join(LyxDirName, "config", module+".yaml")` — the anchor-relative form used to build records commit pathspecs, as opposed to `ConfigFile`'s base-joined absolute form.
 
 ### `FindBaseDir(cwd string) (string, error)`
 
