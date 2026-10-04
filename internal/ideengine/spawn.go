@@ -8,6 +8,7 @@ package ideengine
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
@@ -32,7 +33,7 @@ var CodeLauncher = vscode.Launch
 // every error on that path is returned wrapped with its step, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
 func Spawn(l *lyxcwd.Location, slug string) error {
-	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug)
+	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
 
 	// Resolve both binary paths the generated folderOpen chain stamps in absolute.
 	// Each degrades to the empty string on error so vscode.WriteConfig's own bare-name
@@ -63,7 +64,7 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 // SpawnDriven then writes neither file, leaves the shared info/exclude alone, logs one warning, and still launches.
 // Otherwise it first keeps .vscode/ out of git with an anchored line in the shared info/exclude, so the child's commits never sweep it up.
 func SpawnDriven(l *lyxcwd.Location, slug string) error {
-	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug)
+	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
 
 	lyxPath, _ := os.Executable()
 	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, "", vscode.TaskChainAttachOnly); err != nil {
@@ -99,15 +100,45 @@ func writeVSCodeConfig(l *lyxcwd.Location, worktreeDir, slug, color, lyxPath, cl
 	return nil
 }
 
+// spawnTarget is what a spawn opens, as far as the caller can tell before the prime's name is known.
+type spawnTarget int
+
+const (
+	// targetUnknown is a spawn whose slug may name the prime; fabricengine has no structural check that tells without the prime-name read.
+	targetUnknown spawnTarget = iota
+	// targetTask is a spawn that always opens a task pair.
+	targetTask
+	// targetPrime is a spawn known to open the prime.
+	targetPrime
+)
+
+// primeResolveLogLevel decides how loudly a prime-name resolution failure is logged for target.
+// A prime or unknown target logs at WARN, since a prime spawn must never lose its warning;
+// a task target logs at debug, since only its title-bar color degrades.
+// No error logs nothing.
+func primeResolveLogLevel(target spawnTarget, err error) (level slog.Level, log bool) {
+	if err == nil {
+		return 0, false
+	}
+	if target == targetTask {
+		return slog.LevelDebug, true
+	}
+	return slog.LevelWarn, true
+}
+
 // resolveSpawnTarget resolves slug's worktree path and title-bar color, and the prime's name.
-// A prime-resolution failure is logged here, once, and degrades rather than failing the spawn:
+// A prime-resolution failure is logged here, once, at the level primeResolveLogLevel picks for target, and degrades rather than failing the spawn:
 // PickColor skips its prime-skip step, and the returned flag is false.
 // A wrong title-bar color or a missing hub workspace is not worth aborting over.
-func resolveSpawnTarget(l *lyxcwd.Location, slug string) (worktreeDir, color, primeName string, primeResolved bool) {
+func resolveSpawnTarget(l *lyxcwd.Location, slug string, target spawnTarget) (worktreeDir, color, primeName string, primeResolved bool) {
 	worktreeDir = fabricengine.WorktreePath(l, slug)
 	primeName, primeErr := fabricengine.PrimeName(l)
-	if primeErr != nil {
-		logger.Warn("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
+	if level, ok := primeResolveLogLevel(target, primeErr); ok {
+		if level == slog.LevelDebug {
+			logger.Debug("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
+		} else {
+			logger.Warn("resolve prime name; opening the bare folder", "slug", slug, "error", primeErr)
+		}
 	}
 	color = vscode.PickColor(l, primeName)
 	return worktreeDir, color, primeName, primeErr == nil
@@ -120,9 +151,24 @@ func writePrimeWorkspace(l *lyxcwd.Location, primeName, primeDir string) (string
 	if err != nil {
 		return "", fmt.Errorf("read prime settings: %w", err)
 	}
+	if keys := vscode.RelativeSettingKeys(settings); len(keys) > 0 {
+		logger.Warn("prime settings hold relative paths that now resolve against the _launchers workspace file's directory", "keys", keys)
+	}
+	// WriteHubWorkspace creates the _portals/<AnchorRel> folder, which HubWorkspaceFolders lists only once it exists,
+	// so the first spawn on a hub writes twice; the second write is a no-op when the file is unchanged.
+	for range 2 {
+		if err := writeWorkspaceFile(l, primeName, settings); err != nil {
+			return "", err
+		}
+	}
+	return fabricengine.HubWorkspacePath(l, primeName), nil
+}
+
+// writeWorkspaceFile builds the hub workspace file from the folders that exist now and writes it.
+func writeWorkspaceFile(l *lyxcwd.Location, primeName string, settings []byte) error {
 	hubFolders, err := fabricengine.HubWorkspaceFolders(l, primeName)
 	if err != nil {
-		return "", fmt.Errorf("compute workspace folders: %w", err)
+		return fmt.Errorf("compute workspace folders: %w", err)
 	}
 	folders := make([]vscode.WorkspaceFolder, len(hubFolders))
 	for i, f := range hubFolders {
@@ -130,10 +176,10 @@ func writePrimeWorkspace(l *lyxcwd.Location, primeName, primeDir string) (string
 	}
 	content, err := vscode.BuildWorkspace(folders, settings)
 	if err != nil {
-		return "", fmt.Errorf("build workspace: %w", err)
+		return fmt.Errorf("build workspace: %w", err)
 	}
 	if _, err := fabricengine.WriteHubWorkspace(l, primeName, content); err != nil {
-		return "", fmt.Errorf("write workspace: %w", err)
+		return fmt.Errorf("write workspace: %w", err)
 	}
-	return fabricengine.HubWorkspacePath(l, primeName), nil
+	return nil
 }
