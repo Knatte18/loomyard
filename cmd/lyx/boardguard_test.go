@@ -5,7 +5,7 @@
 // CommitWeftAt/PushWeftAt instead (see the plan's "no import cycle from boardengine into
 // fabricengine" Shared Decision) — this guard is the mechanical enforcement that keeps a future
 // change from regressing that routing back into a raw git call.
-// See CONSTRAINTS.md's Fabric Git Invariant.
+// See `PATTERN-fabric-git`.
 
 package main
 
@@ -63,14 +63,14 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 
 		if imp, bad := firstBannedBoardImport(f.AST(t, parser.ImportsOnly)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
+				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see `PATTERN-fabric-git`)",
 				f.Rel, imp,
 			))
 		}
 
 		if token, bad := firstBannedGitSpawn(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
+				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see `PATTERN-fabric-git`)",
 				f.Rel, token,
 			))
 		}
@@ -79,7 +79,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	scankit.RequireFloor(t, scanned, boardGuardMinScannedFiles, "board guard")
 
 	if len(failures) > 0 {
-		t.Errorf("Fabric Git Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-git` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

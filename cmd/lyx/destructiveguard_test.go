@@ -2,7 +2,7 @@
 // internal/fabricengine's production source contains no destructive primitive call outside
 // destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to
 // perform one.
-// See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant.
+// See `PATTERN-fabric-destruction-chokepoint`.
 //
 // This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
 // scankit supplies the module root and the production-file walk.
@@ -38,7 +38,7 @@
 // restore the guard's package-scoped intent.
 //
 // This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record
-// Invariant's guard (see CONSTRAINTS.md's Mutation Record Invariant). It pins two shapes by raw
+// Invariant's guard (see `PATTERN-mutation-record`). It pins two shapes by raw
 // source inspection alone, both against internal/fabricengine/destroy.go and the mutating result
 // types' declarations: that every one of destroy.go's nine executors declares a leading
 // `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord
@@ -212,7 +212,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 			for _, tok := range destructiveGuardBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant), or add a destructiveGuardAllowlist entry in cmd/lyx/destructiveguard_test.go with a reason if this is a new audited exemption",
+						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see `PATTERN-fabric-destruction-chokepoint`), or add a destructiveGuardAllowlist entry in cmd/lyx/destructiveguard_test.go with a reason if this is a new audited exemption",
 						f.Rel, tok,
 					))
 				}
@@ -224,12 +224,12 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Fabric Destruction Chokepoint Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-destruction-chokepoint` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
 // TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see
-// CONSTRAINTS.md's Mutation Record Invariant).
+// `PATTERN-mutation-record`).
 // It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
 //
 //  1. Every executor named in destructiveGuardRecordingExecutors declares a leading
@@ -253,7 +253,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	var scannedExecutors int
 	for _, e := range destructiveGuardRecordingExecutors {
 		if !strings.Contains(destroyContent, e.declPrefix) {
-			t.Errorf("internal/fabricengine/destroy.go: executor %s does not declare a leading `rec *Mutations` parameter (expected to find %q) — every executor in destroy.go must take a recorder per the Mutation Record Invariant (see CONSTRAINTS.md)", e.name, e.declPrefix)
+			t.Errorf("internal/fabricengine/destroy.go: executor %s does not declare a leading `rec *Mutations` parameter (expected to find %q) — every executor in destroy.go must take a recorder per `PATTERN-mutation-record`", e.name, e.declPrefix)
 			continue
 		}
 		scannedExecutors++
@@ -277,7 +277,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			continue
 		}
 		if firstField != "MutationRecord" {
-			t.Errorf("%s: mutating result type %s must embed MutationRecord as its first field (see CONSTRAINTS.md's Mutation Record Invariant); found %q", rt.file, rt.name, firstField)
+			t.Errorf("%s: mutating result type %s must embed MutationRecord as its first field (see `PATTERN-mutation-record`); found %q", rt.file, rt.name, firstField)
 			continue
 		}
 		scannedResultTypes++
@@ -301,7 +301,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			continue
 		}
 		if firstField == "MutationRecord" {
-			t.Errorf("%s: read-only result type %s must NOT embed MutationRecord — the which-verbs-record scope decision is machine-held (see CONSTRAINTS.md's Mutation Record Invariant)", rt.file, rt.name)
+			t.Errorf("%s: read-only result type %s must NOT embed MutationRecord — the which-verbs-record scope decision is machine-held (see `PATTERN-mutation-record`)", rt.file, rt.name)
 			continue
 		}
 		scannedReadOnlyTypes++

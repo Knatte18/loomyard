@@ -9,7 +9,7 @@
 // resolve.go's resolveLyx is the single allowlisted resolution site;
 // every other call site must route through it instead, so the dev/prod distinction can never
 // silently regress to a bare PATH fallback.
-// See CONSTRAINTS.md's Dev/Prod Binary Separation Invariant.
+// See `PATTERN-dev-prod-binary-separation`.
 
 package main
 
@@ -58,7 +58,7 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Dev/Prod Binary Separation Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-dev-prod-binary-separation` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

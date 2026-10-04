@@ -1,4 +1,4 @@
-// spawnobservability_test.go enforces CONSTRAINTS.md's Live-Substrate Spawn Observability invariant's
+// spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
 // exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason
 // entry in spawnObservabilityAllowedSpawners.
@@ -138,7 +138,7 @@ func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 
 	sort.Strings(failures)
 	if len(failures) > 0 {
-		t.Errorf("Live-Substrate Spawn Observability invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-spawn-observability` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

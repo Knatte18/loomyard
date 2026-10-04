@@ -2,7 +2,7 @@
 // test file this task moved onto the cwd-context seam (RunCLIIn / lyxcwd.WithCwd) must never
 // reintroduce a process-wide t.Chdir or os.Chdir call, in either spelling. This is the guard slice
 // 15's discussion promised — machine-enforcing what would otherwise be review discipline only.
-// See CONSTRAINTS.md's Cwd Resolution Invariant.
+// See `PATTERN-cwd-resolution`.
 //
 // This guard walks through scankit and keeps tierpurity_test.go's report-every-violation-rather-than-the-
 // first posture. It departs from tierpurity_test.go in one respect: the subject set here is an
@@ -83,7 +83,7 @@ func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
 
 		if tok, found := firstCwdMutationToken(string(f.Data)); found {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned cwd-mutation token %q -- a subject-set file must drive the module's RunCLIIn seam at an explicit cwd instead of moving the process (see CONSTRAINTS.md's Cwd Resolution Invariant), or add a cwdMutationAllowlist entry in cmd/lyx/cwdmutation_test.go with a reason",
+				"%s: contains banned cwd-mutation token %q -- a subject-set file must drive the module's RunCLIIn seam at an explicit cwd instead of moving the process (see `PATTERN-cwd-resolution`), or add a cwdMutationAllowlist entry in cmd/lyx/cwdmutation_test.go with a reason",
 				f.Rel, tok,
 			))
 		}
@@ -96,7 +96,7 @@ func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Cwd Resolution Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-cwd-resolution` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
