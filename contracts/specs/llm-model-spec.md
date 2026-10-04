@@ -110,7 +110,7 @@ claudeengine already hard-errors on an invalid `--effort` for exactly this reaso
 ## Provider seam
 
 Registry data is provider-invariant (alias → engine name + model string + param defaults).
-Everything provider-*specific* — CLI flags, `version` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per the Shuttle Provider-Seam Invariant in `CONSTRAINTS.md`.
+Everything provider-*specific* — CLI flags, `version` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per `PATTERN-shuttle-provider-seam`.
 
 ## Roles that use this notation
 

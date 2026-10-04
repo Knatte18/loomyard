@@ -170,7 +170,7 @@ Warp branches only; a stranded weft branch goes through `lyx fabric cleanup`.
 - A `branch_pushed` entry alone never qualifies: it is recorded whenever an existing branch is pushed forward.
 - Never delete a branch carrying commits the trace does not attribute to the failed step.
 
-The Fabric Git Invariant in `CONSTRAINTS.md` binds `lyx`'s own code; this skill makes no commits.
+`PATTERN-fabric-git` binds `lyx`'s own code; this skill makes no commits.
 Each deletion is a repair record like any other.
 
 ## Repair cap

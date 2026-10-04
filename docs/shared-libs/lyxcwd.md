@@ -81,7 +81,7 @@ Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
 Weft-sibling paths and junction construction (`WeftWorktree`, `WarpLyxLink`, `WarpJunctions`, portal and launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
-The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full, current per-token ownership map.
+The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the full, current per-token ownership map.
 
 ## Design principles
 
@@ -120,4 +120,4 @@ A `scanned_non_empty` sub-test guards against a misconfigured walk that would si
 
 A third, separately-filed test — `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) — enforces the import cap described above: it walks this package's own production `.go` files and fails on any import outside stdlib plus `internal/gitexec`.
 
-See [CONSTRAINTS.md](../../CONSTRAINTS.md) for the full invariant specification, the current per-token ownership map, and guidance for new code.
+See [PATTERN.md](../../PATTERN.md) for the full invariant specification, the current per-token ownership map, and guidance for new code.

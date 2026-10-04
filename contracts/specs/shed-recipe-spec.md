@@ -99,4 +99,4 @@ No design impact here worth a dedicated mechanism: `OnStuck: ""` already halts t
 
 - `internal/shedengine`'s and `internal/shedadapters`' package documentation — `Shed`'s own generic mechanism (the loop, the producer contract, the engine adapters) this recipe layer sits on top of, unchanged.
 - `internal/shedbuild`'s and `internal/shedcheck`'s package documentation — the as-built parser and the assembled-list checker.
-- `CONSTRAINTS.md`'s Recipe-Format Sole-Parser Invariant, Shed Recipe Registry Invariant, Told-Geometry Invariant and Shed Producer-Seam Invariant — the four that directly shape this format.
+- `PATTERN-sole-parsers`, `PATTERN-shed-recipe-registry`, `PATTERN-told-geometry` and `PATTERN-shed-producer-seam` — the four that directly shape this format.

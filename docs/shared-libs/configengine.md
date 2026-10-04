@@ -119,9 +119,9 @@ No separate command in the weft sibling is needed.
 
 ### `LyxDirName` (not exported here)
 
-[`internal/lyxdirs` is the sole declarer](../../CONSTRAINTS.md#lyxdirs-single-declarer-invariant) of the `"_lyx"` token (`lyxdirs.LyxDirName`);
+[`internal/lyxdirs` is the sole declarer](../../PATTERN.md) of the `"_lyx"` token (`lyxdirs.LyxDirName`);
 `internal/configengine` itself uses `lyxdirs.LyxDirName` like every other caller and does not declare or export the literal.
-Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lyxdirs.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Cwd Resolution Invariant.
+Every module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, lyxdirs.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md).
 
 ### `ConfigDir(baseDir string) string`
 

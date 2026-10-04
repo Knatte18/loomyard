@@ -69,13 +69,13 @@ the most recent prior round is whichever `<module>-review-*` file is newest), EX
 
 ## What to read
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
-- Docs: `<MODULE DOC — the package's doc.go>`, `docs/overview.md`, `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
+- Docs: `<MODULE DOC — the package's doc.go>`, `docs/overview.md`, `PATTERN.md`, `README.md`, and any `docs/research/<module>-*.md`.
 - If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
   You run every scenario yourself, directly, with your own tool calls;
   you do NOT invoke its `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself;
   see "Live driving" in "What to TEST" below).
   No such file needs to exist for you to do this module's live driving — the "High-yield focus" list above is your primary script.
-- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md` (Hub Geometry, CLI/Cobra, gitkit Leaf, hubforge Fabric-Fixture, Sandbox Suite Coverage, Documentation Lifecycle).
+- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `PATTERN.md` (`PATTERN-hub-containment`, `PATTERN-cli-cobra`, `PATTERN-leaf-packages`, `PATTERN-hubforge-fixtures`, `PATTERN-sandbox-coverage`, `PATTERN-documentation-lifecycle`).
   A change that ships behaviour without updating the module doc / invariants in the SAME change is incomplete.
 - Design intent (SPEC, not a review): `<where the intended scope lives — e.g. _mill/discussion.md + _mill/plan/* recovered from git history at sha <SHA>>`.
   Use it as the authoritative source of intended v1 scope/behavior.
@@ -213,7 +213,7 @@ Small and low-severity findings are usually the CHEAPEST to fix, not a reason to
   If none exists, note the new scenario in your fixer report instead — creating a brand-new suite file/launcher is not required by this method.
 - Keep `go build`/`vet`/`test` green after every change.
   Then RE-DEPLOY (`deploy-dev.cmd`) and re-run every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the deployed dev binary).
-- Update `<the module's doc.go>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change.
+- Update `<the module's doc.go>` (and `docs/overview.md` / `PATTERN.md` if invariants or the module table move) IN THE SAME change.
   Do NOT add bugfix/hardening notes to the board (the board holds planned work only).
 - Tear down all substrate state;
   confirm zero stray processes.

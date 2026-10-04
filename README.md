@@ -127,7 +127,7 @@ pick the task up on another machine and it resumes where it stopped, and two tas
 ## Engineering discipline
 
 - **Structural invariants as tests.**
-  [`CONSTRAINTS.md`](CONSTRAINTS.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
+  [`PATTERN.md`](PATTERN.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
 - **Told, never derived.**
   Every layer from `reed` up is handed its geometry — absolute, already-resolved paths — instead of computing it, which is what lets the same producer run inside a hub or against a plain checkout (`--target-dir`) with no hub at all.
 - **Prompts are versioned contracts.**
@@ -204,7 +204,7 @@ Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://g
 
 ## Documentation
 
-- [CONSTRAINTS.md](CONSTRAINTS.md) — the structural invariants (authoritative).
+- [PATTERN.md](PATTERN.md) — the structural invariants (authoritative).
 - [docs/overview.md](docs/overview.md) — architecture, naming, and the module and package map.
 - [contracts/specs/](contracts/specs/) — the on-disk format contracts, each with exactly one parser.
 - [crucible/](crucible/README.md) — the hardening method for live-substrate modules.

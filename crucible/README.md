@@ -171,7 +171,7 @@ None of it needs an attached TTY of its own: a tmux pane is a real pty regardles
 
 If the module already has a maintained `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (built for the separate human-operator dogfooding use case), the round agent MAY read it for scenario ideas, but must execute every scenario with its own tool calls — never via the launcher.
 **Building a new dedicated suite file + launcher wiring is NOT a prerequisite for running this method on a new module.**
-That machinery serves `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant — a separate, pre-existing requirement for every *registered* module — not something this hardening method needs to stand up for itself.
+That machinery serves `PATTERN-sandbox-coverage`, the sandbox suite coverage invariant — a separate, pre-existing requirement for every *registered* module — not something this hardening method needs to stand up for itself.
 
 Reusable rules that bit us and are worth carrying to any module's live driving:
 
@@ -201,7 +201,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 ## Instantiating this for a new module
 
 1. Fill every `<PLACEHOLDER>` in a copy of [`review-prompt-template.md`](review-prompt-template.md) and write it to `_mill/<module>-review-prompt.md`, then commit it: what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check.
-2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`).
+2. Confirm the module already satisfies `PATTERN-sandbox-coverage` (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`).
    That invariant is pre-existing and independent of this method — do NOT build a new dedicated suite file or launcher just to satisfy this hardening loop;
    the round agent drives the real CLI directly (see "Driving the real substrate" above) whether or not a dedicated suite file exists.
 3. Run the loop: seed → spawn (rotate model + effort) → independently verify → re-seed → repeat until a safety pass finds nothing and your gates agree.
