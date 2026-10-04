@@ -83,7 +83,7 @@ var checkedCallRawTokens = []string{
 // see checkedCallCountDiff.
 var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo":       3, // run's own body, Pull, Fetch
-	"internal/fabricengine":  2, // weftRepoExists, weftBranchExists
+	"internal/fabricengine":  2, // the repo-exists and branch-exists helpers
 	"internal/lyxcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,

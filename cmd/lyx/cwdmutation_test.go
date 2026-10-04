@@ -58,7 +58,7 @@ var cwdMutationBannedTokens = []string{"t.Chdir(", "os.Chdir("}
 var cwdMutationAllowlist = []scankit.Entry{
 	{
 		Key: "internal/fabricengine/coalesce_integration_test.go",
-		Why: `cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New("") against a non-git process cwd`,
+		Why: `cwd is the assertion: the coalesce-push test with an empty code-side path, run from an unrelated cwd, pins gitrepo.New("") against a non-git process cwd`,
 	},
 }
 

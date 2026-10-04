@@ -112,7 +112,7 @@ func TestResolveParent_RemovedParentWorktreeStillResolves(t *testing.T) {
 		t.Fatalf("write shortname: %v", err)
 	}
 	// The record is written by hand: WriteOrigin seeds git excludes, which spawns git, and this file is untagged.
-	// ReadOriginFor requires the weft worktree's lock directory beside the record.
+	// ReadOriginFor requires the records worktree's lock directory beside the record.
 	recordPath := fabricengine.OriginRecordPathFor(l, l.WorktreeName)
 	for _, dir := range []string{filepath.Dir(recordPath), filepath.Join(fabricengine.WeftWorktreePath(l, l.WorktreeName), ".weft")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

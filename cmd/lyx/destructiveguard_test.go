@@ -11,17 +11,17 @@
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
 //
 // "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
-// qualified "os.RemoveAll(" (e.g. warpprobe.go's allowlisted probe-clone teardown) AND a
+// qualified "os.RemoveAll(" (e.g. the allowlisted probe-clone teardown in internal/fabricengine) AND a
 // method-call spelling like destroy.go's own `root.RemoveAll(` — the os.Root-rooted removal the R3
 // containment fix routes through — neither of which the narrower "os.RemoveAll(" would match.
 // (An earlier binding also had a bare `var RemoveAll = os.RemoveAll` seam this token caught; that
 // seam was removed once the executors began removing through os.Root, but the bare token remains the
 // correct superset for the forms that survive.)
 //
-// "warp.ResetHard(" / "weft.ResetHard(" rather than ".ResetHard(": the broad ".ResetHard(" form
+// the two raw per-side handle forms of ".ResetHard(" rather than ".ResetHard(" itself: the broad form
 // would flag the *correctly migrated* callers, since the gated reset is reached as a method call
-// on the pair handle (e.g. `f.warp.ResetHard(sha)` inside destroy.go itself, or a future
-// `weft`-side caller). Banning the raw handles instead targets what is actually forbidden —
+// on the pair handle (e.g. the code-side handle's ResetHard inside destroy.go itself, or a future
+// records-side caller). Banning the raw handles instead targets what is actually forbidden —
 // reaching past the gate to the underlying repo field — and needs no leading dot, so it matches
 // under any receiver name.
 //
@@ -94,15 +94,15 @@ var destructiveGuardAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
 	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
 		"under a repo-wide flock, never operator content"},
-	{Key: "internal/fabricengine/warpprobe.go", Why: "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
+	{Key: "internal/fabricengine/warpprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
 	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
-		"weft gitdir, fabric-internal metadata, never operator content"},
+		"records-side gitdir, fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/junction.go", Why: "two audited sites, both removing a directory the same call just emptied by rename and " +
 		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
-		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
+		"adoptDotLyxContent's os.Remove(link) for the code-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
 		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption"},
 	{Key: "internal/fabricengine/hook.go", Why: "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
 		"ten lines earlier, on its own rollback path after a failed chain write"},

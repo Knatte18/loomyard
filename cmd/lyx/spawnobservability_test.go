@@ -80,7 +80,7 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
 		Key: "internal/gitkit/gitkit.go",
 		Why: "structurally barred by the gitkit Leaf Invariant's pinned import list " +
-			"(stdlib, lyxcwd, weftname, configengine, lyxdirs only)",
+			"(stdlib, lyxcwd, the fabric name package, configengine, lyxdirs only)",
 	},
 	{
 		Key: "internal/githubclient/token.go",

@@ -15,7 +15,7 @@ import (
 // TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as
 // RunID, a StepsDir under its .lyx scratch directory, and batten's own routing.
 func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	c := &battenCLI{
 		location:  loc,
 		slug:      "task-a",
