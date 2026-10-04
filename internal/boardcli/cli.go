@@ -151,6 +151,7 @@ Example:
 	}
 
 	var findText bool
+	var findLabels []string
 	findCmd := &cobra.Command{
 		Use:   "find <text>...",
 		Short: "Find tasks whose slug, title, brief or body contains the text",
@@ -158,13 +159,16 @@ Example:
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
 listing instead (errors stay JSON); its columns are kind, slug, title, labels and, when set, [status].
+--label <name> keeps only entries carrying that label; repeat it to require several (AND).
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
   lyx board find retry backoff
-  lyx board find --text retry`,
+  lyx board find --text retry
+  lyx board find --label bug retry`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := b.Find(strings.Join(args, " "))
+			tasks, err := b.Find(strings.Join(args, " "), findLabels)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -172,6 +176,7 @@ Examples:
 		}),
 	}
 	findCmd.Flags().BoolVar(&findText, "text", false, "print the compact one-line-per-task listing instead of JSON")
+	findCmd.Flags().StringArrayVar(&findLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	retireLegacyCmd := &cobra.Command{
 		Use:   "retire-legacy",
@@ -447,18 +452,22 @@ Example:
 
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
+	var listLabels []string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all tasks with computed fields",
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
 With --text, print the compact one-line-per-task listing (kind, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
+--label <name> keeps only entries carrying that label; repeat it to require several (AND).
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
   lyx board list
-  lyx board list --text`,
+  lyx board list --text
+  lyx board list --label bug --label undecided`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := board().ListTasksBrief()
+			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -466,6 +475,7 @@ Examples:
 		}),
 	}
 	listCmd.Flags().BoolVar(&listText, "text", false, "print the compact one-line-per-task listing instead of JSON")
+	listCmd.Flags().StringArrayVar(&listLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	// list-full subcommand: list all tasks as stored in board.json.
 	listFullCmd := &cobra.Command{

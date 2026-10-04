@@ -532,8 +532,28 @@ func (s *Store) SetDeps(slug string, dependsOn []string) error {
 	return nil
 }
 
-// ListTasksBrief returns all tasks enriched with computed Layer and HasProposal fields.
-func (s *Store) ListTasksBrief() []BriefTask {
+// hasAllLabels reports whether t carries every label in want; an empty want matches everything.
+func hasAllLabels(t Task, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(t.Labels, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// anyEntryCarries reports whether any entry, of any kind or status, carries label.
+func (s *Store) anyEntryCarries(label string) bool {
+	for _, t := range s.tasks {
+		if slices.Contains(t.Labels, label) {
+			return true
+		}
+	}
+	return false
+}
+
+// ListTasksBrief returns the tasks carrying every label in labels (all tasks when empty), enriched with computed Layer and HasProposal fields.
+func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 	layerMap, err := ComputeLayers(s.tasks)
 	if err != nil {
 		// If layer computation fails, assign empty string
@@ -554,6 +574,9 @@ func (s *Store) ListTasksBrief() []BriefTask {
 
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
+		if !hasAllLabels(t, labels) {
+			continue
+		}
 		brief := BriefTask{
 			ID:          t.ID,
 			Slug:        t.Slug,
@@ -629,7 +652,8 @@ func (s *Store) Prune() []string {
 }
 
 // Find returns the entries whose slug, title, brief or body contains text, case-insensitively, done entries included, in ListTasksBrief's shape and order.
-func (s *Store) Find(text string) []BriefTask {
+// Only entries carrying every label in labels are kept.
+func (s *Store) Find(text string, labels []string) []BriefTask {
 	needle := strings.ToLower(text)
 	matches := make(map[string]bool)
 	for _, t := range s.tasks {
@@ -642,7 +666,7 @@ func (s *Store) Find(text string) []BriefTask {
 	}
 
 	result := []BriefTask{}
-	for _, b := range s.ListTasksBrief() {
+	for _, b := range s.ListTasksBrief(labels) {
 		if matches[b.Slug] {
 			result = append(result, b)
 		}

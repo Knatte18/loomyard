@@ -738,7 +738,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	}
 
 	// (n) ListTasksBrief returns Layer and HasProposal computed correctly
-	brief := s.ListTasksBrief()
+	brief := s.ListTasksBrief(nil)
 	if len(brief) != 2 {
 		t.Errorf("expected 2 brief tasks, got %d", len(brief))
 	}
@@ -785,11 +785,45 @@ func TestListAndFindReadmeOrder(t *testing.T) {
 		}
 		return strings.Join(out, ",")
 	}
-	if got := slugs(s.ListTasksBrief()); got != want {
+	if got := slugs(s.ListTasksBrief(nil)); got != want {
 		t.Errorf("ListTasksBrief order = %s, want %s", got, want)
 	}
-	if got := slugs(s.Find("x-")); got != want {
+	if got := slugs(s.Find("x-", nil)); got != want {
 		t.Errorf("Find order = %s, want %s", got, want)
+	}
+}
+
+// TestListAndFindLabelFilter verifies the label filter keeps only entries carrying every named label, in README order.
+func TestListAndFindLabelFilter(t *testing.T) {
+	s := boardengine.NewStore("")
+	for _, f := range []map[string]any{
+		{"slug": "x-a", "kind": "note", "labels": []string{"a"}},
+		{"slug": "x-ab", "kind": "task", "labels": []string{"a", "b"}},
+		{"slug": "x-b", "kind": "note", "labels": []string{"b"}},
+	} {
+		if _, err := s.UpsertTask(f); err != nil {
+			t.Fatalf("UpsertTask %v: %v", f, err)
+		}
+	}
+	slugs := func(bs []boardengine.BriefTask) string {
+		var out []string
+		for _, b := range bs {
+			out = append(out, b.Slug)
+		}
+		return strings.Join(out, ",")
+	}
+
+	if got := slugs(s.ListTasksBrief([]string{"a"})); got != "x-ab,x-a" {
+		t.Errorf("list --label a = %s, want x-ab,x-a", got)
+	}
+	if got := slugs(s.ListTasksBrief([]string{"a", "b"})); got != "x-ab" {
+		t.Errorf("list --label a --label b = %s, want x-ab", got)
+	}
+	if got := slugs(s.Find("x-", []string{"b"})); got != "x-ab,x-b" {
+		t.Errorf("find --label b = %s, want x-ab,x-b", got)
+	}
+	if got := slugs(s.Find("x-", []string{"a", "b"})); got != "x-ab" {
+		t.Errorf("find --label a --label b = %s, want x-ab", got)
 	}
 }
 
@@ -1278,13 +1312,13 @@ func TestFind(t *testing.T) {
 		return out
 	}
 
-	if got := slugs(s.Find("NEEDLE")); !sliceEqualStrings(got, []string{"b", "c", "d"}) {
+	if got := slugs(s.Find("NEEDLE", nil)); !sliceEqualStrings(got, []string{"b", "c", "d"}) {
 		t.Errorf("title/brief/body match (done included) = %v", got)
 	}
-	if got := slugs(s.Find("ALPHA-SLUG")); !sliceEqualStrings(got, []string{"alpha-slug"}) {
+	if got := slugs(s.Find("ALPHA-SLUG", nil)); !sliceEqualStrings(got, []string{"alpha-slug"}) {
 		t.Errorf("slug match = %v", got)
 	}
-	got := s.Find("zzz")
+	got := s.Find("zzz", nil)
 	if got == nil || len(got) != 0 {
 		t.Errorf("no match should be an empty slice, got %v", got)
 	}

@@ -252,7 +252,7 @@ func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
 	if _, found, err := w.GetTask("idea"); err != nil || !found {
 		t.Errorf("GetTask(idea) found=%v err=%v; want found", found, err)
 	}
-	if _, err := w.ListTasksBrief(); err != nil {
+	if _, err := w.ListTasksBrief(nil); err != nil {
 		t.Errorf("ListTasksBrief: %v", err)
 	}
 
@@ -308,7 +308,7 @@ func TestDuplicateLegacySlugRefusesReadsAndWrites(t *testing.T) {
 	if _, _, err := w.GetTask("alpha"); err == nil || !strings.Contains(err.Error(), "alpha") {
 		t.Errorf("GetTask error = %v; want one naming alpha", err)
 	}
-	if _, err := w.ListTasksBrief(); err == nil || !strings.Contains(err.Error(), "alpha") {
+	if _, err := w.ListTasksBrief(nil); err == nil || !strings.Contains(err.Error(), "alpha") {
 		t.Errorf("ListTasksBrief error = %v; want one naming alpha", err)
 	}
 	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err == nil || !strings.Contains(err.Error(), "alpha") {
@@ -516,7 +516,7 @@ func TestFindOnUnmigratedBoardWritesNothing(t *testing.T) {
 	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
 	before := dataFiles(t, boardPath)
 
-	found, err := w.Find("IDEA")
+	found, err := w.Find("IDEA", nil)
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
@@ -602,4 +602,59 @@ func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
 	if err != nil || !found || beta.Status == nil || *beta.Status != active {
 		t.Errorf("beta = %+v found=%v err=%v; want it to stay %q", beta, found, err, active)
 	}
+}
+
+// TestFilterLabelValidation covers D6: a config-built Board refuses a filter label that is unconfigured and carried by no entry,
+// accepts one removed from config that an entry still carries, and a path-only Board filters without validating.
+func TestFilterLabelValidation(t *testing.T) {
+	boardPath := t.TempDir()
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
+	cfg.Labels = []string{"undecided", "retired"}
+	w := boardengine.New(cfg)
+	for _, f := range []map[string]any{
+		{"slug": "old", "kind": "note", "labels": []string{"bug", "retired"}},
+		{"slug": "new", "kind": "note", "labels": []string{"bug"}},
+	} {
+		if _, err := w.UpsertTask(f); err != nil {
+			t.Fatalf("UpsertTask %v: %v", f, err)
+		}
+	}
+
+	// "retired" is configured only while the entry is written; the narrowed config no longer lists it.
+	cfg.Labels = []string{"undecided"}
+	narrowed := boardengine.New(cfg)
+
+	t.Run("unknown label refused", func(t *testing.T) {
+		for name, call := range map[string]func() error{
+			"list": func() error { _, err := narrowed.ListTasksBrief([]string{"mystery"}); return err },
+			"find": func() error { _, err := narrowed.Find("o", []string{"mystery"}); return err },
+		} {
+			err := call()
+			if err == nil || !strings.Contains(err.Error(), `"mystery"`) || !strings.Contains(err.Error(), "board.yaml") {
+				t.Errorf("%s: error = %v; want one naming the label and board.yaml", name, err)
+			}
+		}
+	})
+
+	t.Run("label removed from config but carried is accepted", func(t *testing.T) {
+		got, err := narrowed.ListTasksBrief([]string{"retired"})
+		if err != nil {
+			t.Fatalf("ListTasksBrief: %v", err)
+		}
+		if len(got) != 1 || got[0].Slug != "old" {
+			t.Errorf("got %+v; want only old", got)
+		}
+	})
+
+	t.Run("path-only board filters without refusal", func(t *testing.T) {
+		pathOnly := boardengine.New(boardengine.Config{Path: boardPath})
+		got, err := pathOnly.ListTasksBrief([]string{"mystery"})
+		if err != nil || len(got) != 0 {
+			t.Errorf("list = %+v, %v; want empty and no error", got, err)
+		}
+		got, err = pathOnly.Find("", []string{"bug"})
+		if err != nil || len(got) != 2 {
+			t.Errorf("find = %+v, %v; want both entries and no error", got, err)
+		}
+	})
 }

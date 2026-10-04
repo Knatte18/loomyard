@@ -92,7 +92,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 					return
 				}
 
-				tasks, err := w.ListTasksBrief()
+				tasks, err := w.ListTasksBrief(nil)
 				if err != nil {
 					t.Errorf("reader ListTasksBrief: %v", err)
 					return

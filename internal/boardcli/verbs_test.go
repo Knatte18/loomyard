@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -153,6 +154,31 @@ func TestCLIFind(t *testing.T) {
 	// Several arguments join with single spaces into one search text.
 	if got := slugsOf(t, runJSON(t, 0, "find", "needle", "in", "brief")); len(got) != 1 || got[0] != "c" {
 		t.Fatalf("find needle in brief: slugs = %v, want [c]", got)
+	}
+}
+
+func TestCLIListAndFindLabelFilter(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+	mustUpsert(t, `{"slug":"one","title":"One","kind":"note","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"two","title":"Two","kind":"note","labels":["bug","undecided"]}`)
+	mustUpsert(t, `{"slug":"three","title":"Three","kind":"note","labels":["enhancement","undecided"]}`)
+
+	if got := slugsOf(t, runJSON(t, 0, "list", "--label", "bug", "--label", "undecided")); len(got) != 1 || got[0] != "two" {
+		t.Fatalf("list --label bug --label undecided: slugs = %v, want [two]", got)
+	}
+	if got := slugsOf(t, runJSON(t, 0, "find", "--label", "undecided", "t")); len(got) != 2 {
+		t.Fatalf("find --label undecided t: slugs = %v, want two and three", got)
+	}
+
+	for _, args := range [][]string{{"list", "--label", "mystery"}, {"find", "--label", "mystery", "t"}} {
+		result := runJSON(t, 1, args...)
+		if ok, _ := result["ok"].(bool); ok {
+			t.Fatalf("%v: expected ok=false, got %v", args, result)
+		}
+		if msg, _ := result["error"].(string); !strings.Contains(msg, "mystery") || !strings.Contains(msg, "board.yaml") {
+			t.Fatalf("%v: error = %q, want one naming the label and board.yaml", args, msg)
+		}
 	}
 }
 

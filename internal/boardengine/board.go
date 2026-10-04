@@ -251,7 +251,22 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	return task, found, nil
 }
 
-func (b *Board) ListTasksBrief() ([]BriefTask, error) {
+// checkFilterLabels refuses a filter label that is in neither list of the vocabulary and that no entry carries.
+// A path-only Board has no config to check against and accepts every label.
+func (b *Board) checkFilterLabels(store *Store, labels []string) error {
+	if b.out.Readme == "" {
+		return nil
+	}
+	for _, label := range labels {
+		if !b.vocab.Known(label) && !store.anyEntryCarries(label) {
+			return fmt.Errorf("filter label %q is in neither the types nor the labels list of board.yaml and no entry carries it: add it to board.yaml, or filter by a configured label", label)
+		}
+	}
+	return nil
+}
+
+// ListTasksBrief returns the tasks carrying every label in labels, or all tasks when labels is empty.
+func (b *Board) ListTasksBrief(labels []string) ([]BriefTask, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -260,8 +275,11 @@ func (b *Board) ListTasksBrief() ([]BriefTask, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := b.checkFilterLabels(store, labels); err != nil {
+		return nil, err
+	}
 
-	return store.ListTasksBrief(), nil
+	return store.ListTasksBrief(labels), nil
 }
 
 func (b *Board) ListTasksFull() ([]Task, error) {
@@ -308,8 +326,8 @@ func (b *Board) Prune() ([]string, error) {
 	return result.([]string), nil
 }
 
-// Find returns the entries whose slug, title, brief or body contains text, persisting nothing.
-func (b *Board) Find(text string) ([]BriefTask, error) {
+// Find returns the entries whose slug, title, brief or body contains text and that carry every label in labels, persisting nothing.
+func (b *Board) Find(text string, labels []string) ([]BriefTask, error) {
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -318,7 +336,10 @@ func (b *Board) Find(text string) ([]BriefTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	return store.Find(text), nil
+	if err := b.checkFilterLabels(store, labels); err != nil {
+		return nil, err
+	}
+	return store.Find(text, labels), nil
 }
 
 // RetireLegacy ends the pre-upgrade compatibility window under the write lock.
