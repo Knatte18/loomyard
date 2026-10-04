@@ -3,6 +3,7 @@
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
 // promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
 // design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
@@ -60,7 +61,7 @@ available subcommands without requiring a git repo.`,
 	cmd.RunE = clihelp.GroupRunE
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if cmd.Name() == "board" {
+		if cmd.Name() == "board" || cmd.Name() == "intake" {
 			return nil
 		}
 
@@ -226,6 +227,7 @@ Example:
 		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
+		intakeCommand(board),
 	)
 
 	return cmd
