@@ -26,7 +26,7 @@
 // and told mode respectively.
 // This property is a review obligation here, not machine-enforced — this package has no
 // import-allowlist test policing the absence of internal/lyxcwd.
-// See CONSTRAINTS.md's Told-Geometry Invariant.
+// See PATTERN-told-geometry.
 //
 // # The A/B round
 //
@@ -34,8 +34,8 @@
 // the review fully written to disk, before the round touches a single
 // target file. Fixing findings as they are spotted turns the "review"
 // into a post-hoc rationalization of edits already made, which destroys
-// the independent judgment the whole method depends on — see the Review
-// Round Invariant in CONSTRAINTS.md and the four round-prompt assets (a
+// the independent judgment the whole method depends on — see
+// PATTERN-review-round and the four round-prompt assets (a
 // thin orchestrator, burler-template-round-orchestrator.md, plus three
 // instruction files, burler-step-{1-explore,2-review,3-fix}.md) that state
 // this rule to the agent every round. The prompts ship as embedded defaults
@@ -134,8 +134,8 @@
 // caller supplied (resolved absolute), and committing them
 // is the loop owner's job (loom's
 // Burler-round-producer-plus-Bouncer segments), via the
-// fabric engine in-process. See the Fabric Git Invariant in
-// CONSTRAINTS.md. The one exception an agent DOES commit is its own code
+// fabric engine in-process. See PATTERN-fabric-git.
+// The one exception an agent DOES commit is its own code
 // under FixScopeSource — that is an ordinary repo commit, not a fabric
 // operation.
 //
@@ -172,7 +172,7 @@
 // the handler spawns all N lens forks in a SINGLE message via Claude Code's
 // built-in fork subagents (Agent tool, subagent_type "fork", always
 // unnamed), and, while they run, performs its own HOLISTIC review —
-// architecture, cross-file invariants, CONSTRAINTS-fit — the level no
+// architecture, cross-file invariants, PATTERN-fit — the level no
 // narrow lens covers; (3) the handler consolidates every fork's returned
 // findings together with its own holistic findings into the ONE review
 // file: dedup across lenses, an origin: frontmatter key on every kept

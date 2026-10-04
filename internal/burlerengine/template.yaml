@@ -76,7 +76,7 @@ lenses:
     else you notice too — emphasis, never exclusion.
   docs-consistency: |
     Focus on documentation drift: comments or docs that no longer match the
-    code they describe, module docs or CONSTRAINTS.md entries a behavior
+    code they describe, module docs or PATTERN entries a behavior
     change should have updated but didn't, stale references to removed or
     renamed symbols, and examples that would no longer compile or run as
     written. Report anything else you notice too — emphasis, never exclusion.

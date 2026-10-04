@@ -36,7 +36,7 @@ import (
 // correctly, nothing escaped — while `lyx fabric remove` reported "ok":true, "partial":false and an
 // exit 0, with the launcher scripts still on disk and no signal to the operator that a containment
 // guard had fired at all (fabric's R8 crucible round, finding L2; R2's M2 dishonest-success shape on
-// the teardown path). Typing it as the gate's own refusal is what makes CONSTRAINTS.md's "a gate
+// the teardown path). Typing it as the gate's own refusal is what makes PATTERN-fabric-destruction-chokepoint's "a gate
 // refusal is never discarded on a best-effort path" true for this guard too, with no change at any
 // call site, and makes RefusalOf answer for it like any other.
 func refuseUncontainedPath(container, target, what string) error {

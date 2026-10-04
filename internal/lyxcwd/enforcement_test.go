@@ -539,8 +539,8 @@ var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/gitkit":       true,
-	// internal/hubforge is in the narrower weftname-import subset CONSTRAINTS.md's Fabric
-	// Vocabulary Invariant already names, alongside internal/fabricengine, internal/fabriccli
+	// internal/hubforge is in the narrower weftname-import subset PATTERN-fabric-vocabulary
+	// already names, alongside internal/fabricengine, internal/fabriccli
 	// and internal/gitkit -- this map is an allowlist of what may import weftname, not an
 	// assertion of what does, so this entry is correct even though hub.go imports no weftname
 	// identifier today.

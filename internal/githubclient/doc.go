@@ -1,7 +1,7 @@
 // Package githubclient owns GitHub token resolution, token caching, and
 // construction of an authenticated *github.Client -- nothing else. This file
-// is the package's durable design record; see the GitHub Auth Invariant in
-// CONSTRAINTS.md for the machine-enforced half of the same contract.
+// is the package's durable design record; see
+// PATTERN-github-auth for the machine-enforced half of the same contract.
 //
 // # What this package deliberately is not
 //

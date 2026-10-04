@@ -1,4 +1,4 @@
-// template_test.go is the machine half of the Review Round Invariant (CONSTRAINTS.md): it pins each
+// template_test.go is the machine half of the PATTERN-review-round: it pins each
 // of the four shipped round-prompt assets' load-bearing statements as substring assertions — the
 // orchestrator's sequencing statements, instruction 3's fix-everything/ never-push statements,
 // instruction 2's cluster/origin statements — it proves each asset actually fills through stencil

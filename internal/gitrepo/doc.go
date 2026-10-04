@@ -27,7 +27,7 @@
 // PushCoalesced, ResetHard, IsAncestor, and
 // HasUnpushed (measured and reverted from a go-git ancestry walk; see
 // HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
-// runChecked. See CONSTRAINTS.md's gitrepo Client Boundary Invariant for the
+// runChecked. See PATTERN-gitrepo-client-boundary for the
 // enforced, exhaustive version of this split and the review obligation any
 // new CLI call inside this package carries. gitexec itself stays a
 // zero-dependency leaf regardless of which side of the boundary a gitrepo

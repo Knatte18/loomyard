@@ -119,7 +119,7 @@ run-timeout; zero defers to the config default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			// ShouldAbort first, as CONSTRAINTS.md's CLI/Cobra Invariant requires of every RunE and
+			// ShouldAbort first, as PATTERN-cli-cobra requires of every RunE and
 			// as every sibling verb already does. A failing PersistentPreRunE has already written its
 			// error envelope and recorded the exit code, so the flag check that used to run ahead of
 			// this emitted a SECOND envelope — and the second one ("--profile is required") was the

@@ -293,7 +293,7 @@ func equalStrings(got, want []string) bool {
 }
 
 // TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo is R6-16's regression test. The RunE checked
-// --profile before clihelp.ShouldAbort, against CONSTRAINTS.md's CLI/Cobra Invariant, so a wiring
+// --profile before clihelp.ShouldAbort, against PATTERN-cli-cobra, so a wiring
 // refusal plus a missing --profile emitted two error envelopes — and the second one named a flag
 // while the real failure was the refusal above it.
 func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {

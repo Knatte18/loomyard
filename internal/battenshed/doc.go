@@ -4,8 +4,8 @@
 // two producers.
 //
 // Told-geometry tier: this package takes every absolute path it operates on from its caller and
-// has no direct production import of internal/lyxcwd, per the Told-Geometry Invariant
-// (CONSTRAINTS.md). Its seam_enforcement_test.go enforces that membership mechanically.
+// has no direct production import of internal/lyxcwd, per PATTERN-told-geometry.
+// Its seam_enforcement_test.go enforces that membership mechanically.
 //
 // This package describes one repository throughout. It is not in the Fabric Vocabulary
 // Invariant's owner set, so none of its identifiers, string literals, or comments may name either

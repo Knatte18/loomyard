@@ -443,7 +443,7 @@
 // `lyx fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--shortname`,
 // while a bound weft that lacks the record takes `--shortname` or warns.
 // `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
-// The grammar and the way reed uses the shortname are the Agent Name Invariant in CONSTRAINTS.md.
+// The grammar and the way reed uses the shortname are `PATTERN-agent-name`.
 //
 // The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
 // later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
@@ -634,7 +634,7 @@
 // reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
 // nothing failed to reconcile: the pair simply stopped existing.
 //
-// See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
+// See PATTERN-mutation-record for the machine-enforced half of this rule, and
 // `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
 // guard itself.
 //
@@ -656,12 +656,12 @@
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
 // their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
-// review obligation instead. See CONSTRAINTS.md's Fabric Vocabulary Invariant for the authoritative
+// review obligation instead. See PATTERN-fabric-vocabulary for the authoritative
 // list.
 // `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
-// `CONSTRAINTS.md`'s Fabric Vocabulary Invariant records the rule in full, including the phrase-based
+// `PATTERN-fabric-vocabulary` records the rule in full, including the phrase-based
 // `warp` predicate and the review-only prose-doc split between a doc explaining fabric's own
 // mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
 // rewords).
@@ -674,7 +674,7 @@
 // `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a
 // branch on a remote (`git push <remote> --delete`), and a warp checkout's `ResetHard` — and every
 // one of them runs its shared four-check pipeline first.
-// See `CONSTRAINTS.md`'s Fabric Destruction Chokepoint Invariant for the rules;
+// See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
 // **Why a chokepoint at all.**
@@ -832,7 +832,7 @@
 // being in the same call (clone.go, warpbinding.go, weftgit.go, junction.go's weft-target materialisation),
 // where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
 // residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
-// guard rather than a routed write. See CONSTRAINTS.md's Fabric Write-Side Containment Invariant and
+// guard rather than a routed write. See PATTERN-fabric-write-containment and
 // `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
 // **The launcher/portal teardown path was the last corner still holding the old shape, because every prior

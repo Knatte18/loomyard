@@ -1,7 +1,7 @@
 // Package loggerconfig owns _lyx/config/logger.yaml, the trace-retention bounds the exit sweep reads.
 //
 // It lives outside internal/logger because internal/configengine imports internal/logger, so the logger cannot load its own config without an import cycle.
-// Load never resolves cwd itself: the caller hands it the anchor (see the Cwd Resolution Invariant in CONSTRAINTS.md).
+// Load never resolves cwd itself: the caller hands it the anchor (see PATTERN-cwd-resolution).
 package loggerconfig
 
 import (
