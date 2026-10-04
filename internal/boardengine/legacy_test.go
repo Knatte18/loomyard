@@ -30,7 +30,7 @@ func TestMigrateLegacyKindAndLabels(t *testing.T) {
 	}
 	notes := []legacyRecord{{ID: 5, Slug: "idea"}}
 
-	entries, _, err := migrateLegacy(tasks, notes)
+	entries, _, err := migrateLegacy(tasks, notes, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,11 +65,23 @@ func TestMigrateLegacyKindAndLabels(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacyBracketPrefixesBecomeLabels(t *testing.T) {
+	tasks := []legacyRecord{{ID: 0, Slug: "a", Brief: "[infra] [bug] real brief"}}
+	entries, _, err := migrateLegacy(tasks, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	a := entryBySlug(t, entries, "a")
+	if !slices.Equal(a.Labels, []string{"enhancement", "infra"}) || a.Brief != "real brief" {
+		t.Errorf("labels=%v brief=%q, want [enhancement infra] and the stripped brief", a.Labels, a.Brief)
+	}
+}
+
 func TestMigrateLegacyCollidingNoteIDReassigned(t *testing.T) {
 	tasks := []legacyRecord{legacyRec(0, "a", ""), legacyRec(3, "b", "")}
 	notes := []legacyRecord{legacyRec(3, "n1", ""), legacyRec(4, "n2", "")}
 
-	entries, _, err := migrateLegacy(tasks, notes)
+	entries, _, err := migrateLegacy(tasks, notes, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +97,7 @@ func TestMigrateLegacyCollidingNoteIDReassigned(t *testing.T) {
 }
 
 func TestMigrateLegacyDuplicateSlugRefused(t *testing.T) {
-	_, _, err := migrateLegacy([]legacyRecord{legacyRec(0, "dup", "")}, []legacyRecord{legacyRec(1, "dup", "")})
+	_, _, err := migrateLegacy([]legacyRecord{legacyRec(0, "dup", "")}, []legacyRecord{legacyRec(1, "dup", "")}, nil)
 	if err == nil {
 		t.Fatal("expected an error for a slug in both files")
 	}
@@ -98,7 +110,7 @@ func TestMigrateLegacyDoneSeed(t *testing.T) {
 	tasks := []legacyRecord{legacyRec(0, "t-done", "done"), legacyRec(1, "t-open", "in-progress")}
 	notes := []legacyRecord{legacyRec(2, "n-done", "done"), legacyRec(3, "n-open", "")}
 
-	entries, legacyDone, err := migrateLegacy(tasks, notes)
+	entries, legacyDone, err := migrateLegacy(tasks, notes, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,11 +124,11 @@ func TestMigrateLegacyDoneSeed(t *testing.T) {
 }
 
 func TestFoldLegacyDoneAppliesOnce(t *testing.T) {
-	entries, legacyDone, err := migrateLegacy([]legacyRecord{legacyRec(0, "a", "")}, nil)
+	entries, legacyDone, err := migrateLegacy([]legacyRecord{legacyRec(0, "a", "")}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := []legacyRecord{legacyRec(0, "a", "done")}
+	legacy :=[]legacyRecord{legacyRec(0, "a", "done")}
 
 	folded, grown := foldLegacyDone(entries, legacyDone, legacy)
 	if s := entryBySlug(t, folded, "a").Status; s == nil || *s != "done" {
@@ -153,7 +165,7 @@ func TestFoldLegacyDoneIgnoresOtherStatuses(t *testing.T) {
 
 func TestFoldLegacyDoneReopenedStaysReopened(t *testing.T) {
 	legacy := []legacyRecord{legacyRec(0, "a", "done")}
-	entries, legacyDone, err := migrateLegacy(legacy, nil)
+	entries, legacyDone, err := migrateLegacy(legacy, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +184,7 @@ func TestFoldLegacyDoneReopenedStaysReopened(t *testing.T) {
 
 func TestFoldLegacyDoneReusedSlugNotMarkedDone(t *testing.T) {
 	legacy := []legacyRecord{legacyRec(0, "a", "done")}
-	_, legacyDone, err := migrateLegacy(legacy, nil)
+	_, legacyDone, err := migrateLegacy(legacy, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

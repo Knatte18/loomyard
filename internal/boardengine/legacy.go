@@ -19,8 +19,9 @@ const (
 	// legacyDoneStatus is the status value a pre-upgrade binary wrote to mark a record done.
 	legacyDoneStatus = "done"
 
-	// legacyLabel is the one label migration gives every converted record.
-	legacyLabel = "enhancement"
+	// legacyTaskTier and legacyNoteTier are the tiers a legacy record is given before conversion: a task is tier 1, a deferred task or note is tier 2.
+	legacyTaskTier = 1
+	legacyNoteTier = 2
 )
 
 // legacyRecord is one record of the pre-upgrade tasks.json or notes.json.
@@ -52,8 +53,10 @@ func decodeLegacy(data []byte) ([]legacyRecord, error) {
 }
 
 // migrateLegacy converts decoded legacy tasks and notes into store entries and seeds the legacy_done slug list.
+// The entries go through the same conversion as an old-shape board.json, so a brief's bracket prefixes become labels.
 // A note whose id collides with an id already taken is given a fresh id above every id in use.
-func migrateLegacy(tasks, notes []legacyRecord) ([]Task, []string, error) {
+// vocab may be nil.
+func migrateLegacy(tasks, notes []legacyRecord, vocab *Vocabulary) ([]Task, []string, error) {
 	seen := make(map[string]bool, len(tasks)+len(notes))
 	taken := make(map[int]bool, len(tasks)+len(notes))
 	maxID := -1
@@ -73,14 +76,14 @@ func migrateLegacy(tasks, notes []legacyRecord) ([]Task, []string, error) {
 		maxID = max(maxID, r.ID)
 	}
 
-	entries := make([]Task, 0, len(tasks)+len(notes))
+	entries := make([]storedEntry, 0, len(tasks)+len(notes))
 	legacyDone := []string{}
 	for _, r := range tasks {
-		kind := KindTask
+		tier := legacyTaskTier
 		if r.Deferred {
-			kind = KindNote
+			tier = legacyNoteTier
 		}
-		entries = append(entries, entryFromLegacy(r, r.ID, kind))
+		entries = append(entries, entryFromLegacy(r, r.ID, tier))
 		if r.Status == legacyDoneStatus {
 			legacyDone = append(legacyDone, r.Slug)
 		}
@@ -92,12 +95,12 @@ func migrateLegacy(tasks, notes []legacyRecord) ([]Task, []string, error) {
 			id = maxID
 		}
 		taken[id] = true
-		entries = append(entries, entryFromLegacy(r, id, KindNote))
+		entries = append(entries, entryFromLegacy(r, id, legacyNoteTier))
 		if r.Status == legacyDoneStatus {
 			legacyDone = append(legacyDone, r.Slug)
 		}
 	}
-	return entries, legacyDone, nil
+	return migrateEntries(entries, vocab), legacyDone, nil
 }
 
 // duplicateLegacySlugError names a slug found in both legacy files.
@@ -105,14 +108,13 @@ func duplicateLegacySlugError(slug string) error {
 	return fmt.Errorf("slug %q appears more than once across the legacy tasks and notes files: remove the duplicate from one legacy file", slug)
 }
 
-// entryFromLegacy builds a store entry from a legacy record, moving the old type into recipe.
-func entryFromLegacy(r legacyRecord, id int, kind string) Task {
+// entryFromLegacy builds the decode shape of a legacy record with the given tier and type feature, moving the old type into recipe.
+func entryFromLegacy(r legacyRecord, id int, tier int) storedEntry {
+	legacyType := "feature"
 	t := Task{
 		ID:        id,
 		Slug:      r.Slug,
 		Title:     r.Title,
-		Kind:      kind,
-		Labels:    []string{legacyLabel},
 		Recipe:    r.Type,
 		DependsOn: r.DependsOn,
 		Isolated:  r.Isolated,
@@ -127,7 +129,7 @@ func entryFromLegacy(r legacyRecord, id int, kind string) Task {
 		status := r.Status
 		t.Status = &status
 	}
-	return t
+	return storedEntry{Task: t, Tier: &tier, Type: &legacyType}
 }
 
 // foldLegacyDone carries done marks a pre-upgrade binary wrote after migration into the store.

@@ -1063,6 +1063,38 @@ func TestLoadFromBoardJSON(t *testing.T) {
 	}
 }
 
+// TestLoadOldShapeRoundTrip verifies an old-shape board.json converts on Load and persists with kind and labels and without tier or type after Save.
+func TestLoadOldShapeRoundTrip(t *testing.T) {
+	boardDir := t.TempDir()
+	body := `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[]}]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	store := boardengine.NewStore(boardDir)
+	if err := store.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	tasks := store.Tasks()
+	if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
+		t.Fatalf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
+	}
+
+	if err := store.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	if !stringContains(string(raw), `"kind": "task"`) && !stringContains(string(raw), `"kind":"task"`) {
+		t.Errorf("Save did not write kind: %s", raw)
+	}
+	if !stringContains(string(raw), `"labels"`) || stringContains(string(raw), `"tier"`) || stringContains(string(raw), `"type"`) {
+		t.Errorf("Save must write labels and no tier or type: %s", raw)
+	}
+}
+
 // TestLoadUnknownVersionRefused verifies a board.json version other than 1 refuses the load, naming the version.
 func TestLoadUnknownVersionRefused(t *testing.T) {
 	boardDir := t.TempDir()

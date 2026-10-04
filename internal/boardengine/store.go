@@ -54,6 +54,13 @@ type storeFile struct {
 	LegacyDone []string `json:"legacy_done,omitempty"`
 }
 
+// loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
+type loadedStoreFile struct {
+	Version    int           `json:"version"`
+	Entries    []storedEntry `json:"entries"`
+	LegacyDone []string      `json:"legacy_done,omitempty"`
+}
+
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
 	tasks      []Task
@@ -77,6 +84,7 @@ func NewStore(boardDir string) *Store {
 // Load populates the store from boardDir and never writes.
 // board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
 // Whenever a legacy file exists, its done marks are folded into the loaded entries.
+// Entries in the old tier-and-type shape convert in memory and persist in the new shape on the next Save.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
@@ -97,7 +105,7 @@ func (s *Store) Load() error {
 	var entries []Task
 	var legacyDone []string
 	if fileExists(path) {
-		file, found, err := state.ReadJSON[storeFile](path, path+swapLockSuffix)
+		file, found, err := state.ReadJSON[loadedStoreFile](path, path+swapLockSuffix)
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
@@ -105,10 +113,10 @@ func (s *Store) Load() error {
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
-			entries, legacyDone = file.Entries, file.LegacyDone
+			entries, legacyDone = migrateEntries(file.Entries, s.vocab), file.LegacyDone
 		}
 	} else if haveTasks || haveNotes {
-		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords)
+		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
