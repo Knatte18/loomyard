@@ -41,7 +41,7 @@
 // modelspec without creating an import cycle; configreg importing modelspec (for
 // ConfigTemplate) is the one allowed direction. Enforced by
 // leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly) and recorded as the
-// Modelspec Leaf Invariant in CONSTRAINTS.md.
+// PATTERN-leaf-packages.
 //
 // Consumers map Resolved onto shuttleengine.Spec themselves — this package does
 // not import shuttleengine, so it cannot return one directly:

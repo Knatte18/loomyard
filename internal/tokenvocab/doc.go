@@ -10,15 +10,15 @@
 // Leaf invariant: tokenvocab imports only stdlib and internal/stencil — never a
 // feature package (reed, loom, or any other module).
 // This is enforced by internal/tokenvocab/leaf_enforcement_test.go
-// (TestLeafInvariant_AllowlistOnly) and recorded as the "Tokenvocab Leaf Invariant" in
-// CONSTRAINTS.md, mirroring internal/modelspec.
+// (TestLeafInvariant_AllowlistOnly) and recorded in PATTERN-leaf-packages,
+// mirroring internal/modelspec.
 //
 // Told-geometry tier: tokenvocab is told its geometry and derives none of its own — it takes plain
 // path strings from its caller rather than resolving them, so it requires none of the three
 // resolution tiers and runs identically inside a lyx hub and outside one.
 // This property is machine-enforced by the same leaf_enforcement_test.go allowlist above, since it
 // omits internal/lyxcwd.
-// See CONSTRAINTS.md's Told-Geometry Invariant.
+// See PATTERN-told-geometry.
 //
 // Adding a token: append one entry to the unexported registry slice in tokenvocab.go — {Name,
 // Resolve} — and nothing else changes.

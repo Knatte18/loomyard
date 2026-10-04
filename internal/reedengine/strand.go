@@ -554,8 +554,8 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				// UpdateStrand's hidden->visible surface, and each per-strand replay inside
 				// Resume) carry no equivalent per-strand Info log today, relying on the generic
 				// tmux Debug trace instead. The discussion for this task settled the question
-				// for this branch alone, per CONSTRAINTS.md's Live-Substrate Spawn
-				// Observability invariant; widening or narrowing the sibling paths' logging is
+				// for this branch alone, per
+				// PATTERN-spawn-observability; widening or narrowing the sibling paths' logging is
 				// separate work and stays out of this plan.
 				logger.Info("reed: relaunched strand for --if-absent reopen",
 					"socket", e.Socket(), "session", e.SessionName(), "guid", strand.GUID, "name", strand.Name)

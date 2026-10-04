@@ -13,7 +13,7 @@
 // "an unrecognized shape" fallthrough are how each stays fail-closed without going through the
 // map-based ledger.
 //
-// Per the Ref-Shape Registry Invariant (CONSTRAINTS.md), this file and classify.go are the only
+// Per PATTERN-ref-shape-registry, this file and classify.go are the only
 // two files in internal/planparser (and the only files at all, across internal/planparser and
 // internal/planglyph) where a refKind comparison or a classifyRef call is legal outside a
 // _test.go file; every other production dispatch site routes through lookup or through the

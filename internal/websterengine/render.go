@@ -193,7 +193,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, pl
 // RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand, read from
 // stencilsDir.
 // Unlike RenderForkPrompt, the recovery strand inherits nothing, so its prompt orients from
-// plan/overview.md and CONSTRAINTS.md before the shared implementer-job body runs.
+// plan/overview.md and any PATTERN entries in its prompt before the shared implementer-job body runs.
 // {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot, which — as the pane's
 // own cwd — is also the card pointers' relative-spelling base (see renderCardPointers);
 // repoRoot, the repository's worktree root holding PATTERN.md, feeds pattern.Directive alone.

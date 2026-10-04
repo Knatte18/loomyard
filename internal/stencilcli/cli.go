@@ -6,7 +6,7 @@
 // via a closure-returning accessor over the same resolved *lyxcwd.Location.
 //
 // stencilcli is a named deviation from the CLI/Cobra Invariant's package-naming rule: its kernel is
-// internal/stencilstore, not stencilengine. See CONSTRAINTS.md.
+// internal/stencilstore, not stencilengine. See PATTERN-cli-cobra.
 
 package stencilcli
 

@@ -3,8 +3,8 @@
 // gate_lingering_test.go holds the one treadleengine test that spawns real
 // cmd/ping child processes and, by design, sits in the production
 // gateWaitDelay (10s) pipe-abandon grace window — real-time cost that
-// violates the offline Tier 1 loop's premise (see the Test Tier Purity
-// Invariant in CONSTRAINTS.md), so it is tagged integration rather than
+// violates the offline Tier 1 loop's premise (see
+// PATTERN-test-tier-purity), so it is tagged integration rather than
 // running on every plain `go test`. It previously evaded the tierpurity
 // guard because it spawns via the production execGateCommand wrapper rather
 // than a banned token (gitexec.RunGit, exec.Command, gitkit.Copy) the guard

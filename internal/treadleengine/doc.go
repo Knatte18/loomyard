@@ -130,7 +130,7 @@
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //
 // This package never imports internal/burlerengine or any internal/*cli
-// package (see CONSTRAINTS.md's Treadle Runner-Seam Invariant, enforced by
+// package (see PATTERN-treadle-runner-seam, enforced by
 // seam_enforcement_test.go). It defines its own vocabulary — Verdict,
 // AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/
 // Finding; a round-runner adapter maps its own domain's
@@ -150,7 +150,7 @@
 // (which resolves it from its own geometry) rather than resolved by this
 // package. Likewise treadleengine never touches fabric git; committing a
 // block's run-dir artifacts to fabric remains the loop OWNER's job, exactly
-// as CONSTRAINTS.md's Fabric Git Invariant already requires one layer up.
+// as PATTERN-fabric-git already requires one layer up.
 //
 // # Everything else carried over unchanged from the original loop
 //

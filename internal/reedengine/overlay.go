@@ -185,8 +185,8 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) error
 
 	// eng carries only the one field descendantClosurePIDs' Windows body reads (it spawns
 	// e.cfg.Shell); its Linux body reads no Engine field at all, and neither body reads
-	// geometry. Deliberately no Geometry value here, not even a zero one: CONSTRAINTS.md's
-	// Told-Geometry Invariant names internal/hubgeom and internal/standalonegeom as the only
+	// geometry. Deliberately no Geometry value here, not even a zero one:
+	// PATTERN-told-geometry names internal/hubgeom and internal/standalonegeom as the only
 	// Geometry-struct constructors, and this throwaway is not a usable Engine — it exists
 	// solely to reach one method.
 	eng := &Engine{cfg: Config{Shell: shellPath}}

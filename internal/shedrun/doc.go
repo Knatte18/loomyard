@@ -15,7 +15,7 @@
 //
 // The seed's optional `parent` field is legacy: no code path writes it any more, and a seed written before that change still decodes.
 // Only `internal/hubgeom`'s parent resolver reads it, as a fallback when the pair's origin record names no parent worktree.
-// A run's parent is otherwise resolved at use from that origin record; see the Agent Name Invariant in CONSTRAINTS.md.
+// A run's parent is otherwise resolved at use from that origin record; see PATTERN-agent-name.
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //
