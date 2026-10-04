@@ -346,7 +346,7 @@ func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 // TestDirective_ReadsOnlyTheGivenRoot is the regression guard for the root the overview is read
 // from: Directive reads <root>/PATTERN.md and nothing else, so a subdirectory of the root, such as a
 // subpath anchor, never finds the overview planted at the root.
-// Callers therefore pass the warp worktree root, never the anchor path.
+// Callers therefore pass the repository's worktree root, never the anchor path.
 func TestDirective_ReadsOnlyTheGivenRoot(t *testing.T) {
 	root := t.TempDir()
 	sub := filepath.Join(root, "sub", "dir")

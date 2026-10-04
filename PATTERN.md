@@ -20,7 +20,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Fabric and git
 
-- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only where the two sides must be told apart, and `host` is retired. — [background](pattern/PATTERN-fabric-vocabulary.md)
+- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only where the two sides must be told apart, in any scanned file outside the owner set, and `host` is retired. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git; the weft commit is Go with a scoped pathspec. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`, checking containment, ownership, dirtiness, force in that order. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.

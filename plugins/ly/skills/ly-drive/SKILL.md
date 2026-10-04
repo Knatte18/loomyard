@@ -166,7 +166,7 @@ Code branches only; a stranded records branch goes through `lyx fabric cleanup`.
 - Remote delete: a `branch_created` entry and a `branch_pushed` entry for exactly that branch, and no later `remote_branch_deleted` entry for it.
   Run `git -C <repo> push <remote> --delete <branch>`.
 - `<repo>` and `<remote>` come from the entry's `detail` (`side=warp repo=<abs> [remote=<name>]`).
-  A missing `detail`, a `side` other than `warp`, a missing `remote=` for a remote delete, or a repository path that no longer exists fails the rule, and the driver escalates.
+  A missing `detail`, any other `side`, a missing `remote=` for a remote delete, or a repository path that no longer exists fails the rule, and the driver escalates.
 - A `branch_pushed` entry alone never qualifies: it is recorded whenever an existing branch is pushed forward.
 - Never delete a branch carrying commits the trace does not attribute to the failed step.
 

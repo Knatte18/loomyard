@@ -7,9 +7,11 @@ package shedcli
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -256,16 +258,18 @@ func TestWriteSeed_RefusesADisagreeingSeed(t *testing.T) {
 // other side before writing anything, the same refusal every other shed verb over a batten seed
 // already applies, so a stray seed can never land in a checkout no run is driven from.
 func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
+	hub := t.TempDir()
+	siblingName := filepath.Base(fabricengine.WeftWorktree(&lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
 	tests := []struct {
 		name         string
 		worktreeName string
 	}{
 		{name: "BoardCheckout", worktreeName: "_board"},
-		{name: "PairSibling", worktreeName: "warp-weft"},
+		{name: "PairSibling", worktreeName: siblingName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: tt.worktreeName, AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: hub, WorktreeName: tt.worktreeName, AnchorRel: "."}
 			_, err := writeSeed(loc, "a-run", shedrun.RecipeLoom, "", nil)
 			if err == nil {
 				t.Fatalf("writeSeed(%q) error = nil; want a refusal", tt.worktreeName)

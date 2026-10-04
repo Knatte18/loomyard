@@ -200,7 +200,7 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	})
 }
 
-// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry fabricengine's warpLayoutFor
+// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry fabricengine's layout
 // fallback hits: calling the gate-free resolver with a worktree root that sits ABOVE a recorded
 // subpath anchor must return RelPath="backend" and must NOT return ErrCwdOutsideAnchor — this
 // gate-free behavior is what distinguishes ResolveWorktree from Resolve.

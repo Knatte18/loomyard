@@ -395,7 +395,7 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub repo directory that runSuite requires.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub repo directory that runSuite requires.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub repo directory that runSuite requires.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -720,7 +720,7 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub repo directory that runSuite requires.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -786,7 +786,7 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub repo directory that runSuite requires.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
@@ -850,7 +850,7 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 
 	// Create the Hub repo directory that runFetch requires, and drop a valid
 	// report there for the fetch to pick up.
-	repoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	repoDir := filepath.Join(tmpDir, hubName, repoDirName)
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}

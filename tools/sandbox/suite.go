@@ -25,9 +25,9 @@ import (
 
 // Suite-specific constants.
 const (
-	// warpDirName is the subdirectory under the Hub (lyx-test-LYXHUB) that holds
-	// the warp repo clone. The Hub layout is <parent>/<hubName>/<warpDirName>.
-	warpDirName = "lyx-test"
+	// repoDirName is the subdirectory under the Hub (lyx-test-LYXHUB) that holds
+	// the repo clone. The Hub layout is <parent>/<hubName>/<repoDirName>.
+	repoDirName = "lyx-test"
 )
 
 //go:embed SANDBOX-CORE-SUITE.md
@@ -327,7 +327,7 @@ func ensureGitExclude(repoDir, entry string) error {
 // an interactive Claude session. For specs flagged reedTeardown, it runs
 // `lyx reed down` after the session ends.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
-	warpRepoDir := filepath.Join(parentDir, hubName, warpDirName)
+	warpRepoDir := filepath.Join(parentDir, hubName, repoDirName)
 
 	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
 		return fmt.Errorf("hub warp repo not found at %s -- run sandbox/build.cmd first", warpRepoDir)

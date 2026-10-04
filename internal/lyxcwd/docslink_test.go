@@ -178,8 +178,8 @@ func TestDocsLinkSlug(t *testing.T) {
 		},
 		{
 			name:    "fabric git invariant parens and plus heading",
-			heading: "## Fabric Git Invariant (warp + weft)",
-			want:    "fabric-git-invariant-warp--weft",
+			heading: "## Fabric Git Invariant (code + records)",
+			want:    "fabric-git-invariant-code--records",
 		},
 	}
 	for _, tt := range tests {

@@ -271,7 +271,7 @@ func captureStderr(t *testing.T, fn func()) string {
 func makeHubRepo(t *testing.T) (parentDir, repoDir string) {
 	t.Helper()
 	parentDir = t.TempDir()
-	repoDir = filepath.Join(parentDir, hubName, warpDirName)
+	repoDir = filepath.Join(parentDir, hubName, repoDirName)
 	if err := os.MkdirAll(filepath.Join(repoDir, ".git", "info"), 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)
 	}
