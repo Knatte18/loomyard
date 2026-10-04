@@ -31,7 +31,7 @@ When driving the suite from Windows PowerShell (the assumed session shell on Win
 The working form is a single-quoted string with literal inner double quotes, e.g.
 
 ```powershell
-lyx board upsert '{"slug":"s3-demo","title":"S3 demo"}'
+lyx board upsert '{"slug":"s3-demo","title":"S3 demo","labels":["enhancement"]}'
 ```
 
 ### Operating model

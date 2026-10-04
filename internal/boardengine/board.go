@@ -1,45 +1,4 @@
-// Package boardengine provides a one-shot, daemonless file-locked task tracker.
-// Board is the only entry point callers use.
-// Anyone adds notes, the orchestrator curates.
-//
-// Board holds one store, board.json, whose entries carry a kind (task or note) and labels.
-// A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,
-// and a pre-upgrade binary's later done marks are folded into the store, so a long-running old driver keeps working until the legacy files are retired.
-//
-// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.
-// After each write, a detached background sync process (see sync.go) is launched to commit and push
-// changes to the remote.
-// The write returns immediately without waiting for the sync.
-// Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
-//
-// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls,
-// under board's own board.lock/board.push.lock write and push locks.
-//
-// Storage: board lives at weft:main, never a separate repo.
-// fabricengine enforces one uniform branch-naming scheme with no exceptions: a warp branch <branch>
-// is always paired with weft branch <branch>-weft.
-// That means no task's weft branch can ever be named exactly the warp's own default branch (every
-// paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name
-// permanently unclaimed by the pairing convention and reserved exclusively for board.
-// This repo's earlier design considered and rejected two alternatives before landing here: a
-// separate third repo for board is extra git-identity overhead for something that doesn't need its
-// own identity;
-// and GitHub wiki rendering (an intermediate idea) requires whichever repo holds the wiki to be
-// public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never
-// the warp/warp repo — disqualifying for private consulting work, where the warp repo's
-// wiki-serving repo would have had to go public just to render board's front page.
-//
-// The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches
-// simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged),
-// plus weft:main for board access — never paired with any warp branch.
-// No other worktree checks out weft:main directly.
-//
-// Consequence for fabric: weft:main has no corresponding warp branch, so the Warp-SHA trailer /
-// correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not
-// apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
-// fabric.Commit.
-//
-// The board is the roadmap: it carries the tasks that can run and the notes that are not yet tasks.
+// board.go — Board, the facade every caller uses over a board directory; the package documentation is in doc.go.
 
 package boardengine
 
