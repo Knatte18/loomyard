@@ -28,8 +28,7 @@ type Issue struct {
 	PullRequest bool      `json:"pull_request"`
 }
 
-// ListOpenIssues returns every open issue of the inbox repository, following pagination to the
-// last page.
+// ListOpenIssues returns every open issue of the inbox repository, following pagination to the last page.
 // Pull requests are excluded, although GitHub's issue list includes them.
 func ListOpenIssues() ([]Issue, error) {
 	client, owner, repo, err := repoClient()
@@ -80,10 +79,8 @@ func GetIssue(number int) (Issue, error) {
 	return toIssue(raw), nil
 }
 
-// CommentAndClose posts comment on the issue, then closes it with state reason completed when
-// completed is set and not_planned otherwise.
-// When the comment posts and the close fails, the error says the comment was posted, so a rerun
-// is understood to post a second comment.
+// CommentAndClose posts comment on the issue, then closes it with state reason completed when completed is set and not_planned otherwise.
+// When the comment posts and the close fails, the error says the comment was posted, so a rerun is understood to post a second comment.
 func CommentAndClose(number int, comment string, completed bool) error {
 	client, owner, repo, err := repoClient()
 	if err != nil {
