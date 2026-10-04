@@ -4,8 +4,8 @@ Loomyard is a Go toolkit of one-shot CLI modules.
 Each invocation starts a process, runs one command, writes JSON to stdout, and exits — there is no daemon and no shared memory.
 State lives on disk per module and is coordinated with file locks, so concurrent `lyx` processes on a machine cooperate through the filesystem.
 The first module, **board** (a task tracker), is implemented;
-**fabric** (the warp↔weft git-coordination module) is implemented;
-and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
+**fabric** (the git-coordination module over the code and its records) is implemented;
+and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented.
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -26,7 +26,7 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
   skills are `/ly-*`.
 
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary (`lyx`) and every module (`loom`, `burler`, …), so no name is shared between a skill and a script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename).
-Internal Go feature packages follow the `<module>cli` / `<module>engine` split (e.g. `internal/boardcli` + `internal/boardengine`, `internal/fabriccli` + `internal/fabricengine`) — see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
+Internal Go feature packages follow the `<module>cli` / `<module>engine` split (e.g. `internal/boardcli` + `internal/boardengine`, `internal/fabriccli` + `internal/fabricengine`) — see the package-naming rule in [PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md).
 
 Convenience alias: **`lyx start` → `lyx loom start`** (the everyday autonomous call).
 
@@ -62,7 +62,7 @@ Convenience alias: **`lyx start` → `lyx loom start`** (the everyday autonomous
 
 ## Cwd Resolution Invariant
 
-**All cwd resolution goes through `internal/lyxcwd`, and nothing else.** `lyxcwd` owns cwd resolution alone — never a weft path, a junction path, or any per-module subdirectory;
+**All cwd resolution goes through `internal/lyxcwd`, and nothing else.** `lyxcwd` owns cwd resolution alone — never a records path, a junction path, or any per-module subdirectory;
 those are each owned by the module that constructs them.
 
 `internal/lyxcwd` exposes a three-operation contract:
@@ -72,48 +72,49 @@ those are each owned by the module that constructs them.
 - `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the two ungated variants, for callers that hold something other than an acting cwd (see `docs/shared-libs/lyxcwd.md`).
 
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
-Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full per-token ownership map.
+Every other geometry token (records paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the full per-token ownership map.
 
 `lyxcwd.Resolve` proves that cwd is the root of a git worktree and nothing more.
 It succeeds in any ordinary git repository run from its root, and the `HubPath` and `RepoName` it returns are fiction in that case.
 Proving a worktree is lyx-initialized and Fabric-wired is a different layer's job.
-See [CONSTRAINTS.md's Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the tier map.
+See [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md) for the tier map.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
-A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync` string-literal-only), the tokens `weft`/`warp` may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside the owner set it names, the two side names may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
 The fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) is banned everywhere this test reaches, including inside the owner set — `host` is retired, not merely scoped.
-It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lyxcwd`'s to own — see CONSTRAINTS.md's Fabric Vocabulary Invariant.
+It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lyxcwd`'s to own — see [PATTERN-fabric-vocabulary](../pattern/PATTERN-fabric-vocabulary.md).
 
-See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
+See [PATTERN.md](../PATTERN.md) for details.
 
 ## Documentation lifecycle
 
 Two doc classes, opposite lifecycles:
 
-- **Module-design docs** (`manifest/designs/<module>.md`) are mechanical per-module design drafts for **planned, not-yet-built** modules — deleted when their module lands;
-  the implementation and tests become the source of truth.
+- **Module designs** for **planned, not-yet-built** modules live in their board entry's body;
+  when the module lands, the entry's design moves into the package's `doc.go` and the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
 - **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 
-The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the weft contract,
+The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the records contract,
 and this lifecycle convention).
-Planned-but-not-built work lives under the separate top-level `manifest/` (`manifest/roadmap.md` + `manifest/designs/`) — see its own maintenance note there.
+Planned-but-not-built work lives on the board, one entry per item, with an unbuilt design in the entry's body.
 
-## Weft overlay model
+## Records overlay model
 
-lyx organizes overlay artifacts (configuration, task state, raddle docs, and the board) into a **weft repo** — a companion git repository that stays separate from the Fabric repo, keeping it pristine.
+lyx organizes overlay artifacts (configuration, task state, raddle docs, and the board) into a **records repo** — a companion git repository that stays separate from the project's own repo, keeping it pristine.
+The two-sided design is documented in `internal/fabricengine`'s package doc.
 
 ### Topology
 
 ```
 <hub>/                              (top-level Hub, NOT a git repo)
-  ├── <prime>/                      (warp worktree, main branch; git repo root)
-  ├── <prime>-weft/                 (weft Prime worktree; git repo root)
-  ├── <slug>/                       (additional warp worktree; git repo root)
-  ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  ├── _board/                       (weft:main worktree; holds board.json)
+  ├── <prime>/                      (code worktree, main branch; git repo root)
+  ├── <prime>-<records>/            (records Prime worktree; git repo root)
+  ├── <slug>/                       (additional code worktree; git repo root)
+  ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
+  ├── _board/                       (records main-branch worktree; holds board.json)
   │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
   └── _launchers/<anchor>/          (anchor-mirrored)
@@ -127,29 +128,29 @@ rather than as hub geometry, since it no longer has a hub-level presence of its 
 
 ### Git ownership
 
-The **Fabric repo** is the project's source of truth, maintained by developers.
-All lyx-specific artifacts live in the **weft repo**, a separate git repository that lyx controls.
-This separation keeps Fabric commits focused on project code and delegates lyx infrastructure to the weft.
+The **code repo** is the project's source of truth, maintained by developers.
+All lyx-specific artifacts live in the **records repo**, a separate git repository that lyx controls.
+This separation keeps code commits focused on project code and delegates lyx infrastructure to the records.
 
 ### Artifacts location
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
-| `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
-| `_lyx/raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
-| `_board/` | Hub | Board | A second weft worktree, checked out on the warp's own unsuffixed default branch (`weft:main` in the common case) — never a separate clone, never `<branch>-weft` |
-| Warp source | Warp worktree | Warp | Project source code |
+| `_lyx/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
+| `.env` | Records worktree | Records | Git-ignored per-machine environment variable overrides (KEY=value format) |
+| `_lyx/raddle/` | Records worktree | Records | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
+| `_board/` | Hub | Board | A second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
+| Source | Code worktree | Code | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
 
 Two state roots with opposite lifecycles:
 
 - **`_lyx/`** — **durable, synced, portable.**
-  Lives in the weft repo (git-synced), so it survives a machine and transfers to another.
+  Lives in the records repo (git-synced), so it survives a machine and transfers to another.
   Config, raddle, the board, and loom's orchestration **status** (current producer, run state, per-producer-call history) go here — loom resume works across machines *because* its status is fabric-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.**
-  Untracked in both the warp and the weft repo (listed in each repo's own `.git/info/exclude`, never a committed `.gitignore` in either), changing constantly while a run is live.
+  Untracked in both the code and the records repo (listed in each repo's own `.git/info/exclude`, never a committed `.gitignore` in either), changing constantly while a run is live.
   The live tmux runtime state — `reed`'s (see the `internal/reedengine` package documentation) `.lyx/reed.json` (the socket/session names + the strand table: each managed process, its session, parent, ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is meaningless on another machine.
   It is rebuilt by reconciling against live tmux on startup, never synced.
   A pane id is meaningless even on the SAME machine once the tmux server has restarted — ids are server-global and restart at `%0` — so `reed.json` also records the *pane generation*, the identity of the session incarnation its pane ids were bound against, and discards every binding minted against a different one.
@@ -160,60 +161,60 @@ A pane handle no → `.lyx/`.
 
 ### Junction model
 
-Each warp worktree has a sibling weft worktree.
-Warp worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree.
+Each code worktree has a sibling records worktree.
+Code worktrees use **junctions** (Windows) or symlinks to route writes into the sibling records worktree.
 Worktrees are wired eagerly at `lyx fabric clone`/`lyx fabric add` time — there is no separate setup step: clone and worktree-add each materialize junctions, `_lyx`, and config in one call.
 
 The wired junction set is not hardcoded,
 and it is not purely the repo-wide `pathspec` list either: it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets — `_lyx` and `.lyx` — are injected in code, never read from `fabric.yaml`;
-only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from `weft:main`, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
+only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from the records main branch, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
-This produces the two concrete junctions this repo ships with today, both placed at the repo's lyx-anchor (`<warp>/<anchor>/…`, which is `<warp>/` itself at the default `.` anchor):
-- `<anchor>/_lyx` → `<hub>/<slug>-weft/<anchor>/_lyx` (config junction, structural)
-- `<anchor>/.lyx` → `<hub>/<slug>-weft/<anchor>/.lyx` (machine-local scratch junction, structural)
+This produces the two concrete junctions this repo ships with today, both placed at the repo's lyx-anchor (`<code>/<anchor>/…`, which is `<code>/` itself at the default `.` anchor):
+- `<anchor>/_lyx` → `<hub>/<slug>-<records>/<anchor>/_lyx` (config junction, structural)
+- `<anchor>/.lyx` → `<hub>/<slug>-<records>/<anchor>/.lyx` (machine-local scratch junction, structural)
 
-The Hub Containment Invariant (`CONSTRAINTS.md`) is the rule that forbids re-adding a junction into `<hub>/_board`: no hub-level container is ever junctioned into a worktree.
+[PATTERN-hub-containment](../pattern/PATTERN-hub-containment.md) is the rule that forbids re-adding a junction into `<hub>/_board`: no hub-level container is ever junctioned into a worktree.
 
 The optional `pathspec` default is empty today.
-A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;
+A future records-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;
 a structural directory is never sourced from `pathspec`.
 
 Raddle content is anchor-level by design — it lives at `_lyx/raddle/`, reached through the existing `_lyx` junction, with no `_raddle` junction of its own now or ever;
-see `manifest/designs/raddle.md`.
+see the board's `raddle` note.
 
-Every junction is listed in the warp worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
+Every junction is listed in the code worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
 The entry is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor), never a bare name: a slash-free gitignore pattern matches at any depth, which on a subpath-anchored monorepo would silently untrack same-named directories lyx never wired.
-`.lyx` additionally seeds `.lyx/` into the **weft** repo's own `.git/info/exclude` at wiring time, so weft-side scratch never shows as untracked dirt either.
-From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
+`.lyx` additionally seeds `.lyx/` into the **records** repo's own `.git/info/exclude` at wiring time, so records-side scratch never shows as untracked dirt either.
+From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the records repo without awareness of the indirection.
 
-A pre-existing real `.lyx` directory — every worktree that predates this junction, since several of lyx's own subsystems write `.lyx` unconditionally — is adopted rather than refused: its content is moved into the weft-side target and replaced with the junction, one time, on the first `lyx fabric reconcile` after upgrade.
+A pre-existing real `.lyx` directory — every worktree that predates this junction, since several of lyx's own subsystems write `.lyx` unconditionally — is adopted rather than refused: its content is moved into the records-side target and replaced with the junction, one time, on the first `lyx fabric reconcile` after upgrade.
 `_lyx` keeps the hard refusal (fabric never moves or deletes what might be the user's hand-authored content); `.lyx` is the one exception because its content is always lyx's own machine-local scratch.
 
 ### Branch model
 
-Weft branches mirror warp-repo branching: when a new weft worktree is spawned, its branch forks from the weft branch whose name equals the warp worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations.
-This guarantees subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft;
-warp `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
+Records branches mirror code-repo branching: when a new records worktree is spawned, its branch forks from the records branch whose name equals the code worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations.
+This guarantees subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into the records;
+the code repo's `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
 
-### Weft suffix convention
+### Records suffix convention
 
-The weft worktree for any warp worktree is deterministic:
-- Warp: `<hub>/<slug>/` → Weft: `<hub>/<slug>-weft/`
-- Warp: `<prime>/` → Weft: `<prime>-weft/` (prime is the name of the main worktree)
+The records worktree for any code worktree is deterministic:
+- Code: `<hub>/<slug>/` → Records: `<hub>/<slug>-<records>/`
+- Code: `<prime>/` → Records: `<prime>-<records>/` (prime is the name of the main worktree)
 
-The `-weft` suffix is fixed and non-configurable.
-Weft paths are computed on demand from geometry and do not require a registry.
+The suffix is fixed and non-configurable, and `internal/fabricengine`'s package doc names it.
+Records paths are computed on demand from geometry and do not require a registry.
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view, also reporting `merge_in_progress`, whether THIS pair has a fabric merge parked. Paired `lyx fabric add` hard-requires a weft repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
+- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view, also reporting `merge_in_progress`, whether THIS pair has a fabric merge parked. Paired `lyx fabric add` hard-requires a records repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
 - **`lyx config` command**: ✅ task 008 complete.
   The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
 - **Portals**: unimplemented;
-  the weft junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
+  the records junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
 ```
 github.com/Knatte18/loomyard/
@@ -222,7 +223,7 @@ github.com/Knatte18/loomyard/
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
-├── internal/fabriccli/           the fabric CLI command (warp↔weft git coordination)
+├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
@@ -270,7 +271,7 @@ github.com/Knatte18/loomyard/
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/tokenvocab/          shared token vocabulary (repo, hub, worktree) + Render compose over stencil, a leaf
-├── internal/pattern/             PATTERN active check + role directive leaf, consumed by webster/burler/loom
+├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 ├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lyx webster verify`
@@ -307,15 +308,15 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — interactive menu for viewing and editing module configs;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
-- **fabric** — the sole warp↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches warp+weft together + re-points junctions), reconcile, status, prune, cleanup, weft content-sync (commit/push/pull/sync/diff), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
+- **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
-  `clone` takes the weft URL first with the warp URL optional, derived from the warp binding recorded on the weft's main branch when omitted;
-  `reconcile` backfills that binding for hubs whose weft predates it.
-  `clone` also takes `--shortname` to record the repo's shortname as `.lyx-shortname` on weft:main,
+  `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;
+  `reconcile` backfills that binding for hubs whose records predate it.
+  `clone` also takes `--shortname` to record the repo's shortname as `.lyx-shortname` on the records main branch,
   and `shortname [<shortname>]` prints the recorded shortname or records one on a hub that has none.
   `status` is the unified both-sides uncommitted-change view (`Fabric.Status`);
-  `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`).
-  `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so.
+  `diff` reports the side-labelled changes since a given code SHA (`Fabric.Diff`).
+  `pull` is now unified across code and records, not records-only: it fast-forwards the records first, then fetches and inspects the code, detecting a rebased/force-pushed code remote via ancestry and safely re-anchoring the records' correspondence to it when it is safe to do so.
   `remove` also deletes the pair's local task branch once both worktrees are gone, when its work is pushed or landed on the recorded parent, and keeps the branch with a reason in the result otherwise, reporting both as `warp_branch_deleted` and `warp_branch_kept_reason` on the envelope;
   `--force` never overrides that check.
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
@@ -334,7 +335,7 @@ User-facing modules each get one `lyx <module>` namespace:
   supports `--body` (or `-` for stdin) and `--label`;
   defaults to `bug`.
   Callable from any sandbox agent context with no config. ✅ Implemented.
-- **reed** — **the window to the world**: tmux overlay + **strand** bookkeeping + render (`internal/reedcli` + `internal/reedengine` + `internal/reedengine/render`). Hosts every managed process as a strand, arranges them, persists to `.lyx/reed.json` (`lyx reed up|add|remove|status|list|attach|resume|statusline|watchdog|down`). Every strand carries a hierarchical full name (the Agent Name Invariant in CONSTRAINTS.md), mirrored into its pane title and Claude session name and exported to its process as `LYX_STRAND_NAME` and `LYX_PARENT`, with the watchdog repairing drift; `list` is the hub-wide name directory. Built on what its proof-of-concept, `muxpoc`, proved first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc` has since been deleted, its job done. `reed attach` and `reed watchdog` are this module's two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `attach` hands the operator's stdio to a `tmux attach-session` child in place, pre-flighting through booting the session if cold and checking server/session liveness, and `watchdog` is the detached per-hub resize daemon that blocks for its process lifetime — in both cases every fallible step runs pre-flight, on the envelope, and only the terminal-handover/daemon tail itself is exempt from emitting JSON. `add` and `attach` boot this worktree's session when none is up, with `up`'s own semantics — a bare substrate, with no persisted strand relaunched — instead of refusing; every other reed verb still refuses on a cold worktree. ✅ Implemented. See the `internal/reedengine` package documentation.
+- **reed** — **the window to the world**: tmux overlay + **strand** bookkeeping + render (`internal/reedcli` + `internal/reedengine` + `internal/reedengine/render`). Hosts every managed process as a strand, arranges them, persists to `.lyx/reed.json` (`lyx reed up|add|remove|status|list|attach|resume|statusline|watchdog|down`). Every strand carries a hierarchical full name ([PATTERN-agent-name](../pattern/PATTERN-agent-name.md)), mirrored into its pane title and Claude session name and exported to its process as `LYX_STRAND_NAME` and `LYX_PARENT`, with the watchdog repairing drift; `list` is the hub-wide name directory. Built on what its proof-of-concept, `muxpoc`, proved first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc` has since been deleted, its job done. `reed attach` and `reed watchdog` are this module's two registered interactive-handoff exceptions ([PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md)): `attach` hands the operator's stdio to a `tmux attach-session` child in place, pre-flighting through booting the session if cold and checking server/session liveness, and `watchdog` is the detached per-hub resize daemon that blocks for its process lifetime — in both cases every fallible step runs pre-flight, on the envelope, and only the terminal-handover/daemon tail itself is exempt from emitting JSON. `add` and `attach` boot this worktree's session when none is up, with `up`'s own semantics — a bare substrate, with no persisted strand relaunched — instead of refusing; every other reed verb still refuses on a cold worktree. ✅ Implemented. See the `internal/reedengine` package documentation.
 - **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`; `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and classified into four outcomes — `done`/`asking`/`died`/`timeout` — with `asking` as the escalation channel back to a human or a higher-capability model. `asking` means the agent ended its turn WITHOUT satisfying the file contract, whatever its reason: shuttle never inspects the message, so a blocked agent, a question, and a mid-task status report all classify identically, and `lastAssistantMessage` carries whatever it last said rather than a guaranteed question. A Stop with outstanding background work (a running background task, or a launch with no matching completion notice) is not `asking`: claudeengine emits `EventWaiting`, which the wait loop treats as still running, and `Attach` re-enters a live asking strand whose events grew past its recorded offset. An interactive run also detects a live `AskUserQuestion` tool call in real time via a non-denying marker hook, classified the same way instead of waiting for the timeout. `died` is correspondingly narrow: it means a strand reed STILL TRACKS has a pane that is not alive (or the provider never came up inside the startup window). Reed's strand table losing the strand entirely — a `reed down`/`remove`, a deleted or rebuilt `reed.json`, a worktree renamed under an in-flight run — is reported as a mechanism failure carrying the run's identity, never as `died`, because reed's bookkeeping going away says nothing about the agent, whose process is often still working in its pane. `PreToolUse` guardrails deny the in-process `Agent` tool in both interactive and autonomous runs (on by default, switchable off via `shuttle.yaml`'s `claude_deny_agent_tool`, and narrowed in a `ForkSubagents` run to permit fork subagents while still refusing every other subagent type), and `AskUserQuestion` too when the run is autonomous (`Interactive: false`, the default). The engine announces each deny it installs to the session's system prompt (`--append-system-prompt`, on launch and resume), so a session knows the tool is unavailable before it tries one. The provider is swappable behind an **engine** seam; Claude is the only v1 engine. Per-run `Model`/`Effort` knobs (`lyx shuttle run --model`/`--effort`; effort values `low|medium|high|xhigh|max`, empty = provider default) are engine-validated, not policed by `Spec.validate`. `Spec.Version` is a programmatic engine-validated version pin (claudeengine composes the pinned model id; no CLI flag — consumers drive it via the model-spec notation's `v=` param). Starting a run returns only once its provider is past its startup gates, and a provider that never comes up is torn down (run dir and last pane capture kept) and reported as an error from `Start`, or as `died`/`timeout` from `Run`. ✅ Implemented. See the `internal/shuttleengine` package documentation.
 - **orch** — the hub orchestrator hosted as an interactive Claude session in a reed strand of the prime worktree, cycled before its context fills (`internal/orchcli` + `internal/orchengine`; `lyx orch start|status|cycle|stop`, prime only). A detached watcher has the session write a handoff, clears it, and resumes it from that handoff, never clearing without one. ✅ Implemented. See the `internal/orchengine` package documentation.
 - **webster** — the implementer module: one long-lived Master session that reads the codebase and the whole plan once, then forks one implementer per execution batch in-session (Claude Code's Agent tool) instead of spawning a fresh reed/tmux strand per batch;
@@ -366,8 +367,8 @@ User-facing modules each get one `lyx <module>` namespace:
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
 - **stencil** — the operator surface over the hub's producer-prompt stencils (`internal/stencilcli` + `internal/stencilstore`; `lyx stencil list|validate|diff|sync|promote`): `list` reports every registered stencil's board-copy path and edit state, `validate` reports marker mismatches between a board copy and its shipped default, `diff` shows upstream changes not yet taken or (`--all`/`--exit-code`) board edits not yet ported back, `sync` force-refreshes every stencil against the shipped registry even from a `-dev` build, and `promote` copies a board-copy edit back into the worktree's `contracts/stencils/` source tree. The port-back drift warning classifies a differing board copy four ways (hand-edited, source-ahead, both, neither) and names the matching remedy: `promote` for a hand edit, a production deploy for a source-ahead copy, a manual reconcile for both, and `lyx stencil sync` for neither. `list` and `sync` also cover the deployed `contracts/specs` registry; `validate`, `diff`, and `promote` do not — a spec declares no markers for `validate` to compare, and `diff`/`promote` both need the worktree source directory a deployed spec deliberately does not have. ✅ Implemented.
 - **loom** — phased orchestrator: drives its flat, ordered producer list (`contracts/recipes/loom-recipe.yaml`, assembled by `internal/loomrecipe`), each gated by a `Bouncer` review segment (`internal/loomcli` + `internal/loomengine` + `internal/loomshed` + `internal/loomrecipe` + `internal/shedverbs` + `internal/parentreview`; `lyx loom start|run|step|status|pause|approve|reject|commit-records|validate-discussion|validate-plan|validate-description|review notify|delivered|approve|reject|circling accept|continue`, plus the `start` verb registered a second time as the bare root alias `lyx start`). `internal/shedverbs` owns the generic `run`/`step`/`status`/`pause` verb bodies loomcli arms; `internal/loomcli` hosts only `start` and the arming glue.
-  `start` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file weft-side when it is absent; ensure the worktree's tmux session is up, keep or add the status strand on a go-driven run and remove any status strand on an llm-driven run, then spawn the per-hub watchdog daemon, best-effort; read this run's seed and, unless a driver is already alive, spawn the driver its recorded choice selects — the detached Go runner, or a Claude strand running ly-drive in this worktree's own reed session; and hand the terminal to the tmux session — the operator's terminal is Selvage, not a strand. `step` brings the tmux session up and never adds or removes the status strand.
-  `start` is also the one site that reads a recorded seed's driver value, per the Driver Choice Single-Site Invariant — see [CONSTRAINTS.md](../CONSTRAINTS.md#driver-choice-single-site-invariant).
+  `start` is the session bootstrap, performing four steps in order: resolve the recorded parent branch and seed+commit the status file with the records when it is absent; ensure the worktree's tmux session is up, keep or add the status strand on a go-driven run and remove any status strand on an llm-driven run, then spawn the per-hub watchdog daemon, best-effort; read this run's seed and, unless a driver is already alive, spawn the driver its recorded choice selects — the detached Go runner, or a Claude strand running ly-drive in this worktree's own reed session; and hand the terminal to the tmux session — the operator's terminal is Selvage, not a strand. `step` brings the tmux session up and never adds or removes the status strand.
+  `start` is also the one site that reads a recorded seed's driver value, per [PATTERN-driver-choice-single-site](../pattern/PATTERN-driver-choice-single-site.md).
   `start` resumes a parked ly-drive driver by typing one line into its pane (returning under `--no-attach` once the line's delivery is verified), and refuses after a bounded wait when the pane is not ready, since the driver may have resumed on its own.
   A live driver over a run halted at a hand-back with no park marker yet is still writing its stop report, so `start` refuses with the retryable kind `driver_not_parked`;
   batten's Inner-Run retries it on its next poll without recording the approval as acted on.
@@ -396,7 +397,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `Plan-Bouncer` skips its judge only for an exempt generation, one whose live cards are all `Prosa` on non-source files.
   Before its session runs, Go archives the live generation into the round's `prior-generation/` directory: the plan (cards, overview, amendments and any `archive-*/` rotation), Webster's run record, and the Plan-Review and Webster-Review run directories.
   The session then writes a whole new plan into the emptied plan directory, numbered on from the retired generation through the overview's `first_card` key, and reads the archived plan for context.
-  Go records on the round whether the new generation is exempt from Plan-Review (every card Prosa on a non-source file) or required, commits the round in one weft commit, and removes the pending rejection.
+  Go records on the round whether the new generation is exempt from Plan-Review (every card Prosa on a non-source file) or required, commits the round in one records commit, and removes the pending rejection.
   Each rejection is its own rework round, keyed by the rejected head and the rejection time, so a second rejection at a head the previous round left unchanged still gets a round.
   A round counts as committed only when its `record.json` carries the class, so the archive's classless completion marker never skips the session.
   The `Webster` row commits the plan directory alongside its run record, so the generation `PR-Rework` archives is the one Webster built.
@@ -413,7 +414,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `Publish` and `Finalize` each run the plan's verify command after a parent merge-in that changed the task tree, and halt Stuck on a failure, with the command's output in the loom verify-output log;
   a pending-verify marker keeps the gate armed across a resume until a verify passes.
   `landing.yaml` gains `describe` (the row's model), `describe_timeout_min` and `co_authored_by`; an existing hub takes their template defaults until `lyx config reconcile --apply` writes them, and an in-flight run parked past `Webster-Bouncer` is restarted rather than migrated.
-  `lyx loom status --watch` and `lyx loom start` (alias `lyx start`) are this module's two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `status --watch` self-displays the polled status line then blocks forever as its own keepalive tail, and `start` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
+  `lyx loom status --watch` and `lyx loom start` (alias `lyx start`) are this module's two registered interactive-handoff exceptions ([PATTERN-cli-cobra](../pattern/PATTERN-cli-cobra.md)): `status --watch` self-displays the polled status line then blocks forever as its own keepalive tail, and `start` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
   ✅ Implemented. loom's config module (`loom.yaml`, holding the `discussion`/`plan`/`review`/`judge` role model-specs, `discussion_timeout_min`/`plan_timeout_min`/`review_timeout_min`, `discussion_interactive`, and `parent_review_wait_min`) exists and reconciles via `lyx config reconcile --apply` (the bare verb is a dry run that only reports added and removed keys and writes nothing).
   The `review` pair is the review segments' own model and timeout, and lives here rather than in the recipe because the recipe is embedded in the binary and a recipe-literal model would be untunable without a rebuild.
   The Discussion producer: a prompt/profile fed to `shuttle.Run`, its prompt shipped as an embedded default in the top-level `contracts/stencils` package and read at call time from the hub's stencils directory (`contracts/stencils/loom/loom-template-discussion.md`), composed by `internal/loomengine`'s `prompt.go` + `discussion.go`.
@@ -433,7 +434,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The generic `step` envelope names the durable `trace_file` the invocation wrote plus the run's `friction_dir` and `scratch_dir` (on success and every error) and the reflection's `friction` status (on success and every error), `status` names `trace_dir`, and fabric writes every recorded mutation to that trace.
   The `ly-drive` skill drives any seeded run through `lyx shed step` recipe-blind, repairing failures from the trace and escalating what it cannot, with an orchestrator session forking one `ly-drive` loop per run.
   The driver re-steps once on its own after a transient failure or a deployed `lyx`, and a loom-launched driver parks at a hand-back until `lyx loom start` resumes it.
-  `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See the [Shed Run-Directory Invariant](../CONSTRAINTS.md#shed-run-directory-invariant).
+  `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See [PATTERN-shed-run-directory](../pattern/PATTERN-shed-run-directory.md).
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
@@ -444,7 +445,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **hardener** — **DRAFT / concept.**
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
-  See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
+  See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe`, run it to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`).
   The Board task's `recipe` must be `loom` or empty: `Run-Shed` starts loom's bootstrap verb inside the task worktree, the only one that exists, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.
   `Seed-Child` halts `blocked` with a named `stuck_reason`, not a hard failure, for all three ways `WriteSeed` can refuse: an unknown recipe, a recipe the task worktree cannot bootstrap, and a pre-existing child seed that disagrees with the one being written (`shedrun.ErrDisagreeingSeed`/`battenshed.ErrDisagreeingChildSeed`) — the same business-judgment treatment for all three, since none of them is a path-resolution or write failure.
@@ -464,7 +465,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Teardown is one row sequencing session shutdown before worktree removal, and never forces: anything an agent left uncommitted or untracked in the child (a build artefact, a note) blocks the row after the session is already down, with fabric's own refusal as the `stuck_reason` — the operator cleans the child and re-steps, never `--force`;
   an uncommitted change in the pair's sibling, where the run records live, instead names batten's own recovery (`lyx loom commit-records` in the task worktree, then resume the batten run), and, should the resumed teardown refuse again, committing or removing the leftover by hand, since it is then not a run record;
   uncommitted content in the task worktree itself keeps fabric's refusal, and neither is ever `--force`.
-  A fresh pair's weft branch starts without its parent's `_lyx/shed/` run records, which fabric's `add` drops in the pair's first weft commit, so a child never sees prime's batten records or any other run's.
+  A fresh pair's records branch starts without its parent's `_lyx/shed/` run records, which fabric's `add` drops in the pair's first records commit, so a child never sees prime's batten records or any other run's.
   `Worktree-Create` and `Worktree-Teardown` wait for a prime lock another run holds, polling every 2 s for up to 10 min, and halt `blocked` only once that wait runs out.
   `step` drives exactly one producer forward from the run's persisted current producer, seeding a fresh run first when none is persisted yet — the same single-producer primitive `lyx loom step` is.
   `run` and `step` carry `--driver` (batten's own, `go`-only: batten has no bootstrap verb, so `llm` is refused by name) and `--child-driver` (the driver the task worktree's own inner run uses, `llm` by default or `go`); both are recorded into the run's write-once seed at first seeding, and an explicitly typed flag that disagrees with an already-seeded run is refused rather than silently dropped.
@@ -482,9 +483,9 @@ The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**,
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
 both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to `Shed` (`internal/shedengine`) the outer phase-FSM.)
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/verifytree`, `internal/verifyrun`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/friction`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/verifytree`, `internal/verifyrun`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/friction`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that inlines the root `PATTERN.md` overview into the prompts of the agents that design, plan, edit or judge, for the roles in its own doc, and ships a format checker for `PATTERN.md`.
 `internal/friction` is the leaf that returns the role-appropriate friction-note directive injected into all seven agent prompts when Tier 2 is enabled, with the note path composed by its own non-clobbering `NotePath`.
-Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
+Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md).
 `internal/cliwire` sits between the two: it is the CLI-boundary resolver a standalone-capable CLI calls once `preflight.ResolveMode` has chosen hub or standalone mode, and it hands each CLI the told strings — the resolved target, the derived standalone state directory, the resolved stencils and plan directories — that `internal/hubgeom` and `internal/standalonegeom` then build into a `Geometry` struct.
 `internal/preflightshed` sits alongside these as the producer-shaped wrapper around that same layer, letting a `Shed` producer list name it as a single row rather than each caller composing `internal/preflight.Check` for itself.
 
@@ -509,7 +510,7 @@ loom              phase machine: drive each phase through a Bouncer gate       [
 ```
 
 The batten Shed nests loom's: it is its own recipe whose `Run-Shed` row seeds and drives a task's loom run as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lyx/shed/<slug>/` — each resuming independently.
-See the [Batten Bookend Invariant](../CONSTRAINTS.md#batten-bookend-invariant).
+See [PATTERN-batten-bookend](../pattern/PATTERN-batten-bookend.md).
 
 **Landing preconditions.** This task's relocation of run state requires no `lifecycle` or `loom` run in flight at landing: no migration reads or moves the old `.lyx/lifecycle/<slug>/`/`_lyx/loom/status.json` layouts, so a run left in flight under either old layout resumes nowhere afterward.
 It also requires deleting any already-deployed copy of `contracts/specs/loom-status-spec.md` by hand: `internal/stencilstore` never overwrites a hash-mismatched file, with no force-sync carve-out for specs, so a deployed copy predating this task's path rename never refreshes on its own — delete it, and the next run re-seeds it fresh.
@@ -519,7 +520,7 @@ The whole stack runs **headless** (auto mode): strands exist (the interactive-se
 The stack now has two entry modes, not one: every layer from `reed` up is **told** its geometry rather than deriving it.
 `internal/hubgeom` and `internal/standalonegeom` are the two constructors that tell it — hub mode and told mode respectively — with `preflight.ResolveMode` selecting between them at a standalone-capable CLI's pre-run.
 The consequence a reader needs: a producer verb therefore runs in a directory that is not a git repository, with no hub, no fabric, and no orchestrator status seed.
-See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the rule.
+See [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md) for the rule.
 
 - **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and a *generic* display spec),
   and a **render** sub-package (`internal/reedengine/render`, `layout = Rules(strands, box)`).
@@ -578,7 +579,7 @@ See `internal/fabricengine`'s own package doc for the state matrix, the verb tab
 
 `internal/gitkit` is the below-fabric leaf and the home of test git plumbing — spawn, query and commit helpers, the hermetic git environment, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
 `internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
-`internal/testkit` holds the shared test kits, one package per kit, for test support (fakes, builders, fixtures and the scan harness) used by two or more packages; the Testkit Invariant in `CONSTRAINTS.md` states what a kit may import and assert.
+`internal/testkit` holds the shared test kits, one package per kit, for test support (fakes, builders, fixtures and the scan harness) used by two or more packages; [PATTERN-testkit](../pattern/PATTERN-testkit.md) states what a kit may import and assert.
 `internal/testkit/scankit` is the harness every invariant scan runs on: module-root lookup, file walk, allowlists that report stale entries, a vacuity floor and an import-allowlist assertion.
 `internal/testkit/plankit` is the one test-side writer of valid plans, rendering through `planparser`'s format constant, with the file-tree fixture glyph resolution needs.
 `internal/testkit/tmuxkit` gives each test package one isolated tmux socket directory through `Main`, and each test a self-cleaning `-L` key through `Socket`.
@@ -596,7 +597,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - `internal/loomengine`, `internal/loomcli`, `internal/loomshed` and `internal/loomrecipe` — the phased orchestrator (`lyx loom`);
   design.
 - [code-comment-conventions.md](code-comment-conventions.md) — the doc-comment rule's standing rationale (Go only, for now);
-  a durable convention doc, kept rather than deleted, moved here from `manifest/designs/` by the 2026-08-29 designs audit.
+  a durable convention doc, kept rather than deleted, moved here by the 2026-08-29 designs audit.
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub`/`worktree` + `Render` over `internal/stencil`), consumed by reed's status-line pipeline and, later, loom's prompt templates;
   a leaf, not a phased module (as-built;
   module doc deleted per the documentation lifecycle).
@@ -612,15 +613,15 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
   module doc deleted per the documentation lifecycle).
 - `internal/treadleengine` package documentation — the generalized round-loop engine (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive (as-built;
   module doc deleted per the documentation lifecycle).
-- [manifest/designs/hardener.md](../manifest/designs/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
+- The board's `hardener` note — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (reed research logs).
 - [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
-- [manifest/roadmap.md](../manifest/roadmap.md) — planned, someday, and shipped modules — the single home for unscheduled ideas too (no separate long-term-ideas file).
+- The board — planned, next-up and someday work, the single home for unscheduled ideas too (no separate long-term-ideas file).
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
 - [crucible/README.md](../crucible/README.md) — **`crucible`**, the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification).
-  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](../manifest/designs/hardener.md) concept, named separately to avoid colliding with it);
+  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the board's `hardener` concept, named separately to avoid colliding with it);
   ships two paste-ready prompts — an [orchestrator prompt](../crucible/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](../crucible/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
   Lives at the repo root, not under `docs/`, since it's a working method/prompt set, not documentation of shipped code.

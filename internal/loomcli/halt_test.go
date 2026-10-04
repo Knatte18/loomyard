@@ -102,7 +102,7 @@ func newHaltFixture(t *testing.T) *haltFixture {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", frictionDir, err)
 	}
 
-	loc := locationkit.Location(root, "warp", ".")
+	loc := locationkit.Location(root, "pair", ".")
 	// The filed-title marker and the step clean-handoff marker keep their lock files in this directory too.
 	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomSelfreportFiledLock(loc)), filepath.Dir(loomengine.LoomStepHandoffLock(loc))} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -180,7 +180,7 @@ func (f *haltFixture) seedStatus(t *testing.T, producer string, st shedengine.St
 	t.Helper()
 
 	p := f.c.shedPaths
-	if err := loomshed.Seed(p.StatusPath, p.StatusLockPath, "warp", "main"); err != nil {
+	if err := loomshed.Seed(p.StatusPath, p.StatusLockPath, "pair", "main"); err != nil {
 		t.Fatalf("Seed() = %v; want nil", err)
 	}
 	err := state.UpdateJSON[shedengine.Status](p.StatusPath, p.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {

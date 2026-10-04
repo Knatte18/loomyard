@@ -253,10 +253,9 @@ tracking ref:
     warp HEAD is no longer an ancestor of the fetched tip) is auto-reconciled
     when it is safe: weft's correspondence is re-anchored to the nearest
     surviving Warp-SHA, warp is reset to the new tip, and a new empty weft
-    anchor commit records the fresh correspondence. The result reports which
-    post-anchor weft commits touch _lyx/PATTERN.md or _lyx/pattern/ and need
-    review, since they were written against a warp baseline that no longer
-    exists upstream.
+    anchor commit records the fresh correspondence. The result reports the
+    re-anchor baseline (anchor_warp_sha, anchor_weft_sha) and the new anchor
+    commit (reanchor_weft_sha).
   - Two cases abort loudly and make no change to either repo: local warp
     already carries unpushed commits of its own AND the remote diverged (the
     double-conflict case pull refuses to resolve unattended), or the warp
@@ -365,18 +364,11 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 }
 
 // pullResultMap converts a fabricengine.PullResult into the map shape output.Ok
-// expects, flattening each PatternResidueEntry the same way.
+// expects.
 // weft_pulled can now be false inside a SUCCESS envelope — the weft arm is non-fatal, so a false
 // value here means the warp side pulled while the weft did not; the operator's remedy is to
 // reconcile the weft by hand (`git -C <weft> reset --hard origin/<branch>`).
 func pullResultMap(result fabricengine.PullResult) map[string]any {
-	residue := make([]map[string]any, 0, len(result.PatternResidue))
-	for _, entry := range result.PatternResidue {
-		residue = append(residue, map[string]any{
-			"weft_sha": entry.WeftSHA,
-			"paths":    entry.Paths,
-		})
-	}
 	return map[string]any{
 		"weft_pulled":       result.WeftPulled,
 		"warp_fetched":      result.WarpFetched,
@@ -387,6 +379,5 @@ func pullResultMap(result fabricengine.PullResult) map[string]any {
 		"anchor_warp_sha":   result.AnchorWarpSHA,
 		"anchor_weft_sha":   result.AnchorWeftSHA,
 		"reanchor_weft_sha": result.ReanchorWeftSHA,
-		"pattern_residue":   residue,
 	}
 }

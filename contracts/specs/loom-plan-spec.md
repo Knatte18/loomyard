@@ -341,7 +341,7 @@ This union is defined over each card's flat target set (the union across all of 
 Symbol/path matching and SCC condensation into a deterministic topological order have shipped — see `internal/websterengine`'s package documentation under its "Execution order is derived, not declared" section.
 What remains deferred is continuous DAG update across waves and any parallel execution, both of which belong to the roadmap's Someday `webster: worktree-per-card parallel execution` item.
 
-A parked, more aggressive parallel-execution idea also exists — see [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
+A parked, more aggressive parallel-execution idea also exists — see the `internal/websterengine` package documentation.
 
 ## Validation checks (as implemented by `internal/planparser`)
 

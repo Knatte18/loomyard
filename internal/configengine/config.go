@@ -2,7 +2,7 @@
 // yamlengine and envsource: Load, which is strict and used by hub-scoped modules where an absent
 // config means a broken hub, and LoadOrTemplate, which resolves the caller's embedded template on
 // proven absence and is used by modules with a standalone entry point.
-// CONSTRAINTS.md's Config Strictness Invariant is the rule that decides which policy a new caller
+// PATTERN-config-strictness is the rule that decides which policy a new caller
 // adopts.
 
 package configengine

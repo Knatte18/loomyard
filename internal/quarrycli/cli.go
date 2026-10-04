@@ -6,7 +6,7 @@
 // internal/stencilcli/cli.go and internal/webstercli/wiring.go both establish.
 //
 // quarrycli is a named deviation from the CLI/Cobra Invariant's package-naming rule: its kernel is
-// internal/planglyph, not quarryengine. See CONSTRAINTS.md.
+// internal/planglyph, not quarryengine. See PATTERN-cli-cobra.
 
 package quarrycli
 

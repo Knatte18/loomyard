@@ -29,7 +29,7 @@ func seedRunID(t *testing.T, loc *lyxcwd.Location, runID string) {
 func TestResolveRunID_RefusesEachGenericVerbWhenNoSeed(t *testing.T) {
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			c := &loomCLI{}
 
 			err := c.resolveRunID(loc, verb, nil)
@@ -49,7 +49,7 @@ func TestResolveRunID_RefusesEachGenericVerbWhenNoSeed(t *testing.T) {
 func TestResolveRunID_NonGenericVerbsNeverRefuse(t *testing.T) {
 	for _, verb := range []string{"start", "validate-discussion", "validate-plan"} {
 		t.Run(verb, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			c := &loomCLI{}
 
 			if err := c.resolveRunID(loc, verb, nil); err != nil {
@@ -61,7 +61,7 @@ func TestResolveRunID_NonGenericVerbsNeverRefuse(t *testing.T) {
 
 // TestResolveRunID_RejectReviewFileIsNotARunID asserts reject's positional review file leaves the run-id at self.
 func TestResolveRunID_RejectReviewFileIsNotARunID(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{}
 
 	if err := c.resolveRunID(loc, "reject", []string{"review.md"}); err != nil {
@@ -75,7 +75,7 @@ func TestResolveRunID_RejectReviewFileIsNotARunID(t *testing.T) {
 // TestResolveRunID_RefusalNamesEveryExistingRunID asserts the refusal's text lists every run-id
 // shedrun.List finds, sorted, when the addressed run-id itself has no seed.
 func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	seedRunID(t, loc, "alpha")
 	seedRunID(t, loc, "bravo")
 	c := &loomCLI{}
@@ -98,7 +98,7 @@ func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
 // seeded run at all, reads as the ordinary "no run is seeded yet" case rather than as a fault --
 // the pre-existing-worktree case shedrun.MissingSeedMessage documents.
 func TestResolveRunID_EmptyListingReadsAsOrdinary(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{}
 
 	err := c.resolveRunID(loc, "run", nil)
@@ -114,7 +114,7 @@ func TestResolveRunID_EmptyListingReadsAsOrdinary(t *testing.T) {
 // present at the addressed run-id, with no seed beside it, still refuses -- the inconsistency the
 // refusal exists to catch (e.g. a worktree from before this task).
 func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(statusPath), err)
@@ -137,7 +137,7 @@ func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.
 func TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse(t *testing.T) {
 	for _, verb := range []string{"run", "step"} {
 		t.Run(verb, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			c := &loomCLI{}
 
 			if err := c.resolveRunID(loc, verb, nil); err == nil {

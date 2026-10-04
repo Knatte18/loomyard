@@ -1,4 +1,4 @@
-// noforceadd_test.go machine-checks CONSTRAINTS.md's Never Force-Add Invariant: internal/gitrepo's
+// noforceadd_test.go machine-checks PATTERN-never-force-add: internal/gitrepo's
 // own non-test source may never reintroduce a `git add -f` branch or the deleted hasPathspecMagic
 // helper that used to decide when to take it.
 // It is deliberately untagged (no //go:build constraint) and does a pure substring scan — no git
@@ -33,7 +33,7 @@ const noForceAddMinScannedFiles = 5
 // TestNoForceAdd_GitrepoSourceHasNoForceAddBranch walks internal/gitrepo's own non-test .go files
 // and fails if any of them contains a banned token from noForceAddBannedTokens — guarding against
 // `git add -f` (or the hasPathspecMagic helper that used to gate it) ever reappearing.
-// See CONSTRAINTS.md's Never Force-Add Invariant.
+// See PATTERN-never-force-add.
 func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
 	var failures []string
 
@@ -51,6 +51,6 @@ func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
 	scankit.RequireFloor(t, scanned, noForceAddMinScannedFiles, "no-force-add guard")
 
 	if len(failures) > 0 {
-		t.Errorf("Never Force-Add Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("PATTERN-never-force-add violated:\n%s", strings.Join(failures, "\n"))
 	}
 }

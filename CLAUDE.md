@@ -1,10 +1,11 @@
 # CLAUDE.md — Loomyard (lyx)
 
-## CONSTRAINTS.md is authoritative
+## PATTERN.md is authoritative
 
-Read `CONSTRAINTS.md` before writing or reviewing code.
+Read `PATTERN.md`, and the `pattern/` background files that touch a change, before writing or reviewing code.
 Its invariants are enforced partly by `go test` and partly by review.
-A new cross-cutting invariant goes there in the same commit.
+Agents lyx spawns get the `PATTERN.md` overview inlined in their prompt.
+A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 ## Build: cgo
 
@@ -35,9 +36,8 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 
 ## Docs land in the same commit
 
-A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `CONSTRAINTS.md` for a new invariant.
-`manifest/` holds only what is to be built or still under consideration, never what is built: a design whose code has landed moves into its package's `doc.go`.
-`manifest/roadmap.md` changes only when a planned item is completed or added.
+A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `PATTERN.md` for a new invariant.
+An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`: a design whose code has landed moves from the board entry into `doc.go`.
 
 ## Markdown: semantic line breaks
 

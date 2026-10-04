@@ -46,7 +46,7 @@ func finalizeMergeResult(res *MergeResult, rec *Mutations) {
 // foreign git-level merge state, and a clean pair.
 // The record re-check is the only one of the three another FABRIC process can trip (every fabric
 // merge writes a record before mutating); the foreign and dirty re-checks exist for the
-// CONSTRAINTS-sanctioned human running plain git in the warp checkout, whose mid-wait `git merge`
+// human, whom PATTERN-fabric-git sanctions, running plain git in the warp checkout, whose mid-wait `git merge`
 // or tracked edit the pre-lock guard stage cannot see — the guard stage runs before the verb's two
 // network fetches and before any lock wait, a window of real seconds.
 // Acting on those stale answers was destructive in both arms: foreign conflicted state appearing

@@ -33,6 +33,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
+// planRole is the agent-name role this module's Plan-Write spawn carries.
+const planRole = "plan"
+
 // composePlanPrompt builds the Plan producer's prompt by reading the "loom-template-plan" stencil
 // from stencilsDir and filling it. frictionDirective is the caller-resolved Tier 2 note directive for
 // this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
@@ -80,7 +83,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config,
 	planDir := planparser.PlanDir(layout.AnchorPath())
 	overviewPath := planparser.PlanOverview(layout.AnchorPath())
 
-	directive, err := pattern.Directive(layout.AnchorPath(), stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}
@@ -111,7 +114,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config,
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
 		Interactive: false,
-		Role:        "plan",
+		Role:        planRole,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil
 }

@@ -28,6 +28,9 @@ type Shuttle interface {
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
+// burlerRole is the agent-name role this module's burler spawn carries.
+const burlerRole = "burler"
+
 // Engine drives burler rounds through a Shuttle, resolving Profile paths against geom.WorktreeRoot
 // and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
@@ -121,7 +124,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive, err := pattern.Directive(e.geom.AnchorPath, e.stencilsDir, pattern.RoleReviewFix)
+	directive, err := pattern.Directive(e.geom.RepoRoot, e.stencilsDir, pattern.RoleReviewFix)
 	if err != nil {
 		return Result{}, fmt.Errorf("burler: %w", err)
 	}
@@ -171,7 +174,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		Model:         opts.Model,
 		Effort:        opts.Effort,
 		Timeout:       opts.Timeout,
-		Role:          "burler",
+		Role:          burlerRole,
 		Round:         opts.Round,
 		ForkSubagents: p.ClusterFan != "",
 	}

@@ -15,16 +15,16 @@ func TestSwapText_CasePreservingSubstitution(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"lower", "host", "warp"},
-		{"title", "Host", "Warp"},
-		{"upper", "HOST", "WARP"},
-		{"embedded_lower_camel", "hostBranch", "warpBranch"},
-		{"embedded_title_camel", "HostJunctions", "WarpJunctions"},
-		{"embedded_upper_snake", "HOST_BRANCH", "WARP_BRANCH"},
+		{"lower", "host", "pair"},
+		{"title", "Host", "Pair"},
+		{"upper", "HOST", "PAIR"},
+		{"embedded_lower_camel", "hostBranch", "pairBranch"},
+		{"embedded_title_camel", "HostJunctions", "PairJunctions"},
+		{"embedded_upper_snake", "HOST_BRANCH", "PAIR_BRANCH"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "warp", nil)
+			got, err := swapText(tt.input, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
 			}
@@ -47,7 +47,7 @@ func TestSwapText_TokenBoundaryRejection(t *testing.T) {
 	tests := []string{"ghost", "localhost", "conhost"}
 	for _, in := range tests {
 		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "warp", nil)
+			got, err := swapText(in, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", in, err)
 			}
@@ -67,12 +67,12 @@ func TestSwapText_TokenBoundaryRejection(t *testing.T) {
 // TestSwapText_CamelStartAcceptance verifies that a matched form starting uppercase swaps even
 // though a lowercase letter precedes it in the surrounding text -- the camelCase start case.
 func TestSwapText_CamelStartAcceptance(t *testing.T) {
-	got, err := swapText("myHostPath", "host", "warp", nil)
+	got, err := swapText("myHostPath", "host", "pair", nil)
 	if err != nil {
 		t.Fatalf("swapText returned error: %v", err)
 	}
-	if got.Out != "myWarpPath" {
-		t.Errorf("swapText(%q).Out = %q; want %q", "myHostPath", got.Out, "myWarpPath")
+	if got.Out != "myPairPath" {
+		t.Errorf("swapText(%q).Out = %q; want %q", "myHostPath", got.Out, "myPairPath")
 	}
 }
 
@@ -81,7 +81,7 @@ func TestSwapText_CamelStartAcceptance(t *testing.T) {
 func TestSwapText_MixedCaseRejection(t *testing.T) {
 	for _, in := range []string{"hOst", "HoSt"} {
 		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "warp", nil)
+			got, err := swapText(in, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", in, err)
 			}
@@ -104,7 +104,7 @@ func TestSwapText_AmbiguityClassification(t *testing.T) {
 	tests := []string{"hostclean", "hostlayout", "hosthub", "hostname"}
 	for _, in := range tests {
 		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "warp", nil)
+			got, err := swapText(in, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", in, err)
 			}
@@ -128,8 +128,8 @@ func TestSwapText_AmbiguityClassification(t *testing.T) {
 // different case forms on a single line all swap in a single pass.
 func TestSwapText_MultipleAndMixedOccurrencesOnOneLine(t *testing.T) {
 	in := "hostBranch talks to HOST_BRANCH and bare host on one line"
-	want := "warpBranch talks to WARP_BRANCH and bare warp on one line"
-	got, err := swapText(in, "host", "warp", nil)
+	want := "pairBranch talks to PAIR_BRANCH and bare pair on one line"
+	got, err := swapText(in, "host", "pair", nil)
 	if err != nil {
 		t.Fatalf("swapText returned error: %v", err)
 	}
@@ -148,11 +148,11 @@ func TestSwapText_MultipleAndMixedOccurrencesOnOneLine(t *testing.T) {
 func TestSwapText_SkipBehavior(t *testing.T) {
 	in := "a live pane hosting an idle agent\nplain host on this line\n"
 	skips := []*regexp.Regexp{regexp.MustCompile("pane hosting an idle agent")}
-	got, err := swapText(in, "host", "warp", skips)
+	got, err := swapText(in, "host", "pair", skips)
 	if err != nil {
 		t.Fatalf("swapText returned error: %v", err)
 	}
-	wantOut := "a live pane hosting an idle agent\nplain warp on this line\n"
+	wantOut := "a live pane hosting an idle agent\nplain pair on this line\n"
 	if got.Out != wantOut {
 		t.Errorf("swapText(...).Out = %q; want %q", got.Out, wantOut)
 	}
@@ -176,12 +176,12 @@ func TestSwapText_ReversibilityInvariant(t *testing.T) {
 		input string
 	}{
 		{"simple", "the host repo"},
-		{"target_already_present", "warp and host both appear, and Host too"},
-		{"embedded_forms", "hostBranch, HOST_BRANCH, and warpClean already present"},
+		{"target_already_present", "pair and host both appear, and Host too"},
+		{"embedded_forms", "hostBranch, HOST_BRANCH, and pairClean already present"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "warp", nil)
+			got, err := swapText(tt.input, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
 			}
@@ -203,17 +203,17 @@ func TestSwapText_LanguageAgnosticism(t *testing.T) {
 		{
 			name:  "shell",
 			input: `HOST_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
-			want:  `WARP_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
+			want:  `PAIR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
 		},
 		{
 			name:  "markdown",
 			input: "the **host repo** holds ...",
-			want:  "the **warp repo** holds ...",
+			want:  "the **pair repo** holds ...",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "warp", nil)
+			got, err := swapText(tt.input, "host", "pair", nil)
 			if err != nil {
 				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
 			}
@@ -234,7 +234,7 @@ func TestProcessFile_DryRunWritesNothing(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	status, result, err := processFile(path, "host", "warp", nil, true)
+	status, result, err := processFile(path, "host", "pair", nil, true)
 	if err != nil {
 		t.Fatalf("processFile returned error: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestProcessFile_MismatchLeavesFileUntouched(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	status, result, err := processFile(path, "host", "warp", nil, false)
+	status, result, err := processFile(path, "host", "pair", nil, false)
 	if err != nil {
 		t.Fatalf("processFile returned error: %v", err)
 	}

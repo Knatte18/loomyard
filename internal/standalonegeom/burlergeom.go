@@ -23,5 +23,6 @@ func BurlerGeometry(target, stateDir string) burlerengine.Geometry {
 	return burlerengine.Geometry{
 		WorktreeRoot: target,
 		AnchorPath:   stateDir,
+		RepoRoot:     target,
 	}
 }

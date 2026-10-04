@@ -70,16 +70,16 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/clone.go", Why: "the hub scratch directory (<hub>/_board/.lyx) and the .lyx-anchor marker are written into " +
 		"the _board worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, both in this " +
 		"same CloneHub call — race-only, not statically pre-plantable"},
-	{Key: "internal/fabricengine/warpbinding.go", Why: "writeWarpBinding writes .lyx-warp into the _board weft worktree fabric created via " +
-		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
+	{Key: "internal/fabricengine/warpbinding.go", Why: "the code-side binding writer writes the code-side binding file into the _board records worktree fabric created via " +
+		"containedWorktreeAdd; it is committed onto the records main branch by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path"},
-	{Key: "internal/fabricengine/shortnamebinding.go", Why: "WriteShortname writes .lyx-shortname into the _board weft worktree fabric created via " +
-		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
+	{Key: "internal/fabricengine/shortnamebinding.go", Why: "WriteShortname writes .lyx-shortname into the _board records worktree fabric created via " +
+		"containedWorktreeAdd; it is committed onto the records main branch by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path"},
-	{Key: "internal/fabricengine/weftgit.go", Why: "ensureWeftLockDirAt's os.MkdirAll(.weft) creates the lock directory inside the weft worktree " +
+	{Key: "internal/fabricengine/weftgit.go", Why: "the lock-directory helper's os.MkdirAll creates the lock directory inside the records worktree " +
 		"root fabric created via containedWorktreeAdd; race-only, not statically pre-plantable"},
-	{Key: "internal/fabricengine/junction.go", Why: "seedLyxJunction's os.MkdirAll(target) materialises a junction's weft-side target inside the " +
-		"weft worktree fabric created via containedWorktreeAdd, and the warp-side junction LINKS route through fslink; race-only " +
+	{Key: "internal/fabricengine/junction.go", Why: "seedLyxJunction's os.MkdirAll(target) materialises a junction's records-side target inside the " +
+		"records worktree fabric created via containedWorktreeAdd, and the code-side junction LINKS route through fslink; race-only " +
 		"(add.go refuses a pre-existing worktree path), not statically pre-plantable"},
 	{Key: "internal/fabricengine/doc.go", Why: "the package doc's prose names the raw write primitives when explaining the containment rationale; " +
 		"its only non-comment line is the package clause, so it can never carry a real call"},

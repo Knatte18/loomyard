@@ -6,7 +6,7 @@ It then implements the plan batch by batch, has independent agents review every 
 Each task runs in its own isolated git worktree pair, and many tasks can run at once.
 
 At its center is **`lyx`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
-LoomYard is developed with LoomYard: its own tasks run through the same pipeline, with their state in [`loomyard-weft`](https://github.com/Knatte18/loomyard-weft).
+LoomYard is developed with LoomYard: its own tasks run through the same pipeline, with their state in its own companion records repository.
 
 ## The central idea: deterministic Go around narrow LLM calls
 
@@ -101,24 +101,24 @@ In your repo it pollutes your history;
 outside it, the state does not branch with the work and cannot resume on another machine.
 
 LoomYard keeps it in a second git repository woven into yours.
-Your repository is the **warp**;
-the **weft** carries everything LoomYard generates.
-Every warp worktree gets a weft sibling on a matching branch, wired together on disk, so state written while working in a worktree lands in the weft without a single LoomYard file in your repo's history or `.gitignore`.
+Your repository holds the code;
+a companion repository carries everything LoomYard generates.
+Every code worktree gets a records sibling on a matching branch, wired together on disk, so state written while working in a worktree lands in the records without a single LoomYard file in your repo's history or `.gitignore`.
 
 Together the two are the **Fabric**, and `lyx fabric` is the seam that moves both sides as one: `add`/`remove` a worktree pair, `checkout` both branches together, `pull`, `status`, `diff`, `merge`, and `reconcile` a pair that drifted back onto the recorded layout.
 Every git operation LoomYard's own code performs goes through the `fabric` engine — never raw git, and never an agent.
-An agent commits its own code to the warp and nothing else;
-the weft is committed by Go, at boundaries the orchestrator controls.
+An agent commits its own code and nothing else;
+the records are committed by Go, at boundaries the orchestrator controls.
 
-Because the weft branches in lockstep with the warp, a task's whole state is versioned and pushed:
+Because the records branch in lockstep with the code, a task's whole state is versioned and pushed:
 pick the task up on another machine and it resumes where it stopped, and two tasks never see each other's plans or status.
 
 ```
 <hub>/                    (not a git repo)
   ├── <prime>/            your repo, main branch        ┐ one Fabric
-  ├── <prime>-weft/       its weft side                 ┘
+  ├── <prime>-<records>/  its records side              ┘
   ├── <slug>/             a task worktree               ┐ likewise, on
-  ├── <slug>-weft/        its weft side                 ┘ the task branch
+  ├── <slug>-<records>/   its records side              ┘ the task branch
   ├── _board/             the task store
   ├── _portals/           entry points into each worktree's state
   └── _launchers/         per-worktree launcher scripts and workspaces
@@ -127,7 +127,7 @@ pick the task up on another machine and it resumes where it stopped, and two tas
 ## Engineering discipline
 
 - **Structural invariants as tests.**
-  [`CONSTRAINTS.md`](CONSTRAINTS.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
+  [`PATTERN.md`](PATTERN.md) records the repo's cross-cutting invariants, and most of them are enforced by `go test` scans rather than by review: one package owns path resolution, one parser exists per on-disk format, nothing outside `shuttle` touches provider readiness, and so on.
 - **Told, never derived.**
   Every layer from `reed` up is handed its geometry — absolute, already-resolved paths — instead of computing it, which is what lets the same producer run inside a hub or against a plain checkout (`--target-dir`) with no hub at all.
 - **Prompts are versioned contracts.**
@@ -145,7 +145,7 @@ Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."
 | Module | What it does |
 |---|---|
 | `board` | the task board, plus a not-yet-claimable notes surface |
-| `fabric` | warp↔weft topology, sync, and the merge lifecycle; `fabric clone` creates a hub in one call |
+| `fabric` | the code and records topology, sync, and the merge lifecycle; `fabric clone` creates a hub in one call |
 | `config` | view, edit, and reconcile module configs against their templates |
 | `reed` | the tmux strand overlay and its watchdog |
 | `shuttle` | run one agent over the file contract |
@@ -166,7 +166,7 @@ Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."
 
 ```bash
 go build ./cmd/lyx                                              # build the binary
-lyx fabric clone --shortname <shortname> <weft-url> <warp-url>  # create a hub: both repos, wiring, config, board
+lyx fabric clone --shortname <shortname> <records-url> <code-url>  # create a hub: both repos, wiring, config, board
 lyx fabric add <slug>                                           # a task worktree pair
 cd <hub>/<slug> && lyx start                                    # bootstrap the task and hand the terminal to its driver
 ```
@@ -204,10 +204,9 @@ Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://g
 
 ## Documentation
 
-- [CONSTRAINTS.md](CONSTRAINTS.md) — the structural invariants (authoritative).
+- [PATTERN.md](PATTERN.md) — the structural invariants (authoritative).
 - [docs/overview.md](docs/overview.md) — architecture, naming, and the module and package map.
 - [contracts/specs/](contracts/specs/) — the on-disk format contracts, each with exactly one parser.
-- [manifest/](manifest/roadmap.md) — what is planned and not yet built.
 - [crucible/](crucible/README.md) — the hardening method for live-substrate modules.
 
 Per-package documentation lives in each package's `doc.go` and is the durable detail for anything shipped.

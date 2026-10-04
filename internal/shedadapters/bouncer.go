@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -56,6 +57,9 @@ type BouncerConfig struct {
 	// StencilsDir is the absolute stencils directory this Bouncer reads its prompt templates and
 	// rubric from.
 	StencilsDir string
+	// WorktreeRoot is the absolute repository worktree root holding PATTERN.md, which the judge's PATTERN directive is read from.
+	// Empty means no directive, so a config that tells no root judges exactly as before.
+	WorktreeRoot string
 	// SpecsDir is the absolute deployed-specs directory the rubric's {{.specs_dir}} marker is
 	// filled from.
 	SpecsDir string
@@ -780,6 +784,10 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer rubric unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
+	patternDirective, err := pattern.Directive(b.cfg.WorktreeRoot, b.cfg.StencilsDir, pattern.RoleJudge)
+	if err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer pattern directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
 
 	// The output list is never conditional on the verdict:
 	// shuttleengine classifies a run complete only when every declared output file exists,
@@ -803,8 +811,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"ledger_path":     outputs[1],
 		"focus_path":      outputs[2],
 	}
+	if patternDirective != "" {
+		judgeValues["pattern_directive"] = patternDirective
+	}
 	maps.Copy(judgeValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
-	prompt, err := stencil.Fill(judgeTemplate, judgeValues)
+	prompt, err := stencil.FillOptional(judgeTemplate, judgeValues, []string{"pattern_directive"})
 	if err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer judge prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}

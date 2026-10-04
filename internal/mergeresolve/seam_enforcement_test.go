@@ -21,8 +21,8 @@ import (
 // model-spec package (resolving the conflict session's model), the stencil store (reading the
 // conflict prompt off disk), the stencil filler (rendering it), and the logger.
 // internal/logger carries no geometry and opens no seam, so admitting it leaves the Told-Geometry
-// Invariant's actual property intact -- the same call CONSTRAINTS.md's Treadle Runner-Seam
-// Invariant allowlist already makes.
+// Invariant's actual property intact -- the same call PATTERN-treadle-runner-seam's
+// allowlist already makes.
 var mergeresolveAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",

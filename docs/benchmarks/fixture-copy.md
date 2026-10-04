@@ -106,7 +106,7 @@ The task pivoted from the original hardlink-objects hypothesis (refuted above) t
 - **Layer B (hermetic env):** `lyxtest.HermeticGitEnv()` writes one neutral global-config file per test process and points `GIT_CONFIG_GLOBAL` at it (plus `GIT_CONFIG_NOSYSTEM=1`), wired via `TestMain` into every git-spawning test package.
   This reaches indirect git spawns too — child processes (and any binaries those children launch) inherit the env vars.
 
-Enforced by `cmd/lyx/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) and recorded as the **Hermetic Git Test Environment Invariant** in `CONSTRAINTS.md`.
+Enforced by `cmd/lyx/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) and recorded as the **Hermetic Git Test Environment Invariant** in `PATTERN.md`.
 See that invariant for the full mechanics and allowlist.
 
 `copyDirRecursive` (the fixture-copy engine itself) is untouched: a plain byte-copy, no hardlink, no alternates — the measured arms above show that lever is not worth its added complexity.

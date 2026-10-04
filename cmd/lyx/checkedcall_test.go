@@ -3,7 +3,7 @@
 // adjacent //gitexec:raw marker justifying why the raw form is correct there.
 // Test files are exempt from the marker requirement entirely — this guard never scans a _test.go
 // file's content for either token, the same exemption every sibling guard in this package grants.
-// See CONSTRAINTS.md's gitexec Checked-Call Invariant.
+// See `PATTERN-gitexec-checked-call`.
 //
 // # The two-token spelling contrast
 //
@@ -83,7 +83,7 @@ var checkedCallRawTokens = []string{
 // see checkedCallCountDiff.
 var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo":       3, // run's own body, Pull, Fetch
-	"internal/fabricengine":  2, // weftRepoExists, weftBranchExists
+	"internal/fabricengine":  2, // the repo-exists and branch-exists helpers
 	"internal/lyxcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,
@@ -150,11 +150,11 @@ func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 
 	sort.Strings(markerFailures)
 	if len(markerFailures) > 0 {
-		t.Errorf("gitexec Checked-Call Invariant violated (see CONSTRAINTS.md): unmarked raw call site(s):\n%s", strings.Join(markerFailures, "\n"))
+		t.Errorf("`PATTERN-gitexec-checked-call` violated: unmarked raw call site(s):\n%s", strings.Join(markerFailures, "\n"))
 	}
 
 	if diff := checkedCallCountDiff(checkedCallPinnedRawSites, pkgRawCounts); diff != "" {
-		t.Errorf("gitexec Checked-Call Invariant violated (see CONSTRAINTS.md): per-package raw-site count drifted from the pinned map:\n%s", diff)
+		t.Errorf("`PATTERN-gitexec-checked-call` violated: per-package raw-site count drifted from the pinned map:\n%s", diff)
 	}
 }
 

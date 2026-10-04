@@ -1,5 +1,6 @@
 // Package boardengine provides a one-shot, daemonless file-locked task tracker.
 // Board is the only entry point callers use.
+// Anyone adds notes, the orchestrator curates.
 //
 // Board holds one store, board.json, whose entries carry a tier and a type.
 // A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,
@@ -38,8 +39,7 @@
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
 //
-// The board is now the roadmap: it carries the planned work, the next-up work and the someday work that manifest/ used to hold.
-// Retiring manifest/ itself is left to task manifest-retire.
+// The board is the roadmap: it carries the planned work, the next-up work and the someday work.
 
 package boardengine
 

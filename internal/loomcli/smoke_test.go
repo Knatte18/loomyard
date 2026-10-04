@@ -12,7 +12,7 @@
 // a binary "loom run" knows how to dispatch.
 //
 // This suite is the regression home for the two bugs this task's own design rounds found before any
-// code existed: the cleanliness-ordering blocker (loom's own seed dirtying the weft and failing
+// code existed: the cleanliness-ordering blocker (loom's own seed dirtying the records worktree and failing
 // loom's own first precondition row -- TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit) and the
 // double-spawn window (the run lock being taken by the child long after the spawn call returns --
 // TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver).
@@ -383,9 +383,9 @@ func waitForCurrentProducer(t *testing.T, loc *lyxcwd.Location, want string, tim
 	}
 }
 
-// weftHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository
+// recordsHeadChangedFiles returns the paths HEAD's own commit changed, relative to dir's repository
 // root.
-func weftHeadChangedFiles(t *testing.T, dir string) []string {
+func recordsHeadChangedFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", dir, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").Output()
 	if err != nil {
@@ -428,7 +428,7 @@ func seedGoDriverRun(t *testing.T, loc *lyxcwd.Location) {
 }
 
 // seedAndCommitStatus seeds loc's status file directly through the production Seed function and
-// commits it weft-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
+// commits it records-side -- the same seed-then-commit shape "lyx loom start" itself performs, used here
 // so a standalone-driver test does not need a live tmux server just to get a valid seeded pair.
 func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 	t.Helper()
@@ -442,7 +442,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 }
 
 // poisonStatusFile adds an unrecognised top-level field to loc's already-seeded status file and
-// commits the change weft-side. This is the whole rig behind the driver-failure regression cases: the
+// commits the change records-side. This is the whole rig behind the driver-failure regression cases: the
 // lenient json.Unmarshal shedengine.persist and loomshed.Seed both read through
 // (internal/state.UpdateJSON) tolerates an unknown field, so ordinary re-entrant seeding stays
 // unaffected, while the strict decoder Shed.Run's own read gate uses (state.ReadJSONStrict,
@@ -477,7 +477,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 }
 
 // poisonStatusFileMalformed overwrites loc's already-seeded status file with genuinely malformed
-// JSON (not merely an unknown field) and commits it weft-side. It is the second poison shape the
+// JSON (not merely an unknown field) and commits it records-side. It is the second poison shape the
 // crash-recovery design promises never looks like bootstrap's own gate: unlike the unknown-field
 // shape poisonStatusFile writes, malformed JSON does not decode even leniently, so before crucible
 // round fable5-high-r5's F3 fix it made loomshed.Seed (and therefore `lyx loom start`) refuse on the
@@ -677,13 +677,13 @@ func TestSmokeRunStandalone_AdvancesMachineFromExistingSeed(t *testing.T) {
 }
 
 // (d) the run verb on a never-seeded pair refuses on the envelope with a message naming the
-// bootstrap verb, writes no driver log, and leaves the weft clean.
+// bootstrap verb, writes no driver log, and leaves the records worktree clean.
 func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 
-	weftDir := fabricengine.WeftWorktree(loc)
-	beforeCount := gitkit.RevListCount(t, weftDir, "HEAD")
+	recordsDir := fabricengine.WeftWorktree(loc)
+	beforeCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 
 	stdout, code, err := runLoomCLINoFatal(exe, worktree, 15*time.Second, "loom", "run")
 	if err != nil {
@@ -716,10 +716,10 @@ func TestSmokeRunStandalone_RefusesOnNeverSeededPair(t *testing.T) {
 		t.Fatalf("fabricengine.Clean: %v", err)
 	}
 	if !clean {
-		t.Errorf("fabricengine.Clean() = (false, %q); want the weft left clean after the refusal", reason)
+		t.Errorf("fabricengine.Clean() = (false, %q); want the records worktree left clean after the refusal", reason)
 	}
-	if afterCount := gitkit.RevListCount(t, weftDir, "HEAD"); afterCount != beforeCount {
-		t.Errorf("weft commit count changed from %d to %d; want unchanged on a pre-flight refusal", beforeCount, afterCount)
+	if afterCount := gitkit.RevListCount(t, recordsDir, "HEAD"); afterCount != beforeCount {
+		t.Errorf("records commit count changed from %d to %d; want unchanged on a pre-flight refusal", beforeCount, afterCount)
 	}
 }
 
@@ -790,7 +790,7 @@ func TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog(t *testin
 // crucible round fable5-high-r5's F3 regression guard, and the composed CLI-verb half its unit tests
 // (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
 // real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
-// handshake chain against a poisoned weft-committed status file.
+// handshake chain against a poisoned records-committed status file.
 //
 // Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
 // JSON, so step 2 of `lyx loom start` refused on the envelope before ever spawning a driver — the very
@@ -868,22 +868,22 @@ func TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove(t *testing.T) {
 
 // (g) the cleanliness ordering -- in a freshly added, never-run pair the bootstrap reaches past the
 // first precondition row rather than blocking on it, the fabric cleanliness check reports clean
-// immediately after the seed commit, and the weft carries exactly one new commit touching only the
+// immediately after the seed commit, and the records worktree carries exactly one new commit touching only the
 // status file. This is one of the two named regression guards this suite exists for and asserts the
 // mechanism directly, not merely a happy outcome.
 // This case deliberately drives just the seed-then-commit mechanism directly (seedAndCommitStatus,
 // the same Seed+CommitWeftPaths pair "lyx loom start" itself performs at its own steps 2-3) rather than
 // the full "loom start" bootstrap: once a driver actually runs, its own persists rewrite the status
 // file's WORKING TREE content on every phase transition without ever committing those rewrites (only
-// the CLI's own explicit seed commit is ever committed), which would dirty the weft again and make a
+// the CLI's own explicit seed commit is ever committed), which would dirty the records worktree again and make a
 // post-driver cleanliness check fail for a reason that has nothing to do with the ordering this case
 // exists to pin -- see the file-level doc comment's note on driver-liveness timing for why the driver
 // portion of a full bootstrap cannot be relied on to have not yet run by the time a caller checks.
 func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 	_, loc, worktree, slug := newWiredPairFixture(t)
 
-	weftDir := fabricengine.WeftWorktree(loc)
-	beforeCount := gitkit.RevListCount(t, weftDir, "HEAD")
+	recordsDir := fabricengine.WeftWorktree(loc)
+	beforeCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 
 	seedAndCommitStatus(t, loc, slug)
 
@@ -895,13 +895,13 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 		t.Errorf("fabricengine.Clean() = (false, %q); want clean immediately after the seed commit", reason)
 	}
 
-	afterCount := gitkit.RevListCount(t, weftDir, "HEAD")
+	afterCount := gitkit.RevListCount(t, recordsDir, "HEAD")
 	if afterCount != beforeCount+1 {
-		t.Errorf("weft commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
+		t.Errorf("records commit count = %d; want exactly %d (the single seed commit)", afterCount, beforeCount+1)
 	}
 	wantFiles := []string{smokeStatusRel(loc)}
-	if changed := weftHeadChangedFiles(t, weftDir); !slices.Equal(changed, wantFiles) {
-		t.Errorf("weft HEAD changed files = %v; want exactly %v", changed, wantFiles)
+	if changed := recordsHeadChangedFiles(t, recordsDir); !slices.Equal(changed, wantFiles) {
+		t.Errorf("records HEAD changed files = %v; want exactly %v", changed, wantFiles)
 	}
 
 	report, _, err := preflight.Check(worktree)
@@ -915,7 +915,7 @@ func TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit(t *testing.T) {
 
 // (g2) the regression guard for the origin-record self-healing gap the holistic review found: a
 // legacy pair whose provenance record was written to disk (step 1 of "loom start") but never committed
-// weft-side (step 3), because the process died in between. The very next "loom start" must find the
+// records-side (step 3), because the process died in between. The very next "loom start" must find the
 // record already present on disk with a matching value -- resolveParentBranch's ordinary re-run row,
 // requesting no write of its own -- and still commit the still-untracked record, exactly as the status
 // file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
@@ -926,13 +926,13 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
-	weftDir := fabricengine.WeftWorktree(loc)
+	recordsDir := fabricengine.WeftWorktree(loc)
 	originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
 
 	// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
 	// created before the record existed.
-	gitkit.Git(t, weftDir, "rm", "-q", "--", originRel)
-	gitkit.Git(t, weftDir, "commit", "-m", "smoke: simulate legacy pair with no origin record")
+	gitkit.Git(t, recordsDir, "rm", "-q", "--", originRel)
+	gitkit.Git(t, recordsDir, "commit", "-m", "smoke: simulate legacy pair with no origin record")
 
 	// Simulate the crash: write the record straight to disk through the same production primitive
 	// step 1 itself uses, but never commit it -- the exact state a process death between steps 1 and
@@ -942,7 +942,7 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 		t.Fatalf("WriteOrigin (simulated crash write): %v", err)
 	}
 
-	if status := weftPathspecStatus(t, weftDir, originRel); status == "" {
+	if status := recordsPathspecStatus(t, recordsDir, originRel); status == "" {
 		t.Fatalf("origin record status before the healing run = clean; want the simulated crash to leave it uncommitted")
 	}
 
@@ -954,20 +954,20 @@ func TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit(t *
 		t.Fatalf("healing loom start: %v; output: %s", err, stdout)
 	}
 
-	// The origin record specifically must now be committed and clean. The overall weft is not
+	// The origin record specifically must now be committed and clean. The overall records worktree is not
 	// asserted clean here: once a driver actually runs, its own persists rewrite the status file's
 	// working-tree content on every phase transition without ever committing those rewrites (see
 	// TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit's doc comment), which legitimately dirties
-	// the weft again for a reason that has nothing to do with the origin-record healing this case
+	// the records worktree again for a reason that has nothing to do with the origin-record healing this case
 	// exists to pin.
-	if status := weftPathspecStatus(t, weftDir, originRel); status != "" {
+	if status := recordsPathspecStatus(t, recordsDir, originRel); status != "" {
 		t.Errorf("origin record status after the healing run = %q; want it committed and clean", status)
 	}
 }
 
-// weftPathspecStatus returns dir's `git status --porcelain` output scoped to relPath, empty when
+// recordsPathspecStatus returns dir's `git status --porcelain` output scoped to relPath, empty when
 // relPath is fully committed and unchanged.
-func weftPathspecStatus(t *testing.T, dir, relPath string) string {
+func recordsPathspecStatus(t *testing.T, dir, relPath string) string {
 	t.Helper()
 	out, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", relPath).Output()
 	if err != nil {

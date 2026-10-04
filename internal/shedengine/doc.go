@@ -69,8 +69,8 @@
 //
 // Shed is told StatusPath, LockPath, and StatusLockPath and derives none of them; it resolves no cwd
 // and names no durable/ephemeral directory convention.
-// The caller is responsible for supplying paths that already obey the Durable-vs-Ephemeral State
-// Invariant in CONSTRAINTS.md -- the status file durable, both locks never-tracked transients --
+// The caller is responsible for supplying paths that already obey
+// PATTERN-durable-vs-ephemeral-state -- the status file durable, both locks never-tracked transients --
 // because Shed cannot and does not choose either location.
 //
 // # The ShedProducer contract's two caller-side obligations

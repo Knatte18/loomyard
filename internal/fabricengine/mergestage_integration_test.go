@@ -23,7 +23,7 @@ import (
 // doc.go states that foreign git merge state — a merge fabric did not start — is refused by EVERY
 // mutating merge verb, and MergeStageResolved's own godoc justified having no guard at all with
 // "with no merge in progress both sides' ConflictedFiles() are empty". Both claims were false in
-// exactly one state, and it is a state CONSTRAINTS.md explicitly permits an operator to create: a
+// exactly one state, and it is a state the repo's invariants explicitly permit an operator to create: a
 // plain-git conflicted merge in the warp checkout leaves MergeInProgress() false while
 // ConflictedFiles() lists the conflict, so the partition routed that path straight to `git add -A`
 // and staged into a merge fabric had no record of and no lock over.

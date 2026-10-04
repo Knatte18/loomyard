@@ -10,7 +10,7 @@
 //
 // # The Glyph Conversion Chokepoint Invariant
 //
-// This package is also bound by CONSTRAINTS.md's Glyph Conversion Chokepoint Invariant:
+// This package is also bound by PATTERN-glyph-conversion-chokepoint:
 // glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only
 // glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar this
 // package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and

@@ -191,7 +191,7 @@ func TestNewCommitStatusSeam_CorruptMarkerCommitsOnce(t *testing.T) {
 // resumed machine able to read how far the run came but not what it is running.
 func TestBattenRunCommitPaths(t *testing.T) {
 	const runID = "some-slug"
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	got := battenRunCommitPaths(loc, runID)
 	if len(got) != 1 || got[0] != runStatusRel(loc, runID) {

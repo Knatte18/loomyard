@@ -108,8 +108,8 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 		worktreeName string
 	}{
 		{"BoardLevelWorktree", "_board"},
-		{"UnpairedSibling", "orphan-warp"},
-		{"WorktreeWhosePairWasRemoved", "was-paired-warp"},
+		{"UnpairedSibling", "orphan-code"},
+		{"WorktreeWhosePairWasRemoved", "was-paired-code"},
 	}
 
 	for _, tt := range tests {
@@ -139,13 +139,13 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			}
 
 			// The explicit, not-inferred-from-absence-of-error half of the laziness proof: this
-			// fictional location's warp path does not exist on disk, so calling the very closure
+			// fictional location's code path does not exist on disk, so calling the very closure
 			// wire() built -- were it ever invoked internally -- would fail loud with
 			// *fabricengine.ErrMissingPath. wire() itself returned nil above despite that
 			// guaranteed failure, which is only possible because wireHub never calls c.openFabric;
 			// it only constructs and stores the closure.
 			if _, err := c.openFabric(); err == nil {
-				t.Fatal("c.openFabric() error = nil; want *fabricengine.ErrMissingPath -- this fixture's warp path does not exist, so the opener itself must fail when finally invoked by the test, proving wire() never called it")
+				t.Fatal("c.openFabric() error = nil; want *fabricengine.ErrMissingPath -- this fixture's code path does not exist, so the opener itself must fail when finally invoked by the test, proving wire() never called it")
 			} else if !strings.Contains(err.Error(), "fabricengine:") {
 				t.Errorf("c.openFabric() error = %v; want a fabricengine error naming the missing path", err)
 			}
@@ -215,7 +215,7 @@ func hash8For(t *testing.T, target string) string {
 func TestWire_PlanDirResolution(t *testing.T) {
 	t.Run("HubDefault", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
@@ -247,7 +247,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 
 	t.Run("ExplicitOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 		override := filepath.Join(t.TempDir(), "custom-plan")
 
 		c := &websterCLI{}
@@ -295,7 +295,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 
 	t.Run("DefaultSpellingIsNotAnOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
@@ -351,7 +351,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		// Hub mode's own behaviour is unchanged: no new gate, no new error, even though this
 		// fictional hub location's plan directory does not exist on disk either.
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
@@ -373,7 +373,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 	t.Run("HubMode", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 		cwd := t.TempDir()
 
 		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
@@ -431,7 +431,7 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 // cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "pair", ".")
 	told := filepath.Join(t.TempDir(), "no-such-stencils")
 
 	c := &websterCLI{}
@@ -449,7 +449,7 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // module config on disk anywhere, still refuses on the flag alone).
 func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "pair", ".")
 
 	c := &websterCLI{}
 	err := c.wire(loc, preflight.ModeHub, "", "", "", filepath.Join(t.TempDir(), "elsewhere"))
@@ -511,7 +511,7 @@ func TestWire_StandaloneRootsResolveToTarget(t *testing.T) {
 func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
 	t.Run("HubMode", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
@@ -593,7 +593,7 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "pair", ".")
 
 	c := &websterCLI{}
 	if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
@@ -680,7 +680,7 @@ func TestWire_ReedUpSeamPerMode(t *testing.T) {
 
 	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
@@ -828,7 +828,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 func TestWireHub_FrictionDirResolution(t *testing.T) {
 	t.Run("FrictionEnabled", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 		seedLoomConfigWithFriction(t, loc.AnchorPath(), "opus[effort=high]")
 
 		c := &websterCLI{}
@@ -844,7 +844,7 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 
 	t.Run("FrictionPresentButEmpty", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 		seedLoomConfigWithFriction(t, loc.AnchorPath(), "")
 
 		c := &websterCLI{}
@@ -862,7 +862,7 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 		// directory at all, so loomengine.LoadConfig fails with its own "not initialized" error --
 		// which must never propagate out of wire.
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "pair", ".")
 
 		c := &websterCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {

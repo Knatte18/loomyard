@@ -55,7 +55,7 @@ func TestCopyRepoCallerSet_LyxcwdOnly(t *testing.T) {
 	if len(failures) > 0 {
 		t.Errorf("gitkit Leaf Invariant violated: CopyRepo is pinned to %s alone, "+
 			"but found call sites in: %v -- every other package takes a real hub from "+
-			"hubforge's real-hub factory instead (see CONSTRAINTS.md's gitkit Leaf Invariant)",
+			"hubforge's real-hub factory instead (see PATTERN-leaf-packages)",
 			allowedCopyRepoCallerDir, failures)
 	}
 }

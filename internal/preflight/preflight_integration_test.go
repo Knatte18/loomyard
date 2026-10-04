@@ -1,7 +1,7 @@
 //go:build integration
 
 // preflight_integration_test.go drives Check/CheckResolved/Wired/HubPresent end-to-end against real
-// git fixtures — a paired warp+fabric worktree with a wired _lyx junction — covering every
+// git fixtures — a paired code+fabric worktree with a wired _lyx junction — covering every
 // pass/fail scenario across the tier-1/tier-2 preconditions this package validates, plus the
 // predicate split. It is integration-tagged because it spawns git via hubforge fixtures (Test Tier
 // Purity Invariant).
@@ -48,11 +48,11 @@ func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	// repo, where they start out untracked. Commit them so a freshly-built
 	// fixture is genuinely clean on both sides, since CheckResolved's
 	// worktree-clean check covers the paired sibling too.
-	// The commit is --allow-empty because after the clone-commit change the weft prime already
-	// arrives clean, .lyx is excluded through the weft repo's .git/info/exclude, and the _extra
+	// The commit is --allow-empty because after the clone-commit change the records prime already
+	// arrives clean, .lyx is excluded through the records repo's .git/info/exclude, and the _extra
 	// junction target materializes as an empty directory git does not track -- so this pair becomes
 	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
-	// drop the guarantee if a future fixture change reintroduces untracked weft content.
+	// drop the guarantee if a future fixture change reintroduces untracked records content.
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
@@ -96,7 +96,7 @@ func assertCheckSet(t *testing.T, got preflight.Report, want ...preflight.CheckI
 	}
 }
 
-// TestCheckResolved_HealthyPair is the anchor case: a fully healthy paired warp+fabric worktree
+// TestCheckResolved_HealthyPair is the anchor case: a fully healthy paired code+fabric worktree
 // reports OK.
 func TestCheckResolved_HealthyPair(t *testing.T) {
 	t.Parallel()
@@ -152,7 +152,7 @@ func TestCheckResolved_PrimeNameFailure(t *testing.T) {
 
 // TestCheckResolved_Dirty covers all three ways cleanliness can observe a dirty repo (a
 // tracked-and-modified file, a staged file, and an untracked-only file) across both sides of the
-// pair: the warp side and the paired side.
+// pair: the code side and the paired side.
 func TestCheckResolved_Dirty(t *testing.T) {
 	t.Parallel()
 
@@ -161,11 +161,11 @@ func TestCheckResolved_Dirty(t *testing.T) {
 		dirty func(t *testing.T, h *hubforge.Hub)
 	}{
 		{
-			name: "WarpSide",
+			name: "CodeSide",
 			dirty: func(t *testing.T, h *hubforge.Hub) {
 				untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked warp file: %v", err)
+					t.Fatalf("write untracked code file: %v", err)
 				}
 			},
 		},
@@ -179,7 +179,7 @@ func TestCheckResolved_Dirty(t *testing.T) {
 			},
 		},
 		{
-			name: "WarpSideTrackedModified",
+			name: "CodeSideTrackedModified",
 			dirty: func(t *testing.T, h *hubforge.Hub) {
 				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("modified"), 0o644); err != nil {
@@ -188,7 +188,7 @@ func TestCheckResolved_Dirty(t *testing.T) {
 			},
 		},
 		{
-			name: "WarpSideStaged",
+			name: "CodeSideStaged",
 			dirty: func(t *testing.T, h *hubforge.Hub) {
 				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("staged"), 0o644); err != nil {
@@ -200,9 +200,9 @@ func TestCheckResolved_Dirty(t *testing.T) {
 		{
 			name: "BothSides",
 			dirty: func(t *testing.T, h *hubforge.Hub) {
-				warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-				if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked warp file: %v", err)
+				codeUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
+				if err := os.WriteFile(codeUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked code file: %v", err)
 				}
 				pairedUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
 				if err := os.WriteFile(pairedUntracked, []byte("new"), 0o644); err != nil {
@@ -253,7 +253,7 @@ func TestCheckResolved_BranchMismatch(t *testing.T) {
 
 	h, _ := setupFixture(t)
 
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
 
 	report, err := preflight.CheckResolved(h.Location)
 	if err != nil {
@@ -273,39 +273,39 @@ func TestCheckResolved_BrokenJunction(t *testing.T) {
 
 	shapes := []struct {
 		name    string
-		corrupt func(t *testing.T, warpLink string)
+		corrupt func(t *testing.T, codeLink string)
 	}{
 		{
 			name: "Missing",
-			corrupt: func(t *testing.T, warpLink string) {
-				if err := fslink.Remove(warpLink); err != nil {
-					t.Fatalf("remove junction %s: %v", warpLink, err)
+			corrupt: func(t *testing.T, codeLink string) {
+				if err := fslink.Remove(codeLink); err != nil {
+					t.Fatalf("remove junction %s: %v", codeLink, err)
 				}
 			},
 		},
 		{
 			name: "NotALink",
-			corrupt: func(t *testing.T, warpLink string) {
-				if err := fslink.Remove(warpLink); err != nil {
-					t.Fatalf("remove junction %s: %v", warpLink, err)
+			corrupt: func(t *testing.T, codeLink string) {
+				if err := fslink.Remove(codeLink); err != nil {
+					t.Fatalf("remove junction %s: %v", codeLink, err)
 				}
-				if err := os.Mkdir(warpLink, 0o755); err != nil {
-					t.Fatalf("mkdir real dir in junction's place %s: %v", warpLink, err)
+				if err := os.Mkdir(codeLink, 0o755); err != nil {
+					t.Fatalf("mkdir real dir in junction's place %s: %v", codeLink, err)
 				}
 			},
 		},
 		{
 			name: "PointsElsewhere",
-			corrupt: func(t *testing.T, warpLink string) {
-				if err := fslink.Remove(warpLink); err != nil {
-					t.Fatalf("remove junction %s: %v", warpLink, err)
+			corrupt: func(t *testing.T, codeLink string) {
+				if err := fslink.Remove(codeLink); err != nil {
+					t.Fatalf("remove junction %s: %v", codeLink, err)
 				}
-				wrongTarget := filepath.Join(filepath.Dir(warpLink), "not-the-fabric-junction-dir")
+				wrongTarget := filepath.Join(filepath.Dir(codeLink), "not-the-fabric-junction-dir")
 				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
 				}
-				if err := fslink.CreateDirLink(warpLink, wrongTarget); err != nil {
-					t.Fatalf("CreateDirLink(%s, %s): %v", warpLink, wrongTarget, err)
+				if err := fslink.CreateDirLink(codeLink, wrongTarget); err != nil {
+					t.Fatalf("CreateDirLink(%s, %s): %v", codeLink, wrongTarget, err)
 				}
 			},
 		},
@@ -333,8 +333,8 @@ func TestCheckResolved_BrokenJunction(t *testing.T) {
 				t.Parallel()
 
 				h, slug := setupFixture(t)
-				warpLink := j.linkFor(h, slug)
-				tt.corrupt(t, warpLink)
+				codeLink := j.linkFor(h, slug)
+				tt.corrupt(t, codeLink)
 
 				report, err := preflight.CheckResolved(h.Location)
 				if err != nil {
@@ -463,7 +463,7 @@ func TestCheck_SubpathAnchoredHubIsNotRejected(t *testing.T) {
 }
 
 // TestCheckResolved_MultipleSimultaneousFailures asserts that independently tripped checks (a dirty
-// warp and a branch-diverged pair) are both collected into one Report rather than the first
+// code side and a branch-diverged pair) are both collected into one Report rather than the first
 // short-circuiting the rest.
 func TestCheckResolved_MultipleSimultaneousFailures(t *testing.T) {
 	t.Parallel()
@@ -474,7 +474,7 @@ func TestCheckResolved_MultipleSimultaneousFailures(t *testing.T) {
 	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 		t.Fatalf("write untracked file: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
 
 	report, err := preflight.CheckResolved(h.Location)
 	if err != nil {

@@ -195,6 +195,16 @@ var PatternDirectiveReviewFix []byte
 //go:embed pattern/pattern-directive-orchestrator.md
 var PatternDirectiveOrchestrator []byte
 
+// PatternDirectiveDesigner is the shipped-default PATTERN directive for RoleDesigner.
+//
+//go:embed pattern/pattern-directive-designer.md
+var PatternDirectiveDesigner []byte
+
+// PatternDirectiveJudge is the shipped-default PATTERN directive for RoleJudge.
+//
+//go:embed pattern/pattern-directive-judge.md
+var PatternDirectiveJudge []byte
+
 // FrictionDirectiveImplementer is the shipped-default friction directive for RoleImplementer.
 //
 //go:embed friction/friction-directive-implementer.md
@@ -264,6 +274,8 @@ var entries = []registryEntry{
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
+	{"pattern-directive-designer", &PatternDirectiveDesigner},
+	{"pattern-directive-judge", &PatternDirectiveJudge},
 	{"friction-directive-implementer", &FrictionDirectiveImplementer},
 	{"friction-directive-review-fix", &FrictionDirectiveReviewFix},
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},

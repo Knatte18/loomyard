@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -49,13 +48,13 @@ type pathRule struct {
 
 // pathRules is the union of every constructor the path guards exercise.
 //
-// The planparser rows and the pattern.File row pass l.AnchorPath() in and are checked against an anchor-derived rule,
+// The planparser rows pass l.AnchorPath() in and are checked against an anchor-derived rule,
 // so they are tautological with respect to anchoring and cannot catch a production call site that passes the wrong root.
-// That proof lives in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go, and TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
+// That proof lives in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
+// pattern.File has no row: the overview sits at the worktree root, not in `_lyx` content, and `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` in internal/loomengine/plan_test.go proves its call site's root.
 var pathRules = []pathRule{
 	{name: "planparser.PlanDir", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanDir(l.AnchorPath()) }},
 	{name: "planparser.PlanOverview", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanOverview(l.AnchorPath()) }},
-	{name: "pattern.File", class: classDurable, path: func(l *lyxcwd.Location) string { return pattern.File(l.AnchorPath()) }},
 	{name: "loomengine.DiscussionDir", class: classDurable, path: loomengine.DiscussionDir},
 	{name: "loomengine.DiscussionDecisionRecord", class: classDurable, path: loomengine.DiscussionDecisionRecord},
 	{name: "loomengine.DiscussionSupportLog", class: classDurable, path: loomengine.DiscussionSupportLog},

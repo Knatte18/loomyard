@@ -35,7 +35,7 @@ var intentionallyNil = map[string]string{
 func TestWire_EverySeamFilled(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {

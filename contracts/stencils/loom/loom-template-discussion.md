@@ -5,7 +5,7 @@
      loomengine.DiscussionSpec wraps the filled result into a shuttleengine.Spec,
      which shedadapters.SingleLLMProducer drives through the shuttle seam as recipe row 3.
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). friction_directive is the fifth marker, and the one optional one: it is filled via stencil.FillOptional and renders as nothing when Tier 2 is off.
+     stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
 
 # Discussion — interview, then write the decision record
@@ -23,6 +23,7 @@ Before doing anything else, load two scribe skills, in this order:
 The order matters: `scribe:conversation` builds on `scribe:prose`.
 Both loads are best-effort — if a skill is unavailable, continue without it rather than treating an unresolvable skill name as an error.
 
+{{.pattern_directive}}
 {{.friction_directive}}
 ## Step 1 — Read the task from the board
 
@@ -49,7 +50,7 @@ The design must fit it without duplicating or contradicting it.
 ## Step 2 — Explore before asking
 
 Read the relevant parts of the codebase before asking the operator anything.
-Do not ask a question the codebase already answers — read the files, check recent commits, and read `CONSTRAINTS.md` at the repo root if present.
+Do not ask a question the codebase already answers — read the files and check recent commits.
 Only unresolved design questions belong in the interview.
 
 This exploration is bounded, the same way Step 3's interview categories are: at a coarse level you MAY establish which module boundary the work falls under and whether the design conflicts with an existing pattern.

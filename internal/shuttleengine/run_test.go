@@ -417,7 +417,7 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 // By the time saveRunState fails, AddStrand has already put a real pane and a real provider process
 // on the substrate, so the RemoveStrand that follows is a live-substrate teardown — and a
 // RemoveStrand that ERRORS is precisely "a teardown that did not confirm clean", which
-// CONSTRAINTS.md's Live-Substrate Spawn Observability invariant requires on internal/logger at Warn.
+// PATTERN-spawn-observability requires on internal/logger at Warn.
 // It used to go to the bare log package, which the durable Info+ trace sink never captures, so the
 // one record of a leaked live pane existed only on an ephemeral stderr with no trace correlation id
 // on it. Verified live: a bare log.Printf from this package appeared on stderr and was absent from

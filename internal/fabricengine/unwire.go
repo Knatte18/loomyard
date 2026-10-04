@@ -27,7 +27,7 @@ type UnwireVerbResult struct {
 	// present and removed. Empty when no junction was wired.
 	JunctionsRemoved []string
 	// WeftContent describes _lyx only — "preserved" or "not_present" — weft-side
-	// _lyx content (including _lyx/PATTERN.md) is preserved by design, never
+	// _lyx content is preserved by design, never
 	// deleted by unwire. The weft-side .lyx is never touched by unwire either;
 	// it disappears with the weft worktree when Remove tears the pair down, and on
 	// Windows an open handle inside it makes that `git worktree remove --force`

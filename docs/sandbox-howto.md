@@ -18,12 +18,12 @@ The launcher prints a warning when it detects non-console stdio.
 
 ## What the suite does
 
-`sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub warp repo, and launches an interactive black-box agent there.
+`sandbox/win/core-suite.cmd` (`sandbox/posix/core-suite.sh` on POSIX) resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub code repo, and launches an interactive black-box agent there.
 When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never the source tree), just scoped to its own session, not your shell.
 Panes the agent itself spawns inherit the same resolution from reed rather than from the launcher: reed prepends the spawning binary's directory to each strand pane's `PATH` and exports `LYX_BIN`, writing those statements to the strand pane's launch script, which the pane shell sources,
 so a nested `lyx …` inside a spawned pane resolves to the binary under test too.
 The two mechanisms are complementary and neither replaces the other — the launcher composes a Go child process's environment, reed composes a pane shell statement.
-The agent writes WARN/FAIL findings to `sandbox-report.json` in the warp repo.
+The agent writes WARN/FAIL findings to `sandbox-report.json` in the code repo.
 The suite only launches the agent;
 collecting the report is a separate step — after the session ends, run `sandbox/win/fetch.cmd` (`sandbox/posix/fetch.sh`) to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 
@@ -32,7 +32,7 @@ Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since 
 
 ## Prerequisites (one-time)
 
-1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki. `lyx-test-weft` must have Wikis enabled and at least one page, or `warp clone` fails and the Hub is torn down.
+1. **Sandbox wiki initialized** — the board repo is the records repo's GitHub wiki. The records repo must have Wikis enabled and at least one page, or the clone fails and the Hub is torn down.
    See [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
 2. **The Go bin dir is on PATH (production only)** — `update-plugins.cmd` installs the production `lyx` into `go env GOBIN`, else `GOPATH\bin`.
    To install elsewhere, set it once per machine: `go env -w GOBIN=C:\Code\tools\bin`.
@@ -93,7 +93,7 @@ sandbox/posix/build.sh -reset
 ```
 
 Skip this step on repeat runs if the existing Hub is fine — `sandbox/win/core-suite.cmd`/`sandbox/posix/core-suite.sh` does not require a reset each time.
-Reset when the Hub topology may be stale (e.g. after a warp/weft change) or when a previous run left it dirty.
+Reset when the Hub topology may be stale (e.g. after a fabric change) or when a previous run left it dirty.
 
 ### 4. Run the suite
 
@@ -105,7 +105,7 @@ sandbox/win/core-suite.cmd
 sandbox/posix/core-suite.sh
 ```
 
-This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub warp repo and launches the interactive agent there.
+This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub code repo and launches the interactive agent there.
 Let it run;
 it records findings to `sandbox-report.json` itself.
 Exit the agent session when it is done — the suite treats any exit code as normal and does not fetch the report itself.
@@ -132,7 +132,7 @@ sandbox/win/reed-suite.cmd
 sandbox/posix/reed-suite.sh
 ```
 
-This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub warp repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios.
+This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub code repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios.
 It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7.
 The attach scenario (M7) pauses for the operator to run `lyx reed attach` in a second terminal and confirm visually.
 Findings go to the same `sandbox-report.json`, so steps 5 (fetch) and 6 (triage) apply unchanged — fetch between sessions, don't run both suites and fetch once.
@@ -158,9 +158,9 @@ sandbox/win/burler-suite.cmd
 
 Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios respectively;
 both need a live tmux, PowerShell 7, a logged-in `claude`,
-and an `lyx init`-ed warp repo.
+and an `lyx init`-ed code repo.
 Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
+After the session ends, the launcher runs `lyx reed down` in the code repo (for the reed, shuttle, and burler suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`).
 
 ### 4d. Run the reed watch suite (optional, needs live tmux + logged-in claude)
 
@@ -177,7 +177,7 @@ The operator attaches once at the start (W0) and stays attached through every la
 Reach for this instead of 4b when you want to *watch* reed work rather than follow a crash/kill/rename scenario log; reach for 4b when you actually need that destructive coverage.
 Same `-claude`/`-prompt` overrides as the other suites.
 
-**Unlike every other reed-touching suite, this one does not run `lyx reed down` after the session ends** — the whole point is that the session stays live and attached so you can keep exploring by hand. Tear it down yourself (`lyx reed down` in the Hub warp repo) when you're done.
+**Unlike every other reed-touching suite, this one does not run `lyx reed down` after the session ends** — the whole point is that the session stays live and attached so you can keep exploring by hand. Tear it down yourself (`lyx reed down` in the Hub code repo) when you're done.
 
 ### 5. Fetch the report
 
@@ -189,14 +189,14 @@ sandbox/win/fetch.cmd
 sandbox/posix/fetch.sh
 ```
 
-Reads `sandbox-report.json` from the Hub warp repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
+Reads `sandbox-report.json` from the Hub code repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 Run this after the suite session ends;
 if the agent wrote no report, this fails with a distinct "not found" error.
 
 ### 6. Triage findings
 
 The agent no longer files GitHub issues itself.
-Instead: the suite emits `sandbox-report.json` in the Hub warp repo → `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
+Instead: the suite emits `sandbox-report.json` in the Hub code repo → `sandbox/win/fetch.cmd`/`sandbox/posix/fetch.sh` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
 
 ```
 /mill-report-to-tasks "<path-to-fetched-json>"
@@ -212,7 +212,7 @@ Then groom/spawn as usual.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) the Go bin dir (`go env GOBIN`, else `GOPATH\bin`) not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
-| `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
+| the clone fails during build | sandbox wiki not initialized | enable Wikis + add a page on the records repo, then `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox/win/build.cmd -reset` (`sandbox/posix/build.sh -reset`) |
 | `build -reset` fails: "being used by another process" (Windows) / "text file busy" (POSIX) | orphaned tmux from an earlier suite session still holds Hub handles | the launcher now runs `lyx reed down` after reed-backed suites **except the reed watch suite, which never auto-tears-down (see 4d)**; if hit anyway, find the Hub-scoped tmux PIDs by start time (Windows: `Get-Process -Name tmux \| Select Id,StartTime`; POSIX: `ps -o pid,lstart,cmd -C tmux`) and kill only those — never blanket-kill by image name |
 | agent session ends early, scenarios abandoned, no report | launcher was backgrounded/redirected (no TTY) | rerun in a real attached terminal; heed the launcher's non-console stdio warning |

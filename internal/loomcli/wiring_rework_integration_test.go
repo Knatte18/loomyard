@@ -1,7 +1,7 @@
 //go:build integration
 
 // wiring_rework_integration_test.go drives wire()'s real plan, webster and rework seams over a real fabric pair,
-// so PR-Rework archives each generation, and its round commit lands, exactly as the earlier rows left the tree at weft HEAD.
+// so PR-Rework archives each generation, and its round commit lands, exactly as the earlier rows left the tree at the records HEAD.
 
 package loomcli
 
@@ -60,7 +60,7 @@ func (s generationSession) Call(context.Context) (shedengine.Outcome, shedengine
 }
 
 // TestWire_Real_ReworkRoundsArchiveGenerations drives two PR-Rework rounds through wire()'s real seams.
-// Each round is one weft commit carrying both the moved-from deletions and the archive, webster's directory is emptied,
+// Each round is one records commit carrying both the moved-from deletions and the archive, webster's directory is emptied,
 // and the live plan holds only the newest generation.
 func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
@@ -70,7 +70,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
-	weftSibling := hub.PairWeftSibling(slug)
+	recordsSibling := hub.PairWeftSibling(slug)
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(location, location.AnchorPath()); err != nil {
@@ -97,7 +97,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 
 	round := func(n int, rejectedAt string, first int, cards [][2]string) {
 		t.Helper()
-		before := gitkit.Git(t, weftSibling, "rev-list", "--count", "HEAD")
+		before := gitkit.Git(t, recordsSibling, "rev-list", "--count", "HEAD")
 		deps := c.env.Rework
 		deps.ReadRejection = func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{PRNumber: 3, HeadSHA: "abc123", RejectedAt: rejectedAt, Findings: "fix it\n"}, true, nil
@@ -108,15 +108,15 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 		if err != nil || outcome != shedengine.Done {
 			t.Fatalf("round %d: PR-Rework Call = %v, %q, %v; want Done", n, outcome, ptr.Reason, err)
 		}
-		after := gitkit.Git(t, weftSibling, "rev-list", "--count", "HEAD")
+		after := gitkit.Git(t, recordsSibling, "rev-list", "--count", "HEAD")
 		if want := fmt.Sprintf("%d", atoiOrFail(t, before)+1); strings.TrimSpace(after) != want {
-			t.Errorf("round %d: weft commit count %s -> %s; want exactly one commit", n, strings.TrimSpace(before), strings.TrimSpace(after))
+			t.Errorf("round %d: records commit count %s -> %s; want exactly one commit", n, strings.TrimSpace(before), strings.TrimSpace(after))
 		}
 	}
 
 	round1Prior := filepath.ToSlash(filepath.Join(loomengine.LoomReworkDirRel(), "round-1", "prior-generation"))
 	round(1, "2026-09-30T10:00:00Z", 2, [][2]string{{"second-card", "fixes the finding."}})
-	changed := gitkit.Git(t, weftSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
+	changed := gitkit.Git(t, recordsSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
 	for _, want := range []string{
 		"D\t" + planparser.PlanDirRel() + "/01-first-card.md",
 		"A\t" + round1Prior + "/plan/01-first-card.md",

@@ -15,7 +15,7 @@
 // tree-sitter's C grammars and its own internal/cgoguard fails the compile outright under
 // CGO_ENABLED=0, deliberately and unconditionally — a hard requirement this module inherited
 // the moment it took quarry on as a dependency, and cannot relax from this side since quarry
-// lives outside this worktree. See CONSTRAINTS.md's Quarry CGO Requirement Invariant.
+// lives outside this worktree. See `PATTERN-quarry-cgo`.
 
 package main
 

@@ -21,6 +21,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
+// judgeRole is the agent-name role this module's judge spawn carries.
+const judgeRole = "judge"
+
+// triageRole is the agent-name role this module's triage spawn carries.
+const triageRole = "triage"
+
 // Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by
 // *shuttleengine.Runner in production and fakes in tests.
 type Shuttle interface {
@@ -118,7 +124,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
 		Model:       model,
 		Effort:      effort,
-		Role:        "judge",
+		Role:        judgeRole,
 		Round:       strconv.Itoa(round),
 	}
 
@@ -180,7 +186,7 @@ func runTriage(stencilsDir string, sh Shuttle, name string, round int, question,
 		OutputFiles: []string{verdictPath},
 		Model:       model,
 		Effort:      effort,
-		Role:        "triage",
+		Role:        triageRole,
 		Round:       strconv.Itoa(round),
 	}
 

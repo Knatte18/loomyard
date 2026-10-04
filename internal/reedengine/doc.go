@@ -74,7 +74,7 @@
 // string (which a real tmux accepts and misassigns positionally rather than
 // rejecting).
 //
-// Three module-local Selvage rules, kept here rather than in CONSTRAINTS.md
+// Three module-local Selvage rules, kept here rather than in a PATTERN entry
 // because they describe this package's own design rather than a
 // cross-cutting invariant another module could violate: Selvage is always
 // physically bottom-most in the window — render.Rules emits its cell last
@@ -128,7 +128,7 @@
 // anything is typed), and it needs no multiplexer capability. Selvage's pane and the new-session
 // first pane are out of scope.
 //
-// A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is the Agent Name Invariant in CONSTRAINTS.md).
+// A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is PATTERN-agent-name).
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
 // A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.

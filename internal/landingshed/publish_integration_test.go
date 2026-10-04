@@ -4,7 +4,7 @@
 // standard hub fixture (internal/hubforge), with only the GitHub client faked -- an httptest server
 // standing in for the real service, mirroring the in-package unit tier's own publishGitHubServer.
 // No conflict is staged in this scenario: the merge-in half is the point, and the byte-identical
-// warp/weft conflict shape is already covered exhaustively by internal/fabricengine's own
+// conflict shape across both sides is already covered exhaustively by internal/fabricengine's own
 // mergein_integration_test.go and this file's own sibling (finalize_integration_test.go). No test
 // in this file contacts a real service or a real model.
 

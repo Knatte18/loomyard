@@ -1,9 +1,9 @@
 # crucible — a serial review+fix loop, a reusable hardening method
 
 This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to harden `reed` before merging it to `main`, plus the two prompts that drove it.
-Named separately from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
+Named separately from the future, automated `hardener` (the board's `hardener` note) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
 `hardener` is what it becomes once Go takes over the orchestrator role.
-The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), `loom` — see the `internal/loomengine` package documentation) can reuse it instead of re-inventing it each time.
+The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), `hardener` (the board's `hardener` note), `loom` — see the `internal/loomengine` package documentation) can reuse it instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
@@ -14,9 +14,9 @@ The method is **module-agnostic** — it is written down here so the modules bui
   copy them into `.claude/agents/` before a run and remove them after.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
-> **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
+> **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based `hardener` (the board's `hardener` note) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
 >
-> **Text vs. behavior:** the review gate and `burler` automate the **text-based** form (read the artifact). [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
+> **Text vs. behavior:** the review gate and `burler` automate the **text-based** form (read the artifact). `hardener` (the board's `hardener` note) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
 
 ## When to use it
 
@@ -171,7 +171,7 @@ None of it needs an attached TTY of its own: a tmux pane is a real pty regardles
 
 If the module already has a maintained `tools/sandbox/SANDBOX-<MODULE>-SUITE.md` (built for the separate human-operator dogfooding use case), the round agent MAY read it for scenario ideas, but must execute every scenario with its own tool calls — never via the launcher.
 **Building a new dedicated suite file + launcher wiring is NOT a prerequisite for running this method on a new module.**
-That machinery serves `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant — a separate, pre-existing requirement for every *registered* module — not something this hardening method needs to stand up for itself.
+That machinery serves `PATTERN-sandbox-coverage`, the sandbox suite coverage invariant — a separate, pre-existing requirement for every *registered* module — not something this hardening method needs to stand up for itself.
 
 Reusable rules that bit us and are worth carrying to any module's live driving:
 
@@ -201,7 +201,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 ## Instantiating this for a new module
 
 1. Fill every `<PLACEHOLDER>` in a copy of [`review-prompt-template.md`](review-prompt-template.md) and write it to `_mill/<module>-review-prompt.md`, then commit it: what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check.
-2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`).
+2. Confirm the module already satisfies `PATTERN-sandbox-coverage` (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`).
    That invariant is pre-existing and independent of this method — do NOT build a new dedicated suite file or launcher just to satisfy this hardening loop;
    the round agent drives the real CLI directly (see "Driving the real substrate" above) whether or not a dedicated suite file exists.
 3. Run the loop: seed → spawn (rotate model + effort) → independently verify → re-seed → repeat until a safety pass finds nothing and your gates agree.
@@ -243,7 +243,7 @@ Six serial rounds against `fabric` after the slice 1–10 v2 rewrite.
 | Round | Model | Effort | What it did |
 |------:|-------|--------|-------------|
 | R1 | Opus  | high   | 23 findings; self-reported "ready to merge" and the operator rejected that outright |
-| R2 | Fable | high   | 17 findings; `pull` destroying uncommitted warp work via `ResetHard` while returning `ok:true` |
+| R2 | Fable | high   | 17 findings; `pull` destroying uncommitted code-side work via `ResetHard` while returning `ok:true` |
 | R3 | Opus  | high   | 6 findings; hostile-slug `remove`, plus a 40-cell dirty-worktree matrix |
 | R4 | Opus  | medium | **three graded sweeps instead of a fourth review** — closed two defect classes with counted evidence |
 | R5 | Opus  | medium | 15 findings, 2 BLOCKING, in three regions no prior round had ever driven |

@@ -77,7 +77,7 @@ func Derive(target string) (stateDir string, hash8 string, err error) {
 //
 // A relative target is cleaned but deliberately NOT resolved: filepath.EvalSymlinks would resolve it
 // against the process working directory, and this package never consults one (see the package doc
-// and CONSTRAINTS.md's Standalonestate Leaf Invariant). Derive rejects a relative target outright, so
+// and PATTERN-leaf-packages). Derive rejects a relative target outright, so
 // that branch only ever serves a caller normalizing before it has validated.
 //
 // Normalize READS the filesystem -- resolving a symlink is nothing else -- but creates nothing on it,

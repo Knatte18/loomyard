@@ -1,4 +1,4 @@
-// template_test.go is the machine half of the Review Round Invariant (CONSTRAINTS.md): it pins each
+// template_test.go is the machine half of the PATTERN-review-round: it pins each
 // of the four shipped round-prompt assets' load-bearing statements as substring assertions — the
 // orchestrator's sequencing statements, instruction 3's fix-everything/ never-push statements,
 // instruction 2's cluster/origin statements — it proves each asset actually fills through stencil
@@ -107,7 +107,7 @@ func orchestratorMarkerValues() map[string]string {
 // instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
-		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
+		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read the overview.",
 		"friction_directive": "## Friction note — optional, only if something went wrong",
 		"focus_directive":    "## Focus directive for this round",
 		"target":             "target placeholder",

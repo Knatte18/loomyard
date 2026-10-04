@@ -1,9 +1,9 @@
 //go:build integration
 
-// records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's records: a child that goes awaiting, is approved, is resumed by batten, reaches done and is torn down leaves its friction notes and drive report reachable from the archive tag on the weft origin.
+// records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's records: a child that goes awaiting, is approved, is resumed by batten, reaches done and is torn down leaves its friction notes and drive report reachable from the archive tag on the records origin.
 //
 // It stays a white-box "package battencli" test for the same reason lifecycle_integration_test.go does: it stubs InnerRun's seams at the field level after a real wire() call.
-// The Spawn stub's own commit stands in for the child's transition commit and "lyx loom commit-records"; battencli cannot reach loomcli's unexported commit seam, so the real records pathspec is proved by loomcli's own integration tests, and this test proves the rest of the chain, from a committed weft tip to an archive tag on the weft origin through batten's teardown.
+// The Spawn stub's own commit stands in for the child's transition commit and "lyx loom commit-records"; battencli cannot reach loomcli's unexported commit seam, so the real records pathspec is proved by loomcli's own integration tests, and this test proves the rest of the chain, from a committed records tip to an archive tag on the records origin through batten's teardown.
 // No real provider or driver is spawned.
 
 package battencli
@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// archiveTipHexLen is how many leading hex digits of the weft tip the archive tag name carries.
+// archiveTipHexLen is how many leading hex digits of the records tip the archive tag name carries.
 const archiveTipHexLen = 12
 
 func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T) {
@@ -143,9 +143,9 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 		t.Errorf("tasks.json tasks = %+v; want exactly one `reed attach` task on folderOpen", tasksFile.Tasks)
 	}
 	if out, err := exec.Command("git", "-C", h.PairWarpWorktree(slug), "status", "--porcelain").Output(); err != nil {
-		t.Fatalf("git status in the pair's warp worktree: %v", err)
+		t.Fatalf("git status in the pair's code worktree: %v", err)
 	} else if strings.TrimSpace(string(out)) != "" {
-		t.Errorf("pair's warp worktree is dirty after the driven open:\n%s", out)
+		t.Errorf("pair's code worktree is dirty after the driven open:\n%s", out)
 	}
 
 	// Done, driver gone: the row completes, and the same approval never spawns again.
@@ -176,7 +176,7 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 	for _, rel := range []string{frictionRel, reportRel} {
 		path := filepath.ToSlash(filepath.Join(anchorRel, rel))
 		if got := gitShow(t, h.WeftBare, tag+":"+path); len(got) == 0 {
-			t.Errorf("%s:%s is empty on the weft origin", tag, path)
+			t.Errorf("%s:%s is empty on the records origin", tag, path)
 		}
 	}
 }

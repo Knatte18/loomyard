@@ -391,8 +391,8 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	// run's own Wait harvest it as OutcomeDone through those same file-contract-first branches, and
 	// finalize then cleans it up; respawning over it instead archives the finished files and re-runs the
 	// whole (expensive) LLM step, the exact rework the crash-recovery contract exists to prevent
-	// (a dead claude with a finished output file is, to loom, a done step -- the Completion Signal
-	// Invariant in CONSTRAINTS.md).
+	// (a dead claude with a finished output file is, to loom, a done step -- see
+	// PATTERN-completion-signal).
 	//
 	// This never fires on a review-segment bounce (e.g. Discussion-Bouncer bouncing to
 	// Discussion-Burler), so it does not reopen the crash-versus-bounce trap that bars a

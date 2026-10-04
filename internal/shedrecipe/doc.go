@@ -4,7 +4,7 @@
 // internal/shedadapters, internal/websterengine, internal/landingshed), so the dependency runs one
 // way only.
 //
-// This package holds the Told-Geometry Invariant in the precise form CONSTRAINTS.md pins: an
+// This package holds PATTERN-told-geometry in its precise form: an
 // engine is handed the absolute paths it operates on and derives none of its own, so it runs
 // identically inside a lyx hub and in a bare directory that is not a git repository.
 // Every root this package touches is told, none is derived, and the package's only path

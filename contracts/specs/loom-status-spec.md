@@ -25,7 +25,7 @@ Reusing `internal/state` gives locking and atomic writes for free and keeps one 
 The **seed** is the t=0 contents of `_lyx/shed/<slug>/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
 It is written by **`lyx loom start`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
-That binding is now pinned: `lyx loom start` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed weft-side before it spawns the detached driver.
+That binding is now pinned: `lyx loom start` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed with fabric's records before it spawns the detached driver.
 An optional thin `ly-spawn` skill may wrap it later,
 but `lyx loom start` is always the writer.
 

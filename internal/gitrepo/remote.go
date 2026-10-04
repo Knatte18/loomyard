@@ -14,8 +14,7 @@ var errRemoteHasNoURLs = errors.New("remote has no configured URL")
 
 // RemoteURL returns the configured URL of the remote named name, read via go-git's local config
 // rather than a git subprocess -- it resolves state already on disk and spawns no process, so it
-// stays outside the gitrepo Client Boundary Invariant's pinned run/runChecked method list (see
-// CONSTRAINTS.md).
+// stays outside PATTERN-gitrepo-client-boundary's pinned run/runChecked method list.
 // A remote that exists but carries no configured URL is an error, never an index panic.
 func (r *Repo) RemoteURL(name string) (string, error) {
 	repo, err := r.goGit()

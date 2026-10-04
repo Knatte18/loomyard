@@ -176,7 +176,7 @@ To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx 
 **Watch:** Run `lyx fabric unwire` on a wired worktree (the fabric prime,
 or a pair added in F2).
 Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
-Confirm it preserves the weft-side `_lyx` content, explicitly including `_lyx/PATTERN.md` — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
+Confirm it preserves the weft-side `_lyx` content — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
 Confirm it reverts the junction's own `.git/info/exclude` entry — there is no committed `.gitignore` block to revert, since junctions are excluded through `.git/info/exclude` alone.
 If a SECOND worktree in the same hub is still wired, confirm the exclude entry is KEPT (that file lives in the repo's shared gitdir, so removing it would make the other worktree's live junctions show up as untracked dirt) — check with `git -C <other-warp-worktree> status --porcelain`, which must stay clean.
 Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
@@ -196,7 +196,7 @@ Discover the surface via `lyx fabric pull --help`.
 **Watch:** `pull` now touches **both** warp and weft, not weft-only -- confirm both sides move where expected.
 A clean local warp (no unpushed commits of its own) should auto-reconcile: warp resets to the new remote history, and weft's own correspondence re-anchors to it, with no operator intervention needed.
 A local warp carrying unpushed commits of its own, run against the same rewritten remote, should instead abort loudly and make no changes to either repo -- confirm neither warp nor weft moved after the abort.
-In the auto-reconciled case, inspect the JSON output: it should report which `_lyx/PATTERN.md`/`_lyx/pattern/`-touching weft commits need review, since they were written against a warp baseline that no longer exists on the rewritten remote.
+In the auto-reconciled case, inspect the JSON output: it should report `reconciled: true`, the re-anchor baseline (`anchor_warp_sha`, `anchor_weft_sha`) and the new anchor commit (`reanchor_weft_sha`).
 Before any of that, dirty the warp worktree with an uncommitted edit to a tracked file and run `lyx fabric pull` against an advanced remote: it must REFUSE to move warp and the edit must survive byte-for-byte -- advancing warp goes through a hard reset, so a pull that proceeded here would silently destroy the edit.
 
 **Verdict:** `OK` / `WARN` / `FAIL`

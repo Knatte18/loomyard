@@ -23,7 +23,7 @@ import (
 func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	for _, verb := range []string{"run", "step"} {
 		t.Run(verb, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{}
 
 			if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || found {
@@ -56,8 +56,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	}
 }
 
-// TestArmSeed_RecordsNoParent asserts a first seeding records no parent, whether or not LYX_STRAND_NAME is set.
-func TestArmSeed_RecordsNoParent(t *testing.T) {
+// TestArmSeed_SeedsWhetherOrNotStrandNameIsSet asserts a first seeding writes a seed, whether or not LYX_STRAND_NAME is set.
+func TestArmSeed_SeedsWhetherOrNotStrandNameIsSet(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  string
@@ -67,18 +67,14 @@ func TestArmSeed_RecordsNoParent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(agentname.StrandNameEnv, tc.env)
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{}
 
 			if err := c.armSeed(loc, "some-slug", "run"); err != nil {
 				t.Fatalf("armSeed() = %v; want nil", err)
 			}
-			seed, found, err := shedrun.ReadSeed(loc, "some-slug")
-			if err != nil || !found {
+			if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || !found {
 				t.Fatalf("ReadSeed = (found=%v, err=%v); want (true, nil)", found, err)
-			}
-			if seed.Parent != "" {
-				t.Errorf("seed.Parent = %q; want empty", seed.Parent)
 			}
 		})
 	}
@@ -90,7 +86,7 @@ func TestArmSeed_RecordsNoParent(t *testing.T) {
 func TestArmSeed_StatusAndPauseRefuseAndSeedNothing(t *testing.T) {
 	for _, verb := range []string{"status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{}
 
 			err := c.armSeed(loc, "some-slug", verb)
@@ -117,7 +113,7 @@ func TestArmSeed_StatusAndPauseRefuseAndSeedNothing(t *testing.T) {
 // the missing bootstrap verb and must no longer name a roadmap item -- the likeliest regression in
 // this batch is lifting both refusals for symmetry, and this is the one assertion that catches it.
 func TestArmSeed_OwnDriverLLMStillRefuses(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	c := &battenCLI{driverFlag: shedrun.DriverLLM}
 
 	err := c.armSeed(loc, "some-slug", "run")
@@ -140,7 +136,7 @@ func TestArmSeed_OwnDriverLLMStillRefuses(t *testing.T) {
 // run's recorded driver" -- true, but it reads as "not now", inviting the operator to delete the
 // seed and re-seed with a value batten can never honour at all.
 func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 	}
@@ -162,7 +158,7 @@ func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
 // is named for what it is on a seeded run, rather than being reported as disagreeing with the
 // recorded one.
 func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 	}
@@ -239,7 +235,7 @@ func TestRefuseSelfAddress_OrdinarySlugNeverRefuses(t *testing.T) {
 // refusal, while a run-id that IS seeded but has no status.json yet is a different, later question
 // -- battenPreRun's own "found: false" disposition, which armSeed never touches.
 func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundFalse(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	c := &battenCLI{}
 
 	// No seed at all: armSeed itself refuses with the listing.

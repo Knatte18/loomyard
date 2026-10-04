@@ -18,6 +18,9 @@ import (
 // it appears exactly once in this package's Go source.
 const reflectionStencilName = "friction-template-reflection"
 
+// frictionRole is the agent-name role this module's reflection spawn carries.
+const frictionRole = "friction"
+
 // buildReflectionSpec builds the shuttleengine.Spec for the reflection run: notes is the sorted set
 // of note file names the scan found, and reportPath is the agent's mandatory output file.
 //
@@ -63,7 +66,7 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		Version:       resolved.Params["version"],
 		Interactive:   false,
 		ForkSubagents: false,
-		Role:          "friction",
+		Role:          frictionRole,
 		Timeout:       deps.Timeout,
 	}, nil
 }

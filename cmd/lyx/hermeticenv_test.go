@@ -4,7 +4,7 @@
 // reason.
 // This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the
 // two-layer hermetic mechanism otherwise relies on every new package remembering to do.
-// See CONSTRAINTS.md's Hermetic Git Test Environment Invariant.
+// See `PATTERN-hermetic-git-tests`.
 
 package main
 
@@ -61,8 +61,7 @@ var gitSpawnTokens = []string{
 // the helper-name-HermeticGitEnv Shared Decision). This proves presence only — the
 // mechanical half of the check. The semantic half (a real TestMain that calls the
 // helper before m.Run()) is a review obligation, exactly like the repo's other
-// grep-guards (the Shell Mechanics Seam and Provider-Seam entries in
-// CONSTRAINTS.md).
+// grep-guards (`PATTERN-shell-mechanics-seam` and `PATTERN-shuttle-provider-seam`).
 const hermeticPresenceToken = "HermeticGitEnv"
 
 // pkgHermeticStatus accumulates, per package directory, the evidence the guard's
@@ -153,7 +152,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	exemptPackages.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Hermetic Git Test Environment Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-hermetic-git-tests` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

@@ -80,7 +80,7 @@ func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
 	if len(failures) > 0 {
 		t.Errorf("Cliwire Sole-Wiring Invariant violated: %s re-declares a wiring helper cliwire "+
 			"already owns: %v -- a <module>cli must call into internal/cliwire's shared prologue rather "+
-			"than re-implementing part of it (see CONSTRAINTS.md's Cliwire Sole-Wiring Invariant)",
+			"than re-implementing part of it (see PATTERN-cliwire-sole-wiring)",
 			strings.Join(policedCliDirs, " and "), failures)
 	}
 }

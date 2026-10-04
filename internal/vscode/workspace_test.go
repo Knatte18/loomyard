@@ -4,6 +4,7 @@ package vscode
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -49,5 +50,37 @@ func TestBuildWorkspaceEscapesFolders(t *testing.T) {
 	}
 	if !json.Valid(got) {
 		t.Errorf("output is not valid JSON:\n%s", got)
+	}
+}
+
+func TestRelativeSettingKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings []byte
+		want     []string
+	}{
+		{"dot slash", []byte(`{"a": "./x"}`), []string{"a"}},
+		{"dot dot slash", []byte(`{"a": "../x"}`), []string{"a"}},
+		{"sorted", []byte(`{"b": "./x", "a": "../y"}`), []string{"a", "b"}},
+		{"absolute path", []byte(`{"a": "/abs/x", "b": "C:\\x"}`), nil},
+		{"plain string", []byte(`{"a": "x", "b": ".hidden", "c": "."}`), nil},
+		{"non-string values", []byte(`{"a": 1, "b": true, "c": null, "d": ["./x"]}`), nil},
+		{"nested object not examined", []byte(`{"a": {"b": "./x"}}`), nil},
+		{"jsonc comments and trailing comma", []byte("{\n  // c\n  \"a\": \"./x\", /* b */\n  \"u\": \"http://h/./y\",\n}"), []string{"a"}},
+		{"comment marker inside string", []byte(`{"a": "// not a comment", "b": "./x"}`), []string{"b"}},
+		{"bom", append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a": "./x"}`)...), []string{"a"}},
+		{"nil", nil, nil},
+		{"empty", []byte{}, nil},
+		{"comments only", []byte("// a\n/* b */"), nil},
+		{"not an object", []byte(`["./x"]`), nil},
+		{"undecodable", []byte(`{"a": `), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RelativeSettingKeys(tt.settings)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

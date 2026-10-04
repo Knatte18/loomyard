@@ -97,8 +97,8 @@
 // # The round-artifact convention
 //
 // This is the binding two-sided contract between BurlerProducer and its segment's Bouncer, pinned
-// here durably rather than only in manifest/roadmap.md, so it survives independently of the roadmap
-// entry that is deleted when the Bouncer item completes.
+// here durably rather than only in a board entry, so it survives independently of the entry
+// that is deleted when the Bouncer item completes.
 // Artifact paths are flat inside the told run directory, one canonical pair per round with no
 // attempt suffix: round-<N>-review.md and round-<N>-fixer-report.md, with N a positive decimal
 // integer carrying no leading zeros.
