@@ -1,9 +1,8 @@
 // cli.go exposes the cobra command tree for the board module.
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a tier and a type.
-// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from one constructor, called once for the top level and once for the hidden "notes" alias group, so both reach the same store by construction.
-// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, exist at the top level only;
-// the hidden promote-note alias promotes to tier 1.
+// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
+// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
 // design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
@@ -232,45 +231,6 @@ Example:
 		}),
 	}
 
-	notesCmd := &cobra.Command{
-		Use:    "notes",
-		Short:  "alias for the top-level verbs: the same store and the same verbs",
-		Hidden: true,
-		RunE:   clihelp.GroupRunE,
-	}
-	notesCmd.AddCommand(storeVerbs(board)...)
-
-	promoteNoteCmd := &cobra.Command{
-		Use:    "promote-note [json-payload]",
-		Short:  "alias for promote: move a task to tier 1",
-		Hidden: true,
-		Long: `Alias for "promote" with the target fixed at tier 1. Unknown keys are rejected.
-Exactly one of "slug" or "id" is required. Errors if the task is not found.
-A task already at tier 1 is returned unchanged.
-
-Fields:
-  "slug" string  — task slug (mutually exclusive with "id")
-  "id"   integer — numeric task ID (mutually exclusive with "slug")
-
-Example:
-  lyx board promote-note '{"slug":"my-note"}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-			selector, _, err := resolveLookup([]byte(args[0]))
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			task, err := b.PromoteNote(selector)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
-	}
-
 	cmd.AddCommand(storeVerbs(board)...)
 	cmd.AddCommand(
 		promoteCmd,
@@ -279,14 +239,12 @@ Example:
 		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
-		notesCmd,
-		promoteNoteCmd,
 	)
 
 	return cmd
 }
 
-// storeVerbs builds the nine store verbs fresh on every call, so the top level and the notes alias group each get their own command instances over the one store board returns.
+// storeVerbs builds the nine store verbs over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	upsertCmd := &cobra.Command{

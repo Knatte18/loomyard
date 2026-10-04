@@ -14,7 +14,7 @@ import (
 )
 
 // runHelp invokes RunCLI for a leaf command (identified by one or more path
-// segments, e.g. "upsert" or "notes", "upsert") with --help and returns the
+// segments, e.g. "upsert" or "set-status") with --help and returns the
 // combined stdout. Help output does not require a seeded cwd because cobra
 // intercepts --help before PersistentPreRunE executes.
 func runHelp(t *testing.T, args ...string) string {
@@ -113,76 +113,6 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			name:        "prune",
 			args:        []string{"prune"},
 			mustContain: []string{"done", "depends_on"},
-		},
-		{
-			name: "notes upsert",
-			args: []string{"notes", "upsert"},
-			mustContain: []string{
-				"slug",
-				"title",
-				"brief",
-				"body",
-				"depends_on",
-				"isolated",
-				"status",
-				"tier",
-				"type",
-				"recipe",
-			},
-			mustNotContain: []string{"deferred"},
-		},
-		{
-			name: "notes set-status",
-			args: []string{"notes", "set-status"},
-			mustContain: []string{
-				"slug",
-				"id",
-				"status",
-			},
-		},
-		{
-			name: "notes remove",
-			args: []string{"notes", "remove"},
-			mustContain: []string{
-				"slug",
-				"id",
-			},
-		},
-		{
-			name: "notes get",
-			args: []string{"notes", "get"},
-			mustContain: []string{
-				"slug",
-				"id",
-			},
-		},
-		{
-			name: "notes merge",
-			args: []string{"notes", "merge"},
-			mustContain: []string{
-				"remove_slugs",
-				"upsert",
-				"set_status",
-				"slug",
-				"id",
-				"status",
-			},
-		},
-		{
-			name: "notes set-deps",
-			args: []string{"notes", "set-deps"},
-			mustContain: []string{
-				"slug",
-				"depends_on",
-			},
-		},
-		{
-			name: "promote-note",
-			args: []string{"promote-note"},
-			mustContain: []string{
-				"slug",
-				"id",
-			},
 		},
 	}
 
