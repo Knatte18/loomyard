@@ -1,6 +1,6 @@
 // pattern.go implements the PATTERN active check and Directive's role-keyed stencil read: which
-// stencil name a Role selects, and the stencilstore.Read + StripLeadingComment call that turns it
-// into directive text.
+// stencil name a Role selects, and the stencilstore.Read, StripLeadingComment and Fill calls that
+// turn it into directive text carrying the PATTERN overview.
 // See doc.go for the package-level rationale.
 
 package pattern
@@ -9,30 +9,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// patternFileName is the PATTERN entry-point filename. It is this package's
-// single declaration of the filename; File and PathspecFile both build from
-// it so the literal is written exactly once.
+// patternFileName is the PATTERN overview filename at the repository's worktree root.
+// It is this package's single declaration of the filename.
 const patternFileName = "PATTERN.md"
 
-// PathspecFile is the worktree-relative git-pathspec spelling of the PATTERN entry point.
-// internal/pattern is its single declarer;
-// internal/fabricengine consumes it for the PatternResidue pathspec.
-const PathspecFile = lyxdirs.LyxDirName + "/" + patternFileName
+// patternDirName is the background-file directory beside the overview, relative to the repository's worktree root.
+// It is this package's single declaration of the directory name;
+// the directive stencils spell it as the fixed literal "pattern/".
+const patternDirName = "pattern"
 
-// PathspecDir is the worktree-relative git-pathspec spelling of the PATTERN detail-docs directory.
-// internal/pattern is its single declarer;
-// internal/fabricengine consumes it for the PatternResidue pathspec.
-const PathspecDir = lyxdirs.LyxDirName + "/pattern"
+// overviewMarker is the one marker every directive stencil carries, which Directive fills with the overview.
+const overviewMarker = "pattern_overview"
 
-// File returns the path to the PATTERN.md file within a baseDir.
-func File(baseDir string) string {
-	return filepath.Join(baseDir, lyxdirs.LyxDirName, patternFileName)
+// File returns the path to the PATTERN.md overview within a repository's worktree root.
+func File(worktreeRoot string) string {
+	return filepath.Join(worktreeRoot, patternFileName)
 }
 
 // Role identifies which agent-facing directive variant Directive should render.
@@ -48,9 +45,8 @@ const (
 	RoleOrchestrator
 )
 
-// The literal pointers "_lyx/PATTERN.md" and "_lyx/pattern/" now live in the three stencil files
-// below rather than in Go, but they remain plain fixed literals there too — never interpolated from
-// PathspecFile/PathspecDir or any lyxdirs.LyxDirName concatenation.
+// The background pointer "pattern/" lives in the three stencil files below rather than in Go, and
+// stays a plain fixed literal there too — never interpolated from patternDirName or any path.
 // That is what keeps this package's own tests' and every consumer template test's fixed-string
 // equality and substring comparisons meaningful.
 //
@@ -62,24 +58,27 @@ const (
 	orchestratorDirectiveStencil = "pattern-directive-orchestrator"
 )
 
-// statFile is the stat implementation isActive calls. It is a package-level
-// variable — rather than a hardcoded os.Stat call — purely so this
-// package's own test suite can simulate a non-"not exist" stat error (a
+// statFile and readFile are the stat and read implementations Directive calls.
+// They are package-level variables — rather than hardcoded os calls — purely so this
+// package's own test suite can simulate a stat or read failure (a
 // permission or I/O failure) portably across platforms, without depending
 // on process privilege or a POSIX-only permission trick. Production code
-// never reassigns it.
-var statFile = os.Stat
+// never reassigns them.
+var (
+	statFile = os.Stat
+	readFile = os.ReadFile
+)
 
-// Directive reports whether PATTERN is active and returns the role's directive text to inject into
-// the agent's prompt, read from stencilsDir and stripped of its leading banner.
-// It returns ("", nil) with no read attempted at all for an empty anchorPath, an inactive PATTERN, or
-// an unknown or zero role.
-// It returns ("", err) when PATTERN is active, role is known, and the stencil read fails.
-func Directive(anchorPath, stencilsDir string, role Role) (string, error) {
-	if anchorPath == "" {
-		return "", nil
-	}
-	if !isActive(anchorPath) {
+// Directive returns the role's directive text to inject into the agent's prompt, read from
+// stencilsDir, stripped of its leading banner and carrying the PATTERN overview inlined at its marker.
+// It returns ("", nil) with no read attempted for an empty worktreeRoot, and for an inactive PATTERN:
+// an absent File(worktreeRoot), a directory in its place, or whitespace-only content.
+// An unknown or zero role also returns ("", nil), and the stencil is never read.
+// It returns ("", err) when the file's stat fails for a reason other than not-existing, when reading
+// an existing file fails, or when PATTERN is active, role is known, and the stencil read or fill fails.
+// Any other content is inlined verbatim, however malformed; format violations are the checker's job.
+func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
+	if worktreeRoot == "" {
 		return "", nil
 	}
 
@@ -98,6 +97,14 @@ func Directive(anchorPath, stencilsDir string, role Role) (string, error) {
 		return "", nil
 	}
 
+	overview, err := readOverview(worktreeRoot)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(overview) == "" {
+		return "", nil
+	}
+
 	content, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
 		// stencilstore.Read's own error already names both the stencil and
@@ -105,21 +112,33 @@ func Directive(anchorPath, stencilsDir string, role Role) (string, error) {
 		// house prefix, not the stencil name a second time.
 		return "", fmt.Errorf("pattern: directive stencil: %w", err)
 	}
-	return stencil.StripLeadingComment(string(content)), nil
+	filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(content))), map[string]string{overviewMarker: overview})
+	if err != nil {
+		return "", fmt.Errorf("pattern: fill directive stencil %q: %w", name, err)
+	}
+	return string(filled), nil
 }
 
-// isActive reports whether PATTERN is active: an absent File(anchorPath) means inactive; a directory in its place is also inactive; otherwise active.
-func isActive(anchorPath string) bool {
-	info, err := statFile(File(anchorPath))
+// readOverview returns the content of File(worktreeRoot), or "" when PATTERN has no overview there:
+// the file is absent or a directory sits in its place.
+// A stat error that is not "not exist", or a read error on an existing file, is returned.
+func readOverview(worktreeRoot string) (string, error) {
+	path := File(worktreeRoot)
+	info, err := statFile(path)
 	if err != nil {
-		// os.IsNotExist is the normal, common inactive case: PATTERN.md was
-		// never created. Any other error — permission denied, I/O failure —
-		// is treated as active per Directive's doc comment: the ambiguity
-		// resolves loud, in the agent's own read of the file, rather than
-		// silently disabling the constraints.
-		return !os.IsNotExist(err)
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("pattern: stat %s: %w", path, err)
 	}
-	// A directory named PATTERN.md is not a readable index; treat it the
+	// A directory named PATTERN.md is not a readable overview; treat it the
 	// same as absent rather than reading something that isn't the file.
-	return !info.IsDir()
+	if info.IsDir() {
+		return "", nil
+	}
+	data, err := readFile(path)
+	if err != nil {
+		return "", fmt.Errorf("pattern: read %s: %w", path, err)
+	}
+	return string(data), nil
 }

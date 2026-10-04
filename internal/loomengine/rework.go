@@ -95,7 +95,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		priorPlan:      priorPlanDir,
 	}
 
-	directive, err := pattern.Directive(layout.AnchorPath(), stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}

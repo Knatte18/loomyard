@@ -107,7 +107,7 @@ func orchestratorMarkerValues() map[string]string {
 // instruction1MarkerValues returns a values map with every one of instruction 1's four required top-level markers set to a non-empty placeholder, plus pattern_directive, friction_directive and focus_directive — the three optional markers, filled via stencil.FillOptional — set to a placeholder too, so tests can delete one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
-		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
+		"pattern_directive":  "## Constraints — do this before you judge or change anything\n\n- Read the overview.",
 		"friction_directive": "## Friction note — optional, only if something went wrong",
 		"focus_directive":    "## Focus directive for this round",
 		"target":             "target placeholder",

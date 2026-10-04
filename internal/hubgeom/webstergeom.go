@@ -19,11 +19,13 @@ import (
 // the anchor path today, and this is the opposite of the neighbouring ReedGeometry's own
 // WorktreeRoot, which is l.WorktreePath(). Converging the two would silently change behaviour in a
 // subpath-anchored hub, where the anchor path and the worktree path diverge.
+// RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
 func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
 	return websterengine.Geometry{
 		AnchorRoot:   anchorPath,
 		WorktreeRoot: anchorPath,
+		RepoRoot:     l.WorktreePath(),
 		WebsterDir:   websterengine.Dir(anchorPath),
 		ReportsDir:   websterengine.ReportsDir(anchorPath),
 		ScratchDir:   websterengine.ScratchDir(anchorPath),

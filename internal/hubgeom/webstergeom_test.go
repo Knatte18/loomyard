@@ -48,6 +48,9 @@ func TestWebsterGeometry(t *testing.T) {
 			if got.WorktreeRoot != l.AnchorPath() {
 				t.Errorf("WebsterGeometry(l).WorktreeRoot = %q; want %q (l.AnchorPath())", got.WorktreeRoot, l.AnchorPath())
 			}
+			if got.RepoRoot != worktreeRoot {
+				t.Errorf("WebsterGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
+			}
 			if tt.anchorRel != "." && got.WorktreeRoot == l.WorktreePath() {
 				// The subpath-anchored row must catch a later "consistency fix"
 				// that converges webster's field on reed's WorktreePath: the two

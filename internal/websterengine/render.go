@@ -196,7 +196,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, pl
 // plan/overview.md and CONSTRAINTS.md before the shared implementer-job body runs.
 // {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot, which — as the pane's
 // own cwd — is also the card pointers' relative-spelling base (see renderCardPointers);
-// anchorRoot feeds pattern.Directive's own probe alone.
+// repoRoot, the repository's worktree root holding PATTERN.md, feeds pattern.Directive alone.
 // pattern_directive is injected if PATTERN is active.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a
@@ -207,7 +207,7 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, pl
 // cardGates is the caller-rendered per-card gate command list, as for RenderForkPrompt.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDigest, reportPath, anchorRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDigest, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -217,7 +217,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 		failureLine = "none"
 	}
 
-	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
@@ -317,7 +317,7 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // the caller-supplied stencilsDir.
 // batches is the sequenced execution order — the caller is responsible for handing it a slice
 // SequenceBatches already reordered, since nothing in this function reorders it further.
-// It fills no {{.worktree_root}} key at all — anchorRoot feeds pattern.Directive's own probe, and
+// It fills no {{.worktree_root}} key at all — repoRoot, the repository's worktree root holding PATTERN.md, feeds pattern.Directive alone, and
 // worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
 // planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).
 // verifyFixPromptPath is the Go-rendered verify-gate fixer fork prompt file Merriam forwards to its one fixer fork.
@@ -328,8 +328,8 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, anchorRoot, stencilsDir string, notePath string) ([]byte, error) {
-	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleOrchestrator)
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, notePath string) ([]byte, error) {
+	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
 	}

@@ -128,7 +128,7 @@ func seedHubStencils(t *testing.T, hub string) {
 // with webster's five stencils at fabricengine.StencilsDir(hub) — every
 // RenderForkPrompt/RenderRecoveryPrompt/RenderMasterPrompt test in this file that does not itself
 // exercise pattern_directive's active branch uses this fixture. The returned anchor root's worktree
-// subdirectory is never created on disk, so pattern.Directive's os.Stat on the never-existing
+// subdirectory is never created on disk, so pattern.Directive's stat on the never-existing
 // PATTERN.md path always resolves PATTERN inactive, matching every one of these tests'
 // pre-existing expectation of an empty pattern_directive.
 func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
@@ -139,15 +139,15 @@ func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 }
 
 // patternActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub
-// that contains a real _lyx/PATTERN.md file under the returned anchor root, so pattern.Directive
-// returns non-empty — mirroring pattern.isActive's own told-anchor-path existence check (see
+// that contains a real PATTERN.md file directly under the returned root, so pattern.Directive
+// returns non-empty — mirroring pattern.Directive's own told-root read (see
 // internal/pattern/pattern_test.go's writePatternFile fixture) —
 // and seeded with webster's five stencils at fabricengine.StencilsDir(hub) like testLayout.
 func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
-	dir := filepath.Join(hub, "worktree", "_lyx")
+	dir := filepath.Join(hub, "worktree")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
 	}
@@ -265,7 +265,7 @@ func masterTemplateMarkerValues() map[string]string {
 		"verify_fix_prompt_path": "/lyx/webster/prompts/verify-fix.md",
 		"plan_dir":               "_lyx/plan",
 		"self_fix_cap":           "2",
-		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read _lyx/PATTERN.md.",
+		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read the overview.",
 		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
 	}
 }
@@ -297,7 +297,7 @@ func forkTemplateMarkerValues() map[string]string {
 // optional markers.
 func recoveryTemplateMarkerValues() map[string]string {
 	values := forkTemplateMarkerValues()
-	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read _lyx/PATTERN.md."
+	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read the overview."
 	return values
 }
 
@@ -662,7 +662,7 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 // TestRenderRecoveryPrompt_InstructsColdOrientation asserts RenderRecoveryPrompt's rendered prompt
 // points the cold recovery strand at `00-overview.md` and `CONSTRAINTS.md`, carries the card's own
 // SourcePath pointer and the shared implementer-body text, and — for the PATTERN-active case — also
-// names `_lyx/PATTERN.md` via the injected pattern_directive.
+// carries the PATTERN overview via the injected pattern_directive.
 // The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan `## Constraints` heading.
 func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
@@ -697,9 +697,38 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 		}
 		text := string(got)
 
-		requireContains(t, text, "_lyx/PATTERN.md")
+		requireContains(t, text, "some constraints")
 		requireContains(t, text, "## Constraints")
 	})
+}
+
+// TestRenderPrompts_PatternDirectiveFromRepoRoot proves the recovery and master renderers read
+// PATTERN.md from the told repoRoot and not from the anchor or prompt worktree root: the overview is
+// planted at the repo root only, and the anchor-shaped roots are a subdirectory of it, as in a
+// subpath-anchored hub.
+func TestRenderPrompts_PatternDirectiveFromRepoRoot(t *testing.T) {
+	repoRoot, stencilsDir := patternActiveLayout(t)
+	anchorRoot := filepath.Join(repoRoot, "backend")
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+
+	recovery, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "")
+	if err != nil {
+		t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
+	}
+	requireContains(t, string(recovery), "some constraints")
+
+	master, err := websterengine.RenderMasterPrompt([]batcher.Batch{batch}, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, "")
+	if err != nil {
+		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
+	}
+	requireContains(t, string(master), "some constraints")
+
+	wrong, err := websterengine.RenderMasterPrompt([]batcher.Batch{batch}, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "")
+	if err != nil {
+		t.Fatalf("RenderMasterPrompt(anchor as repoRoot) = _, %v; want nil error", err)
+	}
+	requireNotContains(t, string(wrong), "some constraints")
 }
 
 // patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like patternActiveLayout — PATTERN active, every stencil seeded — but then removes the pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
@@ -708,7 +737,7 @@ func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stenci
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
 	stencilkit.Remove(t, fabricengine.StencilsDir(hub), "pattern-directive-implementer", "pattern-directive-review-fix", "pattern-directive-orchestrator")
-	dir := filepath.Join(hub, "worktree", "_lyx")
+	dir := filepath.Join(hub, "worktree")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
 	}
@@ -842,8 +871,8 @@ func TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
 
 // TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot is
 // TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot's RenderRecoveryPrompt mirror: same
-// hub-fixture blind spot, same two-case pin, over a renderer that also takes anchorRoot (for
-// pattern.Directive's own probe) — proving {{.worktree_root}} still comes from promptWorktreeRoot,
+// hub-fixture blind spot, same two-case pin, over a renderer that also takes repoRoot (for
+// pattern.Directive's own read) — proving {{.worktree_root}} still comes from promptWorktreeRoot,
 // never anchorRoot, even though anchorRoot is a real parameter here.
 func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")

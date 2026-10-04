@@ -1,4 +1,4 @@
-// geometry.go declares Geometry, the ten-field struct webster is told its coordinates through.
+// geometry.go declares Geometry, the struct webster is told its coordinates through.
 // It declares the type only — no constructor, no validator, and no default; populating every field
 // with a usable absolute path is entirely the caller's obligation, exactly as
 // internal/reedengine/geometry.go does for reed.
@@ -29,6 +29,11 @@ type Geometry struct {
 	// own construction makes it so today, and that collision is deliberate continuity, not to be
 	// "fixed" by converging either field on the other.
 	WorktreeRoot string
+	// RepoRoot is the directory holding PATTERN.md and go.mod, the repository's worktree root.
+	// It is told separately because WorktreeRoot is the anchor path in hub mode, which is not
+	// the repo root for a subpath-anchored hub.
+	// An empty RepoRoot yields no PATTERN directive.
+	RepoRoot string
 	// WebsterDir is the told path to webster's durable run state directory (state.json,
 	// outcome.yaml).
 	WebsterDir string

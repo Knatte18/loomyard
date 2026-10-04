@@ -103,9 +103,12 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 // change behaviour in a subpath-anchored hub, where the anchor path and the worktree path diverge.
 // standalonegeom.BurlerGeometry is the mode where WorktreeRoot and AnchorPath still legitimately
 // diverge: standalone fills WorktreeRoot with the reviewed target directory, not the anchor path.
+// RepoRoot is l.WorktreePath(), the directory holding PATTERN.md, which the anchor path is not in a
+// subpath-anchored hub.
 func BurlerGeometry(l *lyxcwd.Location) burlerengine.Geometry {
 	return burlerengine.Geometry{
 		WorktreeRoot: l.AnchorPath(),
 		AnchorPath:   l.AnchorPath(),
+		RepoRoot:     l.WorktreePath(),
 	}
 }
