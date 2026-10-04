@@ -234,6 +234,7 @@ Example:
 // storeVerbs builds the nine store verbs over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
+	var bodyFile string
 	upsertCmd := &cobra.Command{
 		Use:   "upsert [json-payload]",
 		Short: "Create or update a single task",
@@ -254,24 +255,42 @@ Optional fields:
   "recipe"    string — recipe the task's child worktree runs; empty means "loom"
   "short_name" string — short display label; falls back to the slug
 
+Flag:
+  --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
+                      Refused when the payload also carries "body" (drop one of them),
+                      and when the payload argument is itself "-" (stdin can feed only one of them).
+
 Example:
   lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			// cobra strips the "upsert" token; json payload is now args[0].
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			var fields map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &fields); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-			task, err := board().UpsertTask(fields)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				// cobra strips the "upsert" token; json payload is now args[0].
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
+				}
+				fields := map[string]any{}
+				decodeErr := json.Unmarshal([]byte(args[0]), &fields)
+				if bodyFile != "" {
+					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					if fields == nil {
+						fields = map[string]any{}
+					}
+					if err := applyBodyFile(fields, bodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
+					}
+				}
+				if decodeErr != nil {
+					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
+				}
+				task, err := board().UpsertTask(fields)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				return outputSuccessWithTask(out, task)
+			})(cmd, args)
+		},
 	}
+	upsertCmd.Flags().StringVar(&bodyFile, "body-file", "", `read the task's "body" from this file, or from stdin when "-"`)
 
 	// upsert-batch subcommand: create or update multiple tasks atomically.
 	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;

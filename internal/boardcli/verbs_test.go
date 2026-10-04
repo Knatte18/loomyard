@@ -272,3 +272,51 @@ func formatNumber(f float64) string {
 	b, _ := json.Marshal(int(f))
 	return string(b)
 }
+
+// TestCLIUpsertBodyFile drives --body-file with a path and with stdin, then reads the body back with get.
+func TestCLIUpsertBodyFile(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	path := filepath.Join(t.TempDir(), "body.md")
+	fileBody := "# Heading\n\nA \"quoted\" line.\n"
+	if err := os.WriteFile(path, []byte(fileBody), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"from-file","title":"F","labels":["bug"]}`, "--body-file", path)
+	got := runJSON(t, 0, "get", `{"slug":"from-file"}`)["task"].(map[string]any)
+	if got["body"] != fileBody {
+		t.Fatalf("body from file = %q, want %q", got["body"], fileBody)
+	}
+
+	stdinBody := "piped body\n"
+	pipeStdin(t, stdinBody)
+	runJSON(t, 0, "upsert", `{"slug":"from-stdin","title":"S","labels":["bug"]}`, "--body-file", "-")
+	got = runJSON(t, 0, "get", `{"slug":"from-stdin"}`)["task"].(map[string]any)
+	if got["body"] != stdinBody {
+		t.Fatalf("body from stdin = %q, want %q", got["body"], stdinBody)
+	}
+
+	// Refusals leave the board unchanged and exit non-zero.
+	runJSON(t, 1, "upsert", `{"slug":"both","title":"B","body":"x","labels":["bug"]}`, "--body-file", path)
+	runJSON(t, 1, "upsert", "-", "--body-file", "-")
+}
+
+// pipeStdin replaces os.Stdin with a file holding content until the test ends.
+func pipeStdin(t *testing.T, content string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stdin")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write stdin file: %v", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open stdin file: %v", err)
+	}
+	orig := os.Stdin
+	os.Stdin = f
+	t.Cleanup(func() {
+		os.Stdin = orig
+		f.Close()
+	})
+}
