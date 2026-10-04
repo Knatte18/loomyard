@@ -14,10 +14,11 @@ import (
 
 // composePrompt builds the discussion producer's interview prompt by reading the
 // "loom-template-discussion" stencil from stencilsDir and filling it with the four required
-// top-level marker values plus the optional friction_directive marker. frictionDirective is the
-// caller-resolved Tier 2 note directive for this run -- an empty string means Tier 2 is off or the
-// read failed, and renders as nothing.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, frictionDirective string, autonomous bool) ([]byte, error) {
+// top-level marker values plus the optional pattern_directive and friction_directive markers.
+// patternDirective is the caller-resolved PATTERN directive -- an empty string means PATTERN is
+// inactive, and renders as nothing. frictionDirective is the caller-resolved Tier 2 note directive
+// for this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
+func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
@@ -30,10 +31,11 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, fricti
 		"decision_record_path": decisionRecordPath,
 		"support_log_path":     supportLogPath,
 		"mode_rules":           modeRules(autonomous),
+		"pattern_directive":    patternDirective,
 		friction.MarkerName:    frictionDirective,
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
 	}

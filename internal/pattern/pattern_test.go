@@ -46,6 +46,7 @@ func TestDirective_ActiveWithFile(t *testing.T) {
 		{"Implementer", RoleImplementer},
 		{"ReviewFix", RoleReviewFix},
 		{"Orchestrator", RoleOrchestrator},
+		{"Designer", RoleDesigner},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,7 +132,7 @@ func TestDirective_OverviewInlinedVerbatim(t *testing.T) {
 	writePatternFile(t, root, overview)
 	stencilsDir := newTestStencilsDir(t)
 
-	for name, role := range map[string]Role{"Implementer": RoleImplementer, "ReviewFix": RoleReviewFix, "Orchestrator": RoleOrchestrator} {
+	for name, role := range map[string]Role{"Implementer": RoleImplementer, "ReviewFix": RoleReviewFix, "Orchestrator": RoleOrchestrator, "Designer": RoleDesigner} {
 		t.Run(name, func(t *testing.T) {
 			got, err := Directive(root, stencilsDir, role)
 			if err != nil {
@@ -257,10 +258,16 @@ func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 		t.Fatalf("Directive(active, RoleOrchestrator) = _, %v; want nil error", err)
 	}
 
+	designerText, err := Directive(root, stencilsDir, RoleDesigner)
+	if err != nil {
+		t.Fatalf("Directive(active, RoleDesigner) = _, %v; want nil error", err)
+	}
+
 	variants := map[Role]string{
 		RoleImplementer:  implementerText,
 		RoleReviewFix:    reviewFixText,
 		RoleOrchestrator: orchestratorText,
+		RoleDesigner:     designerText,
 	}
 	for role, text := range variants {
 		if !strings.Contains(text, "under pattern/ ") {
@@ -283,6 +290,15 @@ func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 	if variants[RoleReviewFix] == variants[RoleOrchestrator] {
 		t.Error("RoleReviewFix and RoleOrchestrator render identical directive text")
 	}
+	if variants[RoleDesigner] == variants[RoleImplementer] {
+		t.Error("RoleDesigner and RoleImplementer render identical directive text")
+	}
+	if variants[RoleDesigner] == variants[RoleReviewFix] {
+		t.Error("RoleDesigner and RoleReviewFix render identical directive text")
+	}
+	if variants[RoleDesigner] == variants[RoleOrchestrator] {
+		t.Error("RoleDesigner and RoleOrchestrator render identical directive text")
+	}
 }
 
 // TestDirective_VariantsBeginWithOwnHeading pins that each variant carries its own "##" heading
@@ -299,6 +315,7 @@ func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 		{"Implementer", RoleImplementer},
 		{"ReviewFix", RoleReviewFix},
 		{"Orchestrator", RoleOrchestrator},
+		{"Designer", RoleDesigner},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -412,6 +429,7 @@ func TestDirective_MissingStencilErrors(t *testing.T) {
 		{"Implementer", RoleImplementer, implementerDirectiveStencil},
 		{"ReviewFix", RoleReviewFix, reviewFixDirectiveStencil},
 		{"Orchestrator", RoleOrchestrator, orchestratorDirectiveStencil},
+		{"Designer", RoleDesigner, designerDirectiveStencil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -445,6 +463,7 @@ func TestDirective_StripsBanner(t *testing.T) {
 		{"Implementer", RoleImplementer},
 		{"ReviewFix", RoleReviewFix},
 		{"Orchestrator", RoleOrchestrator},
+		{"Designer", RoleDesigner},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -486,6 +505,7 @@ func TestDirective_StrippedBodyMatchesEmbeddedDefault(t *testing.T) {
 		{"Implementer", RoleImplementer, stencils.PatternDirectiveImplementer},
 		{"ReviewFix", RoleReviewFix, stencils.PatternDirectiveReviewFix},
 		{"Orchestrator", RoleOrchestrator, stencils.PatternDirectiveOrchestrator},
+		{"Designer", RoleDesigner, stencils.PatternDirectiveDesigner},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

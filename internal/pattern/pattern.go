@@ -35,7 +35,7 @@ func File(worktreeRoot string) string {
 // Role identifies which agent-facing directive variant Directive should render.
 type Role int
 
-// The three directive variants Directive knows how to render, one per agent shape.
+// The directive variants Directive knows how to render, one per agent shape.
 const (
 	// RoleImplementer selects the pre-edit checklist for any agent that edits code.
 	RoleImplementer Role = iota + 1
@@ -43,19 +43,23 @@ const (
 	RoleReviewFix
 	// RoleOrchestrator selects the forking-only variant for webster's Master session.
 	RoleOrchestrator
+	// RoleDesigner selects the design variant for the agent that decides a task before any plan exists.
+	RoleDesigner
 )
 
-// The background pointer "pattern/" lives in the three stencil files below rather than in Go, and
+// The background pointer "pattern/" lives in the directive stencil files below rather than in Go, and
 // stays a plain fixed literal there too — never interpolated from patternDirName or any path.
 // That is what keeps this package's own tests' and every consumer template test's fixed-string
 // equality and substring comparisons meaningful.
 //
-// implementerDirectiveStencil, reviewFixDirectiveStencil, and orchestratorDirectiveStencil name the
-// stencil Directive reads for each Role, one constant per role so each name is written exactly once.
+// implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil and
+// designerDirectiveStencil name the stencil Directive reads for each Role, one constant per role so
+// each name is written exactly once.
 const (
 	implementerDirectiveStencil  = "pattern-directive-implementer"
 	reviewFixDirectiveStencil    = "pattern-directive-review-fix"
 	orchestratorDirectiveStencil = "pattern-directive-orchestrator"
+	designerDirectiveStencil     = "pattern-directive-designer"
 )
 
 // statFile and readFile are the stat and read implementations Directive calls.
@@ -90,6 +94,8 @@ func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
 		name = reviewFixDirectiveStencil
 	case RoleOrchestrator:
 		name = orchestratorDirectiveStencil
+	case RoleDesigner:
+		name = designerDirectiveStencil
 	default:
 		// An unknown or zero Role renders no directive and attempts no read;
 		// this default case is what makes that behaviour defined and

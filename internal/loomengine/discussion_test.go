@@ -150,3 +150,53 @@ func TestDiscussionSpec_MissingStencilsDirIsHardError(t *testing.T) {
 		t.Errorf("DiscussionSpec(..., stencilsDir=<missing>, ...) error = %q; want it to name the missing stencil %q", err.Error(), "loom-template-discussion")
 	}
 }
+
+// TestDiscussionSpec_PatternDirective proves DiscussionSpec injects the designer directive when
+// PATTERN.md exists at the worktree root, and renders none without it.
+// It uses a non-"." AnchorRel, so the root the directive reads is told apart from the anchor path.
+func TestDiscussionSpec_PatternDirective(t *testing.T) {
+	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	tests := []struct {
+		name        string
+		plantAtRoot bool
+	}{
+		{"PATTERN.md at the worktree root", true},
+		{"no PATTERN.md", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			layout := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "repo", AnchorRel: "backend"}
+			if err := os.MkdirAll(layout.AnchorPath(), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", layout.AnchorPath(), err)
+			}
+			if tt.plantAtRoot {
+				if err := os.WriteFile(filepath.Join(layout.WorktreePath(), "PATTERN.md"), []byte("- PATTERN-sample: a rule\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+				}
+			}
+
+			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "add-json-flag", false)
+			if err != nil {
+				t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
+			}
+
+			hasDirective := strings.Contains(spec.Prompt, "check every design decision against these") &&
+				strings.Contains(spec.Prompt, "- PATTERN-sample: a rule")
+			if hasDirective != tt.plantAtRoot {
+				t.Errorf("DiscussionSpec(...).Prompt carries the designer directive = %v; want %v", hasDirective, tt.plantAtRoot)
+			}
+			if tt.plantAtRoot {
+				directiveAt := strings.Index(spec.Prompt, "## Constraints")
+				stepOneAt := strings.Index(spec.Prompt, "## Step 1")
+				if directiveAt < 0 || directiveAt > stepOneAt {
+					t.Errorf("designer directive at %d, Step 1 at %d; want the directive before Step 1", directiveAt, stepOneAt)
+				}
+			}
+		})
+	}
+}

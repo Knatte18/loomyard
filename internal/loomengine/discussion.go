@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -36,6 +37,11 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 	decisionRecordPath := DiscussionDecisionRecord(layout)
 	supportLogPath := DiscussionSupportLog(layout)
 
+	patternDirective, err := pattern.Directive(layout.WorktreePath(), stencilsDir, pattern.RoleDesigner)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: pattern directive: %w", err)
+	}
+
 	var frictionDir string
 	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
@@ -50,7 +56,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		frictionDirective = ""
 	}
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, frictionDirective, autonomous)
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}
