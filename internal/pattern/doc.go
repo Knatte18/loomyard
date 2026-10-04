@@ -1,5 +1,5 @@
 // doc.go carries the package godoc for pattern: the active check, why the overview is inlined while
-// background files stay pointers, why the three roles are what they are, and the stencil read path
+// background files stay pointers, why the roles differ, and the stencil read path
 // Directive uses to produce that directive text.
 
 // Package pattern answers one question for every code-touching lyx agent —
@@ -21,19 +21,19 @@
 // is an error rather than an inactive PATTERN,
 // since silently disabling the constraints is worse than a visible failure.
 //
-// # Why three roles, not one
+// # Why the roles differ
 //
-// Directive's Role parameter selects one of three directive-text variants,
-// one per agent shape in the stack, because each shape needs its constraint
-// text worded for what that agent actually does: RoleImplementer for any
-// agent that edits code (webster fork/Master, burler review+fix, loom plan) is
-// worded as a pre-edit checklist; RoleReviewFix for the one review+fix round
-// (burler) covers both of that round's phases in the round's own order,
-// since a pure reviewer variant would have no user — burler is the only
-// reviewing template in the set and it also fixes; RoleOrchestrator for the
-// one role that never edits code itself (webster Master) is worded for
-// forking rather than editing, because an implementer-worded instruction
-// would ask Master to do something its own prompt says it never does.
+// Directive's Role parameter selects the directive-text variant for one agent shape,
+// because each shape needs its constraint text worded for what that agent actually does.
+// RoleImplementer is worded as a pre-edit checklist, because its agents edit code.
+// RoleReviewFix covers both phases of the one review+fix round in the round's own order,
+// since a pure reviewer variant would have no user: the burler template that reviews also fixes.
+// RoleOrchestrator is worded for forking rather than editing,
+// because an implementer-worded instruction would ask webster's Master to do something its own prompt says it never does.
+// RoleDesigner is worded for checking decisions against the entries before any plan exists,
+// because its agent settles a design rather than changing code.
+// RoleJudge is worded for weighing findings the review already made,
+// because the Bouncer judge never opens the artifacts and must not downgrade a finding that cites an entry.
 //
 // # Why the overview is inlined and the background files are not
 //

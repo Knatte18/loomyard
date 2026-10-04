@@ -45,6 +45,8 @@ const (
 	RoleOrchestrator
 	// RoleDesigner selects the design variant for the agent that decides a task before any plan exists.
 	RoleDesigner
+	// RoleJudge selects the variant for the Bouncer judge, which weighs findings and never opens the artifacts.
+	RoleJudge
 )
 
 // The background pointer "pattern/" lives in the directive stencil files below rather than in Go, and
@@ -53,13 +55,14 @@ const (
 // equality and substring comparisons meaningful.
 //
 // implementerDirectiveStencil, reviewFixDirectiveStencil, orchestratorDirectiveStencil and
-// designerDirectiveStencil name the stencil Directive reads for each Role, one constant per role so
-// each name is written exactly once.
+// designerDirectiveStencil and judgeDirectiveStencil name the stencil Directive reads for each Role,
+// one constant per role so each name is written exactly once.
 const (
 	implementerDirectiveStencil  = "pattern-directive-implementer"
 	reviewFixDirectiveStencil    = "pattern-directive-review-fix"
 	orchestratorDirectiveStencil = "pattern-directive-orchestrator"
 	designerDirectiveStencil     = "pattern-directive-designer"
+	judgeDirectiveStencil        = "pattern-directive-judge"
 )
 
 // statFile and readFile are the stat and read implementations Directive calls.
@@ -96,6 +99,8 @@ func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
 		name = orchestratorDirectiveStencil
 	case RoleDesigner:
 		name = designerDirectiveStencil
+	case RoleJudge:
+		name = judgeDirectiveStencil
 	default:
 		// An unknown or zero Role renders no directive and attempts no read;
 		// this default case is what makes that behaviour defined and
