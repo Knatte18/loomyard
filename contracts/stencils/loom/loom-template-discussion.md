@@ -50,7 +50,7 @@ The design must fit it without duplicating or contradicting it.
 ## Step 2 — Explore before asking
 
 Read the relevant parts of the codebase before asking the operator anything.
-Do not ask a question the codebase already answers — read the files, check recent commits, and read `CONSTRAINTS.md` at the repo root if present.
+Do not ask a question the codebase already answers — read the files and check recent commits.
 Only unresolved design questions belong in the interview.
 
 This exploration is bounded, the same way Step 3's interview categories are: at a coarse level you MAY establish which module boundary the work falls under and whether the design conflicts with an existing pattern.

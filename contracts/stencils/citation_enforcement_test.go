@@ -25,13 +25,9 @@
 // fails; an allowlisted entry passes; an allowlist entry whose token has vanished from its
 // stencil's stripped body fails as stale (TestStencils_AllowlistHasNoStaleEntries).
 //
-// TestStencils_ConstraintsCitationsAreGuarded is a separate, narrower assertion, not a fourth part
-// of the token rule above: "CONSTRAINTS.md" is a repository-ROOT token, under none of the four
-// prefixes, so the prefix rule structurally cannot see it -- and it must not simply be folded into
-// the prefix set, because CONSTRAINTS.md is a legitimate target-repo path a stencil is supposed to
-// name (a target repository may or may not have one), unlike the loomyard-internal paths the token
-// rule polices. The defect the companion assertion closes is a missing "if present" guard on that
-// instruction, not the bare token itself.
+// TestStencils_NameNoConstraintsFile is a separate, narrower assertion, not a fourth part of the
+// token rule above: "CONSTRAINTS.md" is a repository-ROOT token, under none of the four prefixes,
+// so the prefix rule structurally cannot see it. The file is retired, so any stencil naming it fails.
 
 package stencils
 
@@ -161,31 +157,33 @@ func scanBareCitations(t *testing.T) ([]bareCitation, *scankit.Allowlist) {
 	return violations, allow
 }
 
-// TestStencils_ConstraintsCitationsAreGuarded fails when a stencil's stripped body mentions
-// "CONSTRAINTS.md" without the phrase "if present" in the same sentence. See the file comment for
-// why this is a separate assertion rather than a fourth part of the bare-citation token rule.
-func TestStencils_ConstraintsCitationsAreGuarded(t *testing.T) {
-	// constraintsPlaceholder stands in for the literal "CONSTRAINTS.md" while splitting a stencil
-	// body into sentences, so the period inside "CONSTRAINTS.md" itself is never mistaken for a
-	// sentence boundary.
-	const constraintsPlaceholder = "CONSTRAINTS\x00md"
+// namesConstraintsFile reports whether a stencil's stripped body names the retired "CONSTRAINTS.md".
+func namesConstraintsFile(body string) bool {
+	return strings.Contains(body, "CONSTRAINTS.md")
+}
 
+// TestNamesConstraintsFile proves the rule below fails a body naming the retired file and passes one that does not.
+func TestNamesConstraintsFile(t *testing.T) {
+	if !namesConstraintsFile("Read `CONSTRAINTS.md` at the repo root if present.") {
+		t.Error("namesConstraintsFile(body naming CONSTRAINTS.md) = false; want true")
+	}
+	if namesConstraintsFile("Follow the PATTERN entries above and existing patterns.") {
+		t.Error("namesConstraintsFile(body without CONSTRAINTS.md) = true; want false")
+	}
+}
+
+// TestStencils_NameNoConstraintsFile fails when any stencil's stripped body names "CONSTRAINTS.md".
+// The file is retired in favour of the PATTERN directive a prompt carries, so no stencil points at it, guarded or not.
+// See the file comment for why this is a separate assertion rather than a fourth part of the bare-citation token rule.
+func TestStencils_NameNoConstraintsFile(t *testing.T) {
 	reg := Registry()
 	for _, name := range reg.Names() {
 		def, ok := reg.Default(name)
 		if !ok {
 			t.Fatalf("Registry().Default(%q) = _, false; want true for a name Registry().Names() returned", name)
 		}
-		body := stencil.StripLeadingComment(string(def))
-		if !strings.Contains(body, "CONSTRAINTS.md") {
-			continue
-		}
-
-		guarded := strings.ReplaceAll(body, "CONSTRAINTS.md", constraintsPlaceholder)
-		for _, sentence := range strings.FieldsFunc(guarded, func(r rune) bool { return r == '.' || r == '\n' }) {
-			if strings.Contains(sentence, constraintsPlaceholder) && !strings.Contains(sentence, "if present") {
-				t.Errorf("stencil %q mentions CONSTRAINTS.md without \"if present\" guarding it in the same sentence: %q", name, sentence)
-			}
+		if namesConstraintsFile(stencil.StripLeadingComment(string(def))) {
+			t.Errorf("stencil %q names CONSTRAINTS.md; the PATTERN directive replaces it", name)
 		}
 	}
 }

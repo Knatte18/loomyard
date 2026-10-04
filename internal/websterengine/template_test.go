@@ -660,10 +660,10 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 }
 
 // TestRenderRecoveryPrompt_InstructsColdOrientation asserts RenderRecoveryPrompt's rendered prompt
-// points the cold recovery strand at `00-overview.md` and `CONSTRAINTS.md`, carries the card's own
+// points the cold recovery strand at `00-overview.md`, carries the card's own
 // SourcePath pointer and the shared implementer-body text, and — for the PATTERN-active case — also
 // carries the PATTERN overview via the injected pattern_directive.
-// The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan `## Constraints` heading.
+// The PATTERN-inactive case renders cleanly: no leftover `{{`, no `CONSTRAINTS.md` and no orphan `## Constraints` heading.
 func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
@@ -677,7 +677,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 		text := string(got)
 
 		requireContains(t, text, "00-overview.md")
-		requireContains(t, text, "CONSTRAINTS.md")
+		requireNotContains(t, text, "CONSTRAINTS.md")
 		requireContains(t, text, card.SourcePath)
 		requireContains(t, text, "## Your final action: the minimal batch-report")
 
