@@ -1323,3 +1323,31 @@ func TestFind(t *testing.T) {
 		t.Errorf("no match should be an empty slice, got %v", got)
 	}
 }
+
+// TestUpsertIssues verifies issues defaults to empty, is replaced as a whole and refuses duplicates and non-positive numbers.
+func TestUpsertIssues(t *testing.T) {
+	s := boardengine.NewStore("")
+	task, err := s.UpsertTask(map[string]any{"slug": "a"})
+	if err != nil {
+		t.Fatalf("UpsertTask: %v", err)
+	}
+	if task.Issues == nil || len(task.Issues) != 0 {
+		t.Errorf("Issues = %#v, want an empty list", task.Issues)
+	}
+
+	if task, err = s.UpsertTask(map[string]any{"slug": "a", "issues": []int{4, 5}}); err != nil || len(task.Issues) != 2 {
+		t.Fatalf("set issues: %v, %v", task.Issues, err)
+	}
+	if task, err = s.UpsertTask(map[string]any{"slug": "a", "issues": []int{6}}); err != nil || len(task.Issues) != 1 || task.Issues[0] != 6 {
+		t.Errorf("issues must be replaced as a whole: %v, %v", task.Issues, err)
+	}
+
+	for name, issues := range map[string][]int{"duplicate": {2, 2}, "zero": {0}, "negative": {-3}} {
+		if _, err := s.UpsertTask(map[string]any{"slug": "a", "issues": issues}); err == nil {
+			t.Errorf("%s: want a refusal", name)
+		}
+	}
+	if got := s.Tasks()[0].Issues; len(got) != 1 || got[0] != 6 {
+		t.Errorf("a refused upsert changed issues to %v", got)
+	}
+}

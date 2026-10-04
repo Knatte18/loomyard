@@ -17,6 +17,7 @@ type Task struct {
 	Title     string   `json:"title"`
 	Kind      string   `json:"kind"`             // KindTask or KindNote
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
+	Issues    []int    `json:"issues"`           // numbers of the inbox issues this entry records; a number is not checked against GitHub
 	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`
@@ -81,6 +82,7 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		ID:        nextID,
 		Kind:      KindNote,
 		Labels:    []string{},
+		Issues:    []int{},
 		DependsOn: []string{},
 		Isolated:  false,
 		Brief:     "",
@@ -102,6 +104,9 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 	task.Slug = slugStr
 	if task.Labels == nil {
 		task.Labels = []string{}
+	}
+	if task.Issues == nil {
+		task.Issues = []int{}
 	}
 
 	if err := validateTask(task); err != nil {
@@ -143,6 +148,9 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 
 	if result.Labels == nil {
 		result.Labels = []string{}
+	}
+	if result.Issues == nil {
+		result.Issues = []int{}
 	}
 
 	if result.Slug == "" {

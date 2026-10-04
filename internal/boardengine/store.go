@@ -133,6 +133,9 @@ func (s *Store) Load() error {
 		if entries[i].DependsOn == nil {
 			entries[i].DependsOn = []string{}
 		}
+		if entries[i].Issues == nil {
+			entries[i].Issues = []int{}
+		}
 	}
 	s.tasks = entries
 	s.legacyDone = legacyDone
@@ -210,6 +213,17 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	snapshotIndex := make(map[string]*Task)
 	for i := range snapshot {
 		snapshotIndex[snapshot[i].Slug] = &snapshot[i]
+	}
+
+	seenIssues := make(map[int]bool, len(incoming.Issues))
+	for _, n := range incoming.Issues {
+		if n <= 0 {
+			return fmt.Errorf("entry %q lists issue %d, and an issue number is a positive integer: correct or drop it from issues", incoming.Slug, n)
+		}
+		if seenIssues[n] {
+			return fmt.Errorf("entry %q lists issue %d more than once: list each issue number once", incoming.Slug, n)
+		}
+		seenIssues[n] = true
 	}
 
 	for _, dep := range incoming.DependsOn {
@@ -326,6 +340,7 @@ var upsertAllowedKeys = map[string]bool{
 	"status":     true,
 	"kind":       true,
 	"labels":     true,
+	"issues":     true,
 	"recipe":     true,
 	"short_name": true,
 }
