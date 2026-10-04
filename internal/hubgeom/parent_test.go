@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func TestDecideParent(t *testing.T) {
@@ -17,7 +18,6 @@ func TestDecideParent(t *testing.T) {
 		shortname     string
 		origin        fabricengine.Origin
 		originFound   bool
-		legacy        string
 		parentIsPrime bool
 		want          Parent
 	}{
@@ -37,26 +37,12 @@ func TestDecideParent(t *testing.T) {
 			want:        Parent{Name: "tst:other-task:orch", Worktree: "other-task"},
 		},
 		{
-			name:      "no origin record and no legacy seed gives none",
+			name:      "no origin record gives none",
 			shortname: "tst",
 			want:      Parent{},
 		},
 		{
-			name:        "origin without parent worktree falls back to the legacy seed name",
-			shortname:   "tst",
-			origin:      fabricengine.Origin{ParentBranch: "main"},
-			originFound: true,
-			legacy:      "tst:legacy",
-			want:        Parent{Name: "tst:legacy"},
-		},
-		{
-			name:      "no origin record falls back to the legacy seed name",
-			shortname: "tst",
-			legacy:    "tst:legacy",
-			want:      Parent{Name: "tst:legacy"},
-		},
-		{
-			name:        "origin without parent worktree and no legacy seed gives none",
+			name:        "origin without parent worktree gives none",
 			shortname:   "tst",
 			origin:      fabricengine.Origin{ParentBranch: "main"},
 			originFound: true,
@@ -66,22 +52,13 @@ func TestDecideParent(t *testing.T) {
 			name:          "no shortname gives none",
 			origin:        fabricengine.Origin{ParentWorktree: "prime"},
 			originFound:   true,
-			legacy:        "tst:legacy",
 			parentIsPrime: true,
 			want:          Parent{},
-		},
-		{
-			name:        "origin parent wins over the legacy seed",
-			shortname:   "tst",
-			origin:      fabricengine.Origin{ParentWorktree: "other-task"},
-			originFound: true,
-			legacy:      "tst:legacy",
-			want:        Parent{Name: "tst:other-task:orch", Worktree: "other-task"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := decideParent(tt.shortname, tt.origin, tt.originFound, tt.legacy, tt.parentIsPrime)
+			got, err := decideParent(tt.shortname, tt.origin, tt.originFound, tt.parentIsPrime)
 			if err != nil {
 				t.Fatalf("decideParent: %v", err)
 			}
@@ -93,7 +70,7 @@ func TestDecideParent(t *testing.T) {
 }
 
 func TestDecideParent_InvalidWorktreeNameIsAnError(t *testing.T) {
-	_, err := decideParent("tst", fabricengine.Origin{ParentWorktree: "Bad Name"}, true, "", false)
+	_, err := decideParent("tst", fabricengine.Origin{ParentWorktree: "Bad Name"}, true, false)
 	if err == nil {
 		t.Fatal("decideParent with an invalid parent worktree name: want error, got nil")
 	}
@@ -101,6 +78,41 @@ func TestDecideParent_InvalidWorktreeNameIsAnError(t *testing.T) {
 
 // TestResolveParent_RemovedParentWorktreeStillResolves asserts a parent pair that no longer exists on disk still yields the pair-form name.
 func TestResolveParent_RemovedParentWorktreeStillResolves(t *testing.T) {
+	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
+
+	got, err := ResolveParent(l)
+	if err != nil {
+		t.Fatalf("ResolveParent: %v", err)
+	}
+	want := Parent{Name: "tst:gone-task:orch", Worktree: "gone-task"}
+	if got != want {
+		t.Errorf("ResolveParent = %+v; want %+v", got, want)
+	}
+}
+
+// TestResolveParent_LegacySeedParentIsIgnored asserts a seed carrying a top-level parent key beside an origin record naming a parent worktree resolves to the origin's parent.
+func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
+	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
+	if err := os.MkdirAll(shedrun.RunDir(l, shedrun.SelfRunID), 0o755); err != nil {
+		t.Fatalf("MkdirAll run dir: %v", err)
+	}
+	if err := os.WriteFile(shedrun.SeedFile(l, shedrun.SelfRunID), []byte(`{"recipe":"loom","driver":"go","parent":"tst:legacy"}`), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	got, err := ResolveParent(l)
+	if err != nil {
+		t.Fatalf("ResolveParent: %v", err)
+	}
+	want := Parent{Name: "tst:gone-task:orch", Worktree: "gone-task"}
+	if got != want {
+		t.Errorf("ResolveParent = %+v; want %+v", got, want)
+	}
+}
+
+// hubWithOrigin builds a hub with shortname "tst" and an origin record holding record for the task worktree "child-task", and returns that worktree's location.
+func hubWithOrigin(t *testing.T, record string) *lyxcwd.Location {
+	t.Helper()
 	hub := filepath.Join(t.TempDir(), "some-hub-LYXHUB")
 	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "child-task", AnchorRel: "."}
 
@@ -119,17 +131,8 @@ func TestResolveParent_RemovedParentWorktreeStillResolves(t *testing.T) {
 			t.Fatalf("MkdirAll %s: %v", dir, err)
 		}
 	}
-	record := `{"parent_branch":"main","parent_worktree":"gone-task"}`
 	if err := os.WriteFile(recordPath, []byte(record), 0o644); err != nil {
 		t.Fatalf("write origin record: %v", err)
 	}
-
-	got, err := ResolveParent(l)
-	if err != nil {
-		t.Fatalf("ResolveParent: %v", err)
-	}
-	want := Parent{Name: "tst:gone-task:orch", Worktree: "gone-task"}
-	if got != want {
-		t.Errorf("ResolveParent = %+v; want %+v", got, want)
-	}
+	return l
 }

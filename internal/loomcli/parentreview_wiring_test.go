@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
@@ -56,16 +55,15 @@ func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 }
 
 // TestNewParentReviewConfig_ReviewerFromResolver asserts the reviewer is the resolver's answer:
-// a legacy seed name gives that reviewer with a nil ReviewerLive, a hub with no recorded shortname gives none, and so does a pair with no seed parent.
+// a pair whose origin names no parent worktree gives no reviewer, with or without a recorded shortname, and a nil ReviewerLive.
 func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name, parent, shortname, want string
+		name, shortname, want string
 	}{
-		{"legacy seed name", "hub:orchestrator", "hub", "hub:orchestrator"},
-		{"no seed parent", "", "hub", ""},
-		{"no shortname", "hub:orchestrator", "", ""},
+		{"no origin parent", "hub", ""},
+		{"no shortname", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -78,10 +76,6 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 				if err := fabricengine.WriteShortname(boardDir, tc.shortname); err != nil {
 					t.Fatalf("WriteShortname = %v; want nil", err)
 				}
-			}
-			seed := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo, Parent: tc.parent}
-			if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
-				t.Fatalf("shedrun.WriteSeed = %v; want nil", err)
 			}
 			cfg, err := newParentReviewConfig(loc, reedengine.Config{}, loomengine.Config{ParentReviewWaitMin: 5}, t.TempDir())
 			if err != nil {

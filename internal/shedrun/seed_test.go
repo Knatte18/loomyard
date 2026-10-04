@@ -159,18 +159,25 @@ func TestWriteSeed_IdempotentAgainstIdenticalSeed(t *testing.T) {
 	}
 }
 
-func TestSeed_ParentRoundTripsAndIsOmittedWhenEmpty(t *testing.T) {
+func TestReadSeed_LegacyParentKeyDecodesAndIsDropped(t *testing.T) {
 	l := syntheticLocation(t)
-	if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo, Parent: "ab:hub"}); err != nil {
-		t.Fatalf("WriteSeed() = %v; want nil", err)
+	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	got, _, err := ReadSeed(l, "self")
-	if err != nil || got.Parent != "ab:hub" {
-		t.Fatalf("ReadSeed() = %+v, %v; want Parent %q", got, err, "ab:hub")
+	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom","driver":"go","parent":"ab:hub"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := ReadSeed(l, "self")
+	if err != nil || !found {
+		t.Fatalf("ReadSeed() = (found=%v, err=%v); want (true, nil)", found, err)
+	}
+	want := Seed{Recipe: RecipeLoom, Driver: DriverGo}
+	if got.Recipe != want.Recipe || got.Driver != want.Driver || len(got.Params) != 0 {
+		t.Errorf("ReadSeed() = %+v; want %+v", got, want)
 	}
 
 	l2 := syntheticLocation(t)
-	if err := WriteSeed(l2, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+	if err := WriteSeed(l2, "self", got); err != nil {
 		t.Fatalf("WriteSeed() = %v; want nil", err)
 	}
 	data, err := os.ReadFile(SeedFile(l2, "self"))
@@ -178,40 +185,33 @@ func TestSeed_ParentRoundTripsAndIsOmittedWhenEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), "parent") {
-		t.Errorf("seed.json = %s; want no parent key when empty", data)
+		t.Errorf("seed.json = %s; want no parent key after a round trip", data)
 	}
 }
 
-func TestReadSeed_OldSeedWithoutParentReadsEmpty(t *testing.T) {
+func TestReadSeed_UnknownKeyIsStillRefused(t *testing.T) {
 	l := syntheticLocation(t)
 	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom","driver":"go"}`), 0o644); err != nil {
+	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom","driver":"go","parent":"ab:hub","bogus":"x"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, found, err := ReadSeed(l, "self")
-	if err != nil || !found {
-		t.Fatalf("ReadSeed() = (found=%v, err=%v); want (true, nil)", found, err)
-	}
-	if got.Parent != "" {
-		t.Errorf("ReadSeed().Parent = %q; want empty", got.Parent)
+	if _, _, err := ReadSeed(l, "self"); err == nil {
+		t.Error("ReadSeed() with an unknown key error = nil; want a decode error")
 	}
 }
 
-func TestWriteSeed_ParentIsWriteOnce(t *testing.T) {
+func TestWriteSeed_AgreesWithExistingSeedCarryingLegacyParent(t *testing.T) {
 	l := syntheticLocation(t)
-	if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo, Parent: "ab:first"}); err != nil {
-		t.Fatalf("first WriteSeed() = %v; want nil", err)
+	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	for _, parent := range []string{"ab:second", ""} {
-		if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo, Parent: parent}); err != nil {
-			t.Fatalf("WriteSeed(parent %q) = %v; want a no-op", parent, err)
-		}
-		got, _, err := ReadSeed(l, "self")
-		if err != nil || got.Parent != "ab:first" {
-			t.Fatalf("after WriteSeed(parent %q): ReadSeed() = %+v, %v; want Parent %q kept", parent, got, err, "ab:first")
-		}
+	if err := os.WriteFile(SeedFile(l, "self"), []byte(`{"recipe":"loom","driver":"go","parent":"ab:first"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSeed(l, "self", Seed{Recipe: RecipeLoom, Driver: DriverGo}); err != nil {
+		t.Fatalf("WriteSeed() = %v; want a no-op against an agreeing legacy seed", err)
 	}
 }
 

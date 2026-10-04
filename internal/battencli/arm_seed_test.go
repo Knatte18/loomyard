@@ -56,8 +56,8 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	}
 }
 
-// TestArmSeed_RecordsNoParent asserts a first seeding records no parent, whether or not LYX_STRAND_NAME is set.
-func TestArmSeed_RecordsNoParent(t *testing.T) {
+// TestArmSeed_SeedsWhetherOrNotStrandNameIsSet asserts a first seeding writes a seed, whether or not LYX_STRAND_NAME is set.
+func TestArmSeed_SeedsWhetherOrNotStrandNameIsSet(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		env  string
@@ -73,12 +73,8 @@ func TestArmSeed_RecordsNoParent(t *testing.T) {
 			if err := c.armSeed(loc, "some-slug", "run"); err != nil {
 				t.Fatalf("armSeed() = %v; want nil", err)
 			}
-			seed, found, err := shedrun.ReadSeed(loc, "some-slug")
-			if err != nil || !found {
+			if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || !found {
 				t.Fatalf("ReadSeed = (found=%v, err=%v); want (true, nil)", found, err)
-			}
-			if seed.Parent != "" {
-				t.Errorf("seed.Parent = %q; want empty", seed.Parent)
 			}
 		})
 	}

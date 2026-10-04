@@ -92,9 +92,6 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
 	seed := loomSeedFor("main", shedrun.DriverGo)
 
-	if seed.Parent != "" {
-		t.Errorf("loomSeedFor(...).Parent = %q; want empty", seed.Parent)
-	}
 	if seed.Recipe != shedrun.RecipeLoom {
 		t.Errorf("loomSeedFor(%q, %q).Recipe = %q; want %q", "main", shedrun.DriverGo, seed.Recipe, shedrun.RecipeLoom)
 	}

@@ -203,14 +203,11 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	}
 }
 
-// TestChildSeedFor_CarriesNoParent asserts the child's seed carries the given recipe, driver and params and no parent.
-func TestChildSeedFor_CarriesNoParent(t *testing.T) {
+// TestChildSeedFor_CarriesRecipeDriverAndParams asserts the child's seed carries the given recipe, driver and params.
+func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	params := map[string]string{"parent": "main"}
 
 	got := childSeedFor(shedrun.RecipeLoom, shedrun.DriverLLM, params)
-	if got.Parent != "" {
-		t.Errorf("childSeedFor().Parent = %q; want empty", got.Parent)
-	}
 	if got.Recipe != shedrun.RecipeLoom || got.Driver != shedrun.DriverLLM || got.Params["parent"] != "main" {
 		t.Errorf("childSeedFor() = %+v; want the given recipe, driver and params", got)
 	}

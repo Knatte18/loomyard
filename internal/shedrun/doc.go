@@ -13,9 +13,8 @@
 // When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
 // directory, so a run started before the rename keeps working with no on-disk migration.
 //
-// The seed's optional `parent` field is legacy: no code path writes it any more, and a seed written before that change still decodes.
-// Only `internal/hubgeom`'s parent resolver reads it, as a fallback when the pair's origin record names no parent worktree.
-// A run's parent is otherwise resolved at use from that origin record; see PATTERN-agent-name.
+// A seed written when it carried a top-level `parent` key still decodes; the key is discarded and never re-encoded.
+// A run's parent is resolved at use from the pair's origin record alone; see PATTERN-agent-name.
 //
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //
