@@ -1,9 +1,9 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command over one store, board.json, whose entries carry a tier and a type.
-// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from one constructor, called once for the top level and once for the hidden "notes" alias group, so both reach the same store by construction.
-// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, exist at the top level only;
-// the hidden promote-note alias promotes to tier 1.
+// Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
+// The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
+// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
 // design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
@@ -39,13 +39,14 @@ func Command() *cobra.Command {
 		Short: "task-tracker board",
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
-The board is one store: every entry carries a tier (1 planned, 2 next up, 3 someday) and a
-type (the kind of work it is). The README renders one section per tier, split into dependency layers, and an entry may only
-depend on entries at the same or a lower tier number. Agents read and write the board through
-"lyx board", never through the JSON files under _board.
+The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
+can be claimed and depend on other tasks; a note is an idea or observation. A task carries at least
+one type label, a note exactly one, and every label must be configured in board.yaml. The README
+renders tasks split into dependency layers and notes grouped by type. Agents read and write the
+board through "lyx board", never through the JSON files under _board.
 
 The config file (_lyx/config/board.yaml) controls non-geometry settings: readme
-and design_prefix filenames. The board data dir (<hub>/_board) is
+and design_prefix filenames and the types and labels lists. The board data dir (<hub>/_board) is
 derived from the worktree layout via lyxcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
@@ -60,7 +61,7 @@ available subcommands without requiring a git repo.`,
 	cmd.RunE = clihelp.GroupRunE
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if cmd.Name() == "board" {
+		if cmd.Name() == "board" || cmd.Name() == "intake" {
 			return nil
 		}
 
@@ -103,44 +104,25 @@ available subcommands without requiring a git repo.`,
 
 	promoteCmd := &cobra.Command{
 		Use:   "promote [json-payload]",
-		Short: "Move a task to a lower tier number",
-		Long: `Move a task to a lower tier number (closer to planned). Unknown keys are rejected.
-Without "tier" the task moves one tier lower; with it the task moves to that tier, skipping tiers
-if needed. The target must be lower than the task's current tier; demotion goes through upsert.
+		Short: "Turn a note into a task",
+		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written. Unknown keys
+are rejected. Demotion goes through "lyx board upsert" with "kind":"note".
 
-Fields:
-  "slug" string  — task slug (required)
-  "tier" integer — target tier (optional; default: one tier lower than the current one)
+Fields (one of):
+  "slug" string  — entry slug
+  "id"   integer — entry id
 
 Example:
-  lyx board promote '{"slug":"my-task","tier":1}'`,
+  lyx board promote '{"slug":"my-note"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var m map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &m); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			lookup, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
 			}
-			for k := range m {
-				if k != "slug" && k != "tier" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
-				}
-			}
-			slug, ok := m["slug"].(string)
-			if !ok || slug == "" {
-				return outputError(out, "missing required field: slug")
-			}
-			var target *int
-			if tv, has := m["tier"]; has && tv != nil {
-				f, ok := tv.(float64)
-				if !ok || f != math.Trunc(f) {
-					return outputError(out, "tier must be an integer")
-				}
-				n := int(f)
-				target = &n
-			}
-			task, err := b.Promote(slug, target)
+			task, err := b.Promote(lookup)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -170,20 +152,24 @@ Example:
 	}
 
 	var findText bool
+	var findLabels []string
 	findCmd := &cobra.Command{
 		Use:   "find <text>...",
 		Short: "Find tasks whose slug, title, brief or body contains the text",
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
-listing instead (errors stay JSON); its columns are tier, type, slug, title and, when set, [status].
+listing instead (errors stay JSON); its columns are kind, slug, title, labels and, when set, [status].
+--label <name> keeps only entries carrying that label; repeat it to require several (AND).
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
   lyx board find retry backoff
-  lyx board find --text retry`,
+  lyx board find --text retry
+  lyx board find --label bug retry`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := b.Find(strings.Join(args, " "))
+			tasks, err := b.Find(strings.Join(args, " "), findLabels)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -191,6 +177,7 @@ Examples:
 		}),
 	}
 	findCmd.Flags().BoolVar(&findText, "text", false, "print the compact one-line-per-task listing instead of JSON")
+	findCmd.Flags().StringArrayVar(&findLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	retireLegacyCmd := &cobra.Command{
 		Use:   "retire-legacy",
@@ -232,45 +219,6 @@ Example:
 		}),
 	}
 
-	notesCmd := &cobra.Command{
-		Use:    "notes",
-		Short:  "alias for the top-level verbs: the same store and the same verbs",
-		Hidden: true,
-		RunE:   clihelp.GroupRunE,
-	}
-	notesCmd.AddCommand(storeVerbs(board)...)
-
-	promoteNoteCmd := &cobra.Command{
-		Use:    "promote-note [json-payload]",
-		Short:  "alias for promote: move a task to tier 1",
-		Hidden: true,
-		Long: `Alias for "promote" with the target fixed at tier 1. Unknown keys are rejected.
-Exactly one of "slug" or "id" is required. Errors if the task is not found.
-A task already at tier 1 is returned unchanged.
-
-Fields:
-  "slug" string  — task slug (mutually exclusive with "id")
-  "id"   integer — numeric task ID (mutually exclusive with "slug")
-
-Example:
-  lyx board promote-note '{"slug":"my-note"}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-			selector, _, err := resolveLookup([]byte(args[0]))
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			task, err := b.PromoteNote(selector)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
-	}
-
 	cmd.AddCommand(storeVerbs(board)...)
 	cmd.AddCommand(
 		promoteCmd,
@@ -279,16 +227,16 @@ Example:
 		retireLegacyCmd,
 		rerenderCmd,
 		syncCmd,
-		notesCmd,
-		promoteNoteCmd,
+		intakeCommand(board),
 	)
 
 	return cmd
 }
 
-// storeVerbs builds the nine store verbs fresh on every call, so the top level and the notes alias group each get their own command instances over the one store board returns.
+// storeVerbs builds the nine store verbs over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
+	var bodyFile string
 	upsertCmd := &cobra.Command{
 		Use:   "upsert [json-payload]",
 		Short: "Create or update a single task",
@@ -304,30 +252,47 @@ Optional fields:
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
-  "tier"       integer — 1 to 3, default 3: 1 is planned (committed work), 2 is next up
-                         (to be planned), 3 is someday (ideas); claimable work must be tier 1
-  "type"       string — one of "feature", "bug", "chore", "design"; default "feature"
-  "recipe"     string — recipe the task's child worktree runs; empty means "loom"
+  "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
+  "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
+  "recipe"    string — recipe the task's child worktree runs; empty means "loom"
   "short_name" string — short display label; falls back to the slug
 
+Flag:
+  --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
+                      Refused when the payload also carries "body" (drop one of them),
+                      and when the payload argument is itself "-" (stdin can feed only one of them).
+
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","tier":1,"type":"feature"}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			// cobra strips the "upsert" token; json payload is now args[0].
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			var fields map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &fields); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-			task, err := board().UpsertTask(fields)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				// cobra strips the "upsert" token; json payload is now args[0].
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
+				}
+				fields := map[string]any{}
+				decodeErr := json.Unmarshal([]byte(args[0]), &fields)
+				if bodyFile != "" {
+					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					if fields == nil {
+						fields = map[string]any{}
+					}
+					if err := applyBodyFile(fields, bodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
+					}
+				}
+				if decodeErr != nil {
+					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
+				}
+				task, err := board().UpsertTask(fields)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				return outputSuccessWithTask(out, task)
+			})(cmd, args)
+		},
 	}
+	upsertCmd.Flags().StringVar(&bodyFile, "body-file", "", `read the task's "body" from this file, or from stdin when "-"`)
 
 	// upsert-batch subcommand: create or update multiple tasks atomically.
 	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;
@@ -343,7 +308,7 @@ Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","tier":1},{"slug":"t2","title":"Two","tier":1}]}'`,
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -508,18 +473,22 @@ Example:
 
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
+	var listLabels []string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all tasks with computed fields",
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
-With --text, print the compact one-line-per-task listing (tier, type, slug, title, [status])
+With --text, print the compact one-line-per-task listing (kind, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
+--label <name> keeps only entries carrying that label; repeat it to require several (AND).
+A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
 Examples:
   lyx board list
-  lyx board list --text`,
+  lyx board list --text
+  lyx board list --label bug --label undecided`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			tasks, err := board().ListTasksBrief()
+			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -527,6 +496,7 @@ Examples:
 		}),
 	}
 	listCmd.Flags().BoolVar(&listText, "text", false, "print the compact one-line-per-task listing instead of JSON")
+	listCmd.Flags().StringArrayVar(&listLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	// list-full subcommand: list all tasks as stored in board.json.
 	listFullCmd := &cobra.Command{

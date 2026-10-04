@@ -6,6 +6,7 @@
 package boardengine
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -31,7 +32,7 @@ func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
 
-	expectedKeys := []string{"readme", "design_prefix"}
+	expectedKeys := []string{"readme", "design_prefix", "types", "labels"}
 	for _, key := range expectedKeys {
 		if _, ok := result[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
@@ -59,6 +60,8 @@ func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 	}{
 		{"readme", "README.md"},
 		{"design_prefix", "design-"},
+		{"types", []any{"bug", "enhancement"}},
+		{"labels", []any{"undecided"}},
 	}
 
 	for _, tt := range tests {
@@ -67,8 +70,8 @@ func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 			t.Errorf("resolved template missing key %q", tt.key)
 			continue
 		}
-		if got != tt.wantVal {
-			t.Errorf("resolved[%q] = %q; want %q", tt.key, got, tt.wantVal)
+		if !reflect.DeepEqual(got, tt.wantVal) {
+			t.Errorf("resolved[%q] = %v; want %v", tt.key, got, tt.wantVal)
 		}
 	}
 }

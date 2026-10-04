@@ -1,6 +1,6 @@
 // store.go — the in-memory entry store over a board directory's board.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated and tier rules, and cycle detection, with batch and merge applied atomically.
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated, kind and label rules, and cycle detection, with batch and merge applied atomically.
 // Load migrates the legacy tasks.json and notes.json in memory when board.json is absent and folds a pre-upgrade binary's done marks;
 // Save writes board.json only.
 // Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
@@ -29,8 +29,8 @@ type BriefTask struct {
 	Slug        string   `json:"slug"`
 	Title       string   `json:"title"`
 	DependsOn   []string `json:"depends_on"`
-	Tier        int      `json:"tier"`
-	Type        string   `json:"type"`
+	Kind        string   `json:"kind"`
+	Labels      []string `json:"labels"`
 	Isolated    bool     `json:"isolated"`
 	Brief       string   `json:"brief"`
 	Status      *string  `json:"status,omitempty"`
@@ -54,11 +54,21 @@ type storeFile struct {
 	LegacyDone []string `json:"legacy_done,omitempty"`
 }
 
+// loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
+type loadedStoreFile struct {
+	Version    int           `json:"version"`
+	Entries    []storedEntry `json:"entries"`
+	LegacyDone []string      `json:"legacy_done,omitempty"`
+}
+
 // Store holds the in-memory entry list for one board directory's board.json.
 type Store struct {
 	tasks      []Task
 	legacyDone []string
 	boardDir   string
+	// vocab is the label vocabulary validateWrite checks labels against.
+	// Board sets it on every store it builds; only a store built directly by NewStore, in store-level tests, has none, and nil skips the label check alone.
+	vocab *Vocabulary
 }
 
 // NewStore creates an empty, unloaded Store over boardDir.
@@ -74,6 +84,7 @@ func NewStore(boardDir string) *Store {
 // Load populates the store from boardDir and never writes.
 // board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
 // Whenever a legacy file exists, its done marks are folded into the loaded entries.
+// Entries in the old tier-and-type shape convert in memory and persist in the new shape on the next Save.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
@@ -94,7 +105,7 @@ func (s *Store) Load() error {
 	var entries []Task
 	var legacyDone []string
 	if fileExists(path) {
-		file, found, err := state.ReadJSON[storeFile](path, path+swapLockSuffix)
+		file, found, err := state.ReadJSON[loadedStoreFile](path, path+swapLockSuffix)
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
@@ -102,10 +113,10 @@ func (s *Store) Load() error {
 			if file.Version != storeVersion {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
-			entries, legacyDone = file.Entries, file.LegacyDone
+			entries, legacyDone = migrateEntries(file.Entries, s.vocab), file.LegacyDone
 		}
 	} else if haveTasks || haveNotes {
-		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords)
+		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
@@ -121,6 +132,12 @@ func (s *Store) Load() error {
 	for i := range entries {
 		if entries[i].DependsOn == nil {
 			entries[i].DependsOn = []string{}
+		}
+		if entries[i].Issues == nil {
+			entries[i].Issues = []int{}
+		}
+		if entries[i].Labels == nil {
+			entries[i].Labels = []string{}
 		}
 	}
 	s.tasks = entries
@@ -193,12 +210,23 @@ func nextIDIn(tasks []Task) int {
 	return maxID + 1
 }
 
-// validateWrite checks incoming against snapshot for dangling deps, isolated and tier constraints, and cycles.
+// validateWrite checks incoming against snapshot for dangling deps, isolated constraints, cycles, the kind rules and, when the store has a vocabulary, the labels.
 // snapshot is the projected state after any pending removals.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	snapshotIndex := make(map[string]*Task)
 	for i := range snapshot {
 		snapshotIndex[snapshot[i].Slug] = &snapshot[i]
+	}
+
+	seenIssues := make(map[int]bool, len(incoming.Issues))
+	for _, n := range incoming.Issues {
+		if n <= 0 {
+			return fmt.Errorf("entry %q lists issue %d, and an issue number is a positive integer: correct or drop it from issues", incoming.Slug, n)
+		}
+		if seenIssues[n] {
+			return fmt.Errorf("entry %q lists issue %d more than once: list each issue number once", incoming.Slug, n)
+		}
+		seenIssues[n] = true
 	}
 
 	for _, dep := range incoming.DependsOn {
@@ -211,6 +239,26 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		depTask := snapshotIndex[dep]
 		if depTask.Isolated {
 			return fmt.Errorf("cannot depend on isolated task %q", dep)
+		}
+	}
+
+	if incoming.Kind == KindNote && len(incoming.DependsOn) > 0 {
+		return fmt.Errorf("note %q has depends_on, and only a task can depend on another entry: clear it with \"lyx board set-deps\", or make the entry a task with \"lyx board promote\"", incoming.Slug)
+	}
+	for _, dep := range incoming.DependsOn {
+		if snapshotIndex[dep].Kind == KindNote {
+			return fmt.Errorf("%q depends on note %q, and a note cannot be depended on: promote %q with \"lyx board promote\", or drop the dependency with \"lyx board set-deps\"", incoming.Slug, dep, dep)
+		}
+	}
+	if incoming.Kind == KindNote {
+		var dependents []string
+		for _, t := range snapshot {
+			if t.Slug != incoming.Slug && slices.Contains(t.DependsOn, incoming.Slug) {
+				dependents = append(dependents, t.Slug)
+			}
+		}
+		if len(dependents) > 0 {
+			return fmt.Errorf("note %q cannot be a note: %s depend on it; clear their depends_on with \"lyx board set-deps\", or keep the entry a task", incoming.Slug, strings.Join(dependents, ", "))
 		}
 	}
 
@@ -264,49 +312,14 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	return validateTier(snapshot, incoming)
+	if s.vocab != nil {
+		return validateLabels(incoming, *s.vocab)
+	}
+	return nil
 }
 
 func isDone(t Task) bool {
 	return t.Status != nil && *t.Status == "done"
-}
-
-// validateTier enforces the tier dependency rule over snapshot with incoming applied:
-// a dependent's tier must be greater than or equal to its dependency's tier, compared only while the dependency is not done.
-// The dependent's own status never exempts the edge.
-func validateTier(snapshot []Task, incoming Task) error {
-	index := make(map[string]Task, len(snapshot))
-	for _, t := range snapshot {
-		index[t.Slug] = t
-	}
-
-	for _, dep := range incoming.DependsOn {
-		depTask, ok := index[dep]
-		if !ok || isDone(depTask) {
-			continue
-		}
-		if depTask.Tier > incoming.Tier {
-			return fmt.Errorf("tier rule: %q (tier %d) depends on %q (tier %d), which has a higher tier; promote %q to tier %d or lower, or demote %q to tier %d or higher",
-				incoming.Slug, incoming.Tier, dep, depTask.Tier, dep, incoming.Tier, incoming.Slug, depTask.Tier)
-		}
-	}
-
-	if isDone(incoming) {
-		return nil
-	}
-	for _, t := range snapshot {
-		if t.Slug == incoming.Slug {
-			continue
-		}
-		for _, dep := range t.DependsOn {
-			if dep == incoming.Slug && t.Tier < incoming.Tier {
-				return fmt.Errorf("tier rule: %q (tier %d) depends on %q (tier %d), which has a higher tier; promote %q to tier %d or lower, or demote %q to tier %d or higher",
-					t.Slug, t.Tier, incoming.Slug, incoming.Tier, incoming.Slug, t.Tier, t.Slug, incoming.Tier)
-			}
-		}
-	}
-
-	return nil
 }
 
 // MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
@@ -328,8 +341,9 @@ var upsertAllowedKeys = map[string]bool{
 	"brief":      true,
 	"body":       true,
 	"status":     true,
-	"tier":       true,
-	"type":       true,
+	"kind":       true,
+	"labels":     true,
+	"issues":     true,
 	"recipe":     true,
 	"short_name": true,
 }
@@ -342,7 +356,13 @@ func validateUpsertFields(fields map[string]any) error {
 				return fmt.Errorf("unknown field: %q (did you mean \"status\"?)", k)
 			}
 			if k == "deferred" {
-				return fmt.Errorf("unknown field: %q (deferred is retired; use \"tier\": 3 for someday work)", k)
+				return fmt.Errorf("unknown field: %q (deferred is retired; use \"kind\": \"note\" for someday work)", k)
+			}
+			if k == "tier" {
+				return fmt.Errorf("unknown field: %q (tier is retired; use \"kind\")", k)
+			}
+			if k == "type" {
+				return fmt.Errorf("unknown field: %q (type is retired; use \"labels\")", k)
 			}
 			return fmt.Errorf("unknown field: %q", k)
 		}
@@ -491,14 +511,10 @@ func (s *Store) SetStatus(idOrSlug any, status *string) error {
 		}
 
 		if match {
-			// Reopening can strand a lower-tier dependent behind a now-live dependency;
-			// setting done never introduces a violation, so it stays unchecked.
-			if status == nil || *status != "done" {
-				incoming := s.tasks[i]
-				incoming.Status = status
-				if err := validateTier(s.tasks, incoming); err != nil {
-					return err
-				}
+			incoming := s.tasks[i]
+			incoming.Status = status
+			if err := s.validateWrite(s.tasks, incoming); err != nil {
+				return err
 			}
 			s.tasks[i].Status = status
 			return nil
@@ -534,8 +550,28 @@ func (s *Store) SetDeps(slug string, dependsOn []string) error {
 	return nil
 }
 
-// ListTasksBrief returns all tasks enriched with computed Layer and HasProposal fields.
-func (s *Store) ListTasksBrief() []BriefTask {
+// hasAllLabels reports whether t carries every label in want; an empty want matches everything.
+func hasAllLabels(t Task, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(t.Labels, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// anyEntryCarries reports whether any entry, of any kind or status, carries label.
+func (s *Store) anyEntryCarries(label string) bool {
+	for _, t := range s.tasks {
+		if slices.Contains(t.Labels, label) {
+			return true
+		}
+	}
+	return false
+}
+
+// ListTasksBrief returns the tasks carrying every label in labels (all tasks when empty), enriched with computed Layer and HasProposal fields.
+func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 	layerMap, err := ComputeLayers(s.tasks)
 	if err != nil {
 		// If layer computation fails, assign empty string
@@ -556,13 +592,16 @@ func (s *Store) ListTasksBrief() []BriefTask {
 
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
+		if !hasAllLabels(t, labels) {
+			continue
+		}
 		brief := BriefTask{
 			ID:          t.ID,
 			Slug:        t.Slug,
 			Title:       t.Title,
 			DependsOn:   t.DependsOn,
-			Tier:        t.Tier,
-			Type:        t.Type,
+			Kind:        t.Kind,
+			Labels:      t.Labels,
 			Isolated:    t.Isolated,
 			Brief:       t.Brief,
 			Status:      t.Status,
@@ -574,29 +613,22 @@ func (s *Store) ListTasksBrief() []BriefTask {
 	return result
 }
 
-// Promote moves the entry identified by idOrSlug to a lower tier number.
-// A nil target means one tier lower;
-// the target must be at least MinTier and strictly below the entry's current tier, and skipping tiers is allowed.
-// The promoted entry passes validateWrite, so a dependency left at a higher tier refuses it.
-func (s *Store) Promote(idOrSlug any, target *int) (Task, error) {
+// Promote makes the entry identified by idOrSlug a task.
+// A task is returned unchanged with changed false, so the caller knows nothing was written.
+// The promoted entry passes validateWrite, so a missing type label refuses it.
+func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
-		return Task{}, fmt.Errorf("task not found: %v", idOrSlug)
+		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
 	}
-
-	to := current.Tier - 1
-	if target != nil {
-		to = *target
-	}
-	if to < MinTier || to >= current.Tier {
-		return Task{}, fmt.Errorf("cannot promote %q from tier %d to tier %d: the target must be between %d and %d; demotion goes through upsert with a tier",
-			current.Slug, current.Tier, to, MinTier, current.Tier-1)
+	if current.Kind == KindTask {
+		return current, false, nil
 	}
 
 	incoming := current
-	incoming.Tier = to
+	incoming.Kind = KindTask
 	if err := s.validateWrite(s.tasks, incoming); err != nil {
-		return Task{}, err
+		return Task{}, false, err
 	}
 
 	for i := range s.tasks {
@@ -605,7 +637,7 @@ func (s *Store) Promote(idOrSlug any, target *int) (Task, error) {
 			break
 		}
 	}
-	return incoming, nil
+	return incoming, true, nil
 }
 
 // Prune removes every done entry, strips the removed slugs from the survivors' depends_on, and returns the removed slugs in store order.
@@ -638,7 +670,8 @@ func (s *Store) Prune() []string {
 }
 
 // Find returns the entries whose slug, title, brief or body contains text, case-insensitively, done entries included, in ListTasksBrief's shape and order.
-func (s *Store) Find(text string) []BriefTask {
+// Only entries carrying every label in labels are kept.
+func (s *Store) Find(text string, labels []string) []BriefTask {
 	needle := strings.ToLower(text)
 	matches := make(map[string]bool)
 	for _, t := range s.tasks {
@@ -651,7 +684,7 @@ func (s *Store) Find(text string) []BriefTask {
 	}
 
 	result := []BriefTask{}
-	for _, b := range s.ListTasksBrief() {
+	for _, b := range s.ListTasksBrief(labels) {
 		if matches[b.Slug] {
 			result = append(result, b)
 		}

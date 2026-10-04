@@ -190,20 +190,21 @@ func TestRenderOrder(t *testing.T) {
 			},
 		},
 		{
-			name: "tier sorts before layer and done goes last",
+			name: "open tasks sort before open notes, then layer, and done goes last",
 			tasks: []boardengine.Task{
-				{ID: 1, Slug: "done1", Title: "Done", Tier: 1, Status: stringPtr("done")},
-				{ID: 2, Slug: "t3", Title: "Tier 3", Tier: 3},
-				{ID: 3, Slug: "t1b", Title: "Tier 1 dependent", Tier: 1, DependsOn: []string{"t1a"}},
-				{ID: 4, Slug: "t1a", Title: "Tier 1 root", Tier: 1},
-				{ID: 5, Slug: "t2", Title: "Tier 2", Tier: 2},
+				{ID: 1, Slug: "done1", Title: "Done", Kind: boardengine.KindTask, Status: stringPtr("done")},
+				{ID: 2, Slug: "n2", Title: "Note 2", Kind: boardengine.KindNote},
+				{ID: 3, Slug: "t1b", Title: "Task dependent", Kind: boardengine.KindTask, DependsOn: []string{"t1a"}},
+				{ID: 4, Slug: "t1a", Title: "Task root", Kind: boardengine.KindTask},
+				{ID: 5, Slug: "n1", Title: "Note 1", Kind: boardengine.KindNote},
+				{ID: 6, Slug: "done-note", Title: "Done note", Kind: boardengine.KindNote, Status: stringPtr("done")},
 			},
 			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
 				var got []string
 				for _, r := range result {
 					got = append(got, r.Slug)
 				}
-				want := []string{"t1a", "t1b", "t2", "t3", "done1"}
+				want := []string{"t1a", "t1b", "n2", "n1", "done1", "done-note"}
 				if strings.Join(got, ",") != strings.Join(want, ",") {
 					t.Errorf("RenderOrder() order = %v, want %v", got, want)
 				}

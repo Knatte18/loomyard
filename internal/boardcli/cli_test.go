@@ -87,7 +87,7 @@ func TestCLIContract(t *testing.T) {
 				return seedCwd(t)
 			},
 			verb:           "upsert",
-			payload:        `{"slug":"foo","title":"Foo task"}`,
+			payload:        `{"slug":"foo","title":"Foo task","labels":["bug"]}`,
 			wantExitCode:   0,
 			wantOK:         true,
 			wantFieldExist: "task",
@@ -97,7 +97,7 @@ func TestCLIContract(t *testing.T) {
 			setup: func(t *testing.T) string {
 				cwd := seedCwd(t)
 				// First upsert a task
-				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
 			verb:           "list",
@@ -128,7 +128,7 @@ func TestCLIContract(t *testing.T) {
 			setup: func(t *testing.T) string {
 				cwd := seedCwd(t)
 				// First upsert a task
-				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
 			verb:           "get",
@@ -142,7 +142,7 @@ func TestCLIContract(t *testing.T) {
 			setup: func(t *testing.T) string {
 				cwd := seedCwd(t)
 				// First upsert a task
-				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task"}`)
+				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
 			},
 			verb:           "set-status",
@@ -327,7 +327,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 			name: "set_deps_unknown_key_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-deps",
 			payload:      `{"slug":"task-a","depends":["task-b"]}`,
@@ -340,7 +340,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 			name: "set_deps_absent_depends_on_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-deps",
 			payload:      `{"slug":"task-a"}`,
@@ -353,8 +353,8 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 			name: "set_deps_empty_array_clears",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
-				runCLI(t, "upsert", `{"slug":"task-b","title":"B"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B","labels":["bug"]}`)
 				runCLI(t, "set-deps", `{"slug":"task-b","depends_on":["task-a"]}`)
 			},
 			verb:         "set-deps",
@@ -381,7 +381,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				seedCwd(t)
 			},
 			verb:         "upsert-batch",
-			payload:      `{"taks":[{"slug":"task-a","title":"A"}]}`,
+			payload:      `{"taks":[{"slug":"task-a","title":"A","labels":["bug"]}]}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "unknown field",
@@ -417,7 +417,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				seedCwd(t)
 			},
 			verb:         "merge",
-			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_phase":["task-a","done"]}`,
+			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_phase":["task-a","done"]}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "unknown field",
@@ -429,7 +429,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				seedCwd(t)
 			},
 			verb:         "merge",
-			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_status":{"slug":"task-a","phase":"done"}}`,
+			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_status":{"slug":"task-a","phase":"done"}}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "unknown field",
@@ -441,7 +441,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				seedCwd(t)
 			},
 			verb:         "merge",
-			payload:      `{"upsert":{"slug":"task-a","title":"A"},"set_status":{"slug":"task-a"}}`,
+			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_status":{"slug":"task-a"}}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "missing required field: status",
@@ -451,10 +451,10 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 			name: "merge_with_set_status_succeeds",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"old-task","title":"Old"}`)
+				runCLI(t, "upsert", `{"slug":"old-task","title":"Old","labels":["bug"]}`)
 			},
 			verb:         "merge",
-			payload:      `{"remove_slugs":["old-task"],"upsert":{"slug":"new-task","title":"New"},"set_status":{"slug":"new-task","status":"active"}}`,
+			payload:      `{"remove_slugs":["old-task"],"upsert":{"slug":"new-task","title":"New","labels":["bug"]},"set_status":{"slug":"new-task","status":"active"}}`,
 			wantExitCode: 0,
 			wantOK:       true,
 			assertResult: func(t *testing.T, _ map[string]any) {
@@ -492,7 +492,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				seedCwd(t)
 			},
 			verb:         "merge",
-			payload:      `{"upsert":{"slug":"new-task","title":"New"},"set_status":{"slug":"ghost","status":"done"}}`,
+			payload:      `{"upsert":{"slug":"new-task","title":"New","labels":["bug"]},"set_status":{"slug":"ghost","status":"done"}}`,
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "task not found",
@@ -554,7 +554,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "get_by_slug",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "get",
 			payload:      `{"slug":"task-a"}`,
@@ -575,7 +575,7 @@ func TestCLILookupContract(t *testing.T) {
 			setup: func(t *testing.T) {
 				seedCwd(t)
 				// The first upserted task gets id=0.
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "get",
 			payload:      `{"id":0}`,
@@ -619,8 +619,8 @@ func TestCLILookupContract(t *testing.T) {
 			name: "get_fractional_id_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
-				runCLI(t, "upsert", `{"slug":"task-b","title":"B"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B","labels":["bug"]}`)
 			},
 			verb: "get",
 			// 1.5 must error, not silently truncate to task id 1 (task-b).
@@ -644,7 +644,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "remove_by_slug",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "remove",
 			payload:      `{"slug":"task-a"}`,
@@ -655,7 +655,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "remove_by_id",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "remove",
 			payload:      `{"id":0}`,
@@ -666,7 +666,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "set_status_by_slug",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
 			payload:      `{"slug":"task-a","status":"active"}`,
@@ -677,7 +677,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "set_status_by_id",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
 			payload:      `{"id":0,"status":"active"}`,
@@ -689,7 +689,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "set_status_absent_status_key_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
 			payload:      `{"slug":"task-a"}`,
@@ -701,7 +701,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "set_status_null_status_clears",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 				runCLI(t, "set-status", `{"slug":"task-a","status":"active"}`)
 			},
 			verb:         "set-status",
@@ -742,7 +742,7 @@ func TestCLILookupContract(t *testing.T) {
 			name: "set_status_stray_phase_errors",
 			setup: func(t *testing.T) {
 				seedCwd(t)
-				runCLI(t, "upsert", `{"slug":"x","title":"X"}`)
+				runCLI(t, "upsert", `{"slug":"x","title":"X","labels":["bug"]}`)
 			},
 			verb:         "set-status",
 			payload:      `{"slug":"x","phase":"done","status":"active"}`,
@@ -820,7 +820,7 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
 		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
 		// Upsert writes board.json inside that derived board dir.
-		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
+		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test","labels":["bug"]}`)
 		if exitCode != 0 {
 			t.Fatalf("upsert exit %d; stdout: %s", exitCode, stdout)
 		}
