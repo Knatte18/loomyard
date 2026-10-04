@@ -13,6 +13,27 @@
 // — treat every contract below as the shipped behavior a future consumer
 // inherits, not as something a live caller depends on today.
 //
+// # Text review and behaviour review
+//
+// A text-review round reads an artifact; a behaviour-review round runs a live-substrate module, reacts to what it observes and builds adversarial scenarios to break it.
+// The two share the review-round discipline (A-review before B-fix, no self-grading, commit-per-fix, fix everything) and differ along every other axis:
+// a text round runs in the worktree and is cheap, gated by an LLM verdict or a light command, and sits between phases on the spine;
+// a behaviour round needs a live sandbox repo with slow git and go operations, is gated deterministically (the smoke suite run N times concurrently, zero stray state),
+// costs hours per iteration, and runs on demand after loom.
+// This engine serves both through the RoundRunner seam; only the text profile exists today.
+//
+// # Why every round respawns
+//
+// A hand-run behaviour campaign kept one persistent orchestrator thread alive across rounds, and that thread accumulated where the module's bugs live and targeted each next round.
+// This engine replaces the thread with Go and fresh one-shot spawns, so no context window carries state between rounds:
+// a progress judge runs before the round (reads the handoff, decides what to target, writes the round's seed prompt),
+// the round agent runs against that prompt,
+// and the judge runs again after it (independently validates the findings, rewrites the handoff in place, decides whether another round is needed).
+// Validating independently is not optional: a round's own "merge-ready" verdict was wrong in three of the seven rounds of the campaign that taught this.
+// The handoff is the only accumulation vehicle, so what a live thread knew implicitly must be explicit in it.
+// The prime case is the finding-recurrence ledger, which records which findings reappeared in which rounds:
+// the handoff's prose is distilled, but the ledger stays lossless, because an in-place edit that tidies a finding that looks resolved silently disables stuck detection.
+//
 // # The RoundRunner seam — attempt-level, not round-level
 //
 // What used to be a hardwired "spawn a fresh burlerengine round" is now

@@ -418,4 +418,32 @@
 // recovery-classification logic (classify.go). Each of these exists as its
 // own webster-scoped implementation rather than an imported one — this
 // package owns its whole mechanism end to end.
+//
+// # Why cards run one at a time
+//
+// Cards run strictly in sequence inside one working tree, and the plan carries no scheduling DAG.
+// Git's index is a single shared file per working tree, so two forks committing at once race on the same lock even when their files are disjoint.
+// A declared-disjoint pair that turns out through a deviation to overlap would be a live corruption risk, not a bookkeeping error to fix afterwards,
+// and a fork's code-index queries would see other forks' uncommitted, possibly broken, in-flight edits, since nothing isolates them on disk.
+// Letting forks edit in parallel and serializing only the add, commit and verify step through a mutex would still need file-disjointness enforced strictly, not merely the absence of a dependency edge.
+// None of this is built.
+//
+// A shape that avoids the shared index is not covered by that reasoning: each independent group in its own `fabric`-spawned worktree, with its own index and HEAD,
+// merged back through fabric's existing merge machinery and gated on a build and test of the merged result rather than of the group alone.
+// The ready set would be recomputed wave by wave rather than precomputed, so a group that proves to depend on another's output is simply not ready yet.
+// Batten's run-id addressing already carries concurrent runs side by side, so what remains webster's is the wave scheduler, a plan group-filter,
+// and a variant that spawns its agents into the lane worktree's own reed session instead of forking inside the Master's context.
+// The board holds this as `webster-parallel-execution`.
+//
+// The measured case for it is weaker than the idea suggests.
+// A card-level dependency analysis of the 42-card plan that built webster overturned the assumption of a linear chain:
+// that plan ran as nine sequential batches over a card DAG of depth seven, with a peak wave width of ten and wave widths of 10, 9, 7, 7, 6, 2 and 1;
+// 35 of the 42 cards were off the critical path, and about 26 cards in the first three waves could have run as three parallel waves instead of four sequential batches.
+// File conflicts barely bind when a plan creates and then extends, since nearly every conflicting pair is already ordered into different waves.
+// The tail is the ceiling rather than the dependencies: a funnel near the end (final registration, then sandbox validation) collapses the wave width whatever the fork budget.
+// A wave lasts as long as its slowest card, so the honest estimate is a 2–3× wall-clock speedup, not the 3–5× a naive count gives,
+// and 42 cards is an outlier: a routine 5–10-card plan has little fan-out headroom and would gain close to nothing.
+// The cheap part of the insight is already taken, because the planner emits true per-card dependencies instead of an over-constrained batch line.
+// Reopening the executor should rest on the same width analysis run across several real, typical-size plans:
+// wide waves, a short critical path and few file conflicts would pay off, and a narrow plan makes the sequential design the complete design rather than the minimum one.
 package websterengine

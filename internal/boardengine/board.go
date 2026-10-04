@@ -1,5 +1,6 @@
 // Package boardengine provides a one-shot, daemonless file-locked task tracker.
 // Board is the only entry point callers use.
+// Anyone adds notes, the orchestrator curates.
 //
 // Board holds one store, board.json, whose entries carry a tier and a type.
 // A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,

@@ -79,6 +79,18 @@
 // It decides who decides and when the loop stops, never whether a finding is fixed:
 // the fixer still fixes every finding of every class and severity.
 //
+// The case that motivated the split: a six-round discussion-review loop reported blocking findings of 6, 5, 4, 3, 3 and 3 and never converged.
+// Sorted by kind, the design findings (five in round one, two in each of rounds two to five, none in round six) converged to zero,
+// while scope findings ("you missed these call sites") recurred in four of six rounds, because the author kept adding the newly named files instead of fixing the cause,
+// which was that hand-enumerating about forty call sites from greps is not a reliable method.
+// Those findings were enumerations of one constant's consumers, which `go build ./...` reports exhaustively, instantly and for free.
+// So a recurring scope gap is raised once, as a design finding about the method, and the loop stops on a round with no design finding rather than on a flat cap.
+// Scope splits into two mechanical halves, neither an LLM lens: symbol references (the compiler, or a code-index references query before a deletion, for plan sizing)
+// and bare string literals with no symbol behind them, which neither sees and a literal scan such as `TestEnforcement_GeometryLiterals` covers narrowly.
+// An exclusion has to be written on both sides: telling the writer not to enumerate X while the reviewer still flags a missing X recreates the non-convergent loop.
+// The trap to design against is reading class as a severity ladder and filing real problems under a low class to dodge the fix-everything default,
+// which is why class decides who decides and when the loop stops, never whether a finding is fixed.
+//
 // A single burler round never grades its own fix. Because A precedes B
 // within a round, A is a legitimate, independent gate exactly like a
 // normal reviewer — but the fix FROM round N is judged by a FRESH

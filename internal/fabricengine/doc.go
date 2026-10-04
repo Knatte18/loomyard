@@ -1284,6 +1284,22 @@
 // squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
 // git — this is a direct consequence of shipping squash as an option, not a defect in it.
 //
+// **Platform verification: Linux only.**
+// Fabric is written cross-platform, and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
+// but every hardening round ran on Linux and no line of it has been executed on Windows.
+// The branches reasoned about and never driven are:
+// `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`), which Linux cannot produce inputs for;
+// `excludePatternFor`'s separator handling, since git wants forward slashes and `filepath` on Windows produces backslashes;
+// `lyxcwd.samePath`'s case-insensitive branch, which is dead code on Linux;
+// and `internal/fslink`'s junction path, which every link fabric creates on Windows goes through.
+// The anchor and subpath mechanism, the source of the largest group of findings, has likewise been verified on one platform only.
+// This weighs more than an ordinary coverage gap: the data-loss defects found in the destruction chokepoint's campaign were all found by driving real git against a real filesystem with hostile or dirty state, while the hermetic suite stayed green, so fabric's defects live where platform behaviour lives, in path composition, link creation and filesystem semantics.
+// Closing the gap needs a Windows host rather than a design.
+// The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
+// beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lyx` and `.lyx` placement, the cwd gate refusing the warp root and its subdirectories),
+// `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
+// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and the filesystem-links rule in `CLAUDE.md` currently assert the opposite.
+//
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.
 // Test git plumbing goes through `internal/gitkit` only, never a private helper.
