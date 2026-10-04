@@ -30,7 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // resetWarpJunction removes an already-wired warp-side junction named name (if any) so a test can
@@ -303,7 +302,7 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 		t.Fatal("Status returned no pairs")
 	}
 
-	wantPath := pattern.PathspecFile
+	wantPath := lyxdirs.LyxDirName + "/PATTERN.md"
 	var found *fabricengine.PollutionEntry
 	for i, entry := range result.Pairs[0].Pollution {
 		if entry.Path == wantPath {

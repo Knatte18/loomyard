@@ -51,7 +51,7 @@ type reportItem struct {
 // runFetch executes "sandbox fetch" after a suite session. Re-resolves lyx,
 // re-fingerprints it, and fetches agent-written sandbox-report.json.
 func runFetch(parentDir, loomyardRoot string) error {
-	warpRepoDir := filepath.Join(parentDir, hubName, warpDirName)
+	warpRepoDir := filepath.Join(parentDir, hubName, repoDirName)
 
 	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
 		return fmt.Errorf("hub warp repo not found at %s -- run sandbox/build.cmd first", warpRepoDir)

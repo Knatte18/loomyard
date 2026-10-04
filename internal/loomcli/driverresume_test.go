@@ -34,7 +34,7 @@ func (f *fakeDriverSender) SendDriver(guid, text string) error {
 func newResumeTestReceiver(t *testing.T, sender *fakeDriverSender) (*loomCLI, *int, string) {
 	t.Helper()
 	dir := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	waits := 0
 	c := &loomCLI{
 		location:         loc,

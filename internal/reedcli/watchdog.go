@@ -3,8 +3,8 @@
 // tmux server.
 //
 // internal/reedcli still owns the daemon's verb, its discovery loop, and its idle-exit rule, per
-// the discussion's told-geometry-keeps-the-daemon-out-of-reedengine decision: CONSTRAINTS.md's
-// Told-Geometry Invariant bars internal/reedengine from importing internal/lyxcwd, and reedcli
+// the discussion's told-geometry-keeps-the-daemon-out-of-reedengine decision:
+// PATTERN-told-geometry bars internal/reedengine from importing internal/lyxcwd, and reedcli
 // already holds the *lyxcwd.Location and already imports internal/hubgeom, so it may import
 // internal/fabricengine directly as hubgeom does. That decision was revisited, not dropped, for one
 // piece of the daemon alone: the detached spawn itself moved to internal/reedengine
@@ -223,7 +223,7 @@ func planReapCycle(live []string, hubLive bool, gone map[string]bool, counters m
 func resolveWatchedSession(hub, sessionName string) (*lyxcwd.Location, error) {
 	worktreeRoot := filepath.Join(hub, sessionName)
 	// The direct join is a git spawn inside a polling probe, so it is logged at Debug per
-	// CONSTRAINTS.md's Live-Substrate Spawn Observability rule.
+	// PATTERN-spawn-observability.
 	logger.Debug("reed: watchdog resolving worktree for session", "hub", hub, "session", sessionName)
 	return lyxcwd.ResolveWorktree(worktreeRoot)
 }

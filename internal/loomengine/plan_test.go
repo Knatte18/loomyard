@@ -133,11 +133,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty pattern_directive (PATTERN active) precedes Step 1", func(t *testing.T) {
 		worktreeRoot := t.TempDir()
-		patternDir := filepath.Join(worktreeRoot, lyxdirs.LyxDirName)
-		if err := os.MkdirAll(patternDir, 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
-		}
-		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(worktreeRoot, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
@@ -299,24 +295,23 @@ func TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath(t *testing.T) {
 }
 
 // TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath proves PlanSpec's pattern.Directive call site
-// passes layout.AnchorPath() and never layout.WorktreePath() — the anchoring signal that card 2's
-// cmd/lyx pattern.File row rewrite would otherwise silently drop, and the transposition detector for
-// the plan.go call site.
+// passes layout.WorktreePath() and never layout.AnchorPath(): PATTERN.md sits at the worktree root,
+// which in a subpath-anchored hub is not the anchor path.
+// It is the transposition detector for the plan.go call site.
 // It uses a non-"." AnchorRel, and a real t.TempDir() hub, since a real temp root is mandatory rather
-// than a preference: the positive direction must actually create files under AnchorPath() and have
+// than a preference: the positive direction must actually create files under WorktreePath() and have
 // PlanSpec read them there.
 func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
 
-	t.Run("PATTERN.md under AnchorPath is read", func(t *testing.T) {
+	t.Run("PATTERN.md under WorktreePath is read", func(t *testing.T) {
 		hub := t.TempDir()
 		layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "repo", AnchorRel: "backend"}
 
-		patternDir := filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName)
-		if err := os.MkdirAll(patternDir, 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+		if err := os.MkdirAll(layout.AnchorPath(), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", layout.AnchorPath(), err)
 		}
-		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(layout.WorktreePath(), "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
@@ -330,19 +325,18 @@ func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
 		}
 
 		if !strings.Contains(spec.Prompt, "## Constraints") {
-			t.Errorf("PlanSpec(...).Prompt does not contain \"## Constraints\"; want the directive read from AnchorPath()")
+			t.Errorf("PlanSpec(...).Prompt does not contain \"## Constraints\"; want the directive read from WorktreePath()")
 		}
 	})
 
-	t.Run("PATTERN.md under WorktreePath alone is not read", func(t *testing.T) {
+	t.Run("PATTERN.md under AnchorPath alone is not read", func(t *testing.T) {
 		hub := t.TempDir()
 		layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "repo", AnchorRel: "backend"}
 
-		patternDir := filepath.Join(layout.WorktreePath(), lyxdirs.LyxDirName)
-		if err := os.MkdirAll(patternDir, 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+		if err := os.MkdirAll(layout.AnchorPath(), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", layout.AnchorPath(), err)
 		}
-		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(layout.AnchorPath(), "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
@@ -356,7 +350,7 @@ func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
 		}
 
 		if strings.Contains(spec.Prompt, "## Constraints") {
-			t.Errorf("PlanSpec(...).Prompt contains \"## Constraints\"; want no directive read from a WorktreePath()-only PATTERN.md")
+			t.Errorf("PlanSpec(...).Prompt contains \"## Constraints\"; want no directive read from an AnchorPath()-only PATTERN.md")
 		}
 	})
 }

@@ -108,7 +108,7 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "code", ".")
 
 	c := &burlerCLI{}
 	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
@@ -238,7 +238,7 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "code", ".")
 
 	c := &burlerCLI{}
 	err := c.wire(loc, preflight.ModeHub, "", "", filepath.Join(t.TempDir(), "elsewhere"))
@@ -256,7 +256,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 	t.Run("HonouredInHubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "code", ".")
 		override := filepath.Join(t.TempDir(), "custom-stencils")
 		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
 		// honoured-override behavior under test here is unchanged.
@@ -296,7 +296,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	t.Parallel()
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "code", ".")
 	told := filepath.Join(t.TempDir(), "no-such-stencils")
 
 	c := &burlerCLI{}
@@ -317,7 +317,7 @@ func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
 	t.Run("HubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "code", ".")
 		cwd := t.TempDir()
 
 		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
@@ -446,7 +446,7 @@ func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
 	hub := t.TempDir()
-	loc := hubLocation(t, hub, "warp", ".")
+	loc := hubLocation(t, hub, "code", ".")
 
 	c := &burlerCLI{}
 	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
@@ -522,7 +522,7 @@ func TestWire_ReedUpSeamPerMode(t *testing.T) {
 
 	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
 		hub := t.TempDir()
-		loc := hubLocation(t, hub, "warp", ".")
+		loc := hubLocation(t, hub, "code", ".")
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {

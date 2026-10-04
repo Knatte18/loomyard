@@ -30,8 +30,7 @@
 //
 // This harness carries no runtime.GOOS skip anywhere in its states, cells, or helpers, and would run
 // on Windows — but nobody has run it there yet.
-// See manifest/designs/fabric-windows-verification.md for the full account of that gap across six
-// hardening rounds.
+// See the `internal/fabricengine` package documentation for the account of that gap.
 // The one genuine divergence this package's design carries for Windows: the
 // trackedSymlinkAtWiredPath state models a git-tracked symlink, which on Windows materialises as a
 // junction because it is built through fslink.CreateDirLink rather than a raw os.Symlink.

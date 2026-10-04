@@ -11,8 +11,9 @@ import (
 )
 
 // WriteHubWorkspace writes content to the prime's hub workspace file and reports whether it wrote.
-// It first creates _portals/<AnchorRel>, because clone never creates it and removing the last pair prunes it,
-// so the workspace file's _portals folder always resolves.
+// It first creates _portals/<AnchorRel>, because clone never creates it,
+// so the workspace file's _portals folder resolves.
+// Removing the last pair leaves that directory in place.
 // An unchanged file is not rewritten at all, unlike writeLauncherScriptIfChanged, which rewrites unconditionally.
 // A read error other than not-exist is returned rather than overwriting bytes it could not compare.
 // Every write goes through an os.Root at the hub, so a symlink planted at any component that escapes the hub is refused.
@@ -24,7 +25,7 @@ func WriteHubWorkspace(l *lyxcwd.Location, primeName string, content []byte) (bo
 	}
 	defer root.Close()
 
-	portalsRel, err := hubRel(l.HubPath, filepath.Join(PortalsDir(l), l.AnchorRel))
+	portalsRel, err := hubRel(l.HubPath, portalAnchorDir(l))
 	if err != nil {
 		return false, err
 	}

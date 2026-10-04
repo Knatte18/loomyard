@@ -25,14 +25,14 @@ import (
 )
 
 // TestE2ESyncIntegration is an e2e test using a real hub: creates a new worktree with dispatch,
-// edits a config, and verifies the file is tracked in the fabric repo while the warp stays pristine.
+// edits a config, and verifies the file is tracked in the fabric repo while the code side stays pristine.
 func TestE2ESyncIntegration(t *testing.T) {
 	const slug = "config-e2e-test"
 
 	// Build a real hub. fabriccli.CloneAndWire has already materialized every registered module's
-	// config plus the repo-wide fabric.yaml at BoardDir, and the weft primary already sits on its
+	// config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its
 	// WeftBranchName-suffixed branch -- everything the old fixture's SeedConfig, seedRepoWideFabricConfig
-	// and manual weft-branch checkout hand-rolled is arriving for real now, so none of it is needed.
+	// and manual records-branch checkout hand-rolled is arriving for real now, so none of it is needed.
 	h := hubforge.NewHub(t, ".")
 
 	// Create the worktree via Topology.Add, which -- per batch 5's eager wiring -- already wires the
@@ -44,10 +44,10 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Resolve layout for the new worktree.
-	warpWorktreePath := fabricengine.WorktreePath(h.Location, slug)
-	warpLayout, err := lyxcwd.Resolve(warpWorktreePath)
+	codeWorktreePath := fabricengine.WorktreePath(h.Location, slug)
+	codeLayout, err := lyxcwd.Resolve(codeWorktreePath)
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", warpWorktreePath, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
 	}
 
 	// NOTE: This test must NOT call t.Parallel(): it calls t.Setenv("WEFT_SKIP_GIT", …) and
@@ -71,12 +71,12 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// a configcli dependence at all: dispatch is already given an explicit layout above, so this is
 	// the one seam the injectedSync closure needs its own cwd for.
 	injectedSync := func(w io.Writer) int {
-		return fabriccli.RunCLIIn(warpWorktreePath, w, []string{"commit"})
+		return fabriccli.RunCLIIn(codeWorktreePath, w, []string{"commit"})
 	}
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(warpLayout, os.Stdin, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
+	code := dispatch(codeLayout, os.Stdin, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
@@ -112,15 +112,15 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Errorf("config file not tracked in fabric worktree; git ls-files output: %q", string(lsFilesOut))
 	}
 
-	// Verify the warp's git does NOT list the config file (it should be excluded).
+	// Verify the code side's git does NOT list the config file (it should be excluded).
 	cmd = exec.Command("git", "ls-files")
-	cmd.Dir = warpWorktreePath
+	cmd.Dir = codeWorktreePath
 	allFilesOut, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("warp git ls-files failed: %v", err)
+		t.Fatalf("code-side git ls-files failed: %v", err)
 	}
 	if strings.Contains(string(allFilesOut), "_lyx") {
-		t.Errorf("_lyx should be excluded from warp git tracking; git ls-files output: %q", string(allFilesOut))
+		t.Errorf("_lyx should be excluded from code-side git tracking; git ls-files output: %q", string(allFilesOut))
 	}
 
 	// Assert output contains success message.

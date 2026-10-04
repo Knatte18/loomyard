@@ -38,7 +38,7 @@ func writeVerifyPlan(t *testing.T, planDir string, sections ...plankit.Section) 
 func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	deps := landingDeps(loc, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"https://example.com/origin.git", "main", true, func() error { return nil },
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{})

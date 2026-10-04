@@ -27,7 +27,7 @@
 // PushCoalesced, ResetHard, IsAncestor, and
 // HasUnpushed (measured and reverted from a go-git ancestry walk; see
 // HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
-// runChecked. See CONSTRAINTS.md's gitrepo Client Boundary Invariant for the
+// runChecked. See PATTERN-gitrepo-client-boundary for the
 // enforced, exhaustive version of this split and the review obligation any
 // new CLI call inside this package carries. gitexec itself stays a
 // zero-dependency leaf regardless of which side of the boundary a gitrepo
@@ -301,8 +301,7 @@
 //
 // Gate (c) of the original spike's rubric — "works on Windows 11" — carried
 // forward as a Win11-pending marker on every one of gitnativepoc's MIGRATE
-// verdicts (see manifest/roadmap.md's retired git-native-library entry for
-// that history). This task closes it for every migrated method: both probes
+// verdicts (the retired git-native-library work is in git history). This task closes it for every migrated method: both probes
 // above ran on Windows, and the package's Tier-2 integration suite —
 // internal/gitrepo's own tests plus the parity harness comparing every
 // migrated method against the real git CLI — was run as part of this task's

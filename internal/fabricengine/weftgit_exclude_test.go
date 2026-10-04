@@ -180,7 +180,7 @@ func mustWriteFile(t *testing.T, path, content string) {
 }
 
 // TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the structural
-// replacement for F-B's fix (formerly CONSTRAINTS.md's Weft Git Invariant, "Cross-module
+// replacement for F-B's fix (formerly the Weft Git Invariant's "Cross-module
 // exclusions"): fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath,
 // []string{lyxdirs.LyxDirName}), positive entries only, no exclusions, the exact shape
 // internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config <module> --set ...` —

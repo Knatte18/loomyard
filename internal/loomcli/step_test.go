@@ -92,7 +92,7 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	c := &loomCLI{
-		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."},
+		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		cfg:      loomengine.Config{Selfreport: true},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       lockPath,

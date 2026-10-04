@@ -14,5 +14,5 @@
 // Its exclusion of internal/lyxcwd is machine-enforced by
 // internal/buildinfo/leaf_enforcement_test.go's TestLeafInvariant_AllowlistOnly, whose allowlist is
 // empty.
-// See CONSTRAINTS.md's Told-Geometry Invariant.
+// See PATTERN-told-geometry.
 package buildinfo

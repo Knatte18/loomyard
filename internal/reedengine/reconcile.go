@@ -188,8 +188,8 @@ func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []strin
 	// intent.
 	var deadKilled, untrackedKilled []string
 
-	// This is Info, not Debug: per CONSTRAINTS.md's Live-Substrate Spawn
-	// Observability lifecycle-vs-probe split, a real pane teardown is a
+	// This is Info, not Debug: per
+	// PATTERN-spawn-observability's lifecycle-vs-probe split, a real pane teardown is a
 	// lifecycle event, not a probe. And it needs a trace at all because the
 	// policy.authorizesReap() disjunct above makes this reap fire on the zero-strand
 	// precondition (every AddStrand/UpdateStrand once the reap-before-

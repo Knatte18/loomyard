@@ -149,8 +149,8 @@ This enumeration is the single place an operator learns what is pickable — if 
   each time you refresh it. See `README.md`'s "Why deliverables are committed continuously, not
   gitignored" for the rationale — a worktree torn down on merge takes a gitignored file with it,
   which is the same loss "log as you go" already exists to prevent, just at a longer horizon.
-- Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in the **same** commit (per `CLAUDE.md`).
-  Do not add bugfix notes to `manifest/roadmap.md`.
+- Every task that changes behaviour must update the module doc / `overview.md` / `PATTERN.md` in the **same** commit (per `CLAUDE.md`).
+  Do not add bugfix notes to the board.
 - Keep ONE handoff note (e.g. `_mill/<module>-review-HANDOFF.md`) so the loop survives a context compaction, or briefs a genuinely fresh orchestrator that never saw this session.
   Refresh it after every round's verification, and commit each refresh.
   Size its detail to what actually happened, not to a fixed template — a quiet round that closed clean might only need a few lines;

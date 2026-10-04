@@ -145,7 +145,7 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 	cwd := loc.AnchorPath()
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -187,7 +187,7 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -210,7 +210,7 @@ func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
 func TestWire_CwdIsToldToTheEnv(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 	cwd := loc.AnchorPath()
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
@@ -228,7 +228,7 @@ func TestWire_CwdIsToldToTheEnv(t *testing.T) {
 func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -269,7 +269,7 @@ func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
 func TestWire_WebsterParentBranchNonNil(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -287,7 +287,7 @@ func TestWire_WebsterParentBranchNonNil(t *testing.T) {
 func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -309,7 +309,7 @@ func TestWire_RefMatcherIsRealScanner(t *testing.T) {
 func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -336,7 +336,7 @@ func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
 func TestWire_EnvShuttleIsTheRunner(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -352,7 +352,7 @@ func TestWire_EnvShuttleIsTheRunner(t *testing.T) {
 func TestWire_DescriptionPathMatchesLandingDir(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -384,7 +384,7 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := hubLocation(t, "warp", ".")
+			loc := hubLocation(t, "pair", ".")
 			if tt.discussionInteractive {
 				seedLoomConfigWithInteractive(t, loc.AnchorPath(), true)
 			}
@@ -435,7 +435,7 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 func TestWire_ReviewSegmentPathsAndClock(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -461,7 +461,7 @@ func TestWire_ReviewSegmentPathsAndClock(t *testing.T) {
 func TestWire_ReviewTripleMatchesLoadedConfig(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -496,7 +496,7 @@ func TestWire_ReviewTripleMatchesLoadedConfig(t *testing.T) {
 func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -579,7 +579,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	// Deliberately NOT hubLocation: this location's anchor has no _lyx/config directory at all, so
 	// a path that loaded any module config could not possibly succeed here.
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	c.wireLightweight(location, location.AnchorPath())
@@ -647,7 +647,7 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := hubLocation(t, "warp", ".")
+			loc := hubLocation(t, "pair", ".")
 			seedLoomConfigWithFriction(t, loc.AnchorPath(), tt.friction)
 
 			c := &loomCLI{runID: shedrun.SelfRunID}
@@ -678,7 +678,7 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 func TestWire_BouncerSlugAndSegmentBounces(t *testing.T) {
 	t.Parallel()
 
-	loc := hubLocation(t, "warp", ".")
+	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {

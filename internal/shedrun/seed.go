@@ -34,11 +34,13 @@ type Seed struct {
 	// Params carries the run's seed-time parameters, keyed by name.
 	// It is omitted from the encoded JSON entirely when empty.
 	Params map[string]string `json:"params,omitempty"`
-	// Parent is the full agent name of the session that spawned this run, as a legacy seed recorded it.
-	// No code path writes it any more; it stays so a seed written before that change decodes under DisallowUnknownFields.
-	// Only internal/hubgeom's parent resolver reads it, as the legacy fallback.
-	// The disagreement check ignores it, and it is omitted from the encoded JSON when empty.
-	Parent string `json:"parent,omitempty"`
+}
+
+// seedWire is the decode-only shape of seed.json.
+// It carries the retired top-level parent key so a seed written before the field was dropped still decodes under DisallowUnknownFields; the value is discarded and nothing encodes it.
+type seedWire struct {
+	Seed
+	LegacyParent string `json:"parent,omitempty"`
 }
 
 // The closed driver vocabulary a Seed's Driver field may hold.
@@ -131,14 +133,15 @@ func ReadSeed(l *lyxcwd.Location, runID string) (Seed, bool, error) {
 }
 
 // decodeSeed strictly decodes data as a Seed, rejecting an unknown JSON key.
+// The retired top-level parent key is accepted and discarded.
 func decodeSeed(data []byte) (Seed, error) {
-	var seed Seed
+	var wire seedWire
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
-	if err := d.Decode(&seed); err != nil {
+	if err := d.Decode(&wire); err != nil {
 		return Seed{}, err
 	}
-	return seed, nil
+	return wire.Seed, nil
 }
 
 // WriteSeed writes seed for runID under l.
@@ -146,8 +149,7 @@ func decodeSeed(data []byte) (Seed, error) {
 // against a byte-identical existing seed -- calling WriteSeed twice with the same seed is a no-op the
 // second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
 // message naming both the existing and the incoming values.
-// Agreement means recipe, driver and params only:
-// an agreeing existing seed is a no-op whatever either side's legacy Parent holds, and an existing Parent stays on disk.
+// Agreement means recipe, driver and params only.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return err

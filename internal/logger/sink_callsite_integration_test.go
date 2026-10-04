@@ -25,7 +25,7 @@ import (
 )
 
 // TestMain runs gitkit.HermeticGitEnv() before any test in this binary spawns git, per
-// CONSTRAINTS.md's Hermetic Git Test Environment Invariant, then runs the tests under tmuxkit.Main.
+// PATTERN-hermetic-git-tests, then runs the tests under tmuxkit.Main.
 // It compiles only under the integration tag, so the untagged logger test binary gets its TestMain from testmain_test.go.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()

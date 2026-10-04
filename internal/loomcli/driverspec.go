@@ -10,6 +10,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// driverRole is the agent-name role this module's ly-drive spawn carries.
+const driverRole = "driver"
+
 // driverSpec composes the shuttleengine.Spec the ly-drive session launches from, from an already-
 // composed prompt, an already-composed report path, and the resolved driver-role settings.
 //
@@ -55,7 +58,7 @@ func driverSpec(prompt string, reportPath string, settings loomengine.DriverSett
 		NameOverride:  driverStrandDisplayName,
 		Interactive:   false,
 		ForkSubagents: false,
-		Role:          "driver",
+		Role:          driverRole,
 		Round:         "",
 		Parent:        "",
 		Display: render.Display{

@@ -1,4 +1,4 @@
-// spawnobservability_test.go enforces CONSTRAINTS.md's Live-Substrate Spawn Observability invariant's
+// spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
 // exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason
 // entry in spawnObservabilityAllowedSpawners.
@@ -80,7 +80,7 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
 		Key: "internal/gitkit/gitkit.go",
 		Why: "structurally barred by the gitkit Leaf Invariant's pinned import list " +
-			"(stdlib, lyxcwd, weftname, configengine, lyxdirs only)",
+			"(stdlib, lyxcwd, the fabric name package, configengine, lyxdirs only)",
 	},
 	{
 		Key: "internal/githubclient/token.go",
@@ -138,7 +138,7 @@ func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 
 	sort.Strings(failures)
 	if len(failures) > 0 {
-		t.Errorf("Live-Substrate Spawn Observability invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-spawn-observability` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

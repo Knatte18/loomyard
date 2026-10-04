@@ -133,7 +133,7 @@ func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
 func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
 	c := &loomCLI{
 		location:    loc,
@@ -168,7 +168,7 @@ func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing
 	t.Parallel()
 
 	hub := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}
 
 	lockPath := loomengine.LoomFrictionLock(loc)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
@@ -203,7 +203,7 @@ func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing
 func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
 		location:    loc,
 		frictionDir: "relative-friction-dir",
@@ -223,7 +223,7 @@ func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
 func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 	t.Helper()
 	return &loomCLI{
-		location:    &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."},
+		location:    &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."},
 		frictionDir: "relative-friction-dir",
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
 	}
@@ -275,7 +275,7 @@ func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", note, err)
 	}
 
-	loc := locationkit.Location(root, "warp", ".")
+	loc := locationkit.Location(root, "pair", ".")
 	archiveParent := filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc))
 	if err := os.MkdirAll(archiveParent, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", archiveParent, err)
@@ -318,7 +318,7 @@ func TestReflectFrictionRow_WaitsOnAHeldReflectionLock(t *testing.T) {
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.lock")
 	runLockPath := filepath.Join(dir, "run.lock")
-	if err := loomshed.Seed(statusPath, statusLockPath, "warp", "main"); err != nil {
+	if err := loomshed.Seed(statusPath, statusLockPath, "pair", "main"); err != nil {
 		t.Fatalf("Seed() = %v; want nil", err)
 	}
 	err := state.UpdateJSON[shedengine.Status](statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {

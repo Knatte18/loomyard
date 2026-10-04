@@ -38,13 +38,10 @@
 // `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
 // weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
 // caller.
-// The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
-// touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
-// written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
+// The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
+// see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
 // faithfully reports whether the weft arm completed rather than asserting it always did.
-// Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
-// found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
@@ -70,8 +67,7 @@
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
 // directory is staged by default; `_lyx` itself arrives from `structuralCommittedDirs`, not from
-// `pathspec`, so PATTERN content (`_lyx/PATTERN.md`, `_lyx/pattern/`) is committed as ordinary `_lyx`
-// content rather than needing its own pathspec entry.
+// `pathspec`, so any tracked `_lyx` content is committed without needing its own pathspec entry.
 //
 // The narrow-pathspec asymmetry below inverts, rather than disappears, once `pathspec` went empty:
 // `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key already
@@ -447,7 +443,7 @@
 // `lyx fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--shortname`,
 // while a bound weft that lacks the record takes `--shortname` or warns.
 // `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
-// The grammar and the way reed uses the shortname are the Agent Name Invariant in CONSTRAINTS.md.
+// The grammar and the way reed uses the shortname are `PATTERN-agent-name`.
 //
 // The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
 // later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
@@ -638,7 +634,7 @@
 // reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
 // nothing failed to reconcile: the pair simply stopped existing.
 //
-// See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
+// See PATTERN-mutation-record for the machine-enforced half of this rule, and
 // `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
 // guard itself.
 //
@@ -660,12 +656,12 @@
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
 // their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
-// review obligation instead. See CONSTRAINTS.md's Fabric Vocabulary Invariant for the authoritative
+// review obligation instead. See PATTERN-fabric-vocabulary for the authoritative
 // list.
 // `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
-// `CONSTRAINTS.md`'s Fabric Vocabulary Invariant records the rule in full, including the phrase-based
+// `PATTERN-fabric-vocabulary` records the rule in full, including the phrase-based
 // `warp` predicate and the review-only prose-doc split between a doc explaining fabric's own
 // mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
 // rewords).
@@ -678,7 +674,7 @@
 // `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a
 // branch on a remote (`git push <remote> --delete`), and a warp checkout's `ResetHard` — and every
 // one of them runs its shared four-check pipeline first.
-// See `CONSTRAINTS.md`'s Fabric Destruction Chokepoint Invariant for the rules;
+// See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
 // **Why a chokepoint at all.**
@@ -836,7 +832,7 @@
 // being in the same call (clone.go, warpbinding.go, weftgit.go, junction.go's weft-target materialisation),
 // where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
 // residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
-// guard rather than a routed write. See CONSTRAINTS.md's Fabric Write-Side Containment Invariant and
+// guard rather than a routed write. See PATTERN-fabric-write-containment and
 // `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
 // **The launcher/portal teardown path was the last corner still holding the old shape, because every prior
@@ -1280,13 +1276,29 @@
 // nothing in this layer can undo it: the verify-before-conclude discipline plus `MergeAbort` covers
 // the whole uncommitted attempt window, but a landed merge is final at the Fabric layer until a
 // separate two-sided reset-to-SHA verb exists (see the `fabric: merge-conflict primitive` item's
-// Someday follow-up in `manifest/roadmap.md`). A consumer that needs an undo after concluding must
+// Someday follow-up, the board's `fabric-reset-to-sha` note). A consumer that needs an undo after concluding must
 // verify before calling `MergeContinue`/`Merge`, or accept that layer's own finality.
 //
 // **Squash leaves no ancestry link.** A squash-merged branch's history carries no merge commit
 // linking it to its target, so "was this branch merged?" cannot be answered from git alone after a
 // squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
 // git — this is a direct consequence of shipping squash as an option, not a defect in it.
+//
+// **Platform verification: Linux only.**
+// Fabric is written cross-platform, and `internal/fslink` exists because Windows uses directory junctions where other platforms use symlinks,
+// but every hardening round ran on Linux and no line of it has been executed on Windows.
+// The branches reasoned about and never driven are:
+// `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection (`C:\...`, `\\server\share`), which Linux cannot produce inputs for;
+// `excludePatternFor`'s separator handling, since git wants forward slashes and `filepath` on Windows produces backslashes;
+// `lyxcwd.samePath`'s case-insensitive branch, which is dead code on Linux;
+// and `internal/fslink`'s junction path, which every link fabric creates on Windows goes through.
+// The anchor and subpath mechanism, the source of the largest group of findings, has likewise been verified on one platform only.
+// This weighs more than an ordinary coverage gap: the data-loss defects found in the destruction chokepoint's campaign were all found by driving real git against a real filesystem with hostile or dirty state, while the hermetic suite stayed green, so fabric's defects live where platform behaviour lives, in path composition, link creation and filesystem semantics.
+// Closing the gap needs a Windows host rather than a design.
+// The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
+// beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lyx` and `.lyx` placement, the cwd gate refusing the warp root and its subdirectories),
+// `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
+// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and the filesystem-links rule in `CLAUDE.md` currently assert the opposite.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

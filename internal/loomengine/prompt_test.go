@@ -58,7 +58,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 			decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 			supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-			got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", tt.autonomous)
+			got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", tt.autonomous)
 			if err != nil {
 				t.Fatalf("composePrompt(%q, %q, %q, %q, \"\", %v) = _, %v; want nil error", stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous, err)
 			}
@@ -103,7 +103,7 @@ func TestComposePrompt_AutonomousOutputHasNoAutoFlag(t *testing.T) {
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-	got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", true)
+	got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", true)
 	if err != nil {
 		t.Fatalf("composePrompt(..., autonomous=true) = _, %v; want nil error", err)
 	}
@@ -121,11 +121,11 @@ func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-	autonomousOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", true)
+	autonomousOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", true)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=true) = _, %v; want nil error", err)
 	}
-	interactiveOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", false)
+	interactiveOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, "", "", false)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=false) = _, %v; want nil error", err)
 	}
@@ -176,7 +176,7 @@ func TestComposePrompt_FrictionEnabled(t *testing.T) {
 		t.Fatalf("friction.Directive(...) = _, %v; want nil error", err)
 	}
 
-	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", directive, false)
+	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "", directive, false)
 	if err != nil {
 		t.Fatalf("composePrompt(..., directive, false) = _, %v; want nil error", err)
 	}
@@ -194,7 +194,7 @@ func TestComposePrompt_FrictionEnabled(t *testing.T) {
 func TestComposePrompt_FrictionDisabled(t *testing.T) {
 	stencilsDir := newMinimalStencilsDir(t)
 
-	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "", false)
+	got, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "", "", false)
 	if err != nil {
 		t.Fatalf("composePrompt(..., frictionDirective=\"\", false) = _, %v; want nil error", err)
 	}
@@ -221,7 +221,7 @@ func TestComposePrompt_FrictionMarkerFreeTemplate(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", discussionPath, err)
 	}
 
-	_, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "some friction directive text", false)
+	_, err := composePrompt(stencilsDir, "add-json-flag", "/hub/repo/_lyx/discussion/decision-record.md", "/hub/repo/_lyx/discussion/support-log.md", "", "some friction directive text", false)
 	if err != nil {
 		t.Fatalf("composePrompt(..., frictionDirective=<non-empty>, ...) with a marker-free template = _, %v; want nil error", err)
 	}

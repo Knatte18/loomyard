@@ -5,18 +5,19 @@
 ## Grammar
 
 ```
-<alias>[item,item,...]        where item is  key=value  |  <effort>
+<alias>[item,item,...]        where item is  <effort>  |  key=value
 ```
 
 - The alias is one word, resolved via the [registry](#the-registry--modelsyaml).
 - The bracket part is optional;
-  each item is either `key=value`, overriding that parameter for this spec only, or a bare token, which means effort.
+  the canonical short form is `model[effort]`, where the bare token in the bracket names the effort.
+- The long form `effort=<level>` stays parseable and means the same as the bare token.
+- A parameter other than effort, such as `v=4.5`, keeps its `key=value` spelling, since the short form names effort alone.
 
 ```yaml
 implementer: sonnet                    # registry defaults apply
-implementer: sonnet[effort=high]       # override one param
-reviewer:    opus[effort=max]
-reviewer:    opus[max]                 # shorthand for the same override
+implementer: sonnet[high]              # override effort
+reviewer:    opus[max]
 ```
 
 **Escape form** for models not (yet) in the registry — no registry edit needed to try a new model id:
@@ -26,7 +27,7 @@ reviewer:    opus[max]                 # shorthand for the same override
 ```
 
 ```yaml
-implementer: claude:claude-sonnet-4-5[effort=high]
+implementer: claude:claude-sonnet-4-5[high]
 ```
 
 ## The registry — `models.yaml`
@@ -85,13 +86,13 @@ Example — which effort does webster's `master` role run at?
 
 ```yaml
 # models.yaml:    sonnet defaults effort=medium
-# webster.yaml:   master: sonnet[effort=high]
+# webster.yaml:   master: sonnet[high]
 # loom config:    webster: { master: sonnet }
 ```
 
-Loom set the role, so loom's spec wins whole: `sonnet`, empty bracket → effort comes from the registry default → **medium**. webster.yaml's `effort=high` is irrelevant because its entire spec lost. (Per-param merge was rejected: you'd read three files to know one param's value, and a stale bracket in an old layer leaks in invisibly.)
+Loom set the role, so loom's spec wins whole: `sonnet` has no bracket, so no effort is set and the effort comes from the registry default → **medium**. webster.yaml's `[high]` is irrelevant because its entire spec lost. (Per-param merge was rejected: you'd read three files to know one param's value, and a stale bracket in an old layer leaks in invisibly.)
 
-Sharp edge, deliberate: overriding a role in a higher layer **silently discards** the lower layer's bracket params — as above, where webster.yaml's `effort=high` vanished.
+Sharp edge, deliberate: overriding a role in a higher layer **silently discards** the lower layer's bracket params — as above, where webster.yaml's `[high]` vanished.
 If a param must survive your override, restate it in the winning spec.
 
 ## Fail loud
@@ -110,7 +111,7 @@ claudeengine already hard-errors on an invalid `--effort` for exactly this reaso
 ## Provider seam
 
 Registry data is provider-invariant (alias → engine name + model string + param defaults).
-Everything provider-*specific* — CLI flags, `version` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per the Shuttle Provider-Seam Invariant in `CONSTRAINTS.md`.
+Everything provider-*specific* — CLI flags, `version` id translation, large-window variant realization — lives in the provider engine (`internal/shuttleengine/claudeengine`) per `PATTERN-shuttle-provider-seam`.
 
 ## Roles that use this notation
 

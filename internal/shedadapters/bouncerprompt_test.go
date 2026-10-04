@@ -70,7 +70,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 			t.Run(fmt.Sprintf("%s_ClusterExcludes=%t", name, clusterExcludes), func(t *testing.T) {
 				values := maps.Clone(tc.base)
 				maps.Copy(values, focusSchemaMarkers(clusterExcludes))
-				prompt, err := stencil.Fill(tc.template, values)
+				prompt, err := stencil.FillOptional(tc.template, values, []string{"pattern_directive"})
 				if err != nil {
 					t.Fatalf("stencil.Fill(%s, clusterExcludes=%v) error = %v; want nil", name, clusterExcludes, err)
 				}

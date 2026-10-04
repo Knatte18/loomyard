@@ -102,7 +102,7 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 	t.Helper()
 	dir := t.TempDir()
 	return &loomCLI{
-		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."},
+		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
@@ -149,8 +149,8 @@ func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
 		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
 	}
 	prompt := starter.gotSpec.Prompt
-	if !strings.Contains(prompt, `run-id "warp"`) {
-		t.Errorf("prompt = %q; want it to name the slug run-id \"warp\"", prompt)
+	if !strings.Contains(prompt, `run-id "pair"`) {
+		t.Errorf("prompt = %q; want it to name the slug run-id \"pair\"", prompt)
 	}
 	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
 		t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
@@ -275,7 +275,7 @@ func noStrands() ([]reedengine.StrandStatus, error) { return nil, nil }
 func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe) (*loomCLI, string) {
 	t.Helper()
 	dir := t.TempDir()
-	worktreeDir := filepath.Join(dir, "warp")
+	worktreeDir := filepath.Join(dir, "pair")
 	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
 		t.Fatalf("mkdir worktree dir: %v", err)
 	}
@@ -286,7 +286,7 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 		t.Fatalf("mkdir run lock dir: %v", err)
 	}
 	c := &loomCLI{
-		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "warp", AnchorRel: "."},
+		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
 		runID:           "self",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},

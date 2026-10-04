@@ -3,8 +3,8 @@
 // their exact signatures at compile time.
 // This test has no test function and no runtime body: the assertion is that the package compiles,
 // so a drifted RunCLI/RunCLIIn signature in any of these modules becomes a build failure instead of
-// a silent divergence from CONSTRAINTS.md's CLI/Cobra Invariant.
-// The CLI/Cobra Invariant's seam clause was previously unenforced: cmd/lyx/clitree_test.go's walk asserts only Short, bare-group listing and unknown-subcommand refusal,
+// a silent divergence from `PATTERN-cli-cobra`.
+// The seam clause of `PATTERN-cli-cobra` was previously unenforced: cmd/lyx/clitree_test.go's walk asserts only Short, bare-group listing and unknown-subcommand refusal,
 // and no test under cmd/lyx referenced RunCLI at all.
 
 package main

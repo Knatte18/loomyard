@@ -203,14 +203,11 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	}
 }
 
-// TestChildSeedFor_CarriesNoParent asserts the child's seed carries the given recipe, driver and params and no parent.
-func TestChildSeedFor_CarriesNoParent(t *testing.T) {
+// TestChildSeedFor_CarriesRecipeDriverAndParams asserts the child's seed carries the given recipe, driver and params.
+func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	params := map[string]string{"parent": "main"}
 
 	got := childSeedFor(shedrun.RecipeLoom, shedrun.DriverLLM, params)
-	if got.Parent != "" {
-		t.Errorf("childSeedFor().Parent = %q; want empty", got.Parent)
-	}
 	if got.Recipe != shedrun.RecipeLoom || got.Driver != shedrun.DriverLLM || got.Params["parent"] != "main" {
 		t.Errorf("childSeedFor() = %+v; want the given recipe, driver and params", got)
 	}
@@ -350,7 +347,7 @@ func TestChildSpawnError_TruncationStaysValidUTF8(t *testing.T) {
 // fabric command that would actually mutate prime itself -- rather than as the resolver's generic
 // "not a git repository" failure.
 func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
-	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	_, err := taskWorktreeLocation(prime, "never-created")
 	if err == nil {
@@ -463,7 +460,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 // (TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree); this suite stays
 // untagged and never spawns git.
 func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
-	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
 	present, err := taskWorktreePresent(prime, "never-created")
 	if err != nil {

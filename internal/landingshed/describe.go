@@ -48,6 +48,9 @@ func NewDescriptionGate(descriptionPath string) shuttleengine.Gate {
 // describeStencilName is the registered name of the Describe prompt.
 const describeStencilName = "landing-template-describe"
 
+// describeRole is the agent-name role this module's Describe spawn carries.
+const describeRole = "describe"
+
 // DescribeInputs carries the told values one Describe session needs. Every field is required.
 type DescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
@@ -131,7 +134,7 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
 		Interactive: false,
-		Role:        "describe",
+		Role:        describeRole,
 		Timeout:     time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
 	}, nil
 }

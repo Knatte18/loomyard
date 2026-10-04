@@ -3,7 +3,7 @@
 // pull_integration_test.go — the end-to-end integration matrix for
 // Fabric.Pull: clean fast-forward, warp history rewrite detection and
 // reconcile (single-back, multi-back, no-surviving-anchor, empty-index),
-// idempotency after a reconcile, PATTERN-residue identification, the
+// idempotency after a reconcile, the
 // double-conflict abort, and the weft-first partial-failure contract.
 // Package fabricengine_test. Reuses export_test.go's fixture shims
 // (NewPlainWarpRepoForTest, CommitWarpForTest, CurrentSHAForTest,
@@ -20,16 +20,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // buildReconcileFixture builds a warp+weft pair with a bare warp remote and n
@@ -226,73 +222,6 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	}
 	if got := gitkit.RevListCount(t, weftFixture.PrimeWeft(), weftHEADBefore+".."+weftHEADAfter); got != 1 {
 		t.Errorf("commits added on top of pre-existing weft history = %d; want exactly 1 (the re-anchor commit)", got)
-	}
-}
-
-// TestPull_IdentifiesPatternResidue seeds a synthetic _lyx/PATTERN.md weft commit (plus a
-// non-PATTERN-path weft commit) after the anchor point and asserts PatternResidue names exactly
-// the PATTERN-path-touching commit, not the others (including the pre-existing, already-synced
-// content commit).
-// It also pins the pathspec's narrow scope: a commit touching only
-// _lyx/config/fabric.yaml must never appear, while a commit touching
-// _lyx/pattern/<detail>.md must appear, proving both PathspecFile and
-// PathspecDir are wired.
-func TestPull_IdentifiesPatternResidue(t *testing.T) {
-	fixturesDir := t.TempDir()
-	f, _, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
-
-	weftPath := weftFixture.PrimeWeft()
-	patternCommitSHA := gitkit.CommitFile(t, weftPath, filepath.Join(lyxdirs.LyxDirName, "PATTERN.md"), "pattern content", "pattern residue commit")
-	gitkit.CommitFile(t, weftPath, "unrelated.txt", "unrelated", "unrelated residue commit")
-	gitkit.CommitFile(t, weftPath, filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"), "junctions: []\n", "config residue commit")
-	patternDetailCommitSHA := gitkit.CommitFile(t, weftPath, filepath.Join(lyxdirs.LyxDirName, "pattern", "detail.md"), "detail content", "pattern detail residue commit")
-
-	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
-
-	result, err := f.Pull(fabricengine.SyncOptions{})
-	if err != nil {
-		t.Fatalf("Pull() error = %v", err)
-	}
-	if !result.Reconciled {
-		t.Fatalf("Pull() Reconciled = false; want true")
-	}
-	if len(result.PatternResidue) != 2 {
-		t.Fatalf("Pull() PatternResidue = %+v; want exactly two entries", result.PatternResidue)
-	}
-
-	residueSHAs := make(map[string]fabricengine.PatternResidueEntry, len(result.PatternResidue))
-	for _, entry := range result.PatternResidue {
-		residueSHAs[entry.WeftSHA] = entry
-	}
-
-	if _, ok := residueSHAs[patternCommitSHA]; !ok {
-		t.Errorf("PatternResidue = %+v; want an entry for the PATTERN.md commit %q", result.PatternResidue, patternCommitSHA)
-	} else {
-		wantPath := pattern.PathspecFile
-		found := false
-		for _, p := range residueSHAs[patternCommitSHA].Paths {
-			if p == wantPath {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("PatternResidue entry for %q Paths = %v; want it to contain %q", patternCommitSHA, residueSHAs[patternCommitSHA].Paths, wantPath)
-		}
-	}
-
-	if _, ok := residueSHAs[patternDetailCommitSHA]; !ok {
-		t.Errorf("PatternResidue = %+v; want an entry for the %s commit %q", result.PatternResidue, pattern.PathspecDir, patternDetailCommitSHA)
-	} else {
-		wantPath := pattern.PathspecDir + "/detail.md"
-		found := false
-		for _, p := range residueSHAs[patternDetailCommitSHA].Paths {
-			if p == wantPath {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("PatternResidue entry for %q Paths = %v; want it to contain %q", patternDetailCommitSHA, residueSHAs[patternDetailCommitSHA].Paths, wantPath)
-		}
 	}
 }
 
@@ -674,53 +603,5 @@ func TestPull_HealthyPairBothSidesPullCleanly(t *testing.T) {
 	}
 	if !result.WarpAdvanced || result.NewWarpHEAD != warpFFSHA {
 		t.Errorf("Pull() WarpAdvanced=%v NewWarpHEAD=%q; want warp advanced to %q", result.WarpAdvanced, result.NewWarpHEAD, warpFFSHA)
-	}
-}
-
-// TestPull_IdentifiesPatternResidueUnderSubpathAnchor is the subpath-anchored counterpart to
-// TestPull_IdentifiesPatternResidue: on a hub anchored at "backend", PATTERN content lives at
-// backend/_lyx/PATTERN.md and never at the weft worktree root, so a root-relative residue pathspec
-// reported an empty residue — telling a caller "nothing needs review" about exactly the commit that
-// does.
-func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
-	fixturesDir := t.TempDir()
-	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
-
-	// Record a subpath anchor for this pair the same way a real hub does: the marker at the hub's
-	// board root, which lyxcwd.ResolveWorktree reads back for AnchorRel.
-	const anchor = "backend"
-	boardDir := fabricengine.BoardDir(filepath.Dir(warpPath))
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", boardDir, err)
-	}
-	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
-		t.Fatalf("write anchor marker: %v", err)
-	}
-
-	anchoredPatternSHA := gitkit.CommitFile(t, weftFixture.PrimeWeft(), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"), "anchored pattern content", "anchored pattern residue commit")
-
-	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
-
-	result, err := f.Pull(fabricengine.SyncOptions{})
-	if err != nil {
-		t.Fatalf("Pull() error = %v", err)
-	}
-	if !result.Reconciled {
-		t.Fatalf("Pull() Reconciled = false; want true")
-	}
-
-	var found *fabricengine.PatternResidueEntry
-	for i := range result.PatternResidue {
-		if result.PatternResidue[i].WeftSHA == anchoredPatternSHA {
-			found = &result.PatternResidue[i]
-		}
-	}
-	if found == nil {
-		t.Fatalf("Pull() PatternResidue = %+v; want an entry for the anchored PATTERN.md commit %q",
-			result.PatternResidue, anchoredPatternSHA)
-	}
-	wantPath := anchor + "/" + pattern.PathspecFile
-	if !slices.Contains(found.Paths, wantPath) {
-		t.Errorf("PatternResidue entry Paths = %v; want it to contain %q", found.Paths, wantPath)
 	}
 }

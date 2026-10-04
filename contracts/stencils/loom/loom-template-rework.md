@@ -39,7 +39,7 @@ Apply it exactly as written, except where this prompt says otherwise.
 4. Read the task's diff against its base with read-only git (`git log`, `git diff`, `git show`).
    Never commit, reset, checkout or otherwise change the repository with git.
 
-Also read `CONSTRAINTS.md` at the repo root if present, and follow existing patterns.
+Also follow existing patterns, and any PATTERN entries in this prompt.
 
 ## Step 3 — Write a complete new plan
 

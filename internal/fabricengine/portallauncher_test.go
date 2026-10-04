@@ -388,6 +388,41 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 	}
 }
 
+// TestRemovePortal_LeavesAnchorDirectory pins that removing the last pair's portal keeps _portals/<AnchorRel>
+// in place and empty, and that a pair added afterwards lands under it.
+func TestRemovePortal_LeavesAnchorDirectory(t *testing.T) {
+	t.Parallel()
+
+	hub := t.TempDir()
+	l := locationkit.Location(hub, "prime", filepath.Join("services", "api"))
+	anchorDir := filepath.Join(PortalsDir(l), l.AnchorRel)
+
+	addPortal := func(slug string) {
+		t.Helper()
+		mkdirAll(t, portalTarget(l, slug))
+		if err := createPortal(NewMutations(hub), l, slug); err != nil {
+			t.Fatalf("createPortal(%q) error = %v", slug, err)
+		}
+	}
+
+	addPortal("first")
+	if err := removePortal(NewMutations(hub), l, "first"); err != nil {
+		t.Fatalf("removePortal() error = %v; want nil", err)
+	}
+	entries, err := os.ReadDir(anchorDir)
+	if err != nil {
+		t.Fatalf("read %s after removing the last pair: %v; want it left in place", anchorDir, err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("%s holds %d entries after removal; want it empty", anchorDir, len(entries))
+	}
+
+	addPortal("second")
+	if _, err := os.Lstat(PortalLink(l, "second")); err != nil {
+		t.Errorf("later pair's portal not under the anchor directory: %v", err)
+	}
+}
+
 // TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal proves the pre-gate
 // containment guard's refusal reaches a best-effort call site rather than being silently discarded.
 //

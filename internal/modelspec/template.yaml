@@ -8,7 +8,7 @@
 # recompile is needed to adopt a brand-new model):
 # zephyr: {engine: claude, model: claude-zephyr-1}
 #
-# See docs/reference/model-spec.md for the full grammar, precedence rules, and
+# See contracts/specs/llm-model-spec.md for the full grammar, precedence rules, and
 # the built-in fallback set this file overrides/extends.
 
 sonnet:

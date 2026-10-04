@@ -86,7 +86,7 @@ This is the Hub Geometry / fslink contract meeting a semantic that does not tran
 **Direction (needs design, not a one-liner):** options include (a) addressing `_lyx` contents via the real target path rather than through the link when invoking git;
 (b) re-evaluating whether `_lyx`/`.lyx` should be links at all on Linux vs bind-style or real dirs;
 (c) confining the affected operations.
-This is the one finding that touches a `CONSTRAINTS.md` invariant (Hub Geometry / fslink) and deserves its own task and discussion.
+This is the one finding that touches a `PATTERN.md` invariant (Hub Geometry / fslink) and deserves its own task and discussion.
 It is **not** in scope for "record benchmark numbers."
 
 ### B3 (RESOLVED) — reed multiplexer binary: raw exec error + path resolution
@@ -150,7 +150,7 @@ likely fix is a small yield/`runtime.Gosched()` or bounded reader rate, without 
    - **B1:** guard `PosixPath` by GOOS → unblocks the Claude engine on Linux.
      Small, high value.
    - **B3:** install tmux + map "binary missing" to the friendly error → reed packages green.
-   - **B2:** separate design task — the `_lyx` junction/symlink git behaviour touches a `CONSTRAINTS.md` invariant and must not be rushed into a benchmark card.
+   - **B2:** separate design task — the `_lyx` junction/symlink git behaviour touches a `PATTERN.md` invariant and must not be rushed into a benchmark card.
 3. Only after Tier 1 + Tier 2 are green on Linux does "record parallel OS-marked numbers" become executable — at which point each existing `Machine:` line gets marked `Windows 11 Enterprise` and a parallel dated Linux section is added per doc (the originally-agreed format).
 
 ## Environment prerequisites for a fair Linux run (once unblocked)

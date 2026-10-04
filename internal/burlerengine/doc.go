@@ -26,7 +26,7 @@
 // and told mode respectively.
 // This property is a review obligation here, not machine-enforced — this package has no
 // import-allowlist test policing the absence of internal/lyxcwd.
-// See CONSTRAINTS.md's Told-Geometry Invariant.
+// See PATTERN-told-geometry.
 //
 // # The A/B round
 //
@@ -34,8 +34,8 @@
 // the review fully written to disk, before the round touches a single
 // target file. Fixing findings as they are spotted turns the "review"
 // into a post-hoc rationalization of edits already made, which destroys
-// the independent judgment the whole method depends on — see the Review
-// Round Invariant in CONSTRAINTS.md and the four round-prompt assets (a
+// the independent judgment the whole method depends on — see
+// PATTERN-review-round and the four round-prompt assets (a
 // thin orchestrator, burler-template-round-orchestrator.md, plus three
 // instruction files, burler-step-{1-explore,2-review,3-fix}.md) that state
 // this rule to the agent every round. The prompts ship as embedded defaults
@@ -78,6 +78,18 @@
 // Class is not a severity ladder.
 // It decides who decides and when the loop stops, never whether a finding is fixed:
 // the fixer still fixes every finding of every class and severity.
+//
+// The case that motivated the split: a six-round discussion-review loop reported blocking findings of 6, 5, 4, 3, 3 and 3 and never converged.
+// Sorted by kind, the design findings (five in round one, two in each of rounds two to five, none in round six) converged to zero,
+// while scope findings ("you missed these call sites") recurred in four of six rounds, because the author kept adding the newly named files instead of fixing the cause,
+// which was that hand-enumerating about forty call sites from greps is not a reliable method.
+// Those findings were enumerations of one constant's consumers, which `go build ./...` reports exhaustively, instantly and for free.
+// So a recurring scope gap is raised once, as a design finding about the method, and the loop stops on a round with no design finding rather than on a flat cap.
+// Scope splits into two mechanical halves, neither an LLM lens: symbol references (the compiler, or a code-index references query before a deletion, for plan sizing)
+// and bare string literals with no symbol behind them, which neither sees and a literal scan such as `TestEnforcement_GeometryLiterals` covers narrowly.
+// An exclusion has to be written on both sides: telling the writer not to enumerate X while the reviewer still flags a missing X recreates the non-convergent loop.
+// The trap to design against is reading class as a severity ladder and filing real problems under a low class to dodge the fix-everything default,
+// which is why class decides who decides and when the loop stops, never whether a finding is fixed.
 //
 // A single burler round never grades its own fix. Because A precedes B
 // within a round, A is a legitimate, independent gate exactly like a
@@ -134,8 +146,8 @@
 // caller supplied (resolved absolute), and committing them
 // is the loop owner's job (loom's
 // Burler-round-producer-plus-Bouncer segments), via the
-// fabric engine in-process. See the Fabric Git Invariant in
-// CONSTRAINTS.md. The one exception an agent DOES commit is its own code
+// fabric engine in-process. See PATTERN-fabric-git.
+// The one exception an agent DOES commit is its own code
 // under FixScopeSource — that is an ordinary repo commit, not a fabric
 // operation.
 //
@@ -172,7 +184,7 @@
 // the handler spawns all N lens forks in a SINGLE message via Claude Code's
 // built-in fork subagents (Agent tool, subagent_type "fork", always
 // unnamed), and, while they run, performs its own HOLISTIC review —
-// architecture, cross-file invariants, CONSTRAINTS-fit — the level no
+// architecture, cross-file invariants, PATTERN-fit — the level no
 // narrow lens covers; (3) the handler consolidates every fork's returned
 // findings together with its own holistic findings into the ONE review
 // file: dedup across lenses, an origin: frontmatter key on every kept

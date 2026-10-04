@@ -12,6 +12,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -539,8 +540,10 @@ var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/gitkit":       true,
-	// internal/hubforge is in the narrower weftname-import subset CONSTRAINTS.md's Fabric
-	// Vocabulary Invariant already names, alongside internal/fabricengine, internal/fabriccli
+	// internal/weftname's own external-package test imports the package it tests.
+	"internal/weftname": true,
+	// internal/hubforge is in the narrower weftname-import subset PATTERN-fabric-vocabulary
+	// already names, alongside internal/fabricengine, internal/fabriccli
 	// and internal/gitkit -- this map is an allowlist of what may import weftname, not an
 	// assertion of what does, so this entry is correct even though hub.go imports no weftname
 	// identifier today.
@@ -550,6 +553,168 @@ var weftnameImportOwners = map[string]bool{
 // weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's
 // import rule polices.
 const weftnameImportPath = "github.com/Knatte18/loomyard/internal/weftname"
+
+// weftnameTestImporter is the one test file outside weftnameImportOwners that may import
+// internal/weftname, to test weftname.SiblingPath.
+const weftnameTestImporter = "internal/lyxcwd/geometry_test.go"
+
+// vocabExemptEntry is one spelling a non-owner file may carry despite naming a side.
+type vocabExemptEntry struct {
+	token    string
+	declared string
+}
+
+// vocabExempt is the closed list of spellings the bare weft/warp rule strips whole before matching.
+// Each is spelled by its owner and cannot be reworded without renaming the owner's API or output,
+// which is out of scope here (board note fabric-api-vocabulary).
+// Adding an entry needs a declared field naming its owner-set declaration; any other spelling that
+// carries a side, including a new owner-set export, still fails.
+var vocabExempt = []vocabExemptEntry{
+	{"PairWarpWorktree", "internal/hubforge, a *Hub method"},
+	{"PairWeftSibling", "internal/hubforge, a *Hub method"},
+	{"WeftBare", "internal/hubforge, a Hub field"},
+	{"WarpBare", "internal/hubforge, a Hub field"},
+	{"PrimeWeft", "internal/hubforge, a *Hub method"},
+	{"WeftWorktree", "internal/fabricengine"},
+	{"WeftWorktreePath", "internal/fabricengine"},
+	{"WeftBranchName", "internal/fabricengine"},
+	{"WeftRepoRoot", "internal/fabricengine"},
+	{"CommitWeftPaths", "internal/fabricengine"},
+	{"WarpLyxLink", "internal/fabricengine"},
+	{"WEFT_SKIP_GIT", "fabric's env-var name"},
+	{"WEFT_SKIP_PUSH", "fabric's env-var name"},
+	{"WarpWorktree", "internal/fabricengine, a result field of Prune, Reconcile and Status"},
+	{"side=warp", "internal/fabricengine, the mutation record's trace detail"},
+	{"warp_branch_deleted", "internal/fabriccli, an envelope key"},
+	{"warp_branch_kept_reason", "internal/fabriccli, an envelope key"},
+	{"weft sibling", "internal/fabricengine, RequireWarpWorktree's refusal wording"},
+	{".weft", "internal/fabricengine, the records worktree's lock directory name"},
+	{"warp.ResetHard(", "internal/fabricengine, the code-side handle's raw call the destructive guard bans"},
+	{"weft.ResetHard(", "internal/fabricengine, the records-side handle's raw call the destructive guard bans"},
+	{"warpprobe.go", "internal/fabricengine, a file name"},
+	{"warpbinding.go", "internal/fabricengine, a file name"},
+	{"weftgit.go", "internal/fabricengine, a file name"},
+	{"lyx weft sync", "internal/fabricengine, a retired spelling RefScanner still recognizes"},
+	{"lyx warp checkout", "internal/fabricengine, a retired spelling RefScanner still recognizes"},
+	{"lyx.exe weft push", "internal/fabricengine, a retired spelling RefScanner still recognizes"},
+}
+
+// vocabExemptPattern matches any vocabExempt token, bounded by a word edge wherever the token
+// itself begins or ends with a word character.
+var vocabExemptPattern = func() *regexp.Regexp {
+	isWord := func(r byte) bool {
+		return r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+	}
+	alts := make([]string, len(vocabExempt))
+	for i, e := range vocabExempt {
+		alt := regexp.QuoteMeta(e.token)
+		if isWord(e.token[0]) {
+			alt = `\b` + alt
+		}
+		if isWord(e.token[len(e.token)-1]) {
+			alt += `\b`
+		}
+		alts[i] = alt
+	}
+	return regexp.MustCompile(`(?:` + strings.Join(alts, "|") + `)`)
+}()
+
+// weftnamePackagePattern matches the weftname package name as a whole word.
+var weftnamePackagePattern = regexp.MustCompile(`\bweftname\b`)
+
+// vocabScanAllowlistEntry is one path the extended scan skips; a path ending in "/" is a prefix.
+type vocabScanAllowlistEntry struct {
+	path   string
+	reason string
+}
+
+// vocabScanAllowlist is the closed list of paths the extended bare weft/warp scan skips.
+var vocabScanAllowlist = []vocabScanAllowlistEntry{
+	{"docs/benchmarks/", "measurement reports record one run and are not rewritten"},
+	{"docs/research/", "measurement reports record one run and are not rewritten"},
+	{"internal/lyxcwd/enforcement_test.go", "this scan's own test file spells the tokens it bans"},
+	{"internal/lyxcwd/vocabscan_test.go", "this scan's own test file spells the tokens it bans"},
+}
+
+// vocabScanSkippedRoots are the first path segments the extended scan never enters.
+// sandbox/ is the repo-root fixture tree; tools/sandbox/ is scanned.
+var vocabScanSkippedRoots = map[string]bool{"_lyx": true, ".lyx": true, "sandbox": true}
+
+// vocabScanDocRoots are the roots whose .md, .yaml and .go files the extended scan covers.
+var vocabScanDocRoots = map[string]bool{"contracts": true, "docs": true, "plugins": true, "crucible": true, "cmd": true}
+
+// vocabScanRootFiles are the repo-root files the extended scan covers.
+var vocabScanRootFiles = map[string]bool{"CLAUDE.md": true, "README.md": true}
+
+func vocabScanAllowlisted(rel string) bool {
+	for _, e := range vocabScanAllowlist {
+		if rel == e.path || (strings.HasSuffix(e.path, "/") && strings.HasPrefix(rel, e.path)) {
+			return true
+		}
+	}
+	return false
+}
+
+// fabricVocabularyFailures applies the fabric-vocabulary rules to the tree under base (the module
+// root when empty) and returns one failure line per violation plus how many files it visited.
+//
+// Bare weft/warp rule, outside the owner set (configsync's literal-and-comment carve-out aside):
+// every *_test.go file anywhere; every non-test .go file under internal/ and the doc roots; every
+// .md and .yaml file under the doc roots; every .md under internal/; CLAUDE.md and README.md.
+// Host-phrase rule: non-test .go under internal/ and cmd/, and .md under internal/ and contracts/stencils/.
+// Weftname import rule: non-test .go under internal/ and cmd/, and every test file but weftnameTestImporter.
+func fabricVocabularyFailures(t *testing.T, base string) ([]string, int) {
+	t.Helper()
+	var failures []string
+	fail := func(relPath, reason string) {
+		failures = append(failures, relPath+": "+reason)
+	}
+
+	scanned := scankit.Walk(t, scankit.Options{Base: base, Exts: []string{".go", ".md", ".yaml"}, Filter: scankit.All}, func(file *scankit.File) {
+		rel := file.Rel
+		first, _, _ := strings.Cut(rel, "/")
+		if vocabScanSkippedRoots[first] || vocabScanAllowlisted(rel) {
+			return
+		}
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		inInternal := first == "internal"
+		inDocRoot := vocabScanDocRoots[first]
+
+		switch filepath.Ext(rel) {
+		case ".go":
+			isTest := strings.HasSuffix(rel, "_test.go")
+			bareScope := isTest || inInternal || inDocRoot
+			hostScope := !isTest && (inInternal || first == "cmd")
+			if !bareScope && !hostScope {
+				return
+			}
+			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
+			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
+			if bareScope && !shouldSkipBareVocabularyCheck(dir) && failsBareVocabularyCheck(dir, bareIdent, bareLiteralOrComment) {
+				fail(rel, "bare weft/warp token outside the owner set")
+			}
+			if hostScope && hostHit {
+				fail(rel, "fabric-sense host phrase")
+			}
+			importRuleScope := hostScope || (isTest && rel != weftnameTestImporter)
+			if importRuleScope && !weftnameImportOwners[dir] && importsWeftname(f) {
+				fail(rel, "imports internal/weftname outside its owner set")
+			}
+		default:
+			text := string(file.Data)
+			ext := filepath.Ext(rel)
+			bareScope := (ext == ".md" && (inInternal || vocabScanRootFiles[rel])) || inDocRoot
+			hostScope := ext == ".md" && (inInternal || strings.HasPrefix(rel, "contracts/stencils/"))
+			if bareScope && !fabricVocabularyOwners[dir] && bareVocabularyToken(text) {
+				fail(rel, "bare weft/warp token outside the owner set")
+			}
+			if hostScope && fabricSenseHostPhrase(text) {
+				fail(rel, "fabric-sense host phrase")
+			}
+		}
+	})
+	return failures, scanned
+}
 
 // hostGeometryIdentifiers are the fabric-geometry identifiers fabric-vocabulary-rule names as the
 // identifier form of the host phrase predicate: host is never policed as a bare word, but these
@@ -576,7 +741,18 @@ var hostPhrases = []string{
 // has no other meaning for them in this repo -- so substring matching (not whole-word matching)
 // is deliberate: it is what catches the token inside a camelCase identifier such as
 // WeftWorktree, not just a standalone word.
+// The vocabExempt tokens are stripped whole first, so only a spelling outside that closed list hits.
 func bareVocabularyToken(s string) bool {
+	return bareVocabularyTokenIn(s, false)
+}
+
+// bareVocabularyTokenIn is bareVocabularyToken with the weftname package name additionally
+// stripped when weftnameOK, for a file whose weftname import the import rule already governs.
+func bareVocabularyTokenIn(s string, weftnameOK bool) bool {
+	s = vocabExemptPattern.ReplaceAllString(s, "")
+	if weftnameOK {
+		s = weftnamePackagePattern.ReplaceAllString(s, "")
+	}
 	lower := strings.ToLower(s)
 	return strings.Contains(lower, "weft") || strings.Contains(lower, "warp")
 }
@@ -622,9 +798,10 @@ func failsBareVocabularyCheck(dir string, bareIdent, bareLiteralOrComment bool) 
 // not matter for it). f must have been parsed with parser.ParseComments so f.Comments is
 // populated.
 func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit bool) {
+	weftnameOK := importsWeftname(f)
 	for _, cg := range f.Comments {
 		text := cg.Text()
-		if bareVocabularyToken(text) {
+		if bareVocabularyTokenIn(text, weftnameOK) {
 			bareLiteralOrComment = true
 		}
 		if fabricSenseHostPhrase(text) {
@@ -635,7 +812,7 @@ func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.Ident:
-			if bareVocabularyToken(node.Name) {
+			if bareVocabularyTokenIn(node.Name, weftnameOK) {
 				bareIdent = true
 			}
 			if hostGeometryIdentifiers[strings.ToLower(node.Name)] {
@@ -643,7 +820,7 @@ func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit
 			}
 		case *ast.BasicLit:
 			if node.Kind == token.STRING {
-				if bareVocabularyToken(node.Value) {
+				if bareVocabularyTokenIn(node.Value, weftnameOK) {
 					bareLiteralOrComment = true
 				}
 				if fabricSenseHostPhrase(node.Value) {
@@ -667,19 +844,16 @@ func importsWeftname(f *ast.File) bool {
 	return false
 }
 
-// TestEnforcement_FabricVocabulary is the machine check that keeps the fabric-weft-visibility
-// leak this task closes from reopening. Per decisions enforcement-test and
-// fabric-vocabulary-rule, it fails any production .go file under internal/ or cmd/, outside the
-// owner set, that contains the bare token "weft" or "warp" (in an identifier, a string literal,
-// or a comment); it fails any such file, owner set or not, that contains a fabric-sense "host"
-// phrase -- host is retired, not merely scoped, so the owner set never carves out a host hit. It
-// also fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports
-// internal/weftname.
-// It additionally walks every internal/**/*.md file (a plain walk, not a //go:embed parse, so a
-// future non-embedded template is policed rather than silently skipped) for the same bare-token
-// and host-phrase rules. *_test.go files are excluded from all three rules -- rule (3) included,
-// since internal/lyxcwd/geometry_test.go legitimately imports internal/weftname to test
-// weftname.SiblingPath.
+// TestEnforcement_FabricVocabulary is the machine check that keeps the fabric-weft-visibility leak this task closes from reopening.
+// The bare-token rule fails any file in fabricVocabularyFailures's scope, outside the owner set,
+// that contains "weft" or "warp" (in an identifier, a string literal or a comment) beyond the vocabExempt spellings;
+// the scope is every test file, the non-test Go and the doc files under the roots it names,
+// and the root CLAUDE.md and README.md, minus vocabScanAllowlist.
+// The host-phrase rule fails any production file or markdown body in its scope, owner set or not --
+// host is retired, not merely scoped, so the owner set never carves out a host hit.
+// The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,
+// except weftnameTestImporter, which tests weftname.SiblingPath.
+// The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather than silently skipped.
 func TestEnforcement_FabricVocabulary(t *testing.T) {
 	parseWithComments := func(t *testing.T, src string) *ast.File {
 		t.Helper()
@@ -717,7 +891,7 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 		})
 
 		t.Run("embedded_md_style_body_with_weft_fails", func(t *testing.T) {
-			if !bareVocabularyToken("This template mentions the weft sibling directory.") {
+			if !bareVocabularyToken("This template mentions the weft side directory.") {
 				t.Error("expected weft in a markdown-style body to be detected")
 			}
 		})
@@ -821,50 +995,10 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 	})
 
 	t.Run("tree-scan", func(t *testing.T) {
-		var failures []string
-		fail := func(relPath, reason string) {
-			failures = append(failures, relPath+": "+reason)
-		}
-
-		// Rules (1)-(3): production .go files under internal/ and cmd/.
-		goScanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(file *scankit.File) {
-			relPath := file.Rel
-			dir := filepath.ToSlash(filepath.Dir(relPath))
-
-			f := file.AST(t, parser.ParseComments|parser.SkipObjectResolution)
-
-			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
-			if !shouldSkipBareVocabularyCheck(dir) && failsBareVocabularyCheck(dir, bareIdent, bareLiteralOrComment) {
-				fail(relPath, "bare weft/warp token outside the owner set")
-			}
-			if hostHit {
-				fail(relPath, "fabric-sense host phrase")
-			}
-			if !weftnameImportOwners[dir] && importsWeftname(f) {
-				fail(relPath, "imports internal/weftname outside its owner set")
-			}
-		})
-
-		// Coverage additionally includes a plain internal/**/*.md and contracts/stencils/**/*.md walk --
-		// not a //go:embed parse, so a future non-embedded template is policed rather than
-		// silently skipped. contracts/stencils/ is a walked root alongside internal/ so a prompt
-		// relocated out of internal/ (see contracts/stencils/stencils.go) does not silently leave
-		// Fabric Vocabulary coverage.
-		mdOpts := scankit.Options{Roots: []string{"internal", "contracts/stencils"}, Exts: []string{".md"}, Filter: scankit.All}
-		mdVisitCount := scankit.Walk(t, mdOpts, func(file *scankit.File) {
-			relPath := file.Rel
-			dir := filepath.ToSlash(filepath.Dir(relPath))
-			text := string(file.Data)
-
-			if !fabricVocabularyOwners[dir] && bareVocabularyToken(text) {
-				fail(relPath, "bare weft/warp token outside the owner set")
-			}
-			if fabricSenseHostPhrase(text) {
-				fail(relPath, "fabric-sense host phrase")
-			}
-		})
-		scankit.RequireFloor(t, goScanned, 1, "fabric vocabulary Go walk")
-		scankit.RequireFloor(t, mdVisitCount, 1, "fabric vocabulary markdown walk")
+		// The walk is a plain file walk, not a //go:embed parse, so a future non-embedded template
+		// is policed rather than silently skipped.
+		failures, scanned := fabricVocabularyFailures(t, "")
+		scankit.RequireFloor(t, scanned, 1, "fabric vocabulary walk")
 
 		if len(failures) > 0 {
 			t.Errorf("fabric-vocabulary leak found:\n%s", strings.Join(failures, "\n"))

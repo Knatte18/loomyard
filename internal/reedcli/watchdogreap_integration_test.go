@@ -10,8 +10,8 @@
 //
 // Every case drives runWatchdogLoop directly, in-process, against a hub built through hubforge (per
 // the hubforge Fabric-Fixture Invariant) with compressed timings from compressedReapTiming, and never
-// spawns a `lyx reed watchdog` process of any kind: CONSTRAINTS.md's Live-Substrate Spawn
-// Observability rule bars re-execing the test binary, which is exactly what a live daemon spawn would
+// spawns a `lyx reed watchdog` process of any kind: PATTERN-spawn-observability
+// bars re-execing the test binary, which is exactly what a live daemon spawn would
 // do under `go test` (see watchdog_integration_test.go's file-level comment), and suppressWatchdogSpawn
 // exists to prevent it.
 package reedcli

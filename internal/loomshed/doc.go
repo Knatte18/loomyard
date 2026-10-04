@@ -2,7 +2,7 @@
 // status seeder, and its own cancellation helpers. Loom's ordered producer list itself moved to
 // contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from
 // it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
-// the Told-Geometry Invariant in CONSTRAINTS.md.
+// PATTERN-told-geometry.
 //
 // The stops its gate rows halt on each name a way forward, tabulated in contracts/specs/refusal-spec.md.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.

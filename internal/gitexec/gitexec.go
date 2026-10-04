@@ -15,7 +15,7 @@
 //
 // Args passed to either form are rendered verbatim into any resulting
 // *GitError, with no redaction — callers must not pass credentials in args.
-// CONSTRAINTS.md's gitexec Checked-Call Invariant is the mechanism that
+// PATTERN-gitexec-checked-call is the mechanism that
 // keeps every remaining raw call site (RunGit, or a direct exec.Command)
 // deliberate rather than accidental.
 

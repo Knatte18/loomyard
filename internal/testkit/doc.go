@@ -7,5 +7,5 @@
 // A fixture used by one package stays in that package's _test.go files.
 // A package an import cycle bars from a kit keeps exactly one local copy.
 //
-// The Testkit Invariant in CONSTRAINTS.md states the rules; enforcement_test.go scans the import rules.
+// PATTERN-testkit states the rules; enforcement_test.go scans the import rules.
 package testkit

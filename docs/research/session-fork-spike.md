@@ -115,7 +115,7 @@ Agent tool with `subagent_type` omitted and no `name`): one explorer strand expl
 
 ## Follow-up 2: 8-lens handler run (E-arm) — the burler phase shape works
 
-A second fork-subagent run tested the intended burler shape at scale (sonnet): handler explores → spawns **8 unnamed lens forks in one message** + does its own **holistic** review (architecture, cross-file invariants, CONSTRAINTS fit — the level no narrow lens covers) → consolidates everything into one review with origin labels and a rejected-section (`results/e-arm-usage.md`, `results/e-arm-consolidated.md`).
+A second fork-subagent run tested the intended burler shape at scale (sonnet): handler explores → spawns **8 unnamed lens forks in one message** + does its own **holistic** review (architecture, cross-file invariants, PATTERN fit — the level no narrow lens covers) → consolidates everything into one review with origin labels and a rejected-section (`results/e-arm-usage.md`, `results/e-arm-consolidated.md`).
 
 - All 8 forks ran in parallel (concurrency cap ≈ min(16, cores−2), queueing not errors beyond it — not reached here).
   Every fork's first request: **73,078 cache_read / 73 cache_creation** — effectively perfect prefix sharing at N=8.

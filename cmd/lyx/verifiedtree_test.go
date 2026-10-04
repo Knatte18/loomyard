@@ -1,4 +1,4 @@
-// verifiedtree_test.go enforces CONSTRAINTS.md's Verified-Tree Invariant:
+// verifiedtree_test.go enforces `PATTERN-verified-tree`:
 // every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.
 // It is a tripwire over production source, like constraintchokepoint_test.go: a same-line substring scan that skips comment-only lines.
 // It catches a site that bypasses verifytree.Verify or brings back the retired verify-pending marker, not every way a verify could be spelled.
@@ -58,7 +58,7 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 				seen[site] = true
 				// Without the paren: the landing gate holds the function as a seam value, not a direct call.
 				if !callsAny(f.Data, "verifytree.Verify") {
-					t.Errorf("Verified-Tree Invariant violated (see CONSTRAINTS.md): %s is a plan-verify site and does not call verifytree.Verify", site)
+					t.Errorf("`PATTERN-verified-tree` violated: %s is a plan-verify site and does not call verifytree.Verify", site)
 				}
 			}
 		}
@@ -81,7 +81,7 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 			allowedSeen[f.Rel] = true
 			return
 		}
-		t.Errorf("Verified-Tree Invariant violated (see CONSTRAINTS.md): %s calls verifyrun.Run; a plan verify goes through verifytree.Verify", f.Rel)
+		t.Errorf("`PATTERN-verified-tree` violated: %s calls verifyrun.Run; a plan verify goes through verifytree.Verify", f.Rel)
 	})
 	scankit.RequireFloor(t, scanned, 20, "verified-tree verifyrun scan")
 	for rel := range verifyRunAllowed {
@@ -95,7 +95,7 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
 		if callsAny(f.Data, retiredMarkerName) {
-			t.Errorf("Verified-Tree Invariant violated (see CONSTRAINTS.md): %s names the retired %s marker", f.Rel, retiredMarkerName)
+			t.Errorf("`PATTERN-verified-tree` violated: %s names the retired %s marker", f.Rel, retiredMarkerName)
 		}
 	})
 	scankit.RequireFloor(t, scanned, 20, "verified-tree retired-marker scan")

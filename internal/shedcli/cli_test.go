@@ -21,7 +21,7 @@ import (
 // Resolve performs, without spawning git.
 func fixtureLocation(t *testing.T) *lyxcwd.Location {
 	t.Helper()
-	return &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	return &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 }
 
 // TestArmFromSeed_RunIDDefaultsToSelf asserts an omitted run-id positional (nil args) addresses

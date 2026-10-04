@@ -111,7 +111,7 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 			c := &battenCLI{driverFlag: tt.driverFlag, childDriverFlag: tt.childDriverFlag}
 
 			err := c.armSeed(loc, "some-slug", "run")

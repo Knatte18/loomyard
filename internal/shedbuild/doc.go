@@ -2,7 +2,7 @@
 // assembling a Recipe plus a caller-supplied shedrecipe.Env into the []shedengine.ProducerDef that
 // shedengine.Shed already consumes unchanged.
 //
-// This package holds the Told-Geometry Invariant in the form CONSTRAINTS.md pins: Load reads
+// This package holds PATTERN-told-geometry: Load reads
 // exactly the absolute path it is told, and the package derives no path of its own.
 //
 // Parse is filesystem-free but Build is not, because three registry constructors reach disk at

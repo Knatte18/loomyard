@@ -21,6 +21,11 @@
 //   - RemoveLinksIn(dir string) (int, error): Scans the immediate children of dir,
 //     removes each link found, and returns the count. Regular files and real directories
 //     are left untouched. Returns (0, err) if dir does not exist.
+//
+// Only the symlink path has been exercised: every test and hardening round ran on Linux, so the
+// Windows junction path is reasoned about rather than executed.
+// internal/fabricengine's package documentation lists the platform-dependent code this leaves
+// unverified and what closing the gap takes.
 package fslink
 
 import (

@@ -1,7 +1,7 @@
 //go:build integration
 
 // reedgeom_integration_test.go drives ReedGeometry against a real hub from hubforge:
-// the prime's geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or its default run's seed records when the origin names none,
+// the prime's geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none,
 // and a hub with no .lyx-shortname yields an empty shortname and no error.
 
 package hubgeom_test
@@ -15,7 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 func TestReedGeometry_PrimeCarriesShortnameOnly(t *testing.T) {
@@ -33,7 +32,7 @@ func TestReedGeometry_PrimeCarriesShortnameOnly(t *testing.T) {
 	}
 }
 
-func TestReedGeometry_TaskWorktreeCarriesSlugAndSeededParent(t *testing.T) {
+func TestReedGeometry_TaskWorktreeCarriesSlugAndOriginParent(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	const slug = "naming-task"
 	hubforge.AddPair(t, h, slug)
@@ -58,22 +57,29 @@ func TestReedGeometry_TaskWorktreeCarriesSlugAndSeededParent(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("ReadOriginFor = %v, found %v", err, found)
 	}
+	origin.ParentWorktree = "other-task"
+	if err := fabricengine.WriteOrigin(&fabricengine.Mutations{}, l, slug, origin); err != nil {
+		t.Fatalf("WriteOrigin with another parent_worktree: %v", err)
+	}
+	const parent = hubforge.TestShortname + ":other-task:orch"
+	after, err := hubgeom.ReedGeometry(l)
+	if err != nil {
+		t.Fatalf("ReedGeometry(task) after replanting the parent: %v", err)
+	}
+	if after.ParentName != parent {
+		t.Errorf("ParentName after replanting = %q; want %q", after.ParentName, parent)
+	}
+
 	origin.ParentWorktree = ""
 	if err := fabricengine.WriteOrigin(&fabricengine.Mutations{}, l, slug, origin); err != nil {
 		t.Fatalf("WriteOrigin without parent_worktree: %v", err)
 	}
-
-	const parent = "tst:hub"
-	seed := shedrun.Seed{Recipe: shedrun.RecipeNames()[0], Driver: shedrun.DriverGo, Parent: parent}
-	if err := shedrun.WriteSeed(l, shedrun.SelfRunID, seed); err != nil {
-		t.Fatalf("WriteSeed: %v", err)
-	}
-	after, err := hubgeom.ReedGeometry(l)
+	none, err := hubgeom.ReedGeometry(l)
 	if err != nil {
-		t.Fatalf("ReedGeometry(task) after seeding: %v", err)
+		t.Fatalf("ReedGeometry(task) without a parent worktree: %v", err)
 	}
-	if after.ParentName != parent {
-		t.Errorf("ParentName after seeding = %q; want %q", after.ParentName, parent)
+	if none.ParentName != "" {
+		t.Errorf("ParentName without a parent worktree = %q; want empty", none.ParentName)
 	}
 }
 

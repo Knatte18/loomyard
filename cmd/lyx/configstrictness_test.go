@@ -5,7 +5,7 @@
 // this guard walks every non-test *.go file under the module root, collects the
 // package directory of every configengine.LoadOrTemplate( call site and every
 // configengine.Load( call site, and asserts each collected set equals its pinned set
-// exactly in both directions. See CONSTRAINTS.md's Config Strictness Invariant.
+// exactly in both directions. See `PATTERN-config-strictness`.
 //
 // internal/configengine itself is excluded from both collected sets as the
 // declaration site: its own Load and LoadOrTemplate function bodies never contain the
@@ -45,8 +45,8 @@ import (
 // configStrictnessDegradingSet is the pinned set of module-relative, slash-separated
 // package directories that call configengine.LoadOrTemplate -- the degrading loading
 // policy, where an absent _lyx/ directory or absent config file resolves the caller's
-// embedded template instead of erroring. See CONSTRAINTS.md's Config Strictness
-// Invariant membership rule: a module belongs here when it has, or is slated to have,
+// embedded template instead of erroring. See `PATTERN-config-strictness`
+// for the membership rule: a module belongs here when it has, or is slated to have,
 // a standalone entry point.
 var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine": true,
@@ -59,8 +59,8 @@ var configStrictnessDegradingSet = map[string]bool{
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated
 // package directories that call configengine.Load -- the strict loading policy, where
-// an absent _lyx/ directory or absent config file is an error. See CONSTRAINTS.md's
-// Config Strictness Invariant: a module stays here when it only ever runs inside a
+// an absent _lyx/ directory or absent config file is an error. See
+// `PATTERN-config-strictness`: a module stays here when it only ever runs inside a
 // hub, where an absent config means the hub is broken.
 var configStrictnessStrictSet = map[string]bool{
 	"internal/fabricengine": true,
@@ -103,10 +103,10 @@ func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
 	scankit.RequireFloor(t, scanned, configStrictnessMinScannedFiles, "config strictness guard")
 
 	if diff := configStrictnessDiffSets(configStrictnessDegradingSet, collectedDegrading); diff != "" {
-		t.Errorf("Config Strictness Invariant violated (see CONSTRAINTS.md): configengine.LoadOrTemplate( call-site package set drifted from the pinned degrading set:\n%s", diff)
+		t.Errorf("`PATTERN-config-strictness` violated: configengine.LoadOrTemplate( call-site package set drifted from the pinned degrading set:\n%s", diff)
 	}
 	if diff := configStrictnessDiffSets(configStrictnessStrictSet, collectedStrict); diff != "" {
-		t.Errorf("Config Strictness Invariant violated (see CONSTRAINTS.md): configengine.Load( call-site package set drifted from the pinned strict set:\n%s", diff)
+		t.Errorf("`PATTERN-config-strictness` violated: configengine.Load( call-site package set drifted from the pinned strict set:\n%s", diff)
 	}
 }
 

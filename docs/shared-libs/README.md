@@ -1,6 +1,6 @@
 # Shared internal libraries
 
-Loomyard's user-facing modules (`board`, `warp`, `ide`, `reed`) are self-contained: all of a module's *domain* logic and its deep test suite live in that module's package and nowhere else.
+Loomyard's user-facing modules (`board`, `fabric`, `ide`, `reed`) are self-contained: all of a module's *domain* logic and its deep test suite live in that module's package and nowhere else.
 What they share is a thin layer of **infrastructure plumbing** — mechanical helpers with no opinion about tasks, worktrees, or panes.
 See [overview.md](../overview.md).
 
@@ -9,7 +9,7 @@ It carries *no* domain logic.
 The command *sequences* (which git calls, which lock files, which config keys) stay in the modules.
 Each shared lib also carries its own deep tests, so it is vetted plumbing, not an untested dependency.
 
-See [roadmap.md](../../manifest/roadmap.md) milestones 2–3 for the extraction order.
+The extraction order is tracked on the board.
 
 ## Libraries
 

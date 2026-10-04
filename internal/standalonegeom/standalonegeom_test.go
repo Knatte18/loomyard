@@ -56,6 +56,9 @@ func TestBurlerGeometry(t *testing.T) {
 	if got.AnchorPath != stateDir {
 		t.Errorf("BurlerGeometry().AnchorPath = %q; want %q (stateDir)", got.AnchorPath, stateDir)
 	}
+	if got.RepoRoot != target {
+		t.Errorf("BurlerGeometry().RepoRoot = %q; want %q (target)", got.RepoRoot, target)
+	}
 	// WorktreeRoot and AnchorPath asserted in the same case: the whole reason the two-root
 	// split exists is that they differ here, with a fixture target not under stateDir.
 	if got.WorktreeRoot == got.AnchorPath {
@@ -263,6 +266,9 @@ func TestWebsterGeometry(t *testing.T) {
 	}
 	if got.WorktreeRoot != target {
 		t.Errorf("WebsterGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
+	}
+	if got.RepoRoot != target {
+		t.Errorf("WebsterGeometry().RepoRoot = %q; want %q (target)", got.RepoRoot, target)
 	}
 	// AnchorRoot and WorktreeRoot asserted in the same case, for the same reason
 	// as the reed test's PaneCwd/AnchorPath pair.

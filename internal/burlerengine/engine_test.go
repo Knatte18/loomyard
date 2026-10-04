@@ -557,30 +557,46 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 // composePrompt as patternDirective, and composePrompt fills it into the instruction-1 values map
 // only, through stencil.FillOptional with pattern_directive in the optional set, so instructions 2
 // and 3 never receive it and the orchestrator prompt never carries it.
-// The active sub-test plants root/_lyx/PATTERN.md before Run; the inactive sub-test plants nothing.
-// Both assert on instruction-1-explore.md's disk content for the literal relative pointer
-// "_lyx/PATTERN.md" that every role variant carries — the pair is what makes the assertion
+// Each sub-test plants PATTERN.md at the repo root, or somewhere else for the negative cases,
+// before Run, and asserts on instruction-1-explore.md's disk content for the inlined overview text.
+// The subpath-anchored cases tell WorktreeRoot and AnchorPath a subdirectory of the repo root, as a
+// hub with a non-"." AnchorRel does, so a directive read through either of them instead of RepoRoot
+// fails here.
+// The pair of active and inactive cases is what makes the assertion
 // meaningful, since a presence-only assertion cannot distinguish a working read from a template that
 // hardcodes the text.
 func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
+	const overview = "# PATTERN\n\n- PATTERN-demo: the demo rule\n"
 	tests := []struct {
 		name       string
-		writeFile  bool
+		patternAt  string // directory under the repo root holding PATTERN.md, "" for none
+		anchorRel  string // the told WorktreeRoot and AnchorPath, relative to the repo root
 		wantPinned bool
 	}{
-		{name: "PATTERN active", writeFile: true, wantPinned: true},
-		{name: "PATTERN inactive", writeFile: false, wantPinned: false},
+		{name: "PATTERN active", patternAt: ".", anchorRel: ".", wantPinned: true},
+		{name: "PATTERN inactive", patternAt: "", anchorRel: ".", wantPinned: false},
+		{name: "PATTERN active, subpath-anchored", patternAt: ".", anchorRel: "sub/dir", wantPinned: true},
+		{name: "PATTERN only under the anchor path", patternAt: "sub/dir", anchorRel: "sub/dir", wantPinned: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root, p := newEngineTestProfile(t)
-			if tt.writeFile {
-				patternDir := filepath.Join(root, lyxdirs.LyxDirName)
-				if err := os.MkdirAll(patternDir, 0o755); err != nil {
-					t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+			anchorPath := filepath.Join(root, filepath.FromSlash(tt.anchorRel))
+			if tt.anchorRel != "." {
+				// The profile's relative paths resolve against WorktreeRoot, which is the anchor path here.
+				if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", anchorPath, err)
 				}
-				if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+				for _, name := range []string{"target.txt", "fasit.txt"} {
+					if err := os.WriteFile(filepath.Join(anchorPath, name), []byte(name), 0o644); err != nil {
+						t.Fatalf("WriteFile(%s) = %v; want nil", name, err)
+					}
+				}
+			}
+			if tt.patternAt != "" {
+				patternPath := filepath.Join(root, filepath.FromSlash(tt.patternAt), "PATTERN.md")
+				if err := os.WriteFile(patternPath, []byte(overview), 0o644); err != nil {
 					t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 				}
 			}
@@ -589,13 +605,13 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				fixerContent:  "nothing fixed",
 				result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 			}
-			e := newEngineForTest(t, root, shuttle)
+			e := New(shuttle, Geometry{WorktreeRoot: anchorPath, AnchorPath: anchorPath, RepoRoot: root}, Config{}, newTestStencilsDir(t), "")
 
 			if _, err := e.Run(p, RunOpts{}); err != nil {
 				t.Fatalf("Run() = %v; want nil error", err)
 			}
 
-			burlerDir := filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName, "burler")
+			burlerDir := filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "burler")
 			entries, err := os.ReadDir(burlerDir)
 			if err != nil {
 				t.Fatalf("ReadDir(%q) = %v; want nil", burlerDir, err)
@@ -610,9 +626,9 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				t.Fatalf("ReadFile(instruction-1-explore.md) = %v; want nil", err)
 			}
 
-			gotPinned := strings.Contains(string(content), "_lyx/PATTERN.md")
+			gotPinned := strings.Contains(string(content), overview)
 			if gotPinned != tt.wantPinned {
-				t.Errorf("instruction-1-explore.md contains \"_lyx/PATTERN.md\" = %v; want %v", gotPinned, tt.wantPinned)
+				t.Errorf("instruction-1-explore.md contains the PATTERN overview = %v; want %v", gotPinned, tt.wantPinned)
 			}
 		})
 	}

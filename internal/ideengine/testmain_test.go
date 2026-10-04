@@ -1,7 +1,7 @@
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so ideengine's git-spawning fixtures never
-// inherit the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment
-// Invariant).
+// inherit the operator's global gitconfig (see
+// PATTERN-hermetic-git-tests).
 // The binary also runs under tmux isolation through tmuxkit.Main.
 
 package ideengine

@@ -22,7 +22,7 @@ import (
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	t.Parallel()
 
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	geom := websterengine.Geometry{
 		WebsterDir:  "/webster",
 		StencilsDir: "/stencils",

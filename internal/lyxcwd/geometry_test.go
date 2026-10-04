@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestWeftSiblingPath verifies that weftname.SiblingPath joins hub and slug with weftname.Suffix.
-func TestWeftSiblingPath(t *testing.T) {
+// TestSiblingPath verifies that weftname.SiblingPath joins hub and slug with weftname.Suffix.
+func TestSiblingPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

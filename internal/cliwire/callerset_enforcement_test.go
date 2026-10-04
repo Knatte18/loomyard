@@ -76,7 +76,7 @@ func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
 		t.Errorf("Cliwire Sole-Wiring Invariant violated: standalonestate.Derive is pinned to %s alone "+
 			"in production code, but found call sites in: %v -- a <module>cli must derive its state "+
 			"directory through cliwire.Module.ResolveStandalone rather than calling Derive itself "+
-			"(see CONSTRAINTS.md's Cliwire Sole-Wiring Invariant)",
+			"(see PATTERN-cliwire-sole-wiring)",
 			allowedDeriveCallerDir, failures)
 	}
 }

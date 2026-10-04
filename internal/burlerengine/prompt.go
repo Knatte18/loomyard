@@ -280,7 +280,7 @@ func clusterRulesBlock(p *Profile) string {
 		"findings ONLY as your final message, each with a severity, a class, a location, and a " +
 		"one-line summary.\n\n" +
 		"While the forks run, YOU (the handler) do your own HOLISTIC review — architecture, " +
-		"cross-file invariants, CONSTRAINTS-fit — and prepare the ground truths and the " +
+		"cross-file invariants, PATTERN-fit — and prepare the ground truths and the " +
 		"severity rubric you will judge every finding against.\n\n" +
 		"Consolidation: judge every fork finding and your own holistic findings with EQUAL " +
 		"skepticism, dedup findings that describe the same defect across lenses, tag every " +

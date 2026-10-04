@@ -29,17 +29,17 @@ func TestFormatFailures(t *testing.T) {
 		{
 			name: "SingleFailure",
 			report: preflight.Report{Failures: []preflight.Failure{
-				{Check: preflight.CheckWorktreeClean, Reason: "weft has 2 dirty paths"},
+				{Check: preflight.CheckWorktreeClean, Reason: "records side has 2 dirty paths"},
 			}},
-			want: "worktree-clean: weft has 2 dirty paths",
+			want: "worktree-clean: records side has 2 dirty paths",
 		},
 		{
 			name: "EveryFailureIsCarried",
 			report: preflight.Report{Failures: []preflight.Failure{
 				{Check: preflight.CheckGeometry, Reason: "no main worktree"},
-				{Check: preflight.CheckWorktreeClean, Reason: "weft has 2 dirty paths"},
+				{Check: preflight.CheckWorktreeClean, Reason: "records side has 2 dirty paths"},
 			}},
-			want: "geometry: no main worktree; worktree-clean: weft has 2 dirty paths",
+			want: "geometry: no main worktree; worktree-clean: records side has 2 dirty paths",
 		},
 	}
 

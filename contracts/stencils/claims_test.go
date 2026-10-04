@@ -220,7 +220,7 @@ var wordingClaims = []stencilClaims{
 	}},
 	{"burler-step-3-fix.md", BurlerStep3Fix, []claim{
 		{must: "not whether it gets fixed", why: "every finding is fixed, severity decides only the order"},
-		{must: "never push", why: "the fixer commits to warp source and never pushes"},
+		{must: "never push", why: "the fixer commits to code source and never pushes"},
 		{must: "nothing fixed", why: "the fixer report states when nothing was fixed"},
 	}},
 	{"bouncer-template-seed.md", BouncerTemplateSeed, focusEntryClaims()},

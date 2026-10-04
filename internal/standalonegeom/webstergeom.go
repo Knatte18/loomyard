@@ -36,6 +36,7 @@ func WebsterGeometry(target, stateDir string) websterengine.Geometry {
 	return websterengine.Geometry{
 		AnchorRoot:   stateDir,
 		WorktreeRoot: target,
+		RepoRoot:     target,
 		WebsterDir:   websterengine.Dir(stateDir),
 		ReportsDir:   websterengine.ReportsDir(stateDir),
 		ScratchDir:   websterengine.ScratchDir(stateDir),

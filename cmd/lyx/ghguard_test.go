@@ -2,7 +2,7 @@
 // package outside internal/githubclient may shell out to the `gh` CLI.
 // internal/githubclient owns the one bounded, timeout-guarded `gh auth token` shell-out (token.go);
 // every other package must go through it rather than growing its own credential path.
-// See CONSTRAINTS.md's GitHub Auth Invariant.
+// See `PATTERN-github-auth`.
 
 package main
 
@@ -60,7 +60,7 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("GitHub Auth Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-github-auth` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

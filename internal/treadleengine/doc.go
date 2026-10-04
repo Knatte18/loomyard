@@ -7,11 +7,32 @@
 //
 // The package has no consumer today. It was extracted out of a shipped
 // review-gate loop that has since been retired, and is kept for the future
-// Tenter module (see manifest/designs/hardener.md), whose behavior-review
+// Tenter module (see the board's `hardener` note), whose behavior-review
 // rounds need exactly this machinery with a different round-runner inside
 // it. Nothing in the tree calls Engine.Run outside this package's own tests
 // — treat every contract below as the shipped behavior a future consumer
 // inherits, not as something a live caller depends on today.
+//
+// # Text review and behaviour review
+//
+// A text-review round reads an artifact; a behaviour-review round runs a live-substrate module, reacts to what it observes and builds adversarial scenarios to break it.
+// The two share the review-round discipline (A-review before B-fix, no self-grading, commit-per-fix, fix everything) and differ along every other axis:
+// a text round runs in the worktree and is cheap, gated by an LLM verdict or a light command, and sits between phases on the spine;
+// a behaviour round needs a live sandbox repo with slow git and go operations, is gated deterministically (the smoke suite run N times concurrently, zero stray state),
+// costs hours per iteration, and runs on demand after loom.
+// This engine serves both through the RoundRunner seam; only the text profile exists today.
+//
+// # Why every round respawns
+//
+// A hand-run behaviour campaign kept one persistent orchestrator thread alive across rounds, and that thread accumulated where the module's bugs live and targeted each next round.
+// This engine replaces the thread with Go and fresh one-shot spawns, so no context window carries state between rounds:
+// a progress judge runs before the round (reads the handoff, decides what to target, writes the round's seed prompt),
+// the round agent runs against that prompt,
+// and the judge runs again after it (independently validates the findings, rewrites the handoff in place, decides whether another round is needed).
+// Validating independently is not optional: a round's own "merge-ready" verdict was wrong in three of the seven rounds of the campaign that taught this.
+// The handoff is the only accumulation vehicle, so what a live thread knew implicitly must be explicit in it.
+// The prime case is the finding-recurrence ledger, which records which findings reappeared in which rounds:
+// the handoff's prose is distilled, but the ledger stays lossless, because an in-place edit that tidies a finding that looks resolved silently disables stuck detection.
 //
 // # The RoundRunner seam — attempt-level, not round-level
 //
@@ -95,7 +116,7 @@
 // prose a RoundRunner MAY read or ignore entirely. A text-review profile
 // has no use for it (its rounds keep re-using a fixed rubric); the
 // capability exists for a future consumer (Tenter, see
-// manifest/designs/hardener.md) whose rounds benefit from dynamically
+// the board's `hardener` note) whose rounds benefit from dynamically
 // retargeted focus. Like every other
 // ephemeral call in this package, it is fail-safe end to end: a stencil-fill
 // failure, a shuttle Run error, a non-done outcome, or an empty/unreadable
@@ -130,7 +151,7 @@
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //
 // This package never imports internal/burlerengine or any internal/*cli
-// package (see CONSTRAINTS.md's Treadle Runner-Seam Invariant, enforced by
+// package (see PATTERN-treadle-runner-seam, enforced by
 // seam_enforcement_test.go). It defines its own vocabulary — Verdict,
 // AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/
 // Finding; a round-runner adapter maps its own domain's
@@ -150,7 +171,7 @@
 // (which resolves it from its own geometry) rather than resolved by this
 // package. Likewise treadleengine never touches fabric git; committing a
 // block's run-dir artifacts to fabric remains the loop OWNER's job, exactly
-// as CONSTRAINTS.md's Fabric Git Invariant already requires one layer up.
+// as PATTERN-fabric-git already requires one layer up.
 //
 // # Everything else carried over unchanged from the original loop
 //

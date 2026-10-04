@@ -27,8 +27,8 @@ const lyxBinEnvKey = "LYX_BIN"
 // executablePath is a package-local testability seam over os.Executable, modelled on
 // tools/sandbox/resolve.go's own devBinPath seam. Under `go test` the live value is the test
 // binary's path, so hermetic tests inject a path here instead of asserting against the real one —
-// re-exec'ing os.Executable() under go test is itself barred by CONSTRAINTS.md's Live-Substrate
-// Spawn Observability clause.
+// re-exec'ing os.Executable() under go test is itself barred by
+// PATTERN-spawn-observability.
 var executablePath = os.Executable
 
 // paneBinPrelude returns the pure, injectable pane-binary composition for exe on sh's dialect: sh's

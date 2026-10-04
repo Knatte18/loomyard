@@ -143,7 +143,7 @@ func pathExists(path string) bool {
 }
 
 // gitShow runs `git show <spec>` in dir and returns its stdout, fataling on failure -- used to
-// assert a path is committed, not merely written, on a pair's weft worktree: an uncommitted seed is
+// assert a path is committed, not merely written, on a pair's records worktree: an uncommitted seed is
 // as lost to a fresh clone as one never written, the machine-switch case the Seed-Child row exists
 // for.
 func gitShow(t *testing.T, dir, spec string) []byte {
@@ -205,9 +205,6 @@ func TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith(t *t
 	}
 	if !seedFound {
 		t.Fatalf("Seed-Child wrote no child seed")
-	}
-	if seed.Parent != "" {
-		t.Errorf("child seed Parent = %q; want empty: the parent is resolved from the origin record", seed.Parent)
 	}
 	if origin.ParentWorktree != h.Location.WorktreeName {
 		t.Errorf("child origin ParentWorktree = %q; want the prime %q", origin.ParentWorktree, h.Location.WorktreeName)
@@ -300,7 +297,7 @@ func TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErr
 // Seed-Child, Run-Shed, Worktree-Teardown.
 // It asserts the pair exists on disk after the create row, that the child's own
 // _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its
-// recipe, and is committed (not merely written) on the child's own weft pair, and that the pair is
+// recipe, and is committed (not merely written) on the child's own records pair, and that the pair is
 // gone after the teardown row.
 func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -348,9 +345,9 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 		t.Errorf("child seed recipe = %q; want %q (the Board task's own type)", seed.Recipe, "loom")
 	}
 
-	weftPath := h.PairWeftSibling(slug)
+	recordsPath := h.PairWeftSibling(slug)
 	seedRel := filepath.ToSlash(shedrun.SeedRel(childLocation, shedrun.SelfRunID))
-	committedData := gitShow(t, weftPath, "HEAD:"+seedRel)
+	committedData := gitShow(t, recordsPath, "HEAD:"+seedRel)
 	if !bytes.Equal(committedData, seedData) {
 		t.Errorf("committed seed at HEAD:%s = %q; want it to match the working-tree seed %q", seedRel, committedData, seedData)
 	}
@@ -370,12 +367,12 @@ func TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T
 	}
 
 	// Teardown's own top.Remove call passes remote: true -- a batten-driven teardown is the task's
-	// final removal, and nothing will ever re-adopt its weft branch, so the remote copy must not
+	// final removal, and nothing will ever re-adopt its records branch, so the remote copy must not
 	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
 	// it. See F-CLEANUP-REMOTE-ORPHAN.
-	weftBranch := fabricengine.WeftBranchName(slug)
-	if err := exec.Command("git", "-C", h.WeftBare, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run(); err == nil {
-		t.Errorf("weft branch %q still present on the remote after teardown; want it deleted alongside the local copy", weftBranch)
+	recordsBranch := fabricengine.WeftBranchName(slug)
+	if err := exec.Command("git", "-C", h.WeftBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
+		t.Errorf("records branch %q still present on the remote after teardown; want it deleted alongside the local copy", recordsBranch)
 	}
 }
 
@@ -402,22 +399,22 @@ func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *
 			h := hubforge.NewHub(t, ".")
 			slug := "batten-branch-left"
 			hubforge.AddPair(t, h, slug)
-			weftBranch := fabricengine.WeftBranchName(slug)
-			if !remoteBranchExists(h.WeftBare, weftBranch) {
-				t.Fatalf("precondition: %q not on the remote after the create", weftBranch)
+			recordsBranch := fabricengine.WeftBranchName(slug)
+			if !remoteBranchExists(h.WeftBare, recordsBranch) {
+				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
 			// Both worktrees removed, the remote copy kept -- the state a kill between the local
 			// and remote deletions leaves.
 			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("remove the pair without its remote copy: %v", err)
 			}
-			weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+			recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
 			if err != nil {
-				t.Fatalf("resolve weft repo root: %v", err)
+				t.Fatalf("resolve records repo root: %v", err)
 			}
 			if tt.keepLocal {
-				gitkit.MustRun(t, weftRepoRoot, "git", "fetch", "origin", weftBranch)
-				gitkit.MustRun(t, weftRepoRoot, "git", "branch", weftBranch, "FETCH_HEAD")
+				gitkit.MustRun(t, recordsRepoRoot, "git", "fetch", "origin", recordsBranch)
+				gitkit.MustRun(t, recordsRepoRoot, "git", "branch", recordsBranch, "FETCH_HEAD")
 			}
 
 			c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -426,11 +423,11 @@ func TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion(t *
 			if err := c.env.Teardown.Remove(context.Background()); err != nil {
 				t.Fatalf("Teardown.Remove() = %v; want nil", err)
 			}
-			if remoteBranchExists(h.WeftBare, weftBranch) {
-				t.Errorf("%q still on the remote after the re-entered teardown; want it deleted", weftBranch)
+			if remoteBranchExists(h.WeftBare, recordsBranch) {
+				t.Errorf("%q still on the remote after the re-entered teardown; want it deleted", recordsBranch)
 			}
-			if exec.Command("git", "-C", weftRepoRoot, "rev-parse", "--verify", "refs/heads/"+weftBranch).Run() == nil {
-				t.Errorf("%q still present locally after the re-entered teardown; want it deleted", weftBranch)
+			if exec.Command("git", "-C", recordsRepoRoot, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run() == nil {
+				t.Errorf("%q still present locally after the re-entered teardown; want it deleted", recordsBranch)
 			}
 		})
 	}
@@ -461,12 +458,12 @@ func remoteArchiveTagExists(bareDir, slug string) bool {
 	return err == nil && strings.TrimSpace(string(out)) != ""
 }
 
-// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably makes the weft origin refuse branch deletions during teardown and asserts the removal half archives the records, removes the pair and reports the failed remote deletion instead of done, then that a resume once the remote accepts the deletion finishes it.
+// TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably makes the records origin refuse branch deletions during teardown and asserts the removal half archives the records, removes the pair and reports the failed remote deletion instead of done, then that a resume once the remote accepts the deletion finishes it.
 func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-remote-fails"
 	hubforge.AddPair(t, h, slug)
-	weftBranch := fabricengine.WeftBranchName(slug)
+	recordsBranch := fabricengine.WeftBranchName(slug)
 	restore := refuseRemoteBranchDeletions(t, h.WeftBare)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -490,22 +487,22 @@ func TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably(t *testin
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
 	}
-	if remoteBranchExists(h.WeftBare, weftBranch) {
-		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
+	if remoteBranchExists(h.WeftBare, recordsBranch) {
+		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", recordsBranch)
 	}
 }
 
-// TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the weft origin before teardown and asserts the removal half halts on the failed archive with the pair still in place and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
+// TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the records origin before teardown and asserts the removal half halts on the failed archive with the pair still in place and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
 func TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
-	weftBranch := fabricengine.WeftBranchName(slug)
-	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	recordsBranch := fabricengine.WeftBranchName(slug)
+	recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
 	if err != nil {
-		t.Fatalf("resolve weft repo root: %v", err)
+		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -524,7 +521,7 @@ func TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably
 		t.Errorf("task worktree removed; want the pair left in place when the archive fails")
 	}
 
-	gitkit.MustRun(t, weftRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
+	gitkit.MustRun(t, recordsRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
 	}
@@ -534,8 +531,8 @@ func TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably
 	if !remoteArchiveTagExists(h.WeftBare, slug) {
 		t.Errorf("no archive/%s/ tag on the remote after the resumed teardown; want the records archived", slug)
 	}
-	if remoteBranchExists(h.WeftBare, weftBranch) {
-		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", weftBranch)
+	if remoteBranchExists(h.WeftBare, recordsBranch) {
+		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", recordsBranch)
 	}
 }
 
@@ -741,7 +738,7 @@ func TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete(t *test
 }
 
 // TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring
-// into the CreateWorktree closure: a leftover warp branch from an earlier torn-down pair (or a
+// into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair (or a
 // rolled-back create) must reach the closure's caller worded for an operator standing in prime,
 // never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the
 // task's branch. Calls c.env.CreateWorktree directly, the production closure, rather than
@@ -774,9 +771,9 @@ func TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime(t *testing
 }
 
 // TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd pins
-// taskWorktreeComplete's own fix: a warp worktree a SIGKILL-interrupted Add left behind, with no
+// taskWorktreeComplete's own fix: a code worktree a SIGKILL-interrupted Add left behind, with no
 // sibling and no junctions wired, must not be mistaken for a finished create. Reproduces the state a
-// process killed right after Add's own first step leaves -- the warp worktree and branch exist,
+// process killed right after Add's own first step leaves -- the code worktree and branch exist,
 // nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather
 // than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of
 // it.
@@ -821,11 +818,11 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 
 	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
 	// directly rather than through Add so the junctions this test needs missing stay missing.
-	weftRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
 	if err != nil {
-		t.Fatalf("resolve weft repo root: %v", err)
+		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairWeftSibling(slug))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairWeftSibling(slug))
 	portal := fabricengine.PortalLink(h.Location, slug)
 	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
 		t.Fatalf("mkdir portals: %v", err)
@@ -963,7 +960,7 @@ func TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow(t *testing.T
 
 // TestBattenIntegration_NonPrimeRefusal covers all four verbs' non-prime refusal, driven through
 // RunCLIIn with an injected cwd pointing at a real task worktree -- the runtime check standing in
-// for the Bookend invariant's missing enforcing test. Mirrors TestBattenIntegration_WeftPrimeRefusal's
+// for the Bookend invariant's missing enforcing test. Mirrors TestBattenIntegration_RecordsPrimeRefusal's
 // own four-verb completeness below.
 func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -991,22 +988,22 @@ func TestBattenIntegration_NonPrimeRefusal(t *testing.T) {
 	}
 }
 
-// TestBattenIntegration_WeftPrimeRefusal pins the other half of the Bookend guard: the weft sibling
+// TestBattenIntegration_RecordsPrimeRefusal pins the other half of the Bookend guard: the records sibling
 // of the prime is a repository of its own whose prime is itself, so a name comparison alone admits
-// it, and both bookend rows would then drive fabric's topology against the weft repository. Every
-// verb must refuse there before arming anything -- no seed written under the weft prime, nothing
+// it, and both bookend rows would then drive fabric's topology against the records repository. Every
+// verb must refuse there before arming anything -- no seed written under the records prime, nothing
 // created -- and the refusal must say which checkout the operator is standing in.
-func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
+func TestBattenIntegration_RecordsPrimeRefusal(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
-	weftPrimeCwd := h.PrimeWeft()
+	recordsPrimeCwd := h.PrimeWeft()
 
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
 			var out bytes.Buffer
-			exitCode := RunCLIIn(weftPrimeCwd, &out, []string{verb, "some-slug"})
+			exitCode := RunCLIIn(recordsPrimeCwd, &out, []string{verb, "some-slug"})
 
 			if exitCode != 1 {
-				t.Fatalf("RunCLIIn(%s) from the weft prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
+				t.Fatalf("RunCLIIn(%s) from the records prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
 			}
 			if !strings.Contains(out.String(), "weft sibling") {
 				t.Errorf("%s refusal = %q; want it to name the weft sibling", verb, out.String())
@@ -1017,8 +1014,8 @@ func TestBattenIntegration_WeftPrimeRefusal(t *testing.T) {
 		})
 	}
 
-	if pathExists(filepath.Join(weftPrimeCwd, "_lyx", "shed", "some-slug")) {
-		t.Errorf("a run directory was seeded under the weft prime; the refusal must land before the auto-seed")
+	if pathExists(filepath.Join(recordsPrimeCwd, "_lyx", "shed", "some-slug")) {
+		t.Errorf("a run directory was seeded under the records prime; the refusal must land before the auto-seed")
 	}
 }
 

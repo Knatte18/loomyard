@@ -189,6 +189,7 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		// with no error anywhere.
 		ReportName:      func(round int) string { return fmt.Sprintf("round-%d-review.md", round) },
 		StencilsDir:     env.StencilsDir,
+		WorktreeRoot:    env.WorktreeRoot,
 		SpecsDir:        env.SpecsDir,
 		RubricStencil:   rubricStencil,
 		Model:           model,

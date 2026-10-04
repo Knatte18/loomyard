@@ -26,6 +26,11 @@ func PortalsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.HubPath, portalsDirName)
 }
 
+// portalAnchorDir returns <hub>/_portals/<AnchorRel>, the directory holding this anchor's portal links.
+func portalAnchorDir(l *lyxcwd.Location) string {
+	return filepath.Join(PortalsDir(l), l.AnchorRel)
+}
+
 // PortalLink returns the path to the mirrored portal junction link for the given slug.
 // It is mirrored into the repo subpath structure, including AnchorRel segments.
 // Exported for the same external-test-package reason as PortalsDir.
@@ -89,7 +94,8 @@ func ensureContainedLinkParent(hubPath, link string) error {
 }
 
 // removePortal removes the portal junction, deletes only the link (not the
-// target), and prunes empty ancestors. Returns nil if the link does not exist.
+// target), and leaves the anchor directory in place. Returns nil if the link does not exist.
+// The prune stops at _portals/<AnchorRel>: only the pair's own entry goes, and a later pair under the anchor reuses it.
 // rec is the calling verb's own recorder, passed straight through to removeLink.
 func removePortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
@@ -108,7 +114,7 @@ func removePortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	if err := removeLink(rec, req); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}
-	// Successful/idempotent removal; prune empty ancestors
-	pruneEmptyAncestors(filepath.Dir(link), PortalsDir(l))
+	// Successful/idempotent removal; prune empty ancestors below the anchor directory, which stays
+	pruneEmptyAncestors(filepath.Dir(link), portalAnchorDir(l))
 	return nil
 }

@@ -19,13 +19,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // PullResult reports what Fabric.Pull actually did, on both sides independently, and — when a warp
-// history rewrite forced a reconcile — the re-anchor baseline and the weft content a caller should
-// treat as PATTERN-residue (potentially replayed against the wrong warp baseline).
+// history rewrite forced a reconcile — the re-anchor baseline.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type PullResult struct {
 	MutationRecord
@@ -60,27 +57,12 @@ type PullResult struct {
 	// when Reconciled is true.
 	AnchorWarpSHA string
 	// AnchorWeftSHA is that same entry's weft SHA — the baseline the
-	// PATTERN-residue range (PatternResidue) starts from. Populated only when
-	// Reconciled is true.
+	// weft-side baseline of the re-anchor. Populated only when Reconciled is true.
 	AnchorWeftSHA string
 	// ReanchorWeftSHA is the new empty weft anchor commit's own SHA, bound to
 	// NewWarpHEAD via its Warp-SHA trailer. Populated only when Reconciled is
 	// true.
 	ReanchorWeftSHA string
-	// PatternResidue lists the post-anchor weft commits (between
-	// AnchorWeftSHA and the weft HEAD at reconcile time) that touched
-	// _lyx/PATTERN.md or _lyx/pattern/... paths — content a caller should
-	// treat as potentially stale against the new warp baseline. Populated
-	// only when Reconciled is true.
-	PatternResidue []PatternResidueEntry
-}
-
-// PatternResidueEntry names one post-anchor weft commit and the
-// _lyx/PATTERN.md or _lyx/pattern/... paths it touched, as enumerated by
-// Fabric.Pull's reconcile branch (see patternResidueCommits).
-type PatternResidueEntry struct {
-	WeftSHA string
-	Paths   []string
 }
 
 // PartialPullError reports a Fabric.Pull call whose warp-side work did not complete — mirroring
@@ -382,8 +364,6 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	result.AnchorWarpSHA = anchor.WarpSHA
 	result.AnchorWeftSHA = anchor.WeftSHA
 
-	weftHEADBeforeAnchor, _ := f.weft.CurrentSHA()
-
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "reanchor", Err: err}
@@ -402,109 +382,6 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	result.Reconciled = true
 	result.ReanchorWeftSHA = reanchorSHA
 
-	residue, err := f.patternResidueCommits(anchor.WeftSHA, weftHEADBeforeAnchor)
-	if err != nil {
-		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "residue", Err: err}
-	}
-	result.PatternResidue = residue
-
 	return result, nil
 }
 
-// patternResidueCommits enumerates the weft commits in the exclusive range
-// fromWeftSHA..toWeftSHA that touch _lyx/PATTERN.md or _lyx/pattern/...
-// paths, via one `git log --name-only` invocation in f.weftPath. This is
-// Fabric.Pull's reconcile-branch helper: after a re-anchor, every weft
-// commit between the old anchor and weft HEAD at reconcile time was written
-// against a warp baseline that no longer exists on the rewritten upstream,
-// and any of them touching those PATTERN paths is exactly the content a
-// caller must treat as potentially stale.
-//
-// The pathspec strings (pattern.PathspecFile, pattern.PathspecDir) come from
-// internal/pattern's exported constants, themselves built from
-// lyxdirs.LyxDirName — internal/pattern is the single declarer of the
-// PATTERN path segments. Building these strings from lyxdirs.LyxDirName
-// rather than an inline literal is a review obligation, not a
-// machine-enforced one: TestEnforcement_GeometryLiterals matches whole
-// tokens by exact equality and cannot see "_lyx/PATTERN.md".
-//
-// Separator placement: unlike scanWarpSHATrailers (which uses no
-// --name-only), --name-only appends each commit's changed-file list as
-// separate lines AFTER that commit's --format output, so a trailing record
-// separator would land between one commit's own SHA and its own file list,
-// misassigning paths to the wrong commit. The record separator is therefore
-// placed at the START of the --format string, delimiting the boundary BEFORE
-// each commit's SHA rather than after it. warpSHATrailerFormatUnitSep and
-// warpSHATrailerFormatRecordSep (index.go) are reused unchanged, so the split
-// can never be confused by ordinary commit content.
-//
-// Anchor scope: the pathspec is pattern.PathspecFile/PathspecDir joined onto the pair's recorded
-// anchor via ScopedPathspec, the same way Fabric.Commit scopes its own routing prefixes.
-// A root pathspec would report an empty residue on a subpath-anchored hub — telling a caller
-// "nothing needs review" for exactly the commits that do, since that hub's PATTERN content lives at
-// <anchor>/_lyx/PATTERN.md and never at the weft worktree root.
-//
-// If fromWeftSHA == toWeftSHA there are no post-anchor commits at all, so
-// this returns (nil, nil) without spawning git. A non-zero git exit returns a
-// wrapped error; a real range with zero PATTERN-path-touching commits (empty
-// git-log output) also returns (nil, nil).
-func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]PatternResidueEntry, error) {
-	if fromWeftSHA == toWeftSHA {
-		return nil, nil
-	}
-
-	l, err := lyxcwd.ResolveWorktree(f.warpPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: resolve anchor for %s: %w", f.warpPath, err)
-	}
-
-	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
-	rangeArg := fromWeftSHA + ".." + toWeftSHA
-	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--"}
-	for _, spec := range ScopedPathspec(l.AnchorRel, []string{pattern.PathspecFile, pattern.PathspecDir}) {
-		args = append(args, filepath.ToSlash(spec))
-	}
-
-	stdout, err := gitexec.Run(args, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: scan PATTERN residue over %s in %s: %w", rangeArg, f.weftPath, err)
-	}
-
-	return parsePatternResidueRecords(stdout), nil
-}
-
-// parsePatternResidueRecords parses patternResidueCommits' git-log output —
-// one warpSHATrailerFormatRecordSep-delimited block per commit, each block
-// starting with "<SHA><unitSep>" followed by that commit's changed
-// _lyx/PATTERN.md or _lyx/pattern/... paths (one per line, from
-// --name-only) — into one
-// PatternResidueEntry per commit. Factored out as a pure helper so the
-// record-boundary parsing itself is easy to reason about independently of
-// the git spawn around it.
-func parsePatternResidueRecords(output string) []PatternResidueEntry {
-	var entries []PatternResidueEntry
-	for _, record := range strings.Split(output, warpSHATrailerFormatRecordSep) {
-		record = strings.Trim(record, "\n")
-		if record == "" {
-			continue
-		}
-
-		parts := strings.SplitN(record, warpSHATrailerFormatUnitSep, 2)
-		sha := strings.TrimSpace(parts[0])
-		if sha == "" {
-			continue
-		}
-
-		var paths []string
-		if len(parts) > 1 {
-			for _, line := range strings.Split(parts[1], "\n") {
-				path := strings.TrimSpace(line)
-				if path != "" {
-					paths = append(paths, path)
-				}
-			}
-		}
-		entries = append(entries, PatternResidueEntry{WeftSHA: sha, Paths: paths})
-	}
-	return entries
-}

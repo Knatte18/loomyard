@@ -1,7 +1,7 @@
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so lyxcwd's git-spawning fixtures never
-// inherit the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment
-// Invariant).
+// inherit the operator's global gitconfig (see
+// PATTERN-hermetic-git-tests).
 // This file lives in the external package lyxcwd_test, not the internal lyxcwd package: gitkit
 // imports lyxcwd (the gitkit Leaf Invariant's direction), so an internal test file importing
 // gitkit would close a test-build cycle.

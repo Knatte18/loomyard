@@ -1,5 +1,5 @@
-// leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from CONSTRAINTS.md's Cwd
-// Resolution Invariant: production code in internal/lyxcwd imports ONLY the standard library and
+// leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from PATTERN-cwd-resolution:
+// production code in internal/lyxcwd imports ONLY the standard library and
 // internal/gitexec — this is what keeps fabricengine -> logger -> lyxcwd acyclic.
 
 package lyxcwd

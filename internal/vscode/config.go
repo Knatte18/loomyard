@@ -3,6 +3,9 @@
 // It is responsible for config generation (settings.json and tasks.json), color-palette selection,
 // and launching VS Code.
 // The mill values (palette, settings keys, cmd /c code) are baked in — no external Python is read.
+//
+// Limitation: BuildWorkspace splices the prime's settings verbatim into a workspace file under _launchers/, so a relative path value (starting with ./ or ../) resolves against that file's directory, no longer against the prime's own folder.
+// RelativeSettingKeys names such keys so the caller can warn; no setting is rewritten.
 
 package vscode
 

@@ -48,7 +48,7 @@
 // containment, ownership, dirtiness — because force never fails: it is consulted only to make the
 // dirtiness check pass, never to cause a refusal of its own.
 //
-// See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant (added once this slice's guard test
+// See PATTERN-fabric-destruction-chokepoint (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
 //
 // Recording contract: every one of the nine executors below takes a leading `rec *Mutations`

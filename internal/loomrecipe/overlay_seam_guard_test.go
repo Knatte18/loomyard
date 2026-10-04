@@ -2,7 +2,7 @@
 // BurlerRound row whose target paths reach into the overlay tree (the durable _lyx directory) must
 // run fix-scope: overlay, and its partner Bouncer row must carry a commit_seam key matching the
 // overlay subdirectory those target paths share -- otherwise an approved overlay-round fix has no
-// committer, and the round's own writes stay uncommitted in the weft working tree.
+// committer, and the round's own writes stay uncommitted in the records working tree.
 //
 // This is the parse-level regression guard the shipped Discussion-Burler row's fix-scope: source
 // violation would have caught before it shipped: assertOverlayBurlerCommitSeams is one rule shared

@@ -618,7 +618,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.AnchorRoot, deps.Geom.StencilsDir, masterNotePath)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, masterNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}

@@ -504,12 +504,12 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := configengine.ConfigFile(boardDir, "warp")
-		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+		legacyFirstPath := configengine.ConfigFile(boardDir, "warp")
+		if err := os.WriteFile(legacyFirstPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
-		weftPath := configengine.ConfigFile(boardDir, "weft")
-		if err := os.WriteFile(weftPath, []byte("pathspec: _lyx custom-dir\n"), 0o644); err != nil {
+		legacySecondPath := configengine.ConfigFile(boardDir, "weft")
+		if err := os.WriteFile(legacySecondPath, []byte("pathspec: _lyx custom-dir\n"), 0o644); err != nil {
 			t.Fatalf("write weft.yaml: %v", err)
 		}
 
@@ -543,10 +543,10 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Errorf("fabric.yaml = %q; want migrated pathspec: _lyx custom-dir", got)
 		}
 
-		if _, err := os.Stat(warpPath); !os.IsNotExist(err) {
+		if _, err := os.Stat(legacyFirstPath); !os.IsNotExist(err) {
 			t.Errorf("warp.yaml still exists after migration; want pruned (stat err = %v)", err)
 		}
-		if _, err := os.Stat(weftPath); !os.IsNotExist(err) {
+		if _, err := os.Stat(legacySecondPath); !os.IsNotExist(err) {
 			t.Errorf("weft.yaml still exists after migration; want pruned (stat err = %v)", err)
 		}
 	})
@@ -558,8 +558,8 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := configengine.ConfigFile(boardDir, "warp")
-		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+		legacyFirstPath := configengine.ConfigFile(boardDir, "warp")
+		if err := os.WriteFile(legacyFirstPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
@@ -584,7 +584,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Errorf("fabric.yaml = %q; want template-default empty pathspec (weft.yaml was absent; _lyx is now structural, injected in code, never read from this key)", got)
 		}
 
-		if _, err := os.Stat(warpPath); !os.IsNotExist(err) {
+		if _, err := os.Stat(legacyFirstPath); !os.IsNotExist(err) {
 			t.Errorf("warp.yaml still exists after migration; want pruned (stat err = %v)", err)
 		}
 	})
@@ -596,8 +596,8 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := configengine.ConfigFile(boardDir, "warp")
-		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+		legacyFirstPath := configengine.ConfigFile(boardDir, "warp")
+		if err := os.WriteFile(legacyFirstPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
@@ -617,7 +617,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 		if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
 			t.Errorf("fabric.yaml was written on a dry run; want absent (stat err = %v)", err)
 		}
-		if _, err := os.Stat(warpPath); err != nil {
+		if _, err := os.Stat(legacyFirstPath); err != nil {
 			t.Errorf("warp.yaml was removed on a dry run; want it left alone (stat err = %v)", err)
 		}
 	})
@@ -633,8 +633,8 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 		if err := os.WriteFile(fabricPath, []byte("branch_prefix: existing/\npathspec: _lyx\n"), 0o644); err != nil {
 			t.Fatalf("write fabric.yaml: %v", err)
 		}
-		warpPath := configengine.ConfigFile(boardDir, "warp")
-		if err := os.WriteFile(warpPath, []byte("branch_prefix: stale/\n"), 0o644); err != nil {
+		legacyFirstPath := configengine.ConfigFile(boardDir, "warp")
+		if err := os.WriteFile(legacyFirstPath, []byte("branch_prefix: stale/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
@@ -654,7 +654,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 		if !contains(string(got), "branch_prefix: existing/") {
 			t.Errorf("fabric.yaml = %q; want its own pre-existing branch_prefix, not warp.yaml's stale one", got)
 		}
-		if _, err := os.Stat(warpPath); err != nil {
+		if _, err := os.Stat(legacyFirstPath); err != nil {
 			t.Errorf("warp.yaml was removed even though fabric.yaml already existed; want it left alone (stat err = %v)", err)
 		}
 	})
@@ -666,8 +666,8 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := configengine.ConfigFile(boardDir, "warp")
-		if err := os.WriteFile(warpPath, []byte("branch_prefix: [unterminated\n"), 0o644); err != nil {
+		legacyFirstPath := configengine.ConfigFile(boardDir, "warp")
+		if err := os.WriteFile(legacyFirstPath, []byte("branch_prefix: [unterminated\n"), 0o644); err != nil {
 			t.Fatalf("write corrupt warp.yaml: %v", err)
 		}
 
@@ -679,7 +679,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 		if len(fabricResult.MigratedFrom) != 0 {
 			t.Errorf("fabric.MigratedFrom = %v; want empty (warp.yaml is unparseable)", fabricResult.MigratedFrom)
 		}
-		if _, err := os.Stat(warpPath); err != nil {
+		if _, err := os.Stat(legacyFirstPath); err != nil {
 			t.Errorf("corrupt warp.yaml was removed; want it left alone for the operator to inspect (stat err = %v)", err)
 		}
 	})

@@ -83,8 +83,8 @@ Each has its own budget, separate from the repair cap.
 
   Never eligible: `awaiting`, `paused`, `busy`, `ownership`, a no-kind refusal, and an interrupted invocation under `interrupt_policy: handback`.
   `awaiting` and `paused` are never auto-resumed, by either re-step.
-- **Clean-tree guard**: skip the binary-change re-step, and stay parked, when `git -C <warp> status --porcelain` in the task's code worktree (the warp) lists any uncommitted change.
-  The driver's own stop reports, repair records and park marker never count: they live in the weft, which the warp reaches only through its `_lyx` and `.lyx` links, and the warp's git excludes both links, so porcelain there never lists them.
+- **Clean-tree guard**: skip the binary-change re-step, and stay parked, when `git -C <code-worktree> status --porcelain` in the task's code worktree lists any uncommitted change.
+  The driver's own stop reports, repair records and park marker never count: they live in fabric's records, which the code worktree reaches only through its `_lyx` and `.lyx` links, and its git excludes both links, so porcelain there never lists them.
   A skipped re-step is not retried when the tree turns clean; it waits for the next binary change or a resume.
 
 Before any self-initiated re-step, remove the park marker.
@@ -140,11 +140,11 @@ Restore a state the next step can proceed from, then step again.
 
 Repairs act through `lyx`'s own verbs, plus read-only git for diagnosis:
 
-- Partial `lyx fabric add` (worktrees created, a later step failed): `lyx fabric remove [--force] [--remote] <slug>` removes the pair; a warp branch it leaves behind falls under the stranded-branch exception.
+- Partial `lyx fabric add` (worktrees created, a later step failed): `lyx fabric remove [--force] [--remote] <slug>` removes the pair; a code branch it leaves behind falls under the stranded-branch exception.
 - Partial `lyx fabric remove`: re-run `lyx fabric remove [--force] <slug>`, or `lyx fabric prune --apply [--force]` for an orphaned half-pair.
-- Stranded remote weft branch: `lyx fabric cleanup --apply [--force] --remote`.
-- Stranded remote warp branch the failed step created and pushed: the stranded-branch exception.
-- Drifted or broken weft side of a pair: `lyx fabric reconcile`.
+- Stranded remote records branch: `lyx fabric cleanup --apply [--force] --remote`.
+- Stranded remote code branch the failed step created and pushed: the stranded-branch exception.
+- Drifted or broken records side of a pair: `lyx fabric reconcile`.
 - `lyx reed ...` only for strands the trace names as the failed step's own.
 
 Never: `lyx shed pause` as a repair, hand-edit a status file or `seed.json`, re-seed, force-push, or delete a branch or worktree the trace does not name as created by the failed step.
@@ -158,19 +158,19 @@ Traces can be swept before a later read, so each repair record copies the trace 
 
 ## Stranded-branch exception
 
-The one raw-git mutation: deleting a warp branch the failed step's trace proves it created.
-Warp branches only; a stranded weft branch goes through `lyx fabric cleanup`.
+The one raw-git mutation: deleting a code branch the failed step's trace proves it created.
+Code branches only; a stranded records branch goes through `lyx fabric cleanup`.
 
 - Local delete: a `branch_created` entry for exactly that branch in the failed step's trace or a child trace sharing its id, and no later `branch_deleted` entry for it.
   Run `git -C <repo> branch -D <branch>`.
 - Remote delete: a `branch_created` entry and a `branch_pushed` entry for exactly that branch, and no later `remote_branch_deleted` entry for it.
   Run `git -C <repo> push <remote> --delete <branch>`.
 - `<repo>` and `<remote>` come from the entry's `detail` (`side=warp repo=<abs> [remote=<name>]`).
-  A missing `detail`, a `side` other than `warp`, a missing `remote=` for a remote delete, or a repository path that no longer exists fails the rule, and the driver escalates.
+  A missing `detail`, any other `side`, a missing `remote=` for a remote delete, or a repository path that no longer exists fails the rule, and the driver escalates.
 - A `branch_pushed` entry alone never qualifies: it is recorded whenever an existing branch is pushed forward.
 - Never delete a branch carrying commits the trace does not attribute to the failed step.
 
-The Fabric Git Invariant in `CONSTRAINTS.md` binds `lyx`'s own code; this skill makes no commits.
+`PATTERN-fabric-git` binds `lyx`'s own code; this skill makes no commits.
 Each deletion is a repair record like any other.
 
 ## Repair cap

@@ -2,7 +2,7 @@
 // internal/fabricengine's production source contains no destructive primitive call outside
 // destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to
 // perform one.
-// See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant.
+// See `PATTERN-fabric-destruction-chokepoint`.
 //
 // This guard clones cmd/lyx/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
 // scankit supplies the module root and the production-file walk.
@@ -11,17 +11,17 @@
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
 //
 // "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
-// qualified "os.RemoveAll(" (e.g. warpprobe.go's allowlisted probe-clone teardown) AND a
+// qualified "os.RemoveAll(" (e.g. the allowlisted probe-clone teardown in internal/fabricengine) AND a
 // method-call spelling like destroy.go's own `root.RemoveAll(` — the os.Root-rooted removal the R3
 // containment fix routes through — neither of which the narrower "os.RemoveAll(" would match.
 // (An earlier binding also had a bare `var RemoveAll = os.RemoveAll` seam this token caught; that
 // seam was removed once the executors began removing through os.Root, but the bare token remains the
 // correct superset for the forms that survive.)
 //
-// "warp.ResetHard(" / "weft.ResetHard(" rather than ".ResetHard(": the broad ".ResetHard(" form
+// the two raw per-side handle forms of ".ResetHard(" rather than ".ResetHard(" itself: the broad form
 // would flag the *correctly migrated* callers, since the gated reset is reached as a method call
-// on the pair handle (e.g. `f.warp.ResetHard(sha)` inside destroy.go itself, or a future
-// `weft`-side caller). Banning the raw handles instead targets what is actually forbidden —
+// on the pair handle (e.g. the code-side handle's ResetHard inside destroy.go itself, or a future
+// records-side caller). Banning the raw handles instead targets what is actually forbidden —
 // reaching past the gate to the underlying repo field — and needs no leading dot, so it matches
 // under any receiver name.
 //
@@ -38,7 +38,7 @@
 // restore the guard's package-scoped intent.
 //
 // This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record
-// Invariant's guard (see CONSTRAINTS.md's Mutation Record Invariant). It pins two shapes by raw
+// Invariant's guard (see `PATTERN-mutation-record`). It pins two shapes by raw
 // source inspection alone, both against internal/fabricengine/destroy.go and the mutating result
 // types' declarations: that every one of destroy.go's nine executors declares a leading
 // `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord
@@ -94,15 +94,15 @@ var destructiveGuardAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
 	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
 		"under a repo-wide flock, never operator content"},
-	{Key: "internal/fabricengine/warpprobe.go", Why: "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
+	{Key: "internal/fabricengine/warpprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
 	{Key: "internal/fabricengine/mergestate.go", Why: "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
-		"weft gitdir, fabric-internal metadata, never operator content"},
+		"records-side gitdir, fabric-internal metadata, never operator content"},
 	{Key: "internal/fabricengine/junction.go", Why: "two audited sites, both removing a directory the same call just emptied by rename and " +
 		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
-		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
+		"adoptDotLyxContent's os.Remove(link) for the code-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
 		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption"},
 	{Key: "internal/fabricengine/hook.go", Why: "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
 		"ten lines earlier, on its own rollback path after a failed chain write"},
@@ -212,7 +212,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 			for _, tok := range destructiveGuardBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant), or add a destructiveGuardAllowlist entry in cmd/lyx/destructiveguard_test.go with a reason if this is a new audited exemption",
+						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see `PATTERN-fabric-destruction-chokepoint`), or add a destructiveGuardAllowlist entry in cmd/lyx/destructiveguard_test.go with a reason if this is a new audited exemption",
 						f.Rel, tok,
 					))
 				}
@@ -224,12 +224,12 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("Fabric Destruction Chokepoint Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-destruction-chokepoint` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
 // TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see
-// CONSTRAINTS.md's Mutation Record Invariant).
+// `PATTERN-mutation-record`).
 // It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
 //
 //  1. Every executor named in destructiveGuardRecordingExecutors declares a leading
@@ -253,7 +253,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	var scannedExecutors int
 	for _, e := range destructiveGuardRecordingExecutors {
 		if !strings.Contains(destroyContent, e.declPrefix) {
-			t.Errorf("internal/fabricengine/destroy.go: executor %s does not declare a leading `rec *Mutations` parameter (expected to find %q) — every executor in destroy.go must take a recorder per the Mutation Record Invariant (see CONSTRAINTS.md)", e.name, e.declPrefix)
+			t.Errorf("internal/fabricengine/destroy.go: executor %s does not declare a leading `rec *Mutations` parameter (expected to find %q) — every executor in destroy.go must take a recorder per `PATTERN-mutation-record`", e.name, e.declPrefix)
 			continue
 		}
 		scannedExecutors++
@@ -277,7 +277,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			continue
 		}
 		if firstField != "MutationRecord" {
-			t.Errorf("%s: mutating result type %s must embed MutationRecord as its first field (see CONSTRAINTS.md's Mutation Record Invariant); found %q", rt.file, rt.name, firstField)
+			t.Errorf("%s: mutating result type %s must embed MutationRecord as its first field (see `PATTERN-mutation-record`); found %q", rt.file, rt.name, firstField)
 			continue
 		}
 		scannedResultTypes++
@@ -301,7 +301,7 @@ func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 			continue
 		}
 		if firstField == "MutationRecord" {
-			t.Errorf("%s: read-only result type %s must NOT embed MutationRecord — the which-verbs-record scope decision is machine-held (see CONSTRAINTS.md's Mutation Record Invariant)", rt.file, rt.name)
+			t.Errorf("%s: read-only result type %s must NOT embed MutationRecord — the which-verbs-record scope decision is machine-held (see `PATTERN-mutation-record`)", rt.file, rt.name)
 			continue
 		}
 		scannedReadOnlyTypes++

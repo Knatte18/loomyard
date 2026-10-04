@@ -110,6 +110,9 @@ func TestBurlerGeometry(t *testing.T) {
 			if got.AnchorPath != anchorPath {
 				t.Errorf("BurlerGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
 			}
+			if got.RepoRoot != worktreeRoot {
+				t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
+			}
 			if got.WorktreeRoot == worktreeRoot {
 				// The subpath-anchored fixture must catch a later
 				// "simplification" that repoints BurlerGeometry's

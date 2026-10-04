@@ -17,7 +17,7 @@
 //
 // Adoption of UpdateJSON is deliberately at one consumer today — internal/fabricengine's
 // correspondence index.
-// No CONSTRAINTS.md invariant asserts universal use of this primitive, because an invariant
+// No PATTERN entry asserts universal use of this primitive, because an invariant
 // claiming every locked-JSON read-modify-write in the codebase goes through UpdateJSON would be
 // false on the day it landed.
 //

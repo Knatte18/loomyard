@@ -218,7 +218,7 @@ func TestRefGateConstantsMatchLedger(t *testing.T) {
 
 	for gate := range declaredSet {
 		if _, ok := ledger[gate]; !ok {
-			t.Errorf("shape.go declares refGate %q but ledger registers no policy for it; lookup would panic on the first ref reaching that gate (see CONSTRAINTS.md's Ref-Shape Registry Invariant)", gate)
+			t.Errorf("shape.go declares refGate %q but ledger registers no policy for it; lookup would panic on the first ref reaching that gate (see PATTERN-ref-shape-registry)", gate)
 		}
 	}
 	for gate := range ledger {

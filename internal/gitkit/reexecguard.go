@@ -43,7 +43,7 @@ func refuseCLIReexec() {
 		fmt.Fprintf(os.Stderr,
 			"gitkit: this test binary was invoked with positional argument %q — it is a Go test suite, not a CLI; "+
 				"refusing to run the full suite (a spawned child re-executing os.Executable() under go test reaches "+
-				"this path — see CONSTRAINTS.md, Live-Substrate Spawn Observability, and the 2026-07-30 header "+
+				"this path — see PATTERN-spawn-observability and the 2026-07-30 header "+
 				"re-exec incident)\n", arg)
 		os.Exit(2)
 	}

@@ -19,6 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
+// targetingRole is the agent-name role this module's targeting spawn carries.
+const targetingRole = "targeting"
+
 // runTargeting spawns the pre-round targeting call: reads a handoff and
 // writes a prose seed brief. Fail-safe: any failure — including the prompt's
 // stencilstore.Read — logs a Warn and returns ("", false), so the round runs
@@ -49,7 +52,7 @@ func runTargeting(stencilsDir string, sh Shuttle, name string, round int, previo
 		OutputFiles: []string{seedPath},
 		Model:       model,
 		Effort:      effort,
-		Role:        "targeting",
+		Role:        targetingRole,
 		Round:       strconv.Itoa(round),
 	}
 

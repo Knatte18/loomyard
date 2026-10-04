@@ -78,7 +78,7 @@ func TestFabricSync_SkipGitBypassNeedsNoFabricWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
 	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
 	committed, err := fabricSync(open, layout.AnchorRel, "bypass probe")
@@ -97,7 +97,7 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
 	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
 	committed, err := fabricSync(open, layout.AnchorRel, "missing-pair probe")

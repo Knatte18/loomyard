@@ -5,10 +5,10 @@
 // non-test source, one inside each chokepoint's own body. The go-git/CLI boundary is
 // otherwise invisible in the code -- both backends are just method bodies -- so
 // without this check a CLI call could seep back into a migrated method one bugfix at
-// a time. See CONSTRAINTS.md's gitrepo Client Boundary Invariant.
+// a time. See `PATTERN-gitrepo-client-boundary`.
 //
 // This guard is keyed by **method name** and answers which methods may reach the CLI
-// at all; CONSTRAINTS.md's gitexec Checked-Call Invariant is keyed by **call site**
+// at all; `PATTERN-gitexec-checked-call` is keyed by **call site**
 // and answers which sites, package-wide, may use the raw form. The two invariants are
 // complementary, not redundant.
 //
@@ -143,7 +143,7 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		pinned[name] = true
 	}
 	if diff := diffMethodSets(pinned, runBoundMethods); diff != "" {
-		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): r.run(/r.runChecked(-containing method set drifted from the pinned list:\n%s", diff)
+		t.Errorf("`PATTERN-gitrepo-client-boundary` violated: r.run(/r.runChecked(-containing method set drifted from the pinned list:\n%s", diff)
 	}
 
 	if !runFound {
@@ -153,14 +153,14 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		t.Fatalf("gitrepo boundary guard: no runChecked method found on *Repo in %s -- the guard's own assumptions may be stale", dir)
 	}
 	if gitexecTotal != 2 {
-		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 2 gitexec.Run/RunGit call expressions in internal/gitrepo (the raw/checked pair), found %d", gitexecTotal)
+		t.Errorf("`PATTERN-gitrepo-client-boundary` violated: expected exactly 2 gitexec.Run/RunGit call expressions in internal/gitrepo (the raw/checked pair), found %d", gitexecTotal)
 	}
 	if gitexecTotal == 2 {
 		if runGitexecCalls != 1 {
-			t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 1 gitexec call expression inside run's own body, found %d", runGitexecCalls)
+			t.Errorf("`PATTERN-gitrepo-client-boundary` violated: expected exactly 1 gitexec call expression inside run's own body, found %d", runGitexecCalls)
 		}
 		if runCheckedGitexecCalls != 1 {
-			t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 1 gitexec call expression inside runChecked's own body, found %d", runCheckedGitexecCalls)
+			t.Errorf("`PATTERN-gitrepo-client-boundary` violated: expected exactly 1 gitexec call expression inside runChecked's own body, found %d", runCheckedGitexecCalls)
 		}
 	}
 }

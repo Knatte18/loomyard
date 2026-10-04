@@ -64,8 +64,8 @@
 // (completionsignal_enforcement_test.go) rather than a registry in the shape of
 // internal/planparser/shape.go's ref-shape ledger. That mechanism needs a closed value enum to build
 // a flat map over, and the negative outcomes here live in three different types across two files.
-// See CONSTRAINTS.md's own Completion Signal Invariant entry for the cross-reference a reader who
-// checks constraints first will find.
+// See PATTERN-completion-signal for the cross-reference a reader who
+// checks the PATTERN entries first will find.
 //
 // The one structural precondition the rule rests on: allOutputFilesExist is vacuously true for an
 // empty list, and no *Run with an empty OutputFiles ever exists. Spec.validate refuses one on the

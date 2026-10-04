@@ -28,8 +28,8 @@ type config struct {
 // An absent <baseDir>/_lyx/ directory or an absent batcher.yaml both resolve the embedded
 // ConfigTemplate() instead of erroring;
 // a config file that exists but is invalid still errors.
-// baseDir must already be resolved by the caller — Active never resolves cwd itself (see the Cwd
-// Resolution Invariant in CONSTRAINTS.md).
+// baseDir must already be resolved by the caller — Active never resolves cwd itself (see
+// PATTERN-cwd-resolution).
 func Active(baseDir string) (Batcher, error) {
 	resolved, err := configengine.LoadOrTemplate(baseDir, moduleName, []byte(ConfigTemplate()))
 	if err != nil {

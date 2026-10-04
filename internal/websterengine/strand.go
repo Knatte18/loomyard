@@ -103,7 +103,7 @@ func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
 		return nil
 	}
 	// Logged because this teardown kills a real, live agent process — a lifecycle teardown per
-	// CONSTRAINTS.md's Live-Substrate Spawn Observability rule, and the single event an operator
+	// PATTERN-spawn-observability, and the single event an operator
 	// diagnosing a crashed run most needs to see, since without it a resumed run's log shows only
 	// the replacement being started and nothing about the one it stopped.
 	//

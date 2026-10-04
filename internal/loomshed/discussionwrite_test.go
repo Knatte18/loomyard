@@ -80,7 +80,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 
 	// StuckWithNonEmptyPointerCommitsAndReturnsStuck is the gate-failed writer row's shape: the
 	// wrapped producer reported Stuck with the artifact's own pointer, and the commit seam still
-	// fires so the invalid artifact is committed and diagnosable rather than left dirtying the weft
+	// fires so the invalid artifact is committed and diagnosable rather than left dirtying the records worktree
 	// when the run halts for a human.
 	t.Run("StuckWithNonEmptyPointerCommitsAndReturnsStuck", func(t *testing.T) {
 		inner := &fakeInnerProducer{outcome: shedengine.Stuck, pointer: shedengine.OutputPointer{Path: "decision-record.md"}}

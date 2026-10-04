@@ -14,7 +14,7 @@
 // ReedGeometry is the one teller that does I/O, and it spawns nothing.
 // It reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent,
 // because the name prefix and parent are Board and run state that no Location carries.
-// ResolveParent reads the pair's origin record first and the default run's seed second, as a fallback for pairs created before the origin record named a parent worktree.
+// ResolveParent reads the pair's origin record alone; an origin that names no parent worktree, or no origin record, yields no parent.
 // A missing or unreadable .git entry is its one error.
 // It is still the only reader — reedengine resolves neither, per the Told-Geometry Invariant.
 //

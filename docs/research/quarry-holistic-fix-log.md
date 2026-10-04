@@ -19,7 +19,7 @@ Fixed findings from `_mill/reviews/20260820-163952-code-review-r1.md`, all lande
   `-mod=readonly`.
 - **[BLOCKING:scope] Loomyard/mill-internal residue in ported comments** — swept the `quarry/`
   package and `internal/cli` for `scoutcli`, `scoutengine package`, `modelspec`,
-  `manifest/designs`, and bare `batch N` references the original `lyx`-substring sweep missed;
+  the retired design-folder paths, and bare `batch N` references the original `lyx`-substring sweep missed;
   rewrote each to describe the shipped architecture on its own terms.
 - **[NIT:consistency] garbled cross-reference in `docs/port-equivalence.md`** — rewritten as a
   single valid pointer to quarry's own `docs/scout-multilang.md`.

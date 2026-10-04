@@ -31,7 +31,7 @@ If the file is missing or empty, STOP and report that rather than inventing scop
 
 ## Step 2 — Explore the codebase
 
-Before planning, read the relevant parts of the codebase: check recent commits, read `CONSTRAINTS.md` at the repo root if present, and follow existing patterns rather than inventing new ones.
+Before planning, read the relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
 ### Look up glyphs with `lyx quarry` — never spell one from memory
 

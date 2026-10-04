@@ -1,7 +1,7 @@
-// docslink_test.go guards markdown link and anchor integrity under manifest/ and docs/: every
+// docslink_test.go guards markdown link and anchor integrity under docs/: every
 // inline markdown link's file part and #anchor must resolve somewhere in the repo. Its placement in
 // internal/lyxcwd is a file-layout convenience, not an ownership claim on markdown links by that
-// package — see CONSTRAINTS.md's Markdown Link Integrity invariant.
+// package — see PATTERN-markdown-link-integrity.
 
 package lyxcwd
 
@@ -178,8 +178,8 @@ func TestDocsLinkSlug(t *testing.T) {
 		},
 		{
 			name:    "fabric git invariant parens and plus heading",
-			heading: "## Fabric Git Invariant (warp + weft)",
-			want:    "fabric-git-invariant-warp--weft",
+			heading: "## Fabric Git Invariant (code + records)",
+			want:    "fabric-git-invariant-code--records",
 		},
 	}
 	for _, tt := range tests {
@@ -382,19 +382,14 @@ func docsLinkScan(t *testing.T, base string, roots []string, allow []scankit.Ent
 // tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
 // by (file, target) and never by line number; every entry names its owning task; and an entry whose
 // key is not matched by any break in a scan is reported by docsLinkScan as deletable.
-var docsLinkAllowlist = []scankit.Entry{
-	{
-		Key: docsLinkKey("docs/overview.md", "../CONSTRAINTS.md#package-naming"),
-		Why: "chain A -> B -> E; E is last owner",
-	},
-}
+var docsLinkAllowlist = []scankit.Entry{}
 
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
-// every inline markdown link in a .md file under manifest/ or docs/ must resolve, both its file part
+// every inline markdown link in a .md file under docs/ must resolve, both its file part
 // and its #anchor.
 func TestEnforcement_MarkdownLinks(t *testing.T) {
 	t.Run("repo", func(t *testing.T) {
-		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"manifest", "docs"}, docsLinkAllowlist)
+		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"docs"}, docsLinkAllowlist)
 
 		scankit.RequireFloor(t, scanned, 1, "markdown link scan")
 		for _, b := range breaks {

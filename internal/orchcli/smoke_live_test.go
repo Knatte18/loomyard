@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
@@ -453,14 +452,14 @@ func TestSmokeOrch_Adopt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve %s: %v", worktree, err)
 	}
-	seed, found, err := shedrun.ReadSeed(loc, shedrun.SelfRunID)
-	if err != nil || !found {
-		t.Fatalf("read the loom run's seed: found=%v err=%v", found, err)
+	parent, err := hubgeom.ResolveParent(loc)
+	if err != nil {
+		t.Fatalf("resolve the loom run's parent: %v", err)
 	}
-	if seed.Parent != orchName {
-		t.Errorf("seed parent = %q, want %q", seed.Parent, orchName)
+	if parent.Name != orchName {
+		t.Errorf("run parent = %q, want %q", parent.Name, orchName)
 	}
-	// The detached loom run would start real agents of its own; the seed is all this test needs from it.
+	// The detached loom run would start real agents of its own; its parent is all this test needs from it.
 	killTreeProcs(worktree)
 
 	// A second run in the prime reaches the orch session through SendMessage, as a driver's escalation notice does.

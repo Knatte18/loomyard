@@ -117,6 +117,76 @@ func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 	}
 }
 
+// patternMarkerLine is a line of the told PATTERN.md overview that the judge prompt must carry verbatim when the directive is active.
+const patternMarkerLine = "- PATTERN-judge-probe: a probe entry"
+
+// writeJudgePattern writes a PATTERN.md holding patternMarkerLine into a fresh worktree root and returns the root.
+func writeJudgePattern(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "PATTERN.md"), []byte("# PATTERN\n\n"+patternMarkerLine+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+	}
+	return root
+}
+
+// TestBouncer_JudgeCall_PatternDirective asserts the judge prompt carries the RoleJudge directive, ahead of the rubric, when PATTERN.md exists at the configured worktree root, and omits it when the file or the root is absent.
+func TestBouncer_JudgeCall_PatternDirective(t *testing.T) {
+	tests := []struct {
+		name string
+		root func(t *testing.T) string
+		want bool
+	}{
+		{"PatternAtRoot", writeJudgePattern, true},
+		{"RootWithoutPattern", func(t *testing.T) string { return t.TempDir() }, false},
+		{"EmptyRoot", func(t *testing.T) string { return "" }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+			fx := newBouncerFixture(t, withShuttle(shuttle))
+			fx.Config.WorktreeRoot = tt.root(t)
+			b, cfg := fx.Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+			shedfake.CallOK(t, b)
+
+			prompt := shuttle.GotSpec.Prompt
+			if got := strings.Contains(prompt, patternMarkerLine); got != tt.want {
+				t.Errorf("judge prompt contains the PATTERN overview = %v; want %v", got, tt.want)
+			}
+			if got := strings.Contains(prompt, "## Constraints"); got != tt.want {
+				t.Errorf("judge prompt contains the directive heading = %v; want %v", got, tt.want)
+			}
+			if tt.want && strings.Index(prompt, patternMarkerLine) > strings.Index(prompt, "## Rubric") {
+				t.Error("judge prompt carries the directive after the rubric; want it before the judge's first work instruction")
+			}
+			if strings.Contains(prompt, "{{.") {
+				t.Errorf("judge prompt contains an unrendered marker: %q", prompt)
+			}
+		})
+	}
+}
+
+// TestBouncer_JudgeCall_PatternDirectiveFailureDegrades asserts an active PATTERN whose directive stencil cannot be read degrades the judge call rather than spawning a judge without the directive.
+func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
+	logBuf := logcapture.Capture(t)
+	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	fx := newBouncerFixture(t, withShuttle(shuttle), withoutStencils("pattern-directive-judge"))
+	fx.Config.WorktreeRoot = writeJudgePattern(t)
+	b, cfg := fx.Build()
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	outcome, ptr, err := b.Call(context.Background())
+	assertJudgeDegraded(t, outcome, ptr, err)
+	if !strings.Contains(logBuf.String(), "pattern directive unreadable") {
+		t.Errorf("Call() log = %q; want the pattern directive degrade message", logBuf.String())
+	}
+	if shuttle.GotSpec.Prompt != "" {
+		t.Error("Call() spawned a judge after a failed directive read; want no spawn")
+	}
+}
+
 func TestBouncer_JudgeCall_Approved(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()

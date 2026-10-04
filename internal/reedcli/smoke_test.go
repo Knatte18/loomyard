@@ -774,7 +774,7 @@ func claudeBinaryPath(t *testing.T) string {
 	return path
 }
 
-// materializeSibling clones h's warp bare origin into a second worktree inside the primary hub
+// materializeSibling clones h's code bare origin into a second worktree inside the primary hub
 // directory and seeds reed config into it.
 // It clones to filepath.Join(h.Path, name), a direct child of the hub directory, matching
 // h.PrimeWorktree()'s own parentage — not filepath.Join(h.Container, name), which is the hub

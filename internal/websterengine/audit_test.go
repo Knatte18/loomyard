@@ -27,10 +27,10 @@ func fakeLayout() *lyxcwd.Location {
 
 // TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape
 // CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Fabric Git
-// Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the fabric
+// Invariant bans), the retired pre-cutover per-side spellings, a command referencing the fabric
 // worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that
 // must never match.
-// The `lyx fabric` rows are the regression guard: the fabric cutover deleted `lyx weft`/`lyx warp`
+// The `lyx fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs
 // and renamed every fabric-touching verb under `lyx fabric`, so a matcher that knows only the old
 // spellings bans nothing an agent can actually run today.
 // The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an
@@ -50,7 +50,7 @@ func TestRefScannerMatches(t *testing.T) {
 		{"lyx fabric commit", "lyx fabric commit", true},
 		{"lyx fabric push", "lyx fabric push", true},
 		{"lyx fabric checkout", "lyx fabric checkout feature", true},
-		{"lyx fabric with leading prose", "cd /hub/warp && lyx fabric sync", true},
+		{"lyx fabric with leading prose", "cd /hub/pair && lyx fabric sync", true},
 		{"lyx weft sync", "lyx weft sync", true},
 		{"lyx warp checkout", "lyx warp checkout feature", true},
 		{"lyx.exe fabric sync", "lyx.exe fabric sync", true},
@@ -58,9 +58,9 @@ func TestRefScannerMatches(t *testing.T) {
 		{"absolute lyx.exe fabric push", `C:\bin\lyx.exe fabric push`, true},
 		{"git -C fabric-worktree add", "git -C " + fabricWorktree + " add -A", true},
 		{"cd into fabric worktree", "cd " + fabricWorktree + " && git status", true},
-		{"warp git commit is not a fabric reference", "git commit -am wip", false},
+		{"code-side git commit is not a fabric reference", "git commit -am wip", false},
 		{"plain read", "cat notes.txt", false},
-		{"warp status", "git status", false},
+		{"code-side status", "git status", false},
 		{"unrelated path", "cat /hub/other-repo/README.md", false},
 		{"a fabric-named file is not a lyx fabric invocation", "cat fabric-notes.md", false},
 		{"lyx board is not a fabric reference", "lyx board list", false},
@@ -139,7 +139,7 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: nil,
 		},
 		{
-			name: "warp git commit is allowed (per-card commits are the contract)",
+			name: "code-side git commit is allowed (per-card commits are the contract)",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "c", ReportReturned: true,
 				BashCommands: []string{"git add internal/foo.go", "git commit -m 'card 1'"},
@@ -155,7 +155,7 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
-			name: "lyx weft sync is a hard error",
+			name: "the retired per-side sync spelling is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "d", ReportReturned: true,
 				BashCommands: []string{"lyx weft sync"},
@@ -211,10 +211,10 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write through the second plan spelling is a plan write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "p3", ReportReturned: true,
-				WritePaths: []string{"/fabric/weft/plan/03-x.md"},
+				WritePaths: []string{"/fabric/records/plan/03-x.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkPlanWrite},
-			wantPath:    "/fabric/weft/plan/03-x.md",
+			wantPath:    "/fabric/records/plan/03-x.md",
 		},
 		{
 			name: "fork write to a worktree source file is no plan write",
@@ -261,7 +261,7 @@ func TestCheckFork(t *testing.T) {
 			name: "fork write through the second webster spelling is a state write",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "s3", ReportReturned: true,
-				WritePaths: []string{"/fabric/weft/webster/state.json"},
+				WritePaths: []string{"/fabric/records/webster/state.json"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkStateWrite},
 		},
@@ -278,8 +278,8 @@ func TestCheckFork(t *testing.T) {
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
 	const ownReport = "/hub/master-builder/_lyx/webster/reports/01-json-flag.yaml"
-	planDirs := []string{"/hub/master-builder/_lyx/plan", "/fabric/weft/plan"}
-	websterDirs := []string{"/hub/master-builder/_lyx/webster", "/fabric/weft/webster"}
+	planDirs := []string{"/hub/master-builder/_lyx/plan", "/fabric/records/plan"}
+	websterDirs := []string{"/hub/master-builder/_lyx/webster", "/fabric/records/webster"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

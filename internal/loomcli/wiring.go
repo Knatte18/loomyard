@@ -288,7 +288,7 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 // newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
 // The reviewer is the Parent hubgeom.ResolveParent returns, empty when the run has no parent;
 // a resolver error is a wiring error.
-// ReviewerLive is nil, so the gate treats the reviewer as live, while the parent names no worktree (no parent, or a legacy seed name);
+// ReviewerLive is nil, so the gate treats the reviewer as live, while the parent names no worktree (no parent);
 // otherwise it reads the parent worktree's reed session through reedCfg.
 func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config, cfg loomengine.Config, stencilsDir string) (parentreview.GateConfig, error) {
 	parent, err := hubgeom.ResolveParent(location)

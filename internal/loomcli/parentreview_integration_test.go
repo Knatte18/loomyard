@@ -92,7 +92,7 @@ type prFixture struct {
 	hub      *hubforge.Hub
 	slug     string
 	location *lyxcwd.Location
-	weft     string
+	records  string
 	shuttle  *scriptedShuttle
 	producer shedengine.ShedProducer
 	store    parentreview.Store
@@ -120,7 +120,7 @@ func newPRFixture(t *testing.T) *prFixture {
 	if err := c.wire(location, location.AnchorPath()); err != nil {
 		t.Fatalf("wire = %v; want nil", err)
 	}
-	f := &prFixture{t: t, hub: hub, slug: slug, location: location, weft: hub.PairWeftSibling(slug), shuttle: &scriptedShuttle{}, store: reviewStoreFor(location)}
+	f := &prFixture{t: t, hub: hub, slug: slug, location: location, records: hub.PairWeftSibling(slug), shuttle: &scriptedShuttle{}, store: reviewStoreFor(location)}
 
 	decision, support := loomengine.DiscussionDecisionRecord(location), loomengine.DiscussionSupportLog(location)
 	env := c.env
@@ -258,7 +258,7 @@ func TestParentReviewExchange_RejectThenFixGoesOnToPerch(t *testing.T) {
 
 	// The round's request directory rode along in the discussion commits.
 	rel := filepath.ToSlash(filepath.Join(loomengine.LoomParentReviewDirRel(), "round-1", "request.json"))
-	if got := gitkit.Git(t, f.weft, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
-		t.Errorf("weft log touched %q; want it to include %q", got, rel)
+	if got := gitkit.Git(t, f.records, "log", "--name-only", "--format=", "-n", "3"); !strings.Contains(got, rel) {
+		t.Errorf("records log touched %q; want it to include %q", got, rel)
 	}
 }
