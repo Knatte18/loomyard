@@ -186,10 +186,8 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 
 			// A real (non-link) directory predating weft; refuse to touch it for
 			// `_lyx` — it may hold user content, which fabric never deletes:
-			// this now also protects `_lyx/PATTERN.md`, described throughout
-			// as the warp repo's hand-authored invariants, which makes "create
-			// _lyx/ in the repo and start writing" the natural operator
-			// mistake this guard exists to catch.
+			// "create _lyx/ in the repo and start writing" is the natural
+			// operator mistake this guard exists to catch.
 			// `.lyx` is the one exception: content under it is always lyx's own
 			// machine-local scratch, written unconditionally by several of lyx's
 			// own subsystems, so "never touch what might be the user's

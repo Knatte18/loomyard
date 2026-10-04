@@ -156,8 +156,7 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	}
 
 	// _extra content is deliberately never touched by Unwire — this is the same load-bearing
-	// property the _lyx and .lyx assertions above pin, and after this task _lyx/PATTERN.md is
-	// exactly the kind of hand-authored content this preservation protects.
+	// property the _lyx and .lyx assertions above pin.
 	content, err = os.ReadFile(extraFile)
 	if err != nil {
 		t.Fatalf("read notes.md after Unwire: %v", err)

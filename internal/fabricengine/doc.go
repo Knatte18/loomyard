@@ -38,13 +38,10 @@
 // `PullResult.WeftPulled` false, but the warp fetch/reconcile below runs regardless — reconciling a
 // weft that failed to pull is a named manual operator step, never something `Pull` resolves for the
 // caller.
-// The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
-// touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
-// written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
+// The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
+// see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
 // faithfully reports whether the weft arm completed rather than asserting it always did.
-// Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
-// found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
@@ -70,8 +67,7 @@
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
 // directory is staged by default; `_lyx` itself arrives from `structuralCommittedDirs`, not from
-// `pathspec`, so PATTERN content (`_lyx/PATTERN.md`, `_lyx/pattern/`) is committed as ordinary `_lyx`
-// content rather than needing its own pathspec entry.
+// `pathspec`, so any tracked `_lyx` content is committed without needing its own pathspec entry.
 //
 // The narrow-pathspec asymmetry below inverts, rather than disappears, once `pathspec` went empty:
 // `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key already
