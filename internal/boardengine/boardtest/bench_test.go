@@ -62,8 +62,8 @@ func seedWiki(tb testing.TB, n int) string {
 			ID:        i,
 			Slug:      "task-" + strconv.Itoa(i),
 			Title:     "Task " + strconv.Itoa(i),
-			Tier:      boardengine.DefaultTier,
-			Type:      boardengine.DefaultType,
+			Kind:      boardengine.KindTask,
+			Labels:    []string{"enhancement"},
 			DependsOn: []string{},
 			Brief:     "brief for task " + strconv.Itoa(i),
 		}
@@ -96,8 +96,8 @@ func BenchmarkRender(b *testing.B) {
 					ID:        i,
 					Slug:      "task-" + strconv.Itoa(i),
 					Title:     "Task " + strconv.Itoa(i),
-					Tier:      boardengine.DefaultTier,
-					Type:      boardengine.DefaultType,
+					Kind:      boardengine.KindTask,
+					Labels:    []string{"enhancement"},
 					DependsOn: []string{},
 					Brief:     "brief for task " + strconv.Itoa(i),
 					Body:      body,
@@ -126,7 +126,7 @@ func BenchmarkUpsertFacade(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
+			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
 			w := boardengine.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 

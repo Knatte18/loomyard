@@ -1,6 +1,6 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command over one store, board.json, whose entries carry a tier and a type.
+// Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
 // promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // list and find take --text to print the compact listing from text.go instead of JSON.
@@ -38,13 +38,14 @@ func Command() *cobra.Command {
 		Short: "task-tracker board",
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
-The board is one store: every entry carries a tier (1 planned, 2 next up, 3 someday) and a
-type (the kind of work it is). The README renders one section per tier, split into dependency layers, and an entry may only
-depend on entries at the same or a lower tier number. Agents read and write the board through
-"lyx board", never through the JSON files under _board.
+The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
+can be claimed and depend on other tasks; a note is an idea or observation. A task carries at least
+one type label, a note exactly one, and every label must be configured in board.yaml. The README
+renders tasks split into dependency layers and notes grouped by type. Agents read and write the
+board through "lyx board", never through the JSON files under _board.
 
 The config file (_lyx/config/board.yaml) controls non-geometry settings: readme
-and design_prefix filenames. The board data dir (<hub>/_board) is
+and design_prefix filenames and the types and labels lists. The board data dir (<hub>/_board) is
 derived from the worktree layout via lyxcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
@@ -102,44 +103,25 @@ available subcommands without requiring a git repo.`,
 
 	promoteCmd := &cobra.Command{
 		Use:   "promote [json-payload]",
-		Short: "Move a task to a lower tier number",
-		Long: `Move a task to a lower tier number (closer to planned). Unknown keys are rejected.
-Without "tier" the task moves one tier lower; with it the task moves to that tier, skipping tiers
-if needed. The target must be lower than the task's current tier; demotion goes through upsert.
+		Short: "Turn a note into a task",
+		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written. Unknown keys
+are rejected. Demotion goes through "lyx board upsert" with "kind":"note".
 
-Fields:
-  "slug" string  — task slug (required)
-  "tier" integer — target tier (optional; default: one tier lower than the current one)
+Fields (one of):
+  "slug" string  — entry slug
+  "id"   integer — entry id
 
 Example:
-  lyx board promote '{"slug":"my-task","tier":1}'`,
+  lyx board promote '{"slug":"my-note"}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			var m map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &m); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			lookup, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
 			}
-			for k := range m {
-				if k != "slug" && k != "tier" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
-				}
-			}
-			slug, ok := m["slug"].(string)
-			if !ok || slug == "" {
-				return outputError(out, "missing required field: slug")
-			}
-			var target *int
-			if tv, has := m["tier"]; has && tv != nil {
-				f, ok := tv.(float64)
-				if !ok || f != math.Trunc(f) {
-					return outputError(out, "tier must be an integer")
-				}
-				n := int(f)
-				target = &n
-			}
-			task, err := b.Promote(slug, target)
+			task, err := b.Promote(lookup)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -175,7 +157,7 @@ Example:
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
-listing instead (errors stay JSON); its columns are tier, type, slug, title and, when set, [status].
+listing instead (errors stay JSON); its columns are kind, slug, title, labels and, when set, [status].
 
 Examples:
   lyx board find retry backoff
@@ -262,14 +244,13 @@ Optional fields:
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
-  "tier"       integer — 1 to 3, default 3: 1 is planned (committed work), 2 is next up
-                         (to be planned), 3 is someday (ideas); claimable work must be tier 1
-  "type"       string — one of "feature", "bug", "chore", "design"; default "feature"
-  "recipe"     string — recipe the task's child worktree runs; empty means "loom"
+  "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
+  "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
+  "recipe"    string — recipe the task's child worktree runs; empty means "loom"
   "short_name" string — short display label; falls back to the slug
 
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","tier":1,"type":"feature"}'`,
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			// cobra strips the "upsert" token; json payload is now args[0].
 			if len(args) == 0 {
@@ -301,7 +282,7 @@ Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","tier":1},{"slug":"t2","title":"Two","tier":1}]}'`,
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -470,7 +451,7 @@ Example:
 		Use:   "list",
 		Short: "List all tasks with computed fields",
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
-With --text, print the compact one-line-per-task listing (tier, type, slug, title, [status])
+With --text, print the compact one-line-per-task listing (kind, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
 
 Examples:

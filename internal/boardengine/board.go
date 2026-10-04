@@ -2,7 +2,7 @@
 // Board is the only entry point callers use.
 // Anyone adds notes, the orchestrator curates.
 //
-// Board holds one store, board.json, whose entries carry a tier and a type.
+// Board holds one store, board.json, whose entries carry a kind (task or note) and labels.
 // A board directory that still holds the pre-upgrade tasks.json and notes.json migrates in memory on load and persists to board.json on the first write,
 // and a pre-upgrade binary's later done marks are folded into the store, so a long-running old driver keeps working until the legacy files are retired.
 //
@@ -39,7 +39,7 @@
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
 //
-// The board is the roadmap: it carries the planned work, the next-up work and the someday work.
+// The board is the roadmap: it carries the tasks that can run and the notes that are not yet tasks.
 
 package boardengine
 
@@ -57,6 +57,7 @@ import (
 type Board struct {
 	boardPath string
 	out       Outputs
+	vocab     Vocabulary
 	skipGit   bool
 	skipPush  bool
 }
@@ -66,6 +67,7 @@ func New(cfg Config) *Board {
 	return &Board{
 		boardPath: cfg.Path,
 		out:       cfg.Outputs(),
+		vocab:     cfg.Vocabulary(),
 		skipGit:   cfg.SkipGit,
 		skipPush:  cfg.SkipPush,
 	}
@@ -100,6 +102,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	defer lock.Release()
 
 	store := NewStore(b.boardPath)
+	store.vocab = &b.vocab
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -227,6 +230,7 @@ func (b *Board) HealthCheck() error {
 // loadStore loads the one store for a read, persisting nothing.
 func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
+	store.vocab = &b.vocab
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -273,11 +277,18 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
-// Promote moves the entry identified by slug to a lower tier number under the write lock;
-// a nil target means one tier lower.
-func (b *Board) Promote(slug string, target *int) (Task, error) {
+// Promote makes the entry identified by idOrSlug a task under the write lock.
+// An entry that is already a task is returned unchanged without a write.
+func (b *Board) Promote(idOrSlug any) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		return store.Promote(slug, target)
+		task, changed, err := store.Promote(idOrSlug)
+		if err != nil {
+			return nil, err
+		}
+		if !changed {
+			return noWrite{result: task}, nil
+		}
+		return task, nil
 	}, nil)
 	if err != nil {
 		return Task{}, err
@@ -342,24 +353,4 @@ func (b *Board) RetireLegacy() error {
 		return nil
 	})
 	return err
-}
-
-// PromoteNote moves the entry identified by idOrSlug to tier 1 under the write lock.
-// An entry already at tier 1 is returned unchanged without a write.
-func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
-	target := MinTier
-	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		current, found := store.GetTask(idOrSlug)
-		if !found {
-			return nil, fmt.Errorf("task not found: %v", idOrSlug)
-		}
-		if current.Tier <= MinTier {
-			return noWrite{result: current}, nil
-		}
-		return store.Promote(idOrSlug, &target)
-	}, nil)
-	if err != nil {
-		return Task{}, err
-	}
-	return result.(Task), nil
 }

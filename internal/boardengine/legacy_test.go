@@ -23,7 +23,7 @@ func entryBySlug(t *testing.T, entries []Task, slug string) Task {
 	return Task{}
 }
 
-func TestMigrateLegacyTierAndType(t *testing.T) {
+func TestMigrateLegacyKindAndLabels(t *testing.T) {
 	tasks := []legacyRecord{
 		{ID: 0, Slug: "plain", Type: "loom", Brief: "b", Body: "x", Isolated: true, ShortName: "pl", DependsOn: []string{"other"}},
 		{ID: 1, Slug: "later", Deferred: true},
@@ -39,8 +39,8 @@ func TestMigrateLegacyTierAndType(t *testing.T) {
 	}
 
 	plain := entryBySlug(t, entries, "plain")
-	if plain.Tier != 1 || plain.Type != "feature" {
-		t.Errorf("task: tier=%d type=%q, want 1 feature", plain.Tier, plain.Type)
+	if plain.Kind != KindTask || !slices.Equal(plain.Labels, []string{"enhancement"}) {
+		t.Errorf("task: kind=%q labels=%v, want task [enhancement]", plain.Kind, plain.Labels)
 	}
 	if plain.Recipe != "loom" {
 		t.Errorf("task: recipe=%q, want the legacy type loom", plain.Recipe)
@@ -50,13 +50,13 @@ func TestMigrateLegacyTierAndType(t *testing.T) {
 	}
 
 	later := entryBySlug(t, entries, "later")
-	if later.Tier != 3 || later.Type != "feature" || later.ID != 1 {
-		t.Errorf("deferred task: %+v, want tier 3 feature id 1", later)
+	if later.Kind != KindNote || !slices.Equal(later.Labels, []string{"enhancement"}) || later.ID != 1 {
+		t.Errorf("deferred task: %+v, want note [enhancement] id 1", later)
 	}
 
 	idea := entryBySlug(t, entries, "idea")
-	if idea.Tier != 3 || idea.Type != "feature" || idea.ID != 5 {
-		t.Errorf("note: %+v, want tier 3 feature id 5", idea)
+	if idea.Kind != KindNote || !slices.Equal(idea.Labels, []string{"enhancement"}) || idea.ID != 5 {
+		t.Errorf("note: %+v, want note [enhancement] id 5", idea)
 	}
 	for _, e := range entries {
 		if err := validateTask(e); err != nil {
@@ -133,7 +133,7 @@ func TestFoldLegacyDoneAppliesOnce(t *testing.T) {
 }
 
 func TestFoldLegacyDoneAbsentSlugRecorded(t *testing.T) {
-	entries := []Task{{ID: 0, Slug: "kept", Tier: 1, Type: "feature"}}
+	entries := []Task{{ID: 0, Slug: "kept", Kind: KindTask, Labels: []string{"enhancement"}}}
 	folded, grown := foldLegacyDone(entries, nil, []legacyRecord{legacyRec(9, "gone", "done")})
 	if len(folded) != 1 || folded[0].Status != nil {
 		t.Errorf("entries changed: %+v", folded)
@@ -144,7 +144,7 @@ func TestFoldLegacyDoneAbsentSlugRecorded(t *testing.T) {
 }
 
 func TestFoldLegacyDoneIgnoresOtherStatuses(t *testing.T) {
-	entries := []Task{{ID: 0, Slug: "a", Tier: 1, Type: "feature"}}
+	entries := []Task{{ID: 0, Slug: "a", Kind: KindTask, Labels: []string{"enhancement"}}}
 	folded, grown := foldLegacyDone(entries, nil, []legacyRecord{legacyRec(0, "a", "in-progress")})
 	if folded[0].Status != nil || len(grown) != 0 {
 		t.Errorf("non-done status folded: %+v %v", folded, grown)
@@ -178,7 +178,7 @@ func TestFoldLegacyDoneReusedSlugNotMarkedDone(t *testing.T) {
 	}
 
 	// A new entry reuses the slug the legacy file still has done.
-	fresh := []Task{{ID: 7, Slug: "a", Tier: 1, Type: "feature"}}
+	fresh := []Task{{ID: 7, Slug: "a", Kind: KindTask, Labels: []string{"enhancement"}}}
 	folded, _ := foldLegacyDone(fresh, legacyDone, legacy)
 	if folded[0].Status != nil {
 		t.Errorf("new entry reusing a done slug was marked done: %v", *folded[0].Status)

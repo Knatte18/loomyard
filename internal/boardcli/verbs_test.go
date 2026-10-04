@@ -1,6 +1,6 @@
 //go:build integration
 
-// verbs_test.go — tests for the verbs added with the tiered board: promote, prune, find, retire-legacy, and the --text listing on list and find.
+// verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, and the --text listing on list and find.
 // seedCwd is defined in cli_test.go and runCLI in cli_unit_test.go, same package.
 
 package boardcli_test
@@ -51,35 +51,46 @@ func slugsOf(t *testing.T, result map[string]any) []string {
 func TestCLIPromote(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"p","title":"P","tier":3}`)
+	mustUpsert(t, `{"slug":"p","title":"P","labels":["bug"]}`)
 
-	// Default: one tier lower.
 	task := runJSON(t, 0, "promote", `{"slug":"p"}`)["task"].(map[string]any)
-	if tier, _ := task["tier"].(float64); tier != 2 {
-		t.Fatalf("default promote: tier = %v, want 2", task["tier"])
+	if task["kind"] != "task" {
+		t.Fatalf("promote: kind = %v, want task", task["kind"])
 	}
 
-	// Explicit tier.
-	task = runJSON(t, 0, "promote", `{"slug":"p","tier":1}`)["task"].(map[string]any)
-	if tier, _ := task["tier"].(float64); tier != 1 {
-		t.Fatalf("explicit promote: tier = %v, want 1", task["tier"])
+	// A task comes back unchanged.
+	task = runJSON(t, 0, "promote", `{"slug":"p"}`)["task"].(map[string]any)
+	if task["kind"] != "task" || task["slug"] != "p" {
+		t.Fatalf("second promote: task = %v, want p unchanged as a task", task)
+	}
+
+	// An id selects the entry as a slug does.
+	mustUpsert(t, `{"slug":"q","title":"Q","labels":["bug"]}`)
+	q := runJSON(t, 0, "get", `{"slug":"q"}`)["task"].(map[string]any)
+	task = runJSON(t, 0, "promote", `{"id":`+formatNumber(q["id"].(float64))+`}`)["task"].(map[string]any)
+	if task["slug"] != "q" || task["kind"] != "task" {
+		t.Fatalf("promote by id: task = %v, want q as a task", task)
+	}
+
+	// Demotion goes through upsert.
+	task = runJSON(t, 0, "upsert", `{"slug":"p","kind":"note"}`)["task"].(map[string]any)
+	if task["kind"] != "note" {
+		t.Fatalf("demotion via upsert: kind = %v, want note", task["kind"])
 	}
 }
 
 func TestCLIPromote_Refusals(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"p","title":"P","tier":2}`)
+	mustUpsert(t, `{"slug":"p","title":"P","labels":["bug"]}`)
 
 	for name, payload := range map[string]string{
-		"no payload key slug": `{"tier":1}`,
-		"unknown key":         `{"slug":"p","tiers":1}`,
-		"non-integer tier":    `{"slug":"p","tier":1.5}`,
-		"string tier":         `{"slug":"p","tier":"1"}`,
-		"not lower":           `{"slug":"p","tier":2}`,
-		"demotion":            `{"slug":"p","tier":3}`,
-		"unknown slug":        `{"slug":"missing"}`,
-		"invalid json":        `{`,
+		"no payload key slug":    `{}`,
+		"tier is an unknown key": `{"slug":"p","tier":1}`,
+		"unknown key":            `{"slug":"p","kind":"task"}`,
+		"slug and id":            `{"slug":"p","id":0}`,
+		"unknown slug":           `{"slug":"missing"}`,
+		"invalid json":           `{`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			result := runJSON(t, 1, "promote", payload)
@@ -97,8 +108,8 @@ func TestCLIPromote_Refusals(t *testing.T) {
 func TestCLIPrune(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"keep","title":"Keep"}`)
-	mustUpsert(t, `{"slug":"gone","title":"Gone"}`)
+	mustUpsert(t, `{"slug":"keep","title":"Keep","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"gone","title":"Gone","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"gone","status":"done"}`)
 
 	result := runJSON(t, 0, "prune")
@@ -121,13 +132,13 @@ func TestCLIPrune(t *testing.T) {
 func TestCLIFind(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"needle-slug","title":"A"}`)
-	mustUpsert(t, `{"slug":"b","title":"has Needle title"}`)
-	mustUpsert(t, `{"slug":"c","title":"C","brief":"needle in brief"}`)
-	mustUpsert(t, `{"slug":"d","title":"D","body":"body mentions needle"}`)
-	mustUpsert(t, `{"slug":"e","title":"E","body":"needle in a finished entry"}`)
+	mustUpsert(t, `{"slug":"needle-slug","title":"A","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"b","title":"has Needle title","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"c","title":"C","labels":["bug"],"brief":"needle in brief"}`)
+	mustUpsert(t, `{"slug":"d","title":"D","labels":["bug"],"body":"body mentions needle"}`)
+	mustUpsert(t, `{"slug":"e","title":"E","labels":["bug"],"body":"needle in a finished entry"}`)
 	runJSON(t, 0, "set-status", `{"slug":"e","status":"done"}`)
-	mustUpsert(t, `{"slug":"f","title":"unrelated"}`)
+	mustUpsert(t, `{"slug":"f","title":"unrelated","labels":["bug"]}`)
 
 	got := slugsOf(t, runJSON(t, 0, "find", "needle"))
 	if len(got) != 5 {
@@ -158,18 +169,18 @@ func TestCLIFind_NoArgumentRefused(t *testing.T) {
 func TestCLIListAndFindText(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"later","title":"Later thing","tier":3,"type":"chore"}`)
-	mustUpsert(t, `{"slug":"soon","title":"Soon thing","tier":1,"type":"bug"}`)
+	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
+	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	wantList := "1  bug    soon   Soon thing   [active]\n" +
-		"3  chore  later  Later thing\n"
+	wantList := "task  soon   Soon thing   bug                    [active]\n" +
+		"note  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
 	}
 
-	wantFind := "3  chore  later  Later thing\n"
+	wantFind := "note  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
 	if exitCode != 0 || stdout != wantFind {
 		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)
@@ -182,7 +193,7 @@ func TestCLIRetireLegacy(t *testing.T) {
 	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
 
 	// A board with no legacy files refuses.
-	mustUpsert(t, `{"slug":"x","title":"X"}`)
+	mustUpsert(t, `{"slug":"x","title":"X","labels":["bug"]}`)
 	result := runJSON(t, 1, "retire-legacy")
 	if ok, _ := result["ok"].(bool); ok {
 		t.Fatalf("expected refusal without legacy files, got %v", result)
@@ -208,14 +219,14 @@ func TestCLIRetireLegacy(t *testing.T) {
 func TestCLIGetAndRemoveByID(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
-	mustUpsert(t, `{"slug":"by-id","title":"By ID","tier":2,"type":"bug","recipe":"loom"}`)
+	mustUpsert(t, `{"slug":"by-id","title":"By ID","kind":"task","labels":["bug"],"recipe":"loom"}`)
 
 	task := runJSON(t, 0, "get", `{"slug":"by-id"}`)["task"].(map[string]any)
-	if tier, _ := task["tier"].(float64); tier != 2 {
-		t.Fatalf("get: tier = %v, want 2", task["tier"])
+	if task["kind"] != "task" {
+		t.Fatalf("get: kind = %v, want task", task["kind"])
 	}
-	if task["type"] != "bug" || task["recipe"] != "loom" {
-		t.Fatalf("get: type/recipe = %v/%v, want bug/loom", task["type"], task["recipe"])
+	if labels, _ := task["labels"].([]any); len(labels) != 1 || labels[0] != "bug" || task["recipe"] != "loom" {
+		t.Fatalf("get: labels/recipe = %v/%v, want [bug]/loom", task["labels"], task["recipe"])
 	}
 	id := task["id"].(float64)
 

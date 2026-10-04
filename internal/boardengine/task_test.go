@@ -1,6 +1,6 @@
 // task_test.go — unit tests for Task construction (task.go).
 //
-// NewTask defaults and type validation;
+// NewTask defaults and kind validation;
 // ApplyPatch field overlay.
 
 package boardengine_test
@@ -31,8 +31,8 @@ func TestNewTask(t *testing.T) {
 		if task.Isolated != false {
 			t.Errorf("expected Isolated=false, got %v", task.Isolated)
 		}
-		if task.Tier != 3 || task.Type != "feature" {
-			t.Errorf("expected Tier=3 Type=feature, got %d %q", task.Tier, task.Type)
+		if task.Kind != boardengine.KindNote || task.Labels == nil || len(task.Labels) != 0 {
+			t.Errorf("expected Kind=note and empty non-nil Labels, got %q %#v", task.Kind, task.Labels)
 		}
 		if task.Status != nil {
 			t.Errorf("expected Status=nil, got %v", task.Status)
@@ -144,10 +144,30 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("a recipe name in type is refused", func(t *testing.T) {
-		_, err := boardengine.NewTask(map[string]any{"slug": "my-task", "type": "batten"}, 1)
-		if err == nil || !strings.Contains(err.Error(), "recipe") {
-			t.Errorf("expected refusal pointing at recipe, got %v", err)
+	t.Run("kind and labels round-trip onto the task", func(t *testing.T) {
+		task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "kind": "task", "labels": []string{"bug", "area"}}, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Kind != boardengine.KindTask || len(task.Labels) != 2 || task.Labels[0] != "bug" || task.Labels[1] != "area" {
+			t.Errorf("got kind %q labels %v, want task [bug area]", task.Kind, task.Labels)
+		}
+	})
+
+	t.Run("an unknown kind is refused", func(t *testing.T) {
+		_, err := boardengine.NewTask(map[string]any{"slug": "my-task", "kind": "epic"}, 1)
+		if err == nil || !strings.Contains(err.Error(), "kind") {
+			t.Errorf("expected refusal naming kind, got %v", err)
+		}
+	})
+
+	t.Run("a null labels value reads back as an empty list", func(t *testing.T) {
+		task, err := boardengine.NewTask(map[string]any{"slug": "my-task", "labels": nil}, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.Labels == nil || len(task.Labels) != 0 {
+			t.Errorf("expected empty non-nil Labels, got %#v", task.Labels)
 		}
 	})
 
@@ -188,8 +208,7 @@ func TestApplyPatch(t *testing.T) {
 			ID:        1,
 			Slug:      "test",
 			Title:     "Old Title",
-			Tier:      3,
-			Type:      "feature",
+			Kind:      boardengine.KindNote,
 			Brief:     "Original brief",
 			DependsOn: []string{"a"},
 		}
@@ -215,8 +234,7 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:        1,
 			Slug:      "test",
-			Tier:      3,
-			Type:      "feature",
+			Kind:      boardengine.KindTask,
 			DependsOn: []string{"a"},
 		}
 		patch := map[string]any{
@@ -239,8 +257,7 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:     1,
 			Slug:   "test",
-			Tier:   3,
-			Type:   "feature",
+			Kind:   boardengine.KindNote,
 			Status: &statusVal,
 		}
 		patch := map[string]any{
@@ -263,8 +280,7 @@ func TestApplyPatch(t *testing.T) {
 		existing := boardengine.Task{
 			ID:     1,
 			Slug:   "test",
-			Tier:   3,
-			Type:   "feature",
+			Kind:   boardengine.KindNote,
 			Status: &statusVal,
 		}
 		patch := map[string]any{
@@ -294,7 +310,7 @@ func TestApplyPatch(t *testing.T) {
 	})
 
 	t.Run("patching slug at maxSlugLength is accepted", func(t *testing.T) {
-		existing := boardengine.Task{ID: 1, Slug: "test", Tier: 3, Type: "feature"}
+		existing := boardengine.Task{ID: 1, Slug: "test", Kind: boardengine.KindNote}
 		patch := map[string]any{
 			"slug": strings.Repeat("a", 32),
 		}
