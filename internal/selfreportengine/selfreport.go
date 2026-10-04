@@ -1,12 +1,13 @@
 // selfreport.go contains the go-github client seam and CreateIssue domain function for the
 // selfreportengine package.
 // It holds everything from the selfreport module that does not belong to the cobra command layer:
-// the NewGitHubClient seam and CreateIssue.
+// the NewGitHubClient seam, CreateIssue and the helpers every call shares.
 
-// Package selfreportengine provides the domain kernel for filing GitHub issues via githubclient's
-// authenticated go-github client.
-// It exposes CreateIssue as the single entry point and NewGitHubClient as a swappable factory seam
-// for testing, keeping targetRepo unexported.
+// Package selfreportengine provides the domain kernel for filing GitHub issues, and for listing,
+// fetching, commenting on and closing them for board intake, via githubclient's authenticated
+// go-github client.
+// It exposes CreateIssue for filing, the calls in inbox.go for intake, and NewGitHubClient as a
+// swappable factory seam for testing, keeping targetRepo unexported.
 package selfreportengine
 
 import (
@@ -23,24 +24,25 @@ import (
 )
 
 // targetRepo is the hardcoded "owner/repo" GitHub repository that all issues
-// are filed against. It is a constant so that tests can verify the exact
-// owner and repo arguments passed to Issues.Create without any config-file or
-// environment-variable indirection. githubclient resolves neither owner nor
-// repo itself -- CreateIssue splits this constant and passes both as
-// parameters.
+// are filed against and that the intake calls in inbox.go read from, so it
+// serves both directions, filing and intake. It is a constant so that tests
+// can verify the exact owner and repo arguments passed to the Issues calls
+// without any config-file or environment-variable indirection. githubclient
+// resolves neither owner nor repo itself -- repoClient splits this constant
+// and every call passes both as parameters.
 const targetRepo = "Knatte18/loomyard"
 
 // defaultLabel is the label applied when a caller supplies no explicit
 // labels. It is unexported so DefaultLabels is the single way to observe it.
 const defaultLabel = "bug"
 
-// createIssueTimeout bounds CreateIssue's whole call to Issues.Create,
+// callTimeout bounds each call this package makes to GitHub,
 // including a 401-triggered credential re-resolution and replay performed
 // internally by githubclient's transport. It matches the 30s budget
 // githubclient.New's returned client already carries on its underlying
-// http.Client, so CreateIssue never relies solely on a caller-supplied
+// http.Client, so no call relies solely on a caller-supplied
 // context.Background() to keep an autonomous run from hanging.
-const createIssueTimeout = 30 * time.Second
+const callTimeout = 30 * time.Second
 
 // NewGitHubClient is the seam through which CreateIssue obtains an authenticated *github.Client,
 // swappable for testing.
@@ -61,28 +63,15 @@ func DefaultLabels() []string {
 // githubclient.ErrTokenUnresolvable)), network failures (*github.ErrorResponse absent), and API
 // rejections (*github.ErrorResponse present).
 func CreateIssue(title string, body *string, labels []string) (url string, number int, err error) {
-	client, err := NewGitHubClient()
+	client, owner, repo, err := repoClient()
 	if err != nil {
-		// A factory failure is the same operator-facing case as an
-		// unresolvable token: there is no authenticated client to even
-		// attempt the request with, so surface it the same way rather than
-		// risking a nil-client panic below.
-		logger.Warn("selfreportengine: github call failed", "action", "new github client", "cause", err)
-		return "", 0, fmt.Errorf("github client unavailable: %w", err)
-	}
-
-	owner, repo, ok := strings.Cut(targetRepo, "/")
-	if !ok {
-		// Unreachable given targetRepo's fixed "owner/repo" literal; kept as
-		// a defensive guard so a future edit to the constant fails loudly
-		// instead of silently filing against a malformed repo path.
-		return "", 0, fmt.Errorf("selfreportengine: targetRepo %q is not \"owner/repo\" shaped", targetRepo)
+		return "", 0, err
 	}
 
 	// Bound the whole call, including a possible 401 re-resolution and
 	// replay performed internally by githubclient's transport, so a stalled
 	// connection can never hang an autonomous lyx run indefinitely.
-	ctx, cancel := context.WithTimeout(context.Background(), createIssueTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
 
 	req := &github.IssueRequest{Title: &title}
@@ -95,29 +84,58 @@ func CreateIssue(title string, body *string, labels []string) (url string, numbe
 
 	issue, _, createErr := client.Issues.Create(ctx, owner, repo, req)
 	if createErr != nil {
-		// A single Warn covers all three classified returns below, rather
-		// than one per branch, since they share the same action/owner/repo
-		// context and only the cause differs.
-		logger.Warn("selfreportengine: github call failed", "action", "create issue", "owner", owner, "repo", repo, "cause", createErr)
-
-		// A token that could not be resolved (env, cache, and gh CLI all
-		// exhausted) surfaces distinctly from a generic network problem so
-		// the operator knows to fix credentials rather than investigate
-		// connectivity.
-		if errors.Is(createErr, githubclient.ErrTokenUnresolvable) {
-			return "", 0, fmt.Errorf("github token not resolvable: %w", createErr)
-		}
-
-		// A non-2xx GitHub response decodes into *github.ErrorResponse;
-		// surfacing its Message directly is the closest equivalent to the
-		// old "gh issue create failed: <stderr>" text.
-		var ghErr *github.ErrorResponse
-		if errors.As(createErr, &ghErr) {
-			return "", 0, fmt.Errorf("github issue create failed: %s", strings.TrimSpace(ghErr.Message))
-		}
-
-		return "", 0, fmt.Errorf("failed to reach GitHub: %w", createErr)
+		return "", 0, classifyCallError("create issue", "github issue create failed", owner, repo, createErr)
 	}
 
 	return issue.GetHTMLURL(), issue.GetNumber(), nil
+}
+
+// repoClient returns an authenticated client and the owner and repo halves of targetRepo,
+// the common start of every call this package makes.
+func repoClient() (client *github.Client, owner, repo string, err error) {
+	client, err = NewGitHubClient()
+	if err != nil {
+		// A factory failure is the same operator-facing case as an
+		// unresolvable token: there is no authenticated client to even
+		// attempt the request with, so surface it the same way rather than
+		// risking a nil-client panic in the caller.
+		logger.Warn("selfreportengine: github call failed", "action", "new github client", "cause", err)
+		return nil, "", "", fmt.Errorf("github client unavailable: %w", err)
+	}
+
+	owner, repo, ok := strings.Cut(targetRepo, "/")
+	if !ok {
+		// Unreachable given targetRepo's fixed "owner/repo" literal; kept as
+		// a defensive guard so a future edit to the constant fails loudly
+		// instead of silently calling a malformed repo path.
+		return nil, "", "", fmt.Errorf("selfreportengine: targetRepo %q is not \"owner/repo\" shaped", targetRepo)
+	}
+	return client, owner, repo, nil
+}
+
+// classifyCallError logs a failed GitHub call and returns its operator-facing error.
+// action is the log's action field and apiFailure the prefix of an API rejection's message.
+func classifyCallError(action, apiFailure, owner, repo string, callErr error) error {
+	// A single Warn covers all three classified returns below, rather
+	// than one per branch, since they share the same action/owner/repo
+	// context and only the cause differs.
+	logger.Warn("selfreportengine: github call failed", "action", action, "owner", owner, "repo", repo, "cause", callErr)
+
+	// A token that could not be resolved (env, cache, and gh CLI all
+	// exhausted) surfaces distinctly from a generic network problem so
+	// the operator knows to fix credentials rather than investigate
+	// connectivity.
+	if errors.Is(callErr, githubclient.ErrTokenUnresolvable) {
+		return fmt.Errorf("github token not resolvable: %w", callErr)
+	}
+
+	// A non-2xx GitHub response decodes into *github.ErrorResponse;
+	// surfacing its Message directly is the closest equivalent to the
+	// old "gh issue create failed: <stderr>" text.
+	var ghErr *github.ErrorResponse
+	if errors.As(callErr, &ghErr) {
+		return fmt.Errorf("%s: %s", apiFailure, strings.TrimSpace(ghErr.Message))
+	}
+
+	return fmt.Errorf("failed to reach GitHub: %w", callErr)
 }
