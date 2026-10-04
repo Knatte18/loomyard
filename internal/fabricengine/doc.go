@@ -1276,7 +1276,7 @@
 // nothing in this layer can undo it: the verify-before-conclude discipline plus `MergeAbort` covers
 // the whole uncommitted attempt window, but a landed merge is final at the Fabric layer until a
 // separate two-sided reset-to-SHA verb exists (see the `fabric: merge-conflict primitive` item's
-// Someday follow-up in `manifest/roadmap.md`). A consumer that needs an undo after concluding must
+// Someday follow-up, the board's `fabric-reset-to-sha` note). A consumer that needs an undo after concluding must
 // verify before calling `MergeContinue`/`Merge`, or accept that layer's own finality.
 //
 // **Squash leaves no ancestry link.** A squash-merged branch's history carries no merge commit

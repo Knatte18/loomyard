@@ -5,7 +5,7 @@ Each invocation starts a process, runs one command, writes JSON to stdout, and e
 State lives on disk per module and is coordinated with file locks, so concurrent `lyx` processes on a machine cooperate through the filesystem.
 The first module, **board** (a task tracker), is implemented;
 **fabric** (the warp↔weft git-coordination module) is implemented;
-and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
+and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented.
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
 We get there by building these modules as self-contained toolkits first;
@@ -92,14 +92,14 @@ See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 
 Two doc classes, opposite lifecycles:
 
-- **Module-design docs** (`manifest/designs/<module>.md`) are mechanical per-module design drafts for **planned, not-yet-built** modules — deleted when their module lands;
-  the implementation and tests become the source of truth.
+- **Module designs** for **planned, not-yet-built** modules live in their board entry's body;
+  when the module lands, the entry's design moves into the package's `doc.go` and the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
 - **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the weft contract,
 and this lifecycle convention).
-Planned-but-not-built work lives under the separate top-level `manifest/` (`manifest/roadmap.md` + `manifest/designs/`) — see its own maintenance note there.
+Planned-but-not-built work lives on the board, one entry per item, with an unbuilt design in the entry's body.
 
 ## Weft overlay model
 
@@ -182,7 +182,7 @@ A future weft-backed module is wired by appending its directory name to `pathspe
 a structural directory is never sourced from `pathspec`.
 
 Raddle content is anchor-level by design — it lives at `_lyx/raddle/`, reached through the existing `_lyx` junction, with no `_raddle` junction of its own now or ever;
-see `manifest/designs/raddle.md`.
+see the board's `raddle` note.
 
 Every junction is listed in the warp worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
 The entry is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor), never a bare name: a slash-free gitignore pattern matches at any depth, which on a subpath-anchored monorepo would silently untrack same-named directories lyx never wired.
@@ -444,7 +444,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **hardener** — **DRAFT / concept.**
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
-  See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
+  See the board's `hardener` note.
 - **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe`, run it to a terminal state, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lyx batten run|step|status|pause <run-id>`).
   The Board task's `recipe` must be `loom` or empty: `Run-Shed` starts loom's bootstrap verb inside the task worktree, the only one that exists, so `Seed-Child` refuses any other registered recipe before writing a seed rather than committing one the child's own bootstrap would refuse.
   `Seed-Child` halts `blocked` with a named `stuck_reason`, not a hard failure, for all three ways `WriteSeed` can refuse: an unknown recipe, a recipe the task worktree cannot bootstrap, and a pre-existing child seed that disagrees with the one being written (`shedrun.ErrDisagreeingSeed`/`battenshed.ErrDisagreeingChildSeed`) — the same business-judgment treatment for all three, since none of them is a path-resolution or write failure.
@@ -596,7 +596,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - `internal/loomengine`, `internal/loomcli`, `internal/loomshed` and `internal/loomrecipe` — the phased orchestrator (`lyx loom`);
   design.
 - [code-comment-conventions.md](code-comment-conventions.md) — the doc-comment rule's standing rationale (Go only, for now);
-  a durable convention doc, kept rather than deleted, moved here from `manifest/designs/` by the 2026-08-29 designs audit.
+  a durable convention doc, kept rather than deleted, moved here by the 2026-08-29 designs audit.
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub`/`worktree` + `Render` over `internal/stencil`), consumed by reed's status-line pipeline and, later, loom's prompt templates;
   a leaf, not a phased module (as-built;
   module doc deleted per the documentation lifecycle).
@@ -612,15 +612,15 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
   module doc deleted per the documentation lifecycle).
 - `internal/treadleengine` package documentation — the generalized round-loop engine (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive (as-built;
   module doc deleted per the documentation lifecycle).
-- [manifest/designs/hardener.md](../manifest/designs/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
+- The board's `hardener` note — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
 - [research/](research/) — design exploration (reed research logs).
 - [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
-- [manifest/roadmap.md](../manifest/roadmap.md) — planned, someday, and shipped modules — the single home for unscheduled ideas too (no separate long-term-ideas file).
+- The board — planned, next-up and someday work, the single home for unscheduled ideas too (no separate long-term-ideas file).
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lyx`, build the Hub, run the suite agent (procedure).
 - [sandbox-hub.md](sandbox-hub.md) — the sandbox Hub: a dedicated bench for manual (dogfooding) testing.
 - [crucible/README.md](../crucible/README.md) — **`crucible`**, the **serial review+fix loop**: a reusable method for hardening a live-substrate module before merge (orchestrator-driven, model-rotating, clean-room self-fixing rounds + independent verification).
-  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the [`hardener`](../manifest/designs/hardener.md) concept, named separately to avoid colliding with it);
+  The hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop (and the origin of the board's `hardener` concept, named separately to avoid colliding with it);
   ships two paste-ready prompts — an [orchestrator prompt](../crucible/orchestrator-prompt.md) (drives the loop + verifies) and a [round-agent prompt template](../crucible/review-prompt-template.md) (the reviewer-fixer), to instantiate per module.
   Lives at the repo root, not under `docs/`, since it's a working method/prompt set, not documentation of shipped code.

@@ -6,8 +6,8 @@
 // never flagged: an agent never sees the banner, so it is not a citation an agent could act on.
 //
 // The token rule has three conjunctive parts, each earning its keep against real stencil content:
-//  1. the token sits under one of four repository-relative prefixes: "contracts/", "manifest/",
-//     "docs/", "internal/";
+//  1. the token sits under one of three repository-relative prefixes: "contracts/", "docs/",
+//     "internal/";
 //  2. the token ends in ".md" or ".go" -- this is what keeps a bare package reference (the
 //     internal/planglyph mention at the end of the implementer body) out of scope while still
 //     catching a Go-file citation;
@@ -42,7 +42,7 @@ import (
 
 // citationPrefixes are the four repository-relative prefixes a bare cross-repository citation
 // token must sit under to be in scope for TestStencils_NoBareCrossRepoCitations.
-var citationPrefixes = []string{"contracts/", "manifest/", "docs/", "internal/"}
+var citationPrefixes = []string{"contracts/", "docs/", "internal/"}
 
 // citationAllowKey is the allowlist key identifying one (stencil name, token) pair TestStencils_NoBareCrossRepoCitations is told to pass despite matching the bare-citation token rule.
 func citationAllowKey(stencilName, token string) string {

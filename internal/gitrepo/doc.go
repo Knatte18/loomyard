@@ -301,8 +301,7 @@
 //
 // Gate (c) of the original spike's rubric — "works on Windows 11" — carried
 // forward as a Win11-pending marker on every one of gitnativepoc's MIGRATE
-// verdicts (see manifest/roadmap.md's retired git-native-library entry for
-// that history). This task closes it for every migrated method: both probes
+// verdicts (the retired git-native-library work is in git history). This task closes it for every migrated method: both probes
 // above ran on Windows, and the package's Tier-2 integration suite —
 // internal/gitrepo's own tests plus the parity harness comparing every
 // migrated method against the real git CLI — was run as part of this task's

@@ -1,4 +1,4 @@
-// docslink_test.go guards markdown link and anchor integrity under manifest/ and docs/: every
+// docslink_test.go guards markdown link and anchor integrity under docs/: every
 // inline markdown link's file part and #anchor must resolve somewhere in the repo. Its placement in
 // internal/lyxcwd is a file-layout convenience, not an ownership claim on markdown links by that
 // package — see PATTERN-markdown-link-integrity.
@@ -390,11 +390,11 @@ var docsLinkAllowlist = []scankit.Entry{
 }
 
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
-// every inline markdown link in a .md file under manifest/ or docs/ must resolve, both its file part
+// every inline markdown link in a .md file under docs/ must resolve, both its file part
 // and its #anchor.
 func TestEnforcement_MarkdownLinks(t *testing.T) {
 	t.Run("repo", func(t *testing.T) {
-		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"manifest", "docs"}, docsLinkAllowlist)
+		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"docs"}, docsLinkAllowlist)
 
 		scankit.RequireFloor(t, scanned, 1, "markdown link scan")
 		for _, b := range breaks {

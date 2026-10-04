@@ -36,8 +36,7 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 ## Docs land in the same commit
 
 A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `CONSTRAINTS.md` for a new invariant.
-`manifest/` holds only what is to be built or still under consideration, never what is built: a design whose code has landed moves into its package's `doc.go`.
-`manifest/roadmap.md` changes only when a planned item is completed or added.
+An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`: a design whose code has landed moves from the board entry into `doc.go`.
 
 ## Markdown: semantic line breaks
 

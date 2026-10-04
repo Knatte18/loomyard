@@ -39,8 +39,7 @@
 // apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
 // fabric.Commit.
 //
-// The board is now the roadmap: it carries the planned work, the next-up work and the someday work that manifest/ used to hold.
-// Retiring manifest/ itself is left to task manifest-retire.
+// The board is the roadmap: it carries the planned work, the next-up work and the someday work.
 
 package boardengine
 

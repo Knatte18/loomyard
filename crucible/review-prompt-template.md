@@ -69,7 +69,7 @@ the most recent prior round is whichever `<module>-review-*` file is newest), EX
 
 ## What to read
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lyx integration>`.
-- Docs: `<MODULE DOC — manifest/designs/<module>.md>`, `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
+- Docs: `<MODULE DOC — the package's doc.go>`, `docs/overview.md`, `CONSTRAINTS.md`, `README.md`, and any `docs/research/<module>-*.md`.
 - If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
   You run every scenario yourself, directly, with your own tool calls;
   you do NOT invoke its `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself;
@@ -213,8 +213,8 @@ Small and low-severity findings are usually the CHEAPEST to fix, not a reason to
   If none exists, note the new scenario in your fixer report instead — creating a brand-new suite file/launcher is not required by this method.
 - Keep `go build`/`vet`/`test` green after every change.
   Then RE-DEPLOY (`deploy-dev.cmd`) and re-run every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the deployed dev binary).
-- Update `<manifest/designs/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change.
-  Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones only, per CLAUDE.md).
+- Update `<the module's doc.go>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change.
+  Do NOT add bugfix/hardening notes to the board (the board holds planned work only).
 - Tear down all substrate state;
   confirm zero stray processes.
   COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless the user explicitly asks.

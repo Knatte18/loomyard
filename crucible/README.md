@@ -1,9 +1,9 @@
 # crucible — a serial review+fix loop, a reusable hardening method
 
 This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to harden `reed` before merging it to `main`, plus the two prompts that drove it.
-Named separately from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
+Named separately from the future, automated `hardener` (the board's `hardener` note) module this method is the hand-run prototype of (see below) — `crucible` is what you actually run today;
 `hardener` is what it becomes once Go takes over the orchestrator role.
-The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), [`hardener`](../../manifest/designs/hardener.md), `loom` — see the `internal/loomengine` package documentation) can reuse it instead of re-inventing it each time.
+The method is **module-agnostic** — it is written down here so the modules built *on top of* reed (`shuttle` — see the `internal/shuttleengine` package documentation, `burler` (see the `internal/burlerengine` package documentation), `hardener` (the board's `hardener` note), `loom` — see the `internal/loomengine` package documentation) can reuse it instead of re-inventing it each time.
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
@@ -14,9 +14,9 @@ The method is **module-agnostic** — it is written down here so the modules bui
   copy them into `.claude/agents/` before a run and remove them after.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
-> **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
+> **This is the hand-executed prototype of the review-gate + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based `hardener` (the board's `hardener` note) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by a review gate with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/shedadapters` and `internal/burlerengine` package documentation.
 >
-> **Text vs. behavior:** the review gate and `burler` automate the **text-based** form (read the artifact). [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
+> **Text vs. behavior:** the review gate and `burler` automate the **text-based** form (read the artifact). `hardener` (the board's `hardener` note) (DRAFT) is the **behavior-based** form — *run* a live-substrate module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
 
 ## When to use it
 

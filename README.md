@@ -207,7 +207,6 @@ Through Millhouse, LoomYard builds on ideas from [claude-code-plugins](https://g
 - [CONSTRAINTS.md](CONSTRAINTS.md) — the structural invariants (authoritative).
 - [docs/overview.md](docs/overview.md) — architecture, naming, and the module and package map.
 - [contracts/specs/](contracts/specs/) — the on-disk format contracts, each with exactly one parser.
-- [manifest/](manifest/roadmap.md) — what is planned and not yet built.
 - [crucible/](crucible/README.md) — the hardening method for live-substrate modules.
 
 Per-package documentation lives in each package's `doc.go` and is the durable detail for anything shipped.

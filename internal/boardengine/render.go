@@ -1,7 +1,7 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like manifest/roadmap.md: one section per tier (Tasks, Next Up, Notes), each split into dependency layers, then Done, each entry one numbered item.
+// The README reads like a roadmap: one section per tier (Tasks, Next Up, Notes), each split into dependency layers, then Done, each entry one numbered item.
 // The tier names and their meaning lines are declared here alone;
 // the data holds only the tier number.
 // No I/O — the caller writes the files.

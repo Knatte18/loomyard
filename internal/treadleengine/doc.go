@@ -7,7 +7,7 @@
 //
 // The package has no consumer today. It was extracted out of a shipped
 // review-gate loop that has since been retired, and is kept for the future
-// Tenter module (see manifest/designs/hardener.md), whose behavior-review
+// Tenter module (see the board's `hardener` note), whose behavior-review
 // rounds need exactly this machinery with a different round-runner inside
 // it. Nothing in the tree calls Engine.Run outside this package's own tests
 // — treat every contract below as the shipped behavior a future consumer
@@ -116,7 +116,7 @@
 // prose a RoundRunner MAY read or ignore entirely. A text-review profile
 // has no use for it (its rounds keep re-using a fixed rubric); the
 // capability exists for a future consumer (Tenter, see
-// manifest/designs/hardener.md) whose rounds benefit from dynamically
+// the board's `hardener` note) whose rounds benefit from dynamically
 // retargeted focus. Like every other
 // ephemeral call in this package, it is fail-safe end to end: a stencil-fill
 // failure, a shuttle Run error, a non-done outcome, or an empty/unreadable
