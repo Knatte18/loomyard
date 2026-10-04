@@ -136,6 +136,9 @@ func (s *Store) Load() error {
 		if entries[i].Issues == nil {
 			entries[i].Issues = []int{}
 		}
+		if entries[i].Labels == nil {
+			entries[i].Labels = []string{}
+		}
 	}
 	s.tasks = entries
 	s.legacyDone = legacyDone

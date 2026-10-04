@@ -1068,6 +1068,24 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 }
 
+// TestLoadNilLabelsNormalization verifies that Load gives an entry stored with a kind and no labels key an empty labels list, not nil.
+func TestLoadNilLabelsNormalization(t *testing.T) {
+	boardDir := t.TempDir()
+	body := `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"note"}]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+
+	store := boardengine.NewStore(boardDir)
+	if err := store.Load(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	tasks := store.Tasks()
+	if len(tasks) != 1 || tasks[0].Labels == nil || len(tasks[0].Labels) != 0 {
+		t.Errorf("want one entry with an empty non-nil labels list, got %+v", tasks)
+	}
+}
+
 // TestLoadFromBoardJSON verifies that Load reads the version-1 shape and a Save round-trips it.
 func TestLoadFromBoardJSON(t *testing.T) {
 	boardDir := t.TempDir()
