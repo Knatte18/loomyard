@@ -8,6 +8,7 @@ package boardengine_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -198,15 +199,101 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
+// writeBoardConfig writes content as the board config file under a fresh base dir and returns it.
+func writeBoardConfig(t *testing.T, content string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tmpDir, lyxdirs.LyxDirName), 0755); err != nil {
+		t.Fatalf("failed to create _lyx: %v", err)
+	}
+	if err := os.Mkdir(configengine.ConfigDir(tmpDir), 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(tmpDir, "board"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return tmpDir
+}
+
+// TestLoadConfig_LabelLists asserts both label lists resolve from a config file that sets them.
+func TestLoadConfig_LabelLists(t *testing.T) {
+	dir := writeBoardConfig(t, `readme: Home.md
+design_prefix: proposal-
+types: [bug, idea]
+labels: [urgent, later]
+`)
+
+	cfg, err := boardengine.LoadConfig(dir, "board")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Types, []string{"bug", "idea"}) {
+		t.Errorf("Types = %v; want [bug idea]", cfg.Types)
+	}
+	if !reflect.DeepEqual(cfg.Labels, []string{"urgent", "later"}) {
+		t.Errorf("Labels = %v; want [urgent later]", cfg.Labels)
+	}
+}
+
+// TestLoadConfig_LabelListsDefault asserts absent keys resolve to the template defaults.
+func TestLoadConfig_LabelListsDefault(t *testing.T) {
+	dir := writeBoardConfig(t, `readme: Home.md
+design_prefix: proposal-
+`)
+
+	cfg, err := boardengine.LoadConfig(dir, "board")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Types, []string{"bug", "enhancement"}) {
+		t.Errorf("Types = %v; want [bug enhancement]", cfg.Types)
+	}
+	if !reflect.DeepEqual(cfg.Labels, []string{"undecided"}) {
+		t.Errorf("Labels = %v; want [undecided]", cfg.Labels)
+	}
+}
+
+// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the
+// empty vocabulary of a path-only Config.
+func TestVocabulary(t *testing.T) {
+	v := boardengine.Config{Types: []string{"bug"}, Labels: []string{"undecided"}}.Vocabulary()
+	tests := []struct {
+		label         string
+		isType, known bool
+	}{
+		{"bug", true, true},
+		{"undecided", false, true},
+		{"other", false, false},
+	}
+	for _, tt := range tests {
+		if got := v.IsType(tt.label); got != tt.isType {
+			t.Errorf("IsType(%q) = %v; want %v", tt.label, got, tt.isType)
+		}
+		if got := v.Known(tt.label); got != tt.known {
+			t.Errorf("Known(%q) = %v; want %v", tt.label, got, tt.known)
+		}
+	}
+
+	empty := boardengine.Config{Path: "/some/path"}.Vocabulary()
+	if empty.IsType("bug") || empty.Known("bug") {
+		t.Errorf("empty vocabulary must answer false to IsType and Known")
+	}
+}
+
 // TestOutputs tests the Outputs() method on Config.
 func TestOutputs(t *testing.T) {
 	cfg := boardengine.Config{
 		Path:         "/some/path",
 		Readme:       "Home.md",
 		DesignPrefix: "proposal-",
+		Types:        []string{"bug", "enhancement"},
 	}
 
 	out := cfg.Outputs()
+
+	if !reflect.DeepEqual(out.Types, []string{"bug", "enhancement"}) {
+		t.Errorf("expected Types [bug enhancement], got %v", out.Types)
+	}
 
 	if out.Readme != "Home.md" {
 		t.Errorf("expected Readme %q, got %q", "Home.md", out.Readme)
