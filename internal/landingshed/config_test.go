@@ -56,9 +56,9 @@ func TestLoadConfig_MalformedConflictSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLandingConfig(t, baseDir, `require_pr_to_base: ["main"]
 squash: true
-conflict: "opus[effort"
+conflict: "opus[high"
 conflict_timeout_min: 60
-describe: sonnet[effort=medium]
+describe: sonnet[medium]
 describe_timeout_min: 30
 co_authored_by: Claude <noreply@anthropic.com>
 `)
@@ -96,12 +96,12 @@ func TestLoadConfig_DescribeDefaults(t *testing.T) {
 // TestLoadConfig_InvalidDescribeKeys verifies a malformed describe spec and an empty co_authored_by
 // each fail at load, naming their key.
 func TestLoadConfig_InvalidDescribeKeys(t *testing.T) {
-	const head = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[effort=high]\nconflict_timeout_min: 60\n"
+	const head = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n"
 	cases := []struct {
 		name, tail, key string
 	}{
-		{"malformed describe", "describe: \"sonnet[effort\"\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n", "describe"},
-		{"empty co_authored_by", "describe: sonnet[effort=medium]\ndescribe_timeout_min: 30\nco_authored_by: \"  \"\n", "co_authored_by"},
+		{"malformed describe", "describe: \"sonnet[medium\"\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n", "describe"},
+		{"empty co_authored_by", "describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: \"  \"\n", "co_authored_by"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
