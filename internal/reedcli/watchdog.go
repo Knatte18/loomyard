@@ -591,7 +591,11 @@ Example:
 			}
 			defer fl.Release()
 
-			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, watchdogDefaultTiming()); err != nil {
+			timing := watchdogDefaultTiming()
+			if c.watchdogTiming != nil {
+				timing = *c.watchdogTiming
+			}
+			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing); err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
 			}
 			return nil

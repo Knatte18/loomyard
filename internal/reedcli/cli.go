@@ -52,6 +52,10 @@ type reedCLI struct {
 	// nil means the real engine and the real detached spawn.
 	strands     strandOps
 	spawnRemove func(guid string, recursive bool) error
+
+	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test
+	// can shorten how long it waits on the daemon; production never sets it.
+	watchdogTiming *watchdogTiming
 }
 
 // strandOps is the slice of *reedengine.Engine the remove and status verbs call.

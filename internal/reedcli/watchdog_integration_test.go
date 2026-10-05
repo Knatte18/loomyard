@@ -77,11 +77,31 @@ func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.En
 	return eng
 }
 
+// watchdogTestCycle is the discovery cycle the compressed timing runs at, and watchdogTestWait the
+// bound a test gives a discovery-dependent condition: many cycles, so a slow tmux round trip never
+// flakes it, while a condition that holds returns at the first poll.
+const (
+	watchdogTestCycle = 200 * time.Millisecond
+	watchdogTestWait  = 10 * time.Second
+)
+
+// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second while
+// IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the
+// consecutive-cycle rules and only waits less.
+func compressedWatchdogTiming() watchdogTiming {
+	return watchdogTiming{
+		DiscoveryCycle:   watchdogTestCycle,
+		IdleCycles:       watchdogHubIdleCycles,
+		OrphanGoneCycles: watchdogOrphanGoneCycles,
+	}
+}
+
 // runWatchdogCmdInBackground starts watchdogCmd() against hub/tmuxPath on a cancellable context and
 // returns the cancel func plus a channel that receives RunE's error (or nil) once it returns.
 func runWatchdogCmdInBackground(t *testing.T, hub, tmuxPath string) (cancel context.CancelFunc, done chan error, out *bytes.Buffer) {
 	t.Helper()
-	c := &reedCLI{}
+	timing := compressedWatchdogTiming()
+	c := &reedCLI{watchdogTiming: &timing}
 	cmd := c.watchdogCmd()
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
@@ -162,11 +182,11 @@ func TestWatchdogIntegration_DiscoversAndDropsDepartedSessions(t *testing.T) {
 
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming())
 	}()
 
 	// Both sessions must be discovered within a couple of discovery cycles.
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(h.Path))
 		if err != nil {
 			return false
@@ -191,7 +211,7 @@ func TestWatchdogIntegration_DiscoversAndDropsDepartedSessions(t *testing.T) {
 		t.Fatalf("eng1.Down(): %v", err)
 	}
 
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(h.Path))
 		if err != nil {
 			return false
@@ -237,7 +257,7 @@ func TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock(t *testing.T) {
 		t.Fatalf("eng.Down(): %v", err)
 	}
 
-	// The daemon must exit on its own within watchdogHubIdleCycles*watchdogHubDiscoveryCycle plus
+	// The daemon must exit on its own within watchdogHubIdleCycles of its own discovery cycle plus
 	// slack, and release its lock.
 	slack := 10 * time.Second
 	select {
@@ -245,7 +265,7 @@ func TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock(t *testing.T) {
 		if err != nil {
 			t.Errorf("watchdogCmd RunE returned %v; want nil", err)
 		}
-	case <-time.After(watchdogHubIdleCycles*watchdogHubDiscoveryCycle + slack):
+	case <-time.After(watchdogHubIdleCycles*watchdogTestCycle + slack):
 		t.Fatal("watchdog daemon did not exit after its last session went away")
 	}
 
@@ -363,10 +383,10 @@ func TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree(t *testing.T) {
 
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), watchdogDefaultTiming())
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng1.ShellPath(), compressedWatchdogTiming())
 	}()
 
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, socket)
 		if err != nil {
 			return false
@@ -396,7 +416,7 @@ func TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree(t *testing.T) {
 
 	// Give eng1's own watch loop goroutine ample time to actually react before checking the sibling
 	// never moved — a false pass here would mean we checked before either loop had a chance to run.
-	time.Sleep(watchdogHubDiscoveryCycle)
+	time.Sleep(watchdogTestCycle * 10)
 
 	gotW2, gotH2 := watchdogWindowSize(t, tmuxPath, socket, eng2.SessionName())
 	if gotW2 != eng2W || gotH2 != eng2H {
@@ -462,10 +482,10 @@ func TestWatchdogIntegration_DownThenUpDoesNotKillDaemon(t *testing.T) {
 	defer cancel()
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), watchdogDefaultTiming())
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), compressedWatchdogTiming())
 	}()
 
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, socket)
 		if err != nil {
 			return false
@@ -485,7 +505,7 @@ func TestWatchdogIntegration_DownThenUpDoesNotKillDaemon(t *testing.T) {
 		t.Fatalf("eng.Up() (immediate re-up): %v", err)
 	}
 
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, socket)
 		if err != nil {
 			return false
@@ -524,10 +544,10 @@ func TestWatchdogIntegration_ReEntryReReadsFlippedConfig(t *testing.T) {
 	defer cancel()
 	loopDone := make(chan error, 1)
 	go func() {
-		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), watchdogDefaultTiming())
+		loopDone <- runWatchdogLoop(ctx, h.Path, tmuxPath, eng.ShellPath(), compressedWatchdogTiming())
 	}()
 
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, socket)
 		if err != nil {
 			return false
@@ -574,7 +594,7 @@ func TestWatchdogIntegration_ReEntryReReadsFlippedConfig(t *testing.T) {
 
 	// The one daemon started above is still running throughout this whole down/flip/up sequence —
 	// never restarted — and rediscovers the re-upped session under the SAME session name.
-	waitForCondition(t, watchdogHubDiscoveryCycle*3, func() bool {
+	waitForCondition(t, watchdogTestWait, func() bool {
 		names, err := reedengine.ListSessions(tmuxPath, socket)
 		if err != nil {
 			return false
