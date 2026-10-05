@@ -760,7 +760,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// outcome.yaml is never rewritten.
 		if result.Gate != nil && !result.Gate.Passed && runResult.Outcome == outcomeDone {
 			runResult.Outcome = outcomeStuck
-			runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate)
+			runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate, deps.reentryStep())
 		}
 		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
 		// a missing summary on a non-done outcome skips the section.

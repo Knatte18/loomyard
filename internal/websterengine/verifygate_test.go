@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -315,6 +316,42 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 	}
 	if f.verifyCalls != 0 {
 		t.Errorf("verify ran %d time(s) after a rejected fix commit; want none", f.verifyCalls)
+	}
+}
+
+func TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead(t *testing.T) {
+	f := &gateFake{
+		outcome:   outcomeDone,
+		command:   "go test ./...",
+		head:      "head0",
+		dirty:     []string{"loose.go"},
+		rejection: [2]string{"mergeabc", "it merged a commit that is not on the run's parent branch"},
+		results:   []verifytree.Result{passedResult()},
+	}
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+	if _, err := gate(); err != nil {
+		t.Fatalf("first gate() error = %v", err)
+	}
+	f.dirty = nil
+	res, err := gate()
+	if err != nil {
+		t.Fatalf("second gate() error = %v", err)
+	}
+	if strings.Contains(strings.ToLower(res.Findings), "move head") {
+		t.Errorf("findings = %q; want no instruction to move HEAD", res.Findings)
+	}
+}
+
+func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T) {
+	gate := &shuttleengine.GateOutcome{Reason: "Commit mergeabc is rejected.\nIt is not on the parent branch."}
+	for _, tc := range []struct{ reentry, want string }{
+		{"lyx webster run", "way forward: 1) lyx webster reset --to pre-fix; 2) lyx webster run"},
+		{"re-step the Webster row", "way forward: 1) lyx webster reset --to pre-fix; 2) re-step the Webster row"},
+	} {
+		got := verifyGateStuckReason(t.TempDir(), gate, tc.reentry)
+		if !strings.HasSuffix(got, tc.want) || strings.Contains(got, "\n") {
+			t.Errorf("verifyGateStuckReason(%q) = %q; want one line ending %q", tc.reentry, got, tc.want)
+		}
 	}
 }
 

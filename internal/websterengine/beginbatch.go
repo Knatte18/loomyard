@@ -49,7 +49,7 @@ const planOverviewFile = "00-overview.md"
 // It reads the changed plan files so the clause names the cards to pass to rebaseline;
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
 func fingerprintMismatchWayForward(st *State, planDir string) string {
-	const fresh = "reset the branch to the run's start commit and run `lyx webster run --fresh`"
+	fresh := freshRestartSteps
 	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh

@@ -22,8 +22,12 @@ const planBaselineDirName = "plan-baseline"
 // ErrPlanBaselineMissing is returned by RestorePlan when a changed plan file has no stored copy to restore from, or the state recorded no plan hashes at all.
 var ErrPlanBaselineMissing = errors.New("websterengine: plan baseline copy missing")
 
+// freshRestartSteps is the ordered step list that discards the run and starts it over: the reset verb, then a fresh run.
+// Callers embed it after their own lead-in, so it carries no "way forward: " prefix.
+var freshRestartSteps = strings.TrimPrefix(wayForwardSteps("lyx webster reset --to start", "lyx webster run --fresh"), "way forward: ")
+
 // planBaselineWayForward is the way forward named when a plan cannot be restored from the store.
-const planBaselineWayForward = `way forward: reset the branch to the run's start commit with git and run "lyx webster run --fresh"`
+var planBaselineWayForward = wayForwardSteps("lyx webster reset --to start", "lyx webster run --fresh")
 
 // planBaselinePath returns the stored copy's path for a content hash.
 func planBaselinePath(websterDir, hash string) string {

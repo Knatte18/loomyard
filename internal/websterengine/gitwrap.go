@@ -104,8 +104,8 @@ func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBran
 		if len(parents) < 2 {
 			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD; "+
-				"way forward: move HEAD back to %s %s with git, then %s",
-				subject, reportHead, head, refusal.head, reportHead, refusal.rerun)
+				"%s",
+				subject, reportHead, head, wayForwardSteps(resetKeepStep(refusal.head, reportHead), refusal.rerun))
 		}
 		// The parent tips are resolved once, on the first merge the walk meets.
 		if parentTips == nil {
@@ -192,8 +192,15 @@ func parentMergeRefusal(subject, reportHead, head, merge, reason string, refusal
 	return fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 		"only merge commits that cleanly merge the run's parent branch may sit between a fork's reported head and HEAD, "+
 		"and merge commit %s does not qualify: %s; "+
-		"way forward: move HEAD back to %s %s, %s, and redo the parent merge-in %s",
-		subject, reportHead, head, merge, reason, refusal.head, reportHead, refusal.rerun, refusal.redoMerge)
+		"%s",
+		subject, reportHead, head, merge, reason,
+		wayForwardSteps(resetKeepStep(refusal.head, reportHead), refusal.rerun, "redo the parent merge-in "+refusal.redoMerge))
+}
+
+// resetKeepStep is the way-forward step that moves HEAD back to sha, named by what: the plain `git reset --keep`, which refuses rather than discards uncommitted changes.
+// The reset verb targets only the run's start and pre-fix heads, so this step stands in for it.
+func resetKeepStep(what, sha string) string {
+	return fmt.Sprintf("run `git reset --keep %s` to move HEAD back to %s", sha, what)
 }
 
 // ignoredPath reports whether git ignores path in worktree.

@@ -278,7 +278,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 				return shuttleengine.GateResult{}, err
 			}
 			if commit != "" {
-				findings := fmt.Sprintf("Commit %s, made above the pre-fix head %s, is neither a non-merge commit nor a clean merge of the parent branch: %s.\nMove HEAD back to %s and fix with plain commits.", commit, preFix, reason, preFix)
+				findings := fmt.Sprintf("Commit %s, made above the pre-fix head %s, is neither a non-merge commit nor a clean merge of the parent branch: %s.", commit, preFix, reason)
 				return shuttleengine.GateResult{Passed: false, Terminal: true, Findings: findings}, nil
 			}
 		}
@@ -342,11 +342,11 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 }
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
-// A Terminal failure names the gate's own reason.
+// A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
 // Otherwise it names the failing identities, or the dirty paths, the latest failed evaluation's report holds, and the attempts spent.
-func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome) string {
+func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
-		return "verify gate failed: " + oneLine(gate.Reason)
+		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
 	}
 	report, err := readVerifyGateReport(VerifyGateReportPath(reportsDir))
 	if err != nil {
