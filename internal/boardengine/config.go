@@ -25,7 +25,8 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
-	// Types are the type labels; Labels are every other configured label, both in board.yaml order.
+	// Types are the type labels;
+	// Labels are every other configured label, both in board.yaml order.
 	// LoadConfig decodes them from the yaml node tree, so the tags are inert.
 	Types  []Label `yaml:"-"`
 	Labels []Label `yaml:"-"`
