@@ -1,9 +1,8 @@
 // configreg.go — module registry for configuration management.
 //
-// Provides a neutral registry of available config modules and their templates, used
-// by the config CLI command and callers such as fabric clone.
-// Its second role is marking which modules are hub-wide, so every caller branches on the registry
-// rather than on a module name.
+// Provides a neutral registry of available config modules and their templates,
+// used by the config CLI command and callers such as fabric clone.
+// Its second role is marking which modules are hub-wide, so every caller branches on the registry rather than on a module name.
 
 package configreg
 

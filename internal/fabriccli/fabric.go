@@ -710,9 +710,8 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// the time any of them is reached.
 	rec := fabricengine.NewMutations(l.HubPath)
 
-	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather
-	// than reported: without this, LoadConfig's "not initialized here; run \"lyx fabric
-	// reconcile\"" remedy was circular when reconcile itself emitted it.
+	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather than reported:
+	// without this, the "run \"lyx fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
 	// ReconcileHubWideAt only adds absent keys and never rewrites a recorded pathspec.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
 	boardDir := fabricengine.BoardDir(l.HubPath)
@@ -721,9 +720,8 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		primeBaseDir = filepath.Join(l.HubPath, primeName, l.AnchorRel)
 	}
 
-	// The files are written and committed in _board under the board write lock; a commit or push
-	// failure never changes the exit code and leaves the file for the next board sync, mirroring the
-	// warp-binding backfill below.
+	// The files are written and committed in _board under the board write lock.
+	// A commit or push failure never changes the exit code and leaves the file for the next board sync, mirroring the warp-binding backfill below.
 	var hubWideResults []configsync.Result
 	var reconcileErr error
 	hubConfigBolt := fabricengine.NewBolt(boardDir)

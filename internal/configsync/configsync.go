@@ -59,24 +59,21 @@ type Result struct {
 	// false), so the operator can see the migration is pending before it
 	// applies; the legacy files themselves are only pruned when Applied.
 	MigratedFrom []string
-	// Seed names the input ReconcileHubWideAt reconciled: SeedHub, SeedPrime, SeedLegacy or
-	// SeedTemplate.
+	// Seed names the input ReconcileHubWideAt reconciled: SeedHub, SeedPrime, SeedLegacy or SeedTemplate.
 	// Set on a dry run too; empty for ReconcileAll results.
 	Seed string
-	// Retired reports that a hub-wide module's leftover per-worktree copy adds nothing to the hub
-	// file, so it is removable.
+	// Retired reports that a hub-wide module's leftover per-worktree copy adds nothing to the hub file, so it is removable.
 	// Applied reports the deletion happened.
 	// Set only by ReconcileAll, on a dry run too.
 	Retired bool
-	// Divergent lists, as "<dotted.key>: <value>" sorted, each entry of a hub-wide module's
-	// per-worktree copy that the hub file lacks or holds with a different value.
+	// Divergent lists, as "<dotted.key>: <value>" sorted, each entry of a hub-wide module's per-worktree copy that the hub file lacks or holds with a different value.
 	// The copy is left in place.
 	// Set only by ReconcileAll.
 	Divergent []string
 }
 
-// legacyConfig reads the pre-cutover config files the module covers, present
-// under baseDir's config dir, and concatenates them into a single YAML document.
+// legacyConfig reads the pre-cutover config files the module covers, present under baseDir's config dir,
+// and concatenates them into a single YAML document.
 // A legacy file that is missing, empty, or fails to parse contributes nothing
 // and is NOT named in migratedFrom — callers must not delete unparseable files,
 // since their values were never carried forward.
@@ -132,8 +129,7 @@ func decodeLeafValues(data []byte, path string) (map[string]any, error) {
 
 // retireHubWideCopy decides the outcome of a hub-wide module's per-worktree copy against the hub file.
 // A missing copy or a missing hub file yields an empty result and leaves the copy alone.
-// A copy whose every leaf is present in the hub file at the same key path with an equal value is
-// Retired, and apply deletes it.
+// A copy whose every leaf is present in the hub file at the same key path with an equal value is Retired, and apply deletes it.
 // Any other copy is Divergent, listing each leaf the hub file lacks or holds differently, and stays.
 func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, error) {
 	result := Result{Module: module}
@@ -185,13 +181,13 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 	return result, nil
 }
 
-// ReconcileAll reconciles the per-worktree module config files under baseDir against their
-// templates, returning the slice of results and any I/O or YAML parsing error.
+// ReconcileAll reconciles the per-worktree module config files under baseDir against their templates,
+// returning the slice of results and any I/O or YAML parsing error.
 // Seed-only modules (e.g. "models") with present files are reported untouched;
 // absent files materialize the template verbatim.
-// A hub-wide module is never reconciled or written under baseDir: its result reports whether a
-// leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds,
-// and apply deletes it) or Divergent (the copy holds something the hub file lacks, and it stays).
+// A hub-wide module is never reconciled or written under baseDir.
+// Its result reports whether a leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds, and apply deletes it)
+// or Divergent (the copy holds something the hub file lacks, and it stays).
 // When apply is false, files are never written or removed.
 func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 	var results []Result
@@ -291,16 +287,14 @@ func primeConfig(primeBaseDir, module string) []byte {
 	return data
 }
 
-// ReconcileHubWideAt reconciles every hub-wide module's file at configengine.ConfigFile(boardDir,
-// name), in registry order, and returns one Result per module.
+// ReconcileHubWideAt reconciles every hub-wide module's file at configengine.ConfigFile(boardDir, name),
+// in registry order, and returns one Result per module.
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
 // A present hub file is the reconcile input and is never replaced.
-// An absent file of a module with open maps is seeded from the prime's copy when that copy exists
-// and parses; a module without open maps never reads the prime, since its per-worktree copy was
-// never in effect.
-// Otherwise an absent file folds in the module's pre-cutover legacy files, and failing that
-// starts from the template.
+// An absent file of a module with open maps is seeded from the prime's copy when that copy exists and parses;
+// a module without open maps never reads the prime, since its per-worktree copy was never in effect.
+// Otherwise an absent file folds in the module's pre-cutover legacy files, and failing that starts from the template.
 // Legacy files are pruned only when apply succeeds.
 // When apply is false, nothing is written or removed.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, error) {

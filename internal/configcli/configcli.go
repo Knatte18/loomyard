@@ -97,8 +97,7 @@ func printAll(dirs configDirs, out io.Writer) int {
 	return 0
 }
 
-// editOne edits a single config module and, on success, commits a hub-wide module in _board
-// or syncs fabric for any other.
+// editOne edits a single config module and, on success, commits a hub-wide module in _board or syncs fabric for any other.
 func editOne(dirs configDirs, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the template for this module.
 	mod, ok := configreg.Lookup(module)
@@ -203,9 +202,8 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor.
 // The print path is evaluated before any edit logic.
-// The --set path is a fully non-interactive write: it never calls edit and is
-// mutually exclusive with --print. The worktree base dir is computed from the layout as
-// filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
+// The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
+// The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
 func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string) int {
 	dirs := dirsOf(l)
 
@@ -332,8 +330,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		if len(result.MigratedFrom) > 0 {
 			m["migratedFrom"] = result.MigratedFrom
 		}
-		// retired and divergent are exceptional too: only a hub-wide module's
-		// leftover per-worktree copy sets them.
+		// retired and divergent are exceptional too: only a hub-wide module's leftover per-worktree copy sets them.
 		if result.Retired {
 			m["retired"] = true
 		}
@@ -457,8 +454,8 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // runConfig is the package-private handler for the lyx config command.
 //
 // It resolves the layout from the seam cwd,
-// builds the real editor (DefaultEditor), the real sync function
-// (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state)
+// builds the real editor (DefaultEditor),
+// the real sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state)
 // and the real hub commit,
 // and dispatches to dispatch.
 // When printOnly is true the command is read-only: it prints on-disk YAML

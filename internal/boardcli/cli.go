@@ -5,8 +5,8 @@
 // promote, prune, find, labels and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
-// Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
-// design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
+// Configuration resolution happens once in a PersistentPreRunE.
+// The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
 // and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.

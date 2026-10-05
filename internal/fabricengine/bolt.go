@@ -1,6 +1,6 @@
 // bolt.go defines Bolt, the handle over the unpaired weft:main area (today consumed only by
-// _board): it names that area as a self-contained unit through Commit/CommitWritten/Push/Sync, so a
-// caller outside this package never has to spell "weft" to reach it.
+// _board): it names that area as a self-contained unit through Commit/CommitWritten/Push/Sync,
+// so a caller outside this package never has to spell "weft" to reach it.
 
 package fabricengine
 
@@ -30,10 +30,9 @@ func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed b
 	return commitWeftAt(b.path, message, opts)
 }
 
-// CommitWritten runs write under the board write lock and commits exactly the repo-relative paths
-// write returns, so unrelated dirty files in the repo stay for the next sync.
-// The lock is released only after the commit, so a concurrent whole-repo Commit never captures a
-// half-written file.
+// CommitWritten runs write under the board write lock and commits exactly the repo-relative paths write returns,
+// so unrelated dirty files in the repo stay for the next sync.
+// The lock is released only after the commit, so a concurrent whole-repo Commit never captures a half-written file.
 //
 // A write error is returned unwrapped and nothing is committed.
 // An empty path list commits nothing and returns committed == false.
