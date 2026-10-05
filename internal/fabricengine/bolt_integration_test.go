@@ -168,6 +168,8 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 // TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns, leaving
 // other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
 func TestBolt_CommitWritten(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)

@@ -840,6 +840,8 @@ func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 // and the board dir as separate directories: every row reads or writes the board dir file,
 // never a worktree copy, and commits through the hub-commit seam, never through sync.
 func TestDispatchHubWideBoard(t *testing.T) {
+	t.Parallel()
+
 	const seeded = "readme: Home.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const edited = "readme: Edited.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const rival = "readme: Rival.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
@@ -968,6 +970,8 @@ func TestDispatchHubWideBoard(t *testing.T) {
 
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+
 			fx := newHubFixture(t)
 			seed := seeded
 			if row.seed != "" {
