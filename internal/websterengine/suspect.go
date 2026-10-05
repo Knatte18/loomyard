@@ -293,25 +293,17 @@ func trackedRel(worktree, p string) (rel string, ok bool, err error) {
 
 // uncheckableSuspects returns the paths of paths that checkRecoveredSuspects cannot check:
 // neither under geom.PlanDir with st.PlanFileHashes recorded, nor accepted by trackedRel.
+// uncheckableReason classifies each path, so the reason a path cannot be checked comes from the same cases;
+// the record keeps the bare paths, and a refusal asks uncheckableReason for each path's reason.
 // The error is a link-resolution or git probe failure.
 func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, error) {
-	planPaths, _, err := splitPlanPaths(geom, paths)
-	if err != nil {
-		return nil, err
-	}
 	var out []string
 	for _, p := range paths {
-		if slices.Contains(planPaths, p) {
-			if len(st.PlanFileHashes) == 0 {
-				out = append(out, p)
-			}
-			continue
-		}
-		_, ok, err := trackedRel(geom.WorktreeRoot, p)
+		_, uncheckable, err := uncheckableReason(geom, st, p)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
+		if uncheckable {
 			out = append(out, p)
 		}
 	}

@@ -155,8 +155,9 @@ func renderCardPointers(cards []planparser.Card, planDirDisplay string) string {
 // specsDir is the told deployed-specs directory, filled into the shared implementer-job body's
 // required specs_dir marker.
 // cardGates is the caller-rendered per-card gate command list (renderCardGates), filled into the body's required card_gates marker.
+// outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath string) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, outcomePath, summaryPath string, selfFixCap int, notePath string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -176,6 +177,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, pl
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"specs_dir":         specsDir,
+		"outcome_path":      outcomePath,
+		"summary_path":      summaryPath,
 		friction.MarkerName: directive,
 	}
 	template, err := composeForkTemplate(stencilsDir)
@@ -262,12 +265,13 @@ const verifyFixPromptFileName = "verify-fix.md"
 
 // RenderVerifyFixPrompt fills webster-body-verify-fix for the verify-gate fixer fork, read from stencilsDir.
 // reportPath is the verify-gate report the fork reads (VerifyGateReportPath).
+// outcomePath and summaryPath are Merriam's two contract files, which the fixer is told never to write.
 // The fork never names a record path.
 // Returns an error if reportPath is empty.
 // planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a friction.Directive error swallowed as a Warn rather than propagated.
-func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, notePath string) ([]byte, error) {
+func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, outcomePath, summaryPath, notePath string) ([]byte, error) {
 	if strings.TrimSpace(reportPath) == "" {
 		return nil, fmt.Errorf("webster: render verify-fix prompt: report path is empty")
 	}
@@ -282,6 +286,8 @@ func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, noteP
 		"report_path":       reportPath,
 		"worktree_root":     worktreeRoot,
 		"plan_dir":          masterPlanDirDisplay(worktreeRoot, planDir),
+		"outcome_path":      outcomePath,
+		"summary_path":      summaryPath,
 		friction.MarkerName: directive,
 	}
 	template, err := VerifyFixTemplate(stencilsDir)

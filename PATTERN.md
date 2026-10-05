@@ -17,6 +17,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repository root and state; a module declares a descriptor. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, and its spec row and reaching test land in the same commit. — [background](pattern/PATTERN-refusal-way-forward.md)
+- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny (`git reset --hard`, `git push --force`/`-f`, `rm -rf`); lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 

@@ -891,7 +891,7 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	if found {
 		t.Errorf("Attach() found = true; want false -- a terminal-Outcome record is respawn-eligible, not attachable")
 	}
-	if result != (Result{}) {
+	if !isZeroResult(result) {
 		t.Errorf("Attach() result = %+v; want zero Result", result)
 	}
 }

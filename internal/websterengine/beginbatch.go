@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // ErrPaused is the sentinel BeginBatch returns when deps.Geom.ScratchDir's pause flag is present at the
@@ -48,7 +49,7 @@ const planOverviewFile = "00-overview.md"
 // It reads the changed plan files so the clause names the cards to pass to rebaseline;
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
 func fingerprintMismatchWayForward(st *State, planDir string) string {
-	const fresh = "reset the branch to the run's start commit and run `lyx webster run --fresh`"
+	fresh := freshRestartSteps
 	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
@@ -390,7 +391,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
-	prompt, err := RenderForkPrompt(batch, cardGates, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderForkPrompt(batch, cardGates, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

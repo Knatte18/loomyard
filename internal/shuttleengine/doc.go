@@ -93,6 +93,16 @@
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
 //
+// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound.
+// Once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
+// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise OutcomeAsking with the waiting event's message.
+// A gated run reaches its gate through the Done branch, so the expiry is an arrival.
+// A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;
+// both are bounded only by the run's own Timeout.
+// The prefixes are caller data, which Spec.validate does not inspect.
+// A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
+// Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
+//
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.

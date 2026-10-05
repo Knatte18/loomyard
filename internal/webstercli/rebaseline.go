@@ -24,8 +24,8 @@ keeping every batch record.
 It refuses, leaving state.json untouched, when the edit changes the cards of a
 batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
-to restore those cards, or to reset the branch to the run's start commit and
-run "lyx webster run --fresh".
+to restore those cards, or to run "lyx webster reset --to start" and then
+"lyx webster run --fresh".
 The operator names every card the edit changed with --card (repeatable);
 an edited card that is not named is refused, and 00-overview.md, which
 carries the plan's integration verify, is never accepted.

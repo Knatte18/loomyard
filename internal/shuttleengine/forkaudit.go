@@ -7,6 +7,17 @@
 
 package shuttleengine
 
+import "time"
+
+// WriteEvent is one Write, Edit or NotebookEdit call in a transcript, resolved against its tool result.
+// At is the result line's timestamp, or the call's own line timestamp when no result exists.
+// Succeeded is true only when a result exists and it is not an error.
+type WriteEvent struct {
+	Path      string    // File path the call targeted.
+	At        time.Time // When the call's result arrived, or when the call was made if it has no result.
+	Succeeded bool      // Whether the call's tool result exists and is not an error.
+}
+
 // ForkAudit summarizes fork-spawning behavior in a fork-authorized run's parent session.
 // It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns, a defect signal
 // since named forks lose inherited context).
@@ -17,6 +28,7 @@ type ForkAudit struct {
 	NamedSpawns        int          // SpawnCalls with a name parameter (defect signal; named forks lose inherited context).
 	ParentWriteCalls   int          // Write/Edit/NotebookEdit tool_use blocks in parent's transcript (policy interpretation is caller's).
 	ParentWrites       []string     // File paths of every parent Write/Edit/NotebookEdit block, in transcript order (caller's policy for interpretation).
+	ParentWriteEvents  []WriteEvent // One event per parent Write/Edit/NotebookEdit block with a path, in transcript order, with time and result.
 	ParentBashCommands []string     // Verbatim Bash commands in parent's transcript (caller classifies git-mutating or disallowed).
 }
 
@@ -31,6 +43,7 @@ type ForkReport struct {
 	AgentCalls     int            // Agent tool_use attempts inside fork's transcript (counted even when denied; defect signal).
 	WriteCalls     int            // Write/Edit/NotebookEdit tool_use attempts (defect signal; forks expected to review, not mutate).
 	WritePaths     []string       // File paths of every fork Write/Edit/NotebookEdit block, in transcript order (analog of ForkAudit.ParentWrites).
+	WriteEvents    []WriteEvent   // One event per fork Write/Edit/NotebookEdit block with a path, in transcript order, with time and result.
 	BashCommands   []string       // Every Bash tool_use command string in fork's transcript, verbatim and in order (caller classifies mutating or disallowed).
 	ToolCalls      map[string]int // Tool_use count keyed by tool name (caller inspects unusual volume).
 	ReportReturned bool           // Whether fork produced a final assistant message ("report returned" signal).

@@ -8,6 +8,10 @@
 // guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
 // it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
 // loop can classify it as a real-time asking signal instead of waiting for the timeout.
+// Every run also installs one PreToolUse(Bash) rewrite hook that prefixes each command with bashStdinPrefix, so the shell's default stdin is /dev/null.
+// The hook answers with `updatedInput` and no `permissionDecision`, which Claude Code reads as "doesn't decide":
+// it grants nothing, and the agents' allow and deny rules still decide the call.
+// It changes only the default stdin: a heredoc, pipe or redirect attached to the command still supplies that command's stdin.
 // buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
@@ -95,6 +99,24 @@ func denyInstalls(interactive bool, cfg shuttleengine.Config, allowAgentTool boo
 	return cfg.ClaudeDenyAgentTool && !allowAgentTool, !interactive && cfg.ClaudeDenyAskUserQuestion
 }
 
+// bashStdinPrefix is prepended to every Bash command an agent runs, so the shell's default stdin is /dev/null instead of the tool's open stdin.
+// An interpreter left reading that stdin (`python3 -` whose heredoc was attached to the next command) would otherwise hang the session.
+const bashStdinPrefix = "exec </dev/null; "
+
+// bashStdinRewriteJSON is the printf format of the rewrite hook's answer: `updatedInput` with no `permissionDecision`.
+// Claude Code treats an omitted decision as "doesn't decide", so the normal permission flow, and with it the agents' allow and deny rules, still decide the call.
+// Its two %s verbs take the prefix and the command's already JSON-encoded string.
+const bashStdinRewriteJSON = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"%s%s"}}}`
+
+// bashStdinHookCommand returns the shell command of the PreToolUse(Bash) rewrite hook.
+// It reads the payload, extracts tool_input.command as its JSON-encoded string, and unless that string already starts with bashStdinPrefix or is absent, prints bashStdinRewriteJSON with the encoded string reused verbatim, so nothing is re-escaped.
+// The unescaped `"command":"` sequence occurs only as a key, since a quote inside a JSON string is escaped; the greedy leading `.*` picks the last such key.
+// The trailing `; true` keeps the exit code 0 on every path: the hook denies nothing.
+func bashStdinHookCommand() string {
+	return `in=$(cat); cmd=$(printf '%s' "$in" | sed -nE 's/.*"command":"(([^"\\]|\\.)*)".*/\1/p'); ` +
+		`case "$cmd" in ''|` + shQuote(bashStdinPrefix) + `*) ;; *) printf ` + shQuote(bashStdinRewriteJSON) + ` ` + shQuote(bashStdinPrefix) + ` "$cmd";; esac; true`
+}
+
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
 func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) string {
 	agentDeny, askUserDeny := denyInstalls(interactive, cfg, allowAgentTool)
@@ -157,6 +179,12 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Hooks:   []hookCommand{{Type: "command", Command: webForkCmd}},
 		})
 	}
+	// Every run, fork mode or not, gives Bash commands /dev/null as default stdin.
+	// It follows the fork guard, so the guard stays the first Bash entry.
+	doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
+		Matcher: "Bash",
+		Hooks:   []hookCommand{{Type: "command", Command: bashStdinHookCommand()}},
+	})
 	if interactive {
 		// Record the live ask via the Stop hook's append command, allowing the tool call to proceed unhindered.
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{

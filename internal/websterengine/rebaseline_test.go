@@ -104,7 +104,7 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
 				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 			}
-			for _, want := range []string{"batch 1", "01-json-flag", "--fresh", deps.State.Batches[1].StartSHA} {
+			for _, want := range []string{"batch 1", "01-json-flag", "1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err.Error(), want)
 				}
@@ -116,34 +116,9 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 	}
 }
 
-// TestRebaseline_RefusalNamesStartCommitByAncestry pins that the start commit a refusal names is the one every other start descends from, not the lowest-numbered batch's:
-// batch 2 ran first, so its start C0 is the run's start and batch 1's start C1 is not.
-func TestRebaseline_RefusalNamesStartCommitByAncestry(t *testing.T) {
-	deps := rebaselineDeps(t, []batcher.Batch{beginCard(3, "other")}, map[int]*websterengine.BatchState{})
-	root := deps.Geom.WorktreeRoot
-	c0 := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", "HEAD"))
-	c1 := gitkit.CommitFile(t, root, "next.txt", "next", "next commit")
-	first := doneBatchOne()
-	first.StartSHA = c1
-	second := doneBatchOne()
-	second.Slug, second.Cards, second.StartSHA = "list-tests", []string{"02-list-tests"}, c0
-	deps.State.Batches = map[int]*websterengine.BatchState{1: first, 2: second}
-
-	_, err := websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
-	}
-	if !strings.Contains(err.Error(), "start commit "+c0) {
-		t.Errorf("error %q; want the start commit %s named", err.Error(), c0)
-	}
-	if strings.Contains(err.Error(), "start commit "+c1) {
-		t.Errorf("error %q names the later commit %s as the start commit", err.Error(), c1)
-	}
-}
-
-// TestRebaseline_RefusalWithoutStartSHANamesNoBlankCommit pins the refusal text when no record carries a StartSHA:
-// it still names the run's start commit, with no empty SHA slot.
-func TestRebaseline_RefusalWithoutStartSHANamesNoBlankCommit(t *testing.T) {
+// TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb pins the refusal text when no record carries a StartSHA:
+// the way forward names the reset verb, which resolves the start itself, and no git command or commit.
+func TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb(t *testing.T) {
 	rec := doneBatchOne()
 	rec.StartSHA = ""
 	deps := rebaselineDeps(t, []batcher.Batch{beginCard(2, "list-tests")}, map[int]*websterengine.BatchState{1: rec})
@@ -151,8 +126,8 @@ func TestRebaseline_RefusalWithoutStartSHANamesNoBlankCommit(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
 		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 	}
-	if !strings.Contains(err.Error(), "reset the branch to the run's start commit with git") {
-		t.Errorf("error %q; want the start commit named without a blank SHA", err.Error())
+	if !strings.Contains(err.Error(), "or 1) lyx webster reset --to start; 2) lyx webster run --fresh") {
+		t.Errorf("error %q; want the reset verb and the fresh run named", err.Error())
 	}
 }
 

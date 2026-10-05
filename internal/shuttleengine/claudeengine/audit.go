@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -41,7 +42,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 	}
 
 	parentPath := filepath.Join(projectDir, sessionID+".jsonl")
-	spawnCalls, namedSpawns, writeCalls, writes, bashCommands, err := auditParentTranscript(parentPath)
+	spawnCalls, namedSpawns, writeCalls, writes, writeEvents, bashCommands, err := auditParentTranscript(parentPath)
 	if err != nil {
 		return shuttleengine.ForkAudit{}, err
 	}
@@ -59,6 +60,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 				NamedSpawns:        namedSpawns,
 				ParentWriteCalls:   writeCalls,
 				ParentWrites:       writes,
+				ParentWriteEvents:  writeEvents,
 				ParentBashCommands: bashCommands,
 			}, nil
 		}
@@ -90,6 +92,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 		NamedSpawns:        namedSpawns,
 		ParentWriteCalls:   writeCalls,
 		ParentWrites:       writes,
+		ParentWriteEvents:  writeEvents,
 		ParentBashCommands: bashCommands,
 	}, nil
 }
@@ -129,12 +132,17 @@ type transcriptBlock struct {
 	Name  string         `json:"name"`
 	Input map[string]any `json:"input"`
 	Text  string         `json:"text"`
+	// ToolUseID and IsError are carried by a tool_result block.
+	ToolUseID string `json:"tool_use_id"`
+	IsError   bool   `json:"is_error"`
 }
 
 // transcriptLine is one JSONL line of a Claude session transcript,
 // with Type discriminating entry kinds and Message.Content carrying assistant blocks.
 type transcriptLine struct {
 	Type string `json:"type"`
+	// Timestamp is the line's RFC 3339 time, kept as text so a malformed value costs only the time, not the line.
+	Timestamp string `json:"timestamp"`
 	// CustomTitle is the session name carried by a `custom-title` line.
 	CustomTitle string `json:"customTitle"`
 	Message     struct {
@@ -186,12 +194,70 @@ func forEachTranscriptLine(path string, visit func(transcriptLine)) error {
 	}
 }
 
+// lineTime parses the line's timestamp, returning the zero time when it is absent or malformed.
+func (l transcriptLine) lineTime() time.Time {
+	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+	if err != nil {
+		return time.Time{}
+	}
+	return at
+}
+
+// writeTracker pairs each write tool_use with the tool_result that names its id.
+type writeTracker struct {
+	events []shuttleengine.WriteEvent
+	byID   map[string]int
+}
+
+// call records a write tool_use made on line, unresolved until its result arrives.
+func (w *writeTracker) call(id, path string, line transcriptLine) {
+	if w.byID == nil {
+		w.byID = map[string]int{}
+	}
+	if id != "" {
+		w.byID[id] = len(w.events)
+	}
+	w.events = append(w.events, shuttleengine.WriteEvent{Path: path, At: line.lineTime()})
+}
+
+// result resolves the write named by block, if any, with the time of the result line.
+func (w *writeTracker) result(block transcriptBlock, line transcriptLine) {
+	idx, ok := w.byID[block.ToolUseID]
+	if !ok || block.ToolUseID == "" {
+		return
+	}
+	w.events[idx].At = line.lineTime()
+	w.events[idx].Succeeded = !block.IsError
+	delete(w.byID, block.ToolUseID)
+}
+
+// resolveResults feeds every tool_result block of a non-assistant line to the tracker.
+func (w *writeTracker) resolveResults(line transcriptLine) {
+	for _, block := range line.Message.Content {
+		if block.Type == "tool_result" {
+			w.result(block, line)
+		}
+	}
+}
+
+// writePath extracts a write block's target: file_path first, then NotebookEdit's notebook_path.
+func writePath(block transcriptBlock) string {
+	if filePath, _ := block.Input["file_path"].(string); filePath != "" {
+		return filePath
+	}
+	notebookPath, _ := block.Input["notebook_path"].(string)
+	return notebookPath
+}
+
 // auditParentTranscript reads the parent session's transcript and extracts
 // spawnCalls (Agent tool_use count), namedSpawns (non-empty name fields),
-// writeCalls (Write/Edit/NotebookEdit count), writes (file paths), and bashCommands.
-func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes, bashCommands []string, err error) {
+// writeCalls (Write/Edit/NotebookEdit count), writes (file paths), their timed events,
+// and bashCommands.
+func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes []string, events []shuttleengine.WriteEvent, bashCommands []string, err error) {
+	var tracker writeTracker
 	err = forEachTranscriptLine(path, func(line transcriptLine) {
 		if line.Type != "assistant" {
+			tracker.resolveResults(line)
 			return
 		}
 		for _, block := range line.Message.Content {
@@ -206,14 +272,10 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int
 				}
 			case "Write", "Edit", "NotebookEdit":
 				writeCalls++
-				filePath, ok := block.Input["file_path"].(string)
-				if !ok || filePath == "" {
-					// NotebookEdit carries its path under notebook_path, not
-					// file_path — fall back before giving up on this block.
-					filePath, ok = block.Input["notebook_path"].(string)
-				}
-				if ok && filePath != "" {
+				// NotebookEdit carries its path under notebook_path, not file_path.
+				if filePath := writePath(block); filePath != "" {
 					writes = append(writes, filePath)
+					tracker.call(block.ID, filePath, line)
 				}
 			case "Bash":
 				if cmd, _ := block.Input["command"].(string); cmd != "" {
@@ -223,9 +285,9 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int
 		}
 	})
 	if err != nil {
-		return 0, 0, 0, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
+		return 0, 0, 0, nil, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
 	}
-	return spawnCalls, namedSpawns, writeCalls, writes, bashCommands, nil
+	return spawnCalls, namedSpawns, writeCalls, writes, tracker.events, bashCommands, nil
 }
 
 // forkSpawnToolUseID returns the parent's Agent tool_use id that spawned the fork,
@@ -260,8 +322,10 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 		ToolCalls:      map[string]int{},
 	}
 	reportReturned := false
+	var tracker writeTracker
 	err := forEachTranscriptLine(path, func(line transcriptLine) {
 		if line.Type != "assistant" {
+			tracker.resolveResults(line)
 			return
 		}
 		// Overwritten (not OR-ed) on every assistant-type line, so this ends
@@ -285,12 +349,9 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 					// Mirror auditParentTranscript's path extraction: file_path
 					// first, notebook_path fallback, and a pathless block still
 					// counts above without contributing an entry.
-					filePath, ok := block.Input["file_path"].(string)
-					if !ok || filePath == "" {
-						filePath, ok = block.Input["notebook_path"].(string)
-					}
-					if ok && filePath != "" {
+					if filePath := writePath(block); filePath != "" {
 						report.WritePaths = append(report.WritePaths, filePath)
+						tracker.call(block.ID, filePath, line)
 					}
 				case "Bash":
 					if cmd, _ := block.Input["command"].(string); cmd != "" {
@@ -309,6 +370,7 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read fork transcript %q: %w", path, err)
 	}
 	report.ReportReturned = reportReturned
+	report.WriteEvents = tracker.events
 
 	return report, nil
 }

@@ -346,7 +346,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
-			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: move HEAD back"} {
+			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: 1) run `git reset --keep " + report + "` to move HEAD back"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err, want)
 				}

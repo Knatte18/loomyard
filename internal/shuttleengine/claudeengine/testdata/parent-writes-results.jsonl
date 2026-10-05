@@ -1,0 +1,5 @@
+{"type":"assistant","timestamp":"2026-01-02T10:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_w1","name":"Write","input":{"file_path":"/work/a.txt","content":"a"}}]}}
+{"type":"user","timestamp":"2026-01-02T10:00:01.500Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_w1","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-01-02T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_w2","name":"Edit","input":{"file_path":"/work/b.txt","old_string":"x","new_string":"y"}}]}}
+{"type":"user","timestamp":"2026-01-02T10:00:06.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_w2","is_error":true,"content":"no match"}]}}
+{"type":"assistant","timestamp":"2026-01-02T10:00:10.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_w3","name":"Write","input":{"file_path":"/work/c.txt","content":"c"}}]}}

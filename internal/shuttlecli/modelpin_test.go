@@ -31,7 +31,7 @@ const modelPinConstantName = "smokeClaudeModel"
 // commit as a new smoke test, never ahead of one.
 // It is 4: `lyx shuttle run` through this package's own RunCLI in smoke_run_test.go and twice in
 // smoke_guardrail_test.go, plus the direct Runner.Start in smoke_interrupt_test.go.
-const wantSpawnSiteCount = 4
+const wantSpawnSiteCount = 5
 
 // spawnSiteOpeners recognises the two shapes a real-`claude` spawn takes in this package's smoke
 // suite, each paired with the bracket that closes its argument list.

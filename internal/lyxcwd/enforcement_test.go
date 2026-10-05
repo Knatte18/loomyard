@@ -583,6 +583,7 @@ var vocabExempt = []vocabExemptEntry{
 	{"WarpLyxLink", "internal/fabricengine"},
 	{"WEFT_SKIP_GIT", "fabric's env-var name"},
 	{"WEFT_SKIP_PUSH", "fabric's env-var name"},
+	{"ResetPairWarp", "internal/fabricengine, a *Fabric method"},
 	{"WarpWorktree", "internal/fabricengine, a result field of Prune, Reconcile and Status"},
 	{"side=warp", "internal/fabricengine, the mutation record's trace detail"},
 	{"warp_branch_deleted", "internal/fabriccli, an envelope key"},

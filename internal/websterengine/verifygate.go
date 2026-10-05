@@ -101,6 +101,10 @@ type verifyGateSeams struct {
 	changedPaths func(sha string) ([]string, error)
 	// modulePath returns go.mod's module path, empty when the worktree has none.
 	modulePath func() string
+	// recordPreFix persists head as state.json's PreFixHead.
+	recordPreFix func(head string) error
+	// clearPreFix clears state.json's PreFixHead.
+	clearPreFix func() error
 }
 
 // NewVerifyGate returns the must-pass shuttleengine.Gate Run adds to Merriam's spec, with the notes Run applies after the wait.
@@ -118,7 +122,8 @@ type verifyGateSeams struct {
 // otherwise it runs verifytree.Verify, reruns once on a failure, and passes a flaky failure whose rerun passed.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
 // Every failed evaluation writes the verify-gate report.
-// Attempt counts and the pre-fix head live in the closure for one shuttle run.
+// Attempt counts and the pre-fix head live in the closure for one shuttle run;
+// the pre-fix head is also persisted as state.json's PreFixHead when it is recorded, overwriting an earlier run's, and cleared on a passing evaluation.
 func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir string) (shuttleengine.Gate, *VerifyGateNotes) {
 	paths := verifytree.NewPaths(geom.WorktreeRoot, geom.VerifyDir)
 	seams := verifyGateSeams{
@@ -160,9 +165,31 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 		},
 		changedPaths: func(sha string) ([]string, error) { return commitChangedPaths(geom.WorktreeRoot, sha) },
 		modulePath:   func() string { return readModulePath(geom.WorktreeRoot) },
+		recordPreFix: func(head string) error { return setPreFixHead(geom, head) },
+		clearPreFix:  func() error { return setPreFixHead(geom, "") },
 	}
 	notes := &VerifyGateNotes{frictionDir: frictionDir}
 	return newVerifyGate(geom.ReportsDir, attempts, notes, seams), notes
+}
+
+// setPreFixHead loads state.json under the state-mutation lease, sets PreFixHead and saves.
+// Master is idle at a gate evaluation, so no bracket verb holds the lease then.
+// A run with no state.json has nothing to record into and is left alone.
+func setPreFixHead(geom Geometry, head string) error {
+	lease, err := AcquireStateMutation(geom.ScratchDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lease.Release() }()
+	st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
+	if err != nil {
+		return err
+	}
+	if st == nil || st.PreFixHead == head {
+		return nil
+	}
+	st.PreFixHead = head
+	return SaveState(geom.WebsterDir, geom.ScratchDir, st)
 }
 
 // newVerifyGate is NewVerifyGate over injected seams.
@@ -176,6 +203,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		if preFix == "" {
 			head, err := s.head()
 			if err != nil {
+				return shuttleengine.GateResult{}, err
+			}
+			if err := s.recordPreFix(head); err != nil {
 				return shuttleengine.GateResult{}, err
 			}
 			preFix = head
@@ -202,6 +232,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		}
 		logger.Warn("websterengine: verify gate failed", "attempt", attempt, "cap", attempts, "dirty", len(report.Dirty), "failures", len(report.Failures))
 		return shuttleengine.GateResult{Passed: false, Findings: renderVerifyGateFindings(report)}, nil
+	}
+
+	// pass clears the persisted pre-fix head and returns a passing result.
+	pass := func() (shuttleengine.GateResult, error) {
+		if err := s.clearPreFix(); err != nil {
+			return shuttleengine.GateResult{}, err
+		}
+		return shuttleengine.GateResult{Passed: true}, nil
 	}
 
 	// failures parses the latest verify log into failing identities.
@@ -240,7 +278,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 				return shuttleengine.GateResult{}, err
 			}
 			if commit != "" {
-				findings := fmt.Sprintf("Commit %s, made above the pre-fix head %s, is neither a non-merge commit nor a clean merge of the parent branch: %s.\nMove HEAD back to %s and fix with plain commits.", commit, preFix, reason, preFix)
+				findings := fmt.Sprintf("Commit %s, made above the pre-fix head %s, is neither a non-merge commit nor a clean merge of the parent branch: %s.", commit, preFix, reason)
 				return shuttleengine.GateResult{Passed: false, Terminal: true, Findings: findings}, nil
 			}
 		}
@@ -251,7 +289,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		}
 		if command == "" {
 			logger.Warn("websterengine: verify gate found no verify section in the plan")
-			return shuttleengine.GateResult{Passed: true}, nil
+			return pass()
 		}
 
 		site := verifytree.Site{Label: verifyGateSite, Attempt: attempt}
@@ -261,7 +299,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		}
 		switch res.Status {
 		case verifytree.StatusPassed, verifytree.StatusSkipped:
-			return shuttleengine.GateResult{Passed: true}, nil
+			return pass()
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
@@ -278,7 +316,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		case verifytree.StatusPassed, verifytree.StatusSkipped:
 			notes.addFlaky(failureIDs(first))
 			logger.Warn("websterengine: verify gate failures passed on rerun", "flaky", strings.Join(failureIDs(first), ", "))
-			return shuttleengine.GateResult{Passed: true}, nil
+			return pass()
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
@@ -304,11 +342,11 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 }
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
-// A Terminal failure names the gate's own reason.
+// A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
 // Otherwise it names the failing identities, or the dirty paths, the latest failed evaluation's report holds, and the attempts spent.
-func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome) string {
+func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
-		return "verify gate failed: " + oneLine(gate.Reason)
+		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
 	}
 	report, err := readVerifyGateReport(VerifyGateReportPath(reportsDir))
 	if err != nil {

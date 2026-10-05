@@ -718,6 +718,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 	kinds := []pathOwnership{
 		ownedRegisteredLinkedWorktree(container),
 		ownedWarpCheckout(container),
+		ownedPairWarpCheckout(container, container, "main"),
 		ownedFabricHub(),
 		ownedUnderGeometryRoot(filepath.Join(container, launchersDirName)),
 		ownedFreshlyCreatedPath(createdToken{path: absent, worktree: false}),
@@ -1156,6 +1157,57 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 			t.Errorf("createExclusiveDir(nil, ...) = %v; want nil", err)
 		}
 	})
+}
+
+// TestGate_PairWarpRequestShape proves the pair-warp ownership kind is declared, not unset, and that
+// a non-linked target refuses on ownership before dirtiness, so the new kind is a real declaration.
+func TestGate_PairWarpRequestShape(t *testing.T) {
+	container := t.TempDir()
+	target := filepath.Join(container, "task")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	own := ownedPairWarpCheckout(container, container, "main")
+	if own.kind == pathOwnershipUnset {
+		t.Fatalf("ownedPairWarpCheckout kind = unset; want a declared kind")
+	}
+	dirt := dirtyTrackedExcept([]string{"a.txt"})
+	if dirt.kind == pathDirtinessUnset || dirt.kind == pathDirtinessNA {
+		t.Fatalf("dirtyTrackedExcept kind = %d; want a probing kind", dirt.kind)
+	}
+	if dirt.scope != scopeTracked {
+		t.Errorf("dirtyTrackedExcept scope = %d; want scopeTracked", dirt.scope)
+	}
+
+	req := pathRequest{what: "test", container: container, target: target, ownership: own, dirtiness: dirt}
+	assertRefusalCheck(t, checkPathRequest(req), CheckOwnership)
+}
+
+// TestDirtyPathsOutside proves the porcelain reader returns only paths outside the own set,
+// including a first line whose leading status space was trimmed, a rename and a quoted path.
+func TestDirtyPathsOutside(t *testing.T) {
+	tests := []struct {
+		name      string
+		porcelain string
+		own       []string
+		want      []string
+	}{
+		{"all own", "M a.txt\n M dir/b.txt", []string{"a.txt", "dir/b.txt"}, nil},
+		{"one foreign", "M a.txt\n M other.txt", []string{"a.txt"}, []string{"other.txt"}},
+		{"staged and worktree", "MM a.txt", []string{}, []string{"a.txt"}},
+		{"rename reports new path", "R  old.txt -> new.txt", []string{"new.txt"}, nil},
+		{"quoted path", "M \"sp\\tace.txt\"", []string{}, []string{"sp\tace.txt"}},
+		{"unclean own path", " M dir/b.txt", []string{"./dir/b.txt"}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := dirtyPathsOutside(tc.porcelain, tc.own)
+			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+				t.Errorf("dirtyPathsOutside(%q, %q) = %q; want %q", tc.porcelain, tc.own, got, tc.want)
+			}
+		})
+	}
 }
 
 // assertRefusalCheck fails the test unless err is a *destructiveRefusal carrying want as its Check.

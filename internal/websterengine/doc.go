@@ -167,7 +167,7 @@
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
-// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to reset the branch and run `lyx webster run --fresh`.
+// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run --fresh`.
 // The fingerprint refusals in begin-batch and run name it.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
@@ -211,7 +211,18 @@
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
-// the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// the last two clear only through `lyx webster reset --to start` and then `lyx webster run --fresh`.
+// The run-exit stuck reason and the pending-findings refusal name each finding once (findingsClause), an uncheckable path carrying its reason (uncheckableReason),
+// and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
+// the reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+// A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
+// A Master write whose result failed is not evidence, and an acknowledgement never clears it.
+// Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
+// Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
+// A cleared contract path is resolved, so at run exit `lyx webster accept-audit` clears the finding directly;
+// an uncleared one refuses with `rm <path>` as the first step, then the verb to re-run.
+// Absence clears the finding only: accept-audit on an absent file adds a `next` step to its envelope, since the run still needs a Master that writes both files.
 // `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
 // It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
 // a differing plan path whose recorded copy is missing is dropped with the archived state,
@@ -390,8 +401,48 @@
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
+// The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
+// a passing evaluation clears it, and `run --fresh` archives state.json with it.
+// A persist failure is returned as the gate's error.
 //
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
+//
+// # Background shells in Master's wait
+//
+// Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
+// recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
+// Every other background shell is waited out after `background_shell_wait_min`, and the labels come back on shuttle's `Result.ExpiredShells`.
+// Whatever the outcome, Run writes those labels into one best-effort `webster-background-shell` friction note.
+// On a done outcome each label is also a `RunResult.Warnings` entry ("turn end counted after background shell `<label>` ran past `background_shell_wait_min`; ...")
+// and a bullet in summary.md's "Background shells waited out" section (AppendBackgroundShells).
+// A non-done outcome keeps its own error or stuck reason.
+//
+// # Planning a reset
+//
+// PlanReset decides, read-only, what a reset of the task branch may do, and refuses before fabric is ever called.
+// The target is `start` (ResetToStart) or `pre-fix` (ResetToPreFix); no raw SHA is accepted.
+// `start` is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
+// `pre-fix` is state.json's `PreFixHead`.
+// The refusals run in order: run lock held (transient), no state, a merge in progress, a checked-out branch that is not the task branch,
+// no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
+// Each refusal ends in wayForwardSteps' numbered list.
+// The plan carries the SHA and the own paths, and reads no force flag.
+//
+// # The reset verb
+//
+// `lyx webster reset --to start|pre-fix` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
+// Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
+// resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
+// clears State.PreFixHead, saves, and fabric-syncs state.json.
+// It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
+// The bound: it can discard only commits above a run-recorded commit on the task's own branch and uncommitted tracked changes to paths the run itself wrote.
+// It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
+// Fabric's own refusal (ownership, dirtiness) is surfaced as the verb's error with fabric's reason.
+// In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
+// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry) and `partial`, always false.
+// A refusal before the reset is a bare error envelope.
+// Each refusal has a row in contracts/specs/refusal-spec.md.
 //
 // # The verify-gate report and findings
 //

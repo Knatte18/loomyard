@@ -299,15 +299,34 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		return prior, false, nil
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
-		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
 		if err != nil {
 			return nil, false, err
 		}
-		reset := "reset the branch to the run's start commit with git"
-		if bases.Start != "" {
-			reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+		contracts, err := splitContractPaths(deps.Geom, writes, prior.Uncheckable)
+		if err != nil {
+			return nil, false, err
 		}
-		return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(prior.Uncheckable, ", "), reset)}
+		if len(contracts.Rest) > 0 {
+			var what []string
+			for _, entry := range contracts.Rest {
+				reason, _, err := uncheckableReason(deps.Geom, deps.State, entry)
+				if err != nil {
+					return nil, false, err
+				}
+				if reason == "" {
+					reason = reasonNoPath
+				}
+				what = append(what, fmt.Sprintf("%s (%s)", entry, reason))
+			}
+			for _, p := range contracts.Uncleared {
+				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
+			}
+			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), resetToStartSteps(stepRunFresh))}
+		}
+		if len(contracts.Uncleared) > 0 {
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
+		}
 	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)

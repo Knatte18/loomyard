@@ -1,4 +1,4 @@
-// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage and AppendAuditWarnings append further sections beside the one below):
+// summary.go implements webster's write-side helpers over the final-summary artifact (AppendIntegrationTriage, AppendAuditWarnings and AppendBackgroundShells append further sections beside the one below):
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
 // outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
 // re-implementing the same-second collision loop.
@@ -69,6 +69,20 @@ func AppendAuditWarnings(websterDir string, warnings []string) error {
 		fmt.Fprintf(&b, "- %s\n", w)
 	}
 	return appendToSummary(websterDir, "audit warnings", b.String())
+}
+
+// AppendBackgroundShells appends a "Background shells waited out" section listing the labels of the shells Master's wait counted a turn end past, one bullet each in the order given.
+// It is a no-op when labels is empty.
+func AppendBackgroundShells(websterDir string, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n")
+	for _, l := range labels {
+		fmt.Fprintf(&b, "- `%s`\n", l)
+	}
+	return appendToSummary(websterDir, "background shells", b.String())
 }
 
 // writeTriageList writes one titled sub-list of identities, or nothing when ids is empty.

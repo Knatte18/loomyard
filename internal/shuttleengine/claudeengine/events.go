@@ -43,13 +43,15 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 		case "Stop":
 			lastMessage, _ := fields["last_assistant_message"].(string)
 			kind := shuttleengine.EventStop
-			if hasOutstandingBackgroundWork(fields) {
+			outstanding := outstandingBackgroundTasks(fields)
+			if len(outstanding) > 0 {
 				kind = shuttleengine.EventWaiting
 			}
 			events = append(events, shuttleengine.Event{
-				Kind:    kind,
-				Message: lastMessage,
-				Raw:     []byte(line),
+				Kind:        kind,
+				Message:     lastMessage,
+				Raw:         []byte(line),
+				Outstanding: outstanding,
 			})
 		case "PreToolUse":
 			toolName, _ := fields["tool_name"].(string)

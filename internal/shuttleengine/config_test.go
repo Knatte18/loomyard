@@ -60,6 +60,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.StartupTimeoutS != 90 {
 		t.Errorf("StartupTimeoutS = %d, want 90", cfg.StartupTimeoutS)
 	}
+	if cfg.BackgroundShellWaitMin != 10 {
+		t.Errorf("BackgroundShellWaitMin = %d, want 10", cfg.BackgroundShellWaitMin)
+	}
 	if cfg.Claude != "" {
 		t.Errorf("Claude = %q, want empty default", cfg.Claude)
 	}
@@ -82,6 +85,43 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	}
 	if cfg.Claude != `D:\tools\claude.exe` {
 		t.Errorf("Claude = %q, want env override", cfg.Claude)
+	}
+}
+
+func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{name: "positive override loads", value: "25", want: 25},
+		{name: "zero refused", value: "0", wantErr: true},
+		{name: "negative refused", value: "-5", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "background_shell_wait_min: 10", "background_shell_wait_min: "+tt.value, 1)
+			seedLyxConfig(t, tmpDir, "shuttle", seeded)
+
+			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("LoadConfig accepted background_shell_wait_min: %s", tt.value)
+				}
+				if !strings.Contains(err.Error(), "background_shell_wait_min") || !strings.Contains(err.Error(), tt.value) {
+					t.Errorf("error %q does not name the key and value %s", err, tt.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.BackgroundShellWaitMin != tt.want {
+				t.Errorf("BackgroundShellWaitMin = %d, want %d", cfg.BackgroundShellWaitMin, tt.want)
+			}
+		})
 	}
 }
 
