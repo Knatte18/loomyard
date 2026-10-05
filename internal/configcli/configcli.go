@@ -319,7 +319,8 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 // A reconcile subcommand is registered so that "lyx config reconcile" is routed there while "lyx
 // config <module>" continues to invoke the edit RunE.
 // The RunE decides before resolving any cwd:
-// a bare invocation with neither --print nor --set prints the help, and an argument that is not a module is refused as an unknown subcommand.
+// a bare invocation with neither --print nor --set prints the help,
+// and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:       "config [module]",
