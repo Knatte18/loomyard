@@ -112,11 +112,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		}
 	}
 
-	// Commit the per-worktree module configs ReconcileAll just materialised or retired, on the weft primary
-	// branch, with no push: an adopt-path re-clone leaves relPaths empty, which
-	// CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no
-	// lock and recording nothing. CommitWeftPaths appends its own KindCommitCreated entry at its
-	// success site, so no recording happens here.
+	// Commit the per-worktree module configs ReconcileAll just materialised or retired, on the weft primary branch, with no push.
+	// An adopt-path re-clone leaves relPaths empty, which CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no lock and recording nothing.
+	// CommitWeftPaths appends its own KindCommitCreated entry at its success site, so no recording happens here.
 	if _, _, err := fabricengine.CommitAnchoredPaths(rec, l, relPaths, "fabric clone: record module configs", fabricengine.SyncOptions{}); err != nil {
 		return fabricengine.CloneResult{}, err
 	}

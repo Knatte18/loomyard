@@ -22,9 +22,8 @@ import (
 )
 
 // legacyConfigModules maps a module to the pre-cutover config modules whose values it now covers.
-// fabric covers warp.yaml, which held branch_prefix, and weft.yaml, which held
-// pathspec -- both flat, single-key top-level documents that fabric.yaml's
-// two-key template subsumes.
+// fabric covers warp.yaml, which held branch_prefix, and weft.yaml, which held pathspec.
+// Both are flat, single-key top-level documents that fabric.yaml's two-key template subsumes.
 var legacyConfigModules = map[string][]string{
 	"fabric": {"warp", "weft"},
 }
