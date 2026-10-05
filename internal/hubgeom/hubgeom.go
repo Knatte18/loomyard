@@ -105,10 +105,19 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 // diverge: standalone fills WorktreeRoot with the reviewed target directory, not the anchor path.
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md,
 // which the anchor path is not in a subpath-anchored hub.
+// ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
 func BurlerGeometry(l *lyxcwd.Location) burlerengine.Geometry {
+	var parent string
+	resolved, parentErr := ResolveParent(l)
+	if parentErr != nil {
+		logger.Warn("hubgeom: parent unresolvable; burler prompts get no parent", "worktree", l.WorktreeName, "error", parentErr)
+	} else {
+		parent = resolved.Name
+	}
 	return burlerengine.Geometry{
 		WorktreeRoot: l.AnchorPath(),
 		AnchorPath:   l.AnchorPath(),
 		RepoRoot:     l.WorktreePath(),
+		ParentName:   parent,
 	}
 }

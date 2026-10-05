@@ -17,6 +17,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -162,6 +163,9 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 
 	if shuttle.spec.Role != "burler" {
 		t.Errorf("spec.Role = %q; want %q", shuttle.spec.Role, "burler")
+	}
+	if got, want := shuttle.spec.Skills, []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(got, want) {
+		t.Errorf("spec.Skills = %v; want %v", got, want)
 	}
 	if shuttle.spec.Model != opts.Model {
 		t.Errorf("spec.Model = %q; want %q", shuttle.spec.Model, opts.Model)
