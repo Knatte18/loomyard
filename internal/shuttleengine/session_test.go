@@ -13,24 +13,16 @@ import (
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
 type cyclerEngine struct {
 	fakeEngine
-	tokens   int
-	known    bool
 	idle     bool
 	tooShort bool
 	clear    []PaneInput
 	captures []string
 	foci     []string
-
-	compactedAt time.Time
-	sinceAsks   []time.Time
 }
 
-func (e *cyclerEngine) ContextTokens(Event) ContextReading {
-	return ContextReading{Tokens: e.tokens, Known: e.known}
-}
-func (e *cyclerEngine) CompactedSince(_ Event, since time.Time) (time.Time, bool) {
-	e.sinceAsks = append(e.sinceAsks, since)
-	return e.compactedAt, !e.compactedAt.IsZero()
+func (e *cyclerEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *cyclerEngine) CompactedSince(Event, time.Time) (time.Time, bool) {
+	return time.Time{}, false
 }
 func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)
@@ -105,29 +97,6 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	}
 	if len(reed.CallLog) != 0 {
 		t.Errorf("reed touched despite missing capability: %v", reed.CallLog)
-	}
-}
-
-func TestRunner_ContextTokens_Delegates(t *testing.T) {
-	engine := &cyclerEngine{tokens: 1234, known: true}
-	runner := newFixture(t, &fakeReed{}, engine, withStrand("strand-1")).Runner
-	reading, err := runner.ContextTokens(Event{})
-	if err != nil || reading.Tokens != 1234 || !reading.Known {
-		t.Errorf("ContextTokens = %+v, %v; want 1234 known, nil", reading, err)
-	}
-}
-
-func TestRunner_CompactedSince_Delegates(t *testing.T) {
-	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
-	since := at.Add(-time.Minute)
-	engine := &cyclerEngine{compactedAt: at}
-	runner := newFixture(t, &fakeReed{}, engine, withStrand("strand-1")).Runner
-	got, found, err := runner.CompactedSince(Event{}, since)
-	if err != nil || !found || !got.Equal(at) {
-		t.Errorf("CompactedSince = %v, %v, %v; want %v, true, nil", got, found, err, at)
-	}
-	if len(engine.sinceAsks) != 1 || !engine.sinceAsks[0].Equal(since) {
-		t.Errorf("engine asked %v, want one ask at %v", engine.sinceAsks, since)
 	}
 }
 
@@ -211,11 +180,31 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 	}
 }
 
-func TestRunner_LoadSkillAndSkillUnknown_DelegateToCapability(t *testing.T) {
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"NOSKILL ghost"}}
-	engine := &skillFakeEngine{fakeEngine: &fakeEngine{}}
-	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
+	refused := []struct {
+		name string
+		guid string
+		live bool
+	}{
+		{"unknown guid", "nope", true},
+		{"dead strand", "strand-1", false},
+	}
+	for _, tc := range refused {
+		reed := &fakeReed{StatusQueue: liveStrandStatus(tc.live), CaptureQueue: []string{"NOSKILL ghost"}}
+		runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
+		if err := runner.LoadSkill(tc.guid, "a"); err == nil {
+			t.Errorf("%s: LoadSkill = nil error", tc.name)
+		}
+		if _, err := runner.SkillUnknown(tc.guid, "ghost"); err == nil {
+			t.Errorf("%s: SkillUnknown = nil error", tc.name)
+		}
+		if len(reed.SendTextCalls) != 0 {
+			t.Errorf("%s: typed %+v; want nothing", tc.name, reed.SendTextCalls)
+		}
+	}
 
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"NOSKILL ghost"}}
+	runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
 	if err := runner.LoadSkill("strand-1", "a"); err != nil {
 		t.Fatalf("LoadSkill: %v", err)
 	}

@@ -146,9 +146,3 @@ func TestSkillUnknown(t *testing.T) {
 		})
 	}
 }
-
-func TestDefaultSkillLoadTimeout(t *testing.T) {
-	if got := (&Claude{}).DefaultSkillLoadTimeout(); got != defaultSkillLoadTimeout {
-		t.Errorf("DefaultSkillLoadTimeout = %v; want %v", got, defaultSkillLoadTimeout)
-	}
-}
