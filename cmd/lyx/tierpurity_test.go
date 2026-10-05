@@ -37,7 +37,8 @@ var allowedSpawners = []scankit.Entry{
 // as tagged (i.e. excluded from a plain `go test` run) for Test Tier Purity purposes.
 // isTierTagged matches on any entry, so adding a new tier tag here is the single place
 // that both the purity guard and its doc comments need to stay in sync with.
-var knownTierTags = []string{"integration", "smoke"}
+// `smoke` stays until the retag card retires it.
+var knownTierTags = []string{"integration", "tmux", "llm", "smoke"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
@@ -91,7 +92,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		}
 		if bad && !spawners.Allowed(f.Rel) {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration, tmux, llm or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				f.Rel, bannedTok,
 			))
 		}
@@ -144,6 +145,9 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 	}{
 		{"integration", "//go:build integration", true},
 		{"smoke", "//go:build smoke", true},
+		{"tmux", "//go:build tmux", true},
+		{"llm", "//go:build llm", true},
+		{"shared_helper_disjunction", "//go:build tmux || llm", true},
 		{"platform_only_untagged", "//go:build windows", false},
 		{"empty", "", false},
 	}
