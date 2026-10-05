@@ -6,8 +6,10 @@
 package loomcli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -96,16 +98,17 @@ func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 	voucherPath := filepath.Join(dir, "handoff-voucher.json")
 	voucherLockPath := filepath.Join(dir, "handoff-voucher.json.lock")
 
+	history := make([]shedengine.HistoryEntry, 7)
+	for i := range history {
+		history[i] = shedengine.HistoryEntry{Producer: fmt.Sprintf("Row-%d", i), Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"}
+	}
 	writeStatusFixture(t, statusPath, statusLockPath, shedengine.Status{
 		CurrentProducer: "Plan-Write",
 		State:           shedengine.StateRunning,
-		History: []shedengine.HistoryEntry{
-			{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"},
-			{Producer: "Loom-Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:01Z"},
-		},
-		Product: productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"}),
+		History:         history,
+		Product:         productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"}),
 	})
-	recordHandoffVoucher(voucherPath, voucherLockPath, 2, shedengine.StateRunning)
+	recordHandoffVoucher(voucherPath, voucherLockPath, len(history), shedengine.StateRunning)
 
 	first := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
 	if !first.Observed {
@@ -113,6 +116,10 @@ func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 	}
 	if !first.Vouched {
 		t.Errorf("observeEntry first call: Vouched = false; want true -- a matching voucher must suppress the crash signature")
+	}
+
+	if want := history[len(history)-recentHistoryRows:]; !slices.Equal(first.RecentHistory, want) {
+		t.Errorf("observeEntry first call: RecentHistory = %v; want the last %d rows %v", first.RecentHistory, recentHistoryRows, want)
 	}
 
 	second := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
