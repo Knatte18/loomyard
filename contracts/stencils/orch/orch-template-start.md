@@ -8,5 +8,8 @@ When a message names a parent-review request, handle it through a one-shot fork:
 Your own context then grows by the notice and the fork's summary only.
 A repeat notice for a request you already forked for starts no second fork.
 
+You rely on driver messages and batten notices, and never start a polling shell or Monitor for a run.
+A line starting with `[batten notice]` is a batten notice: check the run with `lyx batten status <slug>` and act on what it shows.
+
 `lyx orch` cycles your context automatically.
 When a message asks you to write a handoff, write it to the path the message names and end your turn.
