@@ -133,7 +133,7 @@ func TestVerify_CancelledRunLeavesNoRecord(t *testing.T) {
 	p := newScratch(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Verify(ctx, p, Site{Label: "Publish"}, "sleep 5"); err == nil {
+	if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true"); err == nil {
 		t.Fatal("Verify with a cancelled ctx returned no error")
 	}
 	if fileExists(p.Record) {
@@ -142,7 +142,7 @@ func TestVerify_CancelledRunLeavesNoRecord(t *testing.T) {
 	if fileExists(p.Marker) {
 		t.Error("the marker survived a cancelled run")
 	}
-	if res := mustVerify(t, p, "sleep 5"); res.Status != StatusPassed {
+	if res := mustVerify(t, p, "true"); res.Status != StatusPassed {
 		t.Errorf("Verify after the cancelled run = %q; want %q", res.Status, StatusPassed)
 	}
 }

@@ -103,13 +103,14 @@ func TestRun_Cancellation(t *testing.T) {
 		cancel()
 	}()
 
+	const delay = 500 * time.Millisecond
 	start := time.Now()
-	code, err := Run(ctx, long, t.TempDir(), &bytes.Buffer{})
+	code, err := run(ctx, long, t.TempDir(), &bytes.Buffer{}, delay)
 	if !errors.Is(err, context.Canceled) || code != -1 {
-		t.Fatalf("Run = (%d, %v); want (-1, context.Canceled)", code, err)
+		t.Fatalf("run = (%d, %v); want (-1, context.Canceled)", code, err)
 	}
-	if elapsed := time.Since(start); elapsed > 15*time.Second {
-		t.Errorf("Run took %s after cancel; want well under the command's own duration", elapsed)
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond+4*delay {
+		t.Errorf("run took %s after cancel; want well under the command's own duration", elapsed)
 	}
 	if strings.Contains(buf.String(), "WARN") {
 		t.Errorf("log = %q; a cancellation must not warn", buf.String())
