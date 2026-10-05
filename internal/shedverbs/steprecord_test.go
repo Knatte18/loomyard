@@ -71,6 +71,20 @@ func sortedKeys(m map[string]any) []string {
 	return keys
 }
 
+// awaitingRow returns a ProducerDef named name whose Call halts the run as awaiting with parentNotice.
+func awaitingRow(name, parentNotice string) shedengine.ProducerDef {
+	return shedengine.ProducerDef{Name: name, Producer: &funcProducer{
+		call: func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+			return shedengine.Awaiting, shedengine.OutputPointer{Reason: "hand-off", ParentNotice: parentNotice}, nil
+		},
+	}}
+}
+
+// afterStepReturning returns an AfterStep hook that reports status as the reflection's friction status.
+func afterStepReturning(status string) func(context.Context, shedengine.StepResult, error) string {
+	return func(context.Context, shedengine.StepResult, error) string { return status }
+}
+
 // TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord runs a success and a refusal without and with
 // --full, each against its own steps dir.
 // Without --full stdout carries the short key set and the record path; with --full stdout equals the
@@ -80,19 +94,37 @@ func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
 		name      string
 		wantCode  int
 		producer  func() shedengine.ProducerDef
+		hooks     Hooks
 		shortKeys []string
 		fullKeys  []string
 	}{
 		{
 			"Success", 0,
 			func() shedengine.ProducerDef { return stubRow("Only") },
+			Hooks{},
 			[]string{"continue", "envelope_path", "history_length", "next", "ok", "outcome", "output", "producer", "progress", "reason", "run_id", "state", "trace_file"},
 			[]string{"continue", "friction", "friction_dir", "history_length", "next", "next_interrupt_policy", "ok", "outcome", "output", "producer", "progress", "reason", "run_id", "scratch_dir", "state", "status_file", "trace_file", "trace_id"},
 		},
 		{
 			"Refusal", 1,
 			func() shedengine.ProducerDef { return erroringRow("Only", errors.New("boom")) },
+			Hooks{},
 			[]string{"envelope_path", "error", "kind", "ok", "run_id", "trace_file", "transient"},
+			[]string{"error", "friction", "friction_dir", "kind", "ok", "run_id", "scratch_dir", "trace_file", "trace_id", "transient"},
+		},
+		{
+			// An awaiting halt with a parent notice, and a reflection status from AfterStep: both conditional short keys appear.
+			"SuccessWithFrictionAndParentNotice", 0,
+			func() shedengine.ProducerDef { return awaitingRow("Only", "settle it") },
+			Hooks{AfterStep: afterStepReturning("noted")},
+			[]string{"continue", "envelope_path", "friction", "history_length", "next", "ok", "outcome", "output", "parent_notice", "producer", "progress", "reason", "run_id", "state", "trace_file"},
+			[]string{"continue", "friction", "friction_dir", "history_length", "next", "next_interrupt_policy", "ok", "outcome", "output", "parent_notice", "producer", "progress", "reason", "run_id", "scratch_dir", "state", "status_file", "trace_file", "trace_id"},
+		},
+		{
+			"RefusalWithFriction", 1,
+			func() shedengine.ProducerDef { return erroringRow("Only", errors.New("boom")) },
+			Hooks{AfterStep: afterStepReturning("noted")},
+			[]string{"envelope_path", "error", "friction", "kind", "ok", "run_id", "trace_file", "transient"},
 			[]string{"error", "friction", "friction_dir", "kind", "ok", "run_id", "scratch_dir", "trace_file", "trace_id", "transient"},
 		},
 	}
@@ -107,7 +139,7 @@ func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
 				paths := newTestPaths(t)
 				seedStatus(t, paths, "Only")
 				stepsDir := filepath.Join(t.TempDir(), "steps")
-				spec := &Spec{StepsDir: stepsDir, BuildShed: func() (*shedengine.Shed, error) {
+				spec := &Spec{StepsDir: stepsDir, Hooks: tt.hooks, BuildShed: func() (*shedengine.Shed, error) {
 					return newFakeShed(paths, []shedengine.ProducerDef{tt.producer()}), nil
 				}}
 				var buf bytes.Buffer
