@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with
@@ -60,12 +62,10 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	}
 	e := New(cfg, geom)
 
-	t.Cleanup(func() {
-		// Always torn down, success or failure: a leaked scratch server on a
-		// per-test-tempdir-derived socket is harmless to a real hub server,
-		// but leaves a stray process behind if the test does not clean up.
-		_ = e.tmux.run("kill-server")
-	})
+	// Always torn down, success or failure: a leaked scratch server on a
+	// per-test-tempdir-derived socket is harmless to a real hub server,
+	// but leaves a stray process behind if the test does not clean up.
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	return e
 }
 

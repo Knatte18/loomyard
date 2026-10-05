@@ -17,8 +17,6 @@ package reedcli
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -27,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // dotRunFloor is the minimum number of consecutive dot-fill characters on one captured line that
@@ -189,7 +188,7 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 
 	reedSocket, reedSession := socketAndSession(t)
 
-	harnessSocket := fmt.Sprintf("lyx-dotfill-harness-%d", os.Getpid())
+	harnessSocket := tmuxkit.Socket(t, tmuxPath)
 	if err := exec.Command(tmuxPath, "-L", harnessSocket, "new-session", "-d", "-s", "h",
 		"-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows), shellPath).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)

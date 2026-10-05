@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokeClaudeModel is the model every real `claude` process this package spawns must run on.
@@ -125,6 +126,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	if socket == "" || session == "" {
 		t.Fatalf("status result missing socket/session: %v", statusResult)
 	}
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
 	// readStrand runs `status` fresh and returns this test's strand record
 	// plus the raw JSON, so a failing assertion can print what status saw.

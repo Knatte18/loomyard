@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // newColdScratchEngine builds an *Engine rooted at a fresh t.TempDir(), against the real,
@@ -57,14 +58,15 @@ func newColdScratchEngine(t *testing.T) *Engine {
 	}
 	e := New(cfg, geom)
 
+	// Registered before the Down cleanup so it runs after it: the kill-server is the
+	// belt-and-suspenders guard against a leaked scratch server on a genuine test failure that
+	// never reached a clean teardown, and it removes the server's socket file.
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
-		// Best-effort on both counts, mirroring contract_integration_test.go's own Engine fixtures:
+		// Best-effort, mirroring contract_integration_test.go's own Engine fixtures:
 		// Down may already have nothing left to tear down (the test under test tore it down itself,
-		// or never booted at all on a failure path), and the raw kill-server afterward is the
-		// belt-and-suspenders guard against a leaked scratch server on a genuine test failure that
-		// never reached a clean teardown.
+		// or never booted at all on a failure path).
 		_, _ = e.Down()
-		_ = e.tmux.run("kill-server")
 	})
 
 	return e

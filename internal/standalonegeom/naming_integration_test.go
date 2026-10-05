@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
@@ -43,9 +44,9 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 	}
 
 	e := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8))
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, "lyx-"+hash8)
 	t.Cleanup(func() {
 		_, _ = e.Down()
-		_ = exec.Command(cfg.Tmux, "-L", "lyx-"+hash8, "kill-server").Run()
 	})
 
 	probe := filepath.Join(t.TempDir(), "env.txt")

@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokePwshPath is the default PowerShell 7 binary the smoke helpers shell
@@ -173,6 +174,9 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	if socket == "" || session == "" {
 		t.Fatalf("status result missing socket/session: %v", result)
 	}
+	// The reed server's key is the hub's, not one the test minted, so its kill and socket-file
+	// removal are registered here.
+	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), socket)
 	return socket, session
 }
 
