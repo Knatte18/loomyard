@@ -247,6 +247,11 @@ var FrictionDirectiveInterview []byte
 //go:embed friction/friction-template-reflection.md
 var FrictionTemplateReflection []byte
 
+// ShedTemplateDriver is the shed driver's shipped-default launch prompt: the whole procedure of the session that drives one seeded run.
+//
+//go:embed shed/shed-template-driver.md
+var ShedTemplateDriver []byte
+
 // ParentDirectiveParent is the shared parent directive's shipped-default variant for a run with a recorded parent.
 //
 //go:embed parent/parent-directive-parent.md
@@ -316,6 +321,7 @@ var entries = []registryEntry{
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},
 	{"friction-directive-interview", &FrictionDirectiveInterview},
 	{"friction-template-reflection", &FrictionTemplateReflection},
+	{"shed-template-driver", &ShedTemplateDriver},
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},

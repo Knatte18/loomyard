@@ -54,14 +54,19 @@ func citationAllowKey(stencilName, token string) string {
 // Each entry's Why is its own justification, carried as data rather than as a comment beside the entry,
 // so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lyxcwd's Markdown Link Integrity allowlist already uses.
 //
-// One entry, deliberately: a small allowlist is the design here, not a workaround. The entry names
-// loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
+// A small allowlist is the design here, not a workaround.
+// The first entry names loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
 // the plain-file-path spelling rule for a reader of the stencil, it is not a pointer the agent is
 // meant to open.
+// The second names the driver stencil's pointer at the refusal table, which the driver reads from its own loomyard worktree.
 var citationAllowlist = []scankit.Entry{
 	{
 		Key: "loom-template-plan:internal/boardcli/list.go",
 		Why: "glyph-grammar worked example, not a citation",
+	},
+	{
+		Key: "shed-template-driver:contracts/specs/refusal-spec.md",
+		Why: "the driver runs in a loomyard worktree, where the refusal table resolves at this path",
 	},
 }
 

@@ -21,6 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestMustUseLLMDriverArm asserts the go driver value and an empty driver value both select the
@@ -101,8 +103,12 @@ func (f *fakeDriverPaneProbeForArm) RemoveDriverStrand(guid string) error {
 func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe) *loomCLI {
 	t.Helper()
 	dir := t.TempDir()
+	stencilsDir := filepath.Join(dir, "stencils")
+	stencilkit.SeedInto(t, stencilsDir)
 	return &loomCLI{
 		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
+		parentName:      "hub:orch",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
@@ -149,7 +155,7 @@ func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
 		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
 	}
 	prompt := starter.gotSpec.Prompt
-	if !strings.Contains(prompt, `run-id "pair"`) {
+	if !strings.Contains(prompt, "run `pair`") {
 		t.Errorf("prompt = %q; want it to name the slug run-id \"pair\"", prompt)
 	}
 	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
@@ -285,8 +291,11 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	if err := os.MkdirAll(runLockDir, 0o755); err != nil {
 		t.Fatalf("mkdir run lock dir: %v", err)
 	}
+	stencilsDir := filepath.Join(dir, "stencils")
+	stencilkit.SeedInto(t, stencilsDir)
 	c := &loomCLI{
 		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		runID:           "self",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},

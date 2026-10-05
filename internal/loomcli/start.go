@@ -89,7 +89,10 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 		return nil, err
 	}
 
-	prompt := driverPrompt(resolvedRunID, reportPath)
+	prompt, err := driverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath)
+	if err != nil {
+		return nil, err
+	}
 	spec := driverSpec(prompt, reportPath, settings)
 
 	run, err := c.driverStarter.StartDriver(spec)

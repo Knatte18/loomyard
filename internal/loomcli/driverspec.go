@@ -10,15 +10,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverRole is the agent-name role this module's ly-drive spawn carries.
+// driverRole is the agent-name role this module's driver spawn carries.
 const driverRole = "driver"
+
+// driverSkills is the skill list the driver loads before its launch prompt.
+var driverSkills = []string{"scribe:prose"}
 
 // driverSpec composes the shuttleengine.Spec the ly-drive session launches from, from an already-
 // composed prompt, an already-composed report path, and the resolved driver-role settings.
 //
 // Every non-default field is pinned here with its own reason -- the standard this package holds.
 //
-// Prompt is the argument verbatim. OutputFiles is a single-entry slice holding reportPath: the file
+// Prompt is the argument verbatim. Skills is driverSkills, which shuttle loads before delivering the prompt. OutputFiles is a single-entry slice holding reportPath: the file
 // contract Spec enforces treats a run's output file as its return value, and this run has exactly
 // one. Model, Effort, and Version come from settings, which carries the RESOLVED triple -- a provider
 // model id plus its effort and version, never a raw config alias -- since only the resolved values
@@ -51,6 +54,7 @@ const driverRole = "driver"
 func driverSpec(prompt string, reportPath string, settings loomengine.DriverSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,
+		Skills:        driverSkills,
 		OutputFiles:   []string{reportPath},
 		Model:         settings.Model,
 		Effort:        settings.Effort,

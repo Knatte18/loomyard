@@ -6,86 +6,81 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode asserts the prompt names the run-id, the
-// report path verbatim, states autonomous mode, and mentions no step cap.
-func TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode(t *testing.T) {
-	runID := "worktree"
-	reportPath := "/hub/worktree/.lyx/shed/worktree/drive-report-20260920-120000-cafe.md"
-
-	got := driverPrompt(runID, reportPath)
-
-	if !strings.Contains(got, runID) {
-		t.Errorf("driverPrompt() = %q; want it to name the run-id %q", got, runID)
-	}
-	if !strings.Contains(got, reportPath) {
-		t.Errorf("driverPrompt() = %q; want it to name the report path %q verbatim", got, reportPath)
-	}
-	if !strings.Contains(strings.ToLower(got), "autonomous") {
-		t.Errorf("driverPrompt() = %q; want it to state autonomous mode explicitly", got)
-	}
-	if !strings.Contains(got, "ly plugin") {
-		t.Errorf("driverPrompt() = %q; want it to name the ly plugin the skill ships in", got)
-	}
-	if !strings.Contains(got, "do not search the filesystem") {
-		t.Errorf("driverPrompt() = %q; want it to forbid searching for a copy of a missing skill", got)
-	}
-	if strings.Contains(got, "step cap") {
-		t.Errorf("driverPrompt() = %q; want no mention of a step cap", got)
-	}
+// seededStencils returns a stencils directory holding every shipped stencil.
+func seededStencils(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "stencils")
+	stencilkit.SeedInto(t, dir)
+	return dir
 }
 
-// TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand asserts the prompt addresses the run by its
-// slug and ends with the exact end-of-session command, spelled out literally so a drifted strand
-// name or flag fails here.
-func TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand(t *testing.T) {
-	got := driverPrompt("operator-surface", "/hub/wt/.lyx/shed/operator-surface/drive-report-x.md")
+// TestDriverPrompt_CarriesEveryMarkerValue asserts the rendered prompt carries the run-id, the report path, the park command, the teardown command and the parent directive, and leaves no marker unfilled.
+func TestDriverPrompt_CarriesEveryMarkerValue(t *testing.T) {
+	t.Parallel()
+	dir := seededStencils(t)
+	runID := "operator-surface"
+	reportPath := "/hub/wt/.lyx/shed/operator-surface/drive-report-20260920-120000-cafe.md"
 
-	if !strings.Contains(got, `"operator-surface"`) {
-		t.Errorf("driverPrompt() = %q; want it to name the slug run-id", got)
+	got, err := driverPrompt(dir, "hub:orch", runID, reportPath)
+	if err != nil {
+		t.Fatalf("driverPrompt() error = %v; want nil", err)
 	}
-	const want = "lyx loom commit-records; lyx reed remove --name driver --detach"
-	if !strings.Contains(got, want) {
-		t.Errorf("driverPrompt() = %q; want it to name the teardown command %q", got, want)
-	}
-	if n := strings.Count(got, driverTeardownCommand); n != 1 {
-		t.Errorf("driverPrompt() = %q; teardown command appears %d times, want exactly once", got, n)
-	}
-}
 
-// TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere asserts the teardown command sits between the done/busy condition and the parking sentence.
-// That keeps a done child's driver exiting before batten's teardown, and every other stop parking.
-// It also asserts the parking sentence names the park command, with the report path, which the recipe-blind skill runs at a park.
-func TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere(t *testing.T) {
-	got := driverPrompt("run", "/hub/wt/report.md")
-
-	done := strings.Index(got, "the run is done, or a step is refused as busy")
-	teardown := strings.Index(got, driverTeardownCommand)
-	park := strings.Index(got, "At every other stop, park")
-	if done < 0 || teardown < 0 || park < 0 || done >= teardown || teardown >= park {
-		t.Fatalf("driverPrompt() = %q; want done/busy condition, then the teardown command, then parking for every other stop", got)
+	directive, err := parentdirective.Directive(dir, "hub:orch", false)
+	if err != nil {
+		t.Fatalf("parentdirective.Directive: %v", err)
 	}
-	if !strings.Contains(got, "leave this session open") {
-		t.Errorf("driverPrompt() = %q; want it to leave the session open when parking", got)
-	}
-	want := `lyx loom commit-records --park "/hub/wt/report.md"`
-	if !strings.Contains(got[park:], want) {
-		t.Errorf("driverPrompt() = %q; want the parking sentence to name the park command %q", got, want)
-	}
-}
-
-// TestDriverPrompt_NamesParentNotice asserts the prompt tells the driver to notify the parent session through SendMessage, naming the variable and the report path.
-func TestDriverPrompt_NamesParentNotice(t *testing.T) {
-	reportPath := "/hub/wt/report.md"
-
-	got := driverPrompt("run", reportPath)
-
-	for _, want := range []string{agentname.ParentEnv, "SendMessage", reportPath} {
+	for name, want := range map[string]string{
+		"run-id":            "run `" + runID + "`",
+		"report path":       reportPath,
+		"park command":      driverParkCommand(reportPath),
+		"teardown command":  driverTeardownCommand,
+		"parent directive":  directive,
+		"parent name":       "hub:orch",
+		"literal teardown":  "lyx loom commit-records; lyx reed remove --name driver --detach",
+		"literal park mark": `lyx loom commit-records --park "` + reportPath + `"`,
+	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("driverPrompt() = %q; want it to name %q", got, want)
+			t.Errorf("driverPrompt() does not carry the %s %q", name, want)
 		}
+	}
+	if strings.Contains(got, "{{") {
+		t.Errorf("driverPrompt() left a marker unfilled")
+	}
+}
+
+// TestDriverPrompt_NoParentRendersNoParentVariant asserts an empty parent name renders the directive's no-parent variant.
+func TestDriverPrompt_NoParentRendersNoParentVariant(t *testing.T) {
+	t.Parallel()
+	dir := seededStencils(t)
+
+	got, err := driverPrompt(dir, "", "run", "/hub/wt/report.md")
+	if err != nil {
+		t.Fatalf("driverPrompt() error = %v; want nil", err)
+	}
+
+	none, err := parentdirective.Directive(dir, "", false)
+	if err != nil {
+		t.Fatalf("parentdirective.Directive: %v", err)
+	}
+	if !strings.Contains(got, none) {
+		t.Errorf("driverPrompt() does not carry the no-parent directive %q", none)
+	}
+}
+
+// TestDriverPrompt_UnreadableStencilIsAnError asserts a missing driver stencil is refused rather than rendered empty.
+func TestDriverPrompt_UnreadableStencilIsAnError(t *testing.T) {
+	t.Parallel()
+	dir := seededStencils(t)
+	stencilkit.Remove(t, dir, driverStencilName)
+
+	if _, err := driverPrompt(dir, "", "run", "/hub/wt/report.md"); err == nil {
+		t.Fatalf("driverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
 	}
 }
 
@@ -116,20 +111,5 @@ func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicol
 	}
 	if strings.Contains(driverTeardownCommand, "&&") {
 		t.Errorf("driverTeardownCommand = %q; want no '&&', so removal runs after a failed commit", driverTeardownCommand)
-	}
-}
-
-// TestDriverPrompt_StaysShort is a bound check, not an exact-length pin: the prompt must stay short for a realistic run-id and report path, since a prompt that grew into a copy of the skill would go stale against the skill it copies.
-func TestDriverPrompt_StaysShort(t *testing.T) {
-	runID := "some-realistic-worktree-name"
-	reportPath := "/hub/some-realistic-worktree-name/.lyx/shed/some-realistic-worktree-name/drive-report-20260920-120000-cafe.md"
-
-	got := driverPrompt(runID, reportPath)
-
-	// The report path appears twice (report target and park command), so the bound leaves room for a long one;
-	// a copied-in skill runs to several kilobytes and still fails it.
-	const maxShortPromptLen = 1500
-	if len(got) >= maxShortPromptLen {
-		t.Errorf("driverPrompt() length = %d; want under %d", len(got), maxShortPromptLen)
 	}
 }
