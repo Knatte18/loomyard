@@ -161,7 +161,12 @@ Example:
 			ctx := cmd.Context()
 			location := c.location
 
-			routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
+			budget, err := c.reviewBudget()
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "loom: reject: "+err.Error()))
+				return nil
+			}
+			routing, err := loomrecipe.Routing(budget)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "loom: reject: "+err.Error()))
 				return nil
