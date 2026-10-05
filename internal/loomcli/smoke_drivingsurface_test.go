@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -92,7 +93,7 @@ func TestSmokeStep_LeavesAPreexistingStatusStrandUntouched(t *testing.T) {
 	}
 	var guids []string
 	for _, s := range status.Strands {
-		if s.Name == statusStrandDisplayName {
+		if agentname.Matches(s.Name, statusStrandDisplayName) {
 			guids = append(guids, s.GUID)
 		}
 	}
@@ -160,7 +161,8 @@ func TestSmokeStep_FailedReedUpRefusesWithBootstrapKind(t *testing.T) {
 	}
 }
 
-// TestSmokeStart_LLMRunRemovesEveryStatusStrand pins that an llm-seeded start removes every status strand the session holds, duplicates included.
+// TestSmokeStart_LLMRunRemovesEveryStatusStrand pins that an llm-seeded start removes the status strand the session holds.
+// Reed refuses a second strand under the same agent name, so a duplicate can no longer be built here.
 // The providerless shuttle config makes the driver launch fail, which the test ignores: the removal runs before the driver spawn.
 func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 	tmuxBinaryPath(t)
@@ -173,13 +175,11 @@ func TestSmokeStart_LLMRunRemovesEveryStatusStrand(t *testing.T) {
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("reed up: %v", err)
 	}
-	for i := 0; i < 2; i++ {
-		if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600")); err != nil {
-			t.Fatalf("add status strand %d: %v", i, err)
-		}
+	if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600")); err != nil {
+		t.Fatalf("add status strand: %v", err)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 2 {
-		t.Fatalf("status strands before start = %d; want 2", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
+		t.Fatalf("status strands before start = %d; want 1", count)
 	}
 
 	out, _, err := runLoomCLINoFatal(exe, worktree, verbSmokeTimeout, "loom", "start", "--no-attach")
