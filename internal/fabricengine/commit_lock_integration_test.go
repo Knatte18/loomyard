@@ -59,6 +59,7 @@ func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
 // This is the scenario that fails against a lock scoped to the weft side only, since both calls
 // here have zero weft-side files.
 func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
 
@@ -116,6 +117,7 @@ func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 // acquires the lock first, starts the Commit call, confirms it is still blocked while the external
 // lock is held, releases the external lock, and confirms the call then completes.
 func TestCommitLock_ContendsAcrossSides(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	t.Run("WarpOnly", func(t *testing.T) {
 		f, warpPath, _ := newCommitFixture(t)
 		swapPushRecorder(t)
@@ -194,6 +196,7 @@ func assertCommitBlocksOnHeldLock(t *testing.T, f *Fabric, files []string, msg s
 // same lock path Fabric.Commit uses, which must succeed because Commit has already released its own
 // hold by the time it calls the seam (the commit-lock-scoped-to-commit-only Shared Decision).
 func TestCommitLock_ReleasedBeforePush(t *testing.T) {
+	// Serial: the test assigns the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	lockPath := weftWriteLockPath(t, f)
 
@@ -230,6 +233,7 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 // weft commit itself failed — reusing commit_partial_integration_test.go's failure-injection
 // approach (pre-creating the weft gitdir's index.lock) to force that outcome.
 func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	recorder := swapPushRecorder(t)
 

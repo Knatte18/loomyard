@@ -18,6 +18,8 @@ import (
 // TestReady_SiblingAbsent asserts that Ready returns (false, nil) when the weft sibling worktree
 // does not exist.
 func TestReady_SiblingAbsent(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
@@ -36,6 +38,8 @@ func TestReady_SiblingAbsent(t *testing.T) {
 // TestReady_SiblingPresent asserts that Ready returns (true, nil) when the weft sibling worktree
 // exists.
 func TestReady_SiblingPresent(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	ready, err := fabricengine.Ready(h.Location)
@@ -51,6 +55,8 @@ func TestReady_SiblingPresent(t *testing.T) {
 // not-exist — simulated with a path whose parent path component is a regular file, since no
 // portable chmod-based simulation exists across platforms.
 func TestReady_StatFailure(t *testing.T) {
+	t.Parallel()
+
 	tmp := t.TempDir()
 	regularFile := filepath.Join(tmp, "not-a-hub")
 	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {

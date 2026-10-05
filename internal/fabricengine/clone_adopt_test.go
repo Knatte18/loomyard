@@ -217,6 +217,8 @@ func hasNoCommits(t *testing.T, dir string) bool {
 // main-weft, at the remote branch's tip (the synced marker file present), with origin/main-weft as
 // its upstream.
 func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "adopt-warp")
@@ -290,6 +292,8 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 // weft primary's suffixed branch fresh at the cloned HEAD rather than requiring a pre-existing
 // remote ref to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "fresh-warp")
@@ -343,6 +347,8 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 // nonexistent path instead would fail at the probe, before teardownHub is ever reached, which is now
 // covered as a probe-taxonomy hard error rather than this residual-hub path.
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	weftBare := makeBareRemote(t, fixtures, "abort-weft")
@@ -375,6 +381,8 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 // freshly orphan- created "main" branch that shares no history with the weft primary's "main-weft"
 // branch — both end up with no commits at all.
 func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	// The warp remote needs a real commit for suffixWeftPrimaryBranch to read
@@ -427,6 +435,8 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 // bare created by `git init --bare` on a host whose default branch is "master" must still yield
 // "main-weft" and a _board on "main" for a warp on "main", or `lyx fabric add` can never fork a pair.
 func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "foreign-head-warp")
@@ -459,6 +469,8 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 // "backend" subdirectory in the warp writes the marker to disk and returns a fully-populated
 // CloneResult naming it.
 func TestCloneHub_AnchorCreatePath(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-create-warp", "backend")
@@ -507,6 +519,8 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 // and that teardownHub removes the hub — mirroring TestCloneHub_StrictAbortRemovesHubOnFailure's
 // coverage for the anchor guard.
 func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-typo-warp", "backend")
@@ -536,6 +550,8 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 // naming an existing FILE is refused with a message that says so — "does not exist" alone misled,
 // since the path plainly exists — and that teardownHub removes the hub.
 func TestCloneHub_AnchorFileNotDirectoryHardErrors(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "anchor-file-warp")
@@ -568,6 +584,8 @@ func TestCloneHub_AnchorFileNotDirectoryHardErrors(t *testing.T) {
 // subpath writes "."
 // to the marker and returns Anchor == ".".
 func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "anchor-root-warp")
@@ -609,6 +627,8 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 // a conflicting non-default --subpath hard-errors;
 // a matching --subpath succeeds.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-adopt-warp", "backend")
@@ -669,6 +689,8 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 // and that teardownHub removes the hub — an old clone must never silently fall through to the
 // create path and re-anchor under the new name.
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "stale-anchor-warp", "backend")
@@ -712,6 +734,8 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 // ScopedPathspec built an absolute pathspec from it; an escaping subpath was caught only much
 // later, by an unrelated resolver, with a diagnosis blaming a marker that had never been written.
 func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		subpath string

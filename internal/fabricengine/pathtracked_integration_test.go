@@ -14,6 +14,8 @@ import (
 )
 
 func TestPathTracked(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 	gitkit.CommitFile(t, repoDir, "tracked.txt", "x\n", "add tracked.txt")
 	gitkit.CommitFile(t, repoDir, "sub/dir/nested.json", "x\n", "add sub/dir/nested.json")

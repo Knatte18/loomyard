@@ -179,6 +179,8 @@ func TestAdd_CommitsOriginRecordOnWeftBranch(t *testing.T) {
 // since CommitWeftPaths and ensureWeftLockDirAt's lock path are unexported and this package cannot
 // import hubforge from inside package fabricengine to reuse that test's own fixture directly.
 func TestCommitWeftPaths_SerializesConcurrentCommits(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	const slug = "commit-lock-race"

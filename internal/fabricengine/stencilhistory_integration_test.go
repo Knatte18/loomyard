@@ -39,6 +39,8 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 // TestStencilBaseByStamp_FindsOlderDefaultByStamp asserts StencilBaseByStamp finds the forked-from
 // revision for a file stamped from an older default, returning that older default's body.
 func TestStencilBaseByStamp_FindsOlderDefaultByStamp(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 	const name = "loom-template-discussion"
 
@@ -68,6 +70,8 @@ func TestStencilBaseByStamp_FindsOlderDefaultByStamp(t *testing.T) {
 // and a nil error when no revision's body matches the stamp -- the case `diff` must report
 // explicitly instead of rendering an empty diff.
 func TestStencilBaseByStamp_NoMatchReturnsFoundFalse(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 	const name = "loom-template-discussion"
 
@@ -96,6 +100,8 @@ func TestStencilBaseByStamp_NoMatchReturnsFoundFalse(t *testing.T) {
 // keeps base recovery working on a machine with core.autocrlf=true, where a regression here would
 // silently disable it entirely.
 func TestStencilBaseByStamp_HashNormalisationAcrossCRLF(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 	const name = "loom-template-discussion"
 

@@ -58,6 +58,8 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 // TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit and
 // advances the bare origin to that same SHA.
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
@@ -91,6 +93,8 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 // and a subsequent Push is a true no-op (never touches the network, never errors) once nothing is
 // ahead of upstream.
 func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
@@ -138,6 +142,8 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 // TestBolt_SkipGit_ShortCircuits asserts that opts.SkipGit stops Commit before any git is spawned,
 // leaving a dirty untracked file untouched.
 func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
@@ -167,6 +173,8 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 // at the same board.push.lock path Bolt.Sync documents, held once for the whole loop: an
 // externally-held lock at that exact path blocks a concurrent Sync call until released.
 func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)

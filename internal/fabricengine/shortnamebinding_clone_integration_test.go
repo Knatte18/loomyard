@@ -19,6 +19,8 @@ import (
 
 // TestCloneHub_FreshBindWithoutShortnameRefuses asserts a fresh weft refuses a clone with no shortname, naming the flag, before any hub directory exists.
 func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "noshortname-warp")
 	weftBare := makeEmptyBareRemote(t, fixtures, "noshortname-weft")
@@ -40,6 +42,8 @@ func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 // TestCloneHub_ShortnameRecordLifecycle walks one repo through its shortname record:
 // recorded at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different shortname is supplied.
 func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "life-warp")
 	weftBare := makeEmptyBareRemote(t, fixtures, "life-weft")
@@ -102,6 +106,8 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 // TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before shortnames existed takes a supplied shortname and records it,
 // and succeeds with a warning naming `lyx fabric shortname` when none is supplied.
 func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "bound-warp")
 	weftBare := makeBareRemote(t, fixtures, "bound-weft")

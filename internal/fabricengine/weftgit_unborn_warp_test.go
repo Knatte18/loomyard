@@ -44,6 +44,8 @@ func newUnbornWarpRepo(t *testing.T) string {
 // It then makes warp's first commit and calls CommitWeft again, asserting normal trailer/record
 // behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
+	t.Parallel()
+
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())

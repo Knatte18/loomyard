@@ -50,6 +50,8 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 // the record lands at <weft gitdir>/fabric-merge.json and is invisible to git status on both
 // sides.
 func TestMergeState_SaveLoadRoundtripPreservesEveryField(t *testing.T) {
+	t.Parallel()
+
 	f, h := newMergeStateFixture(t)
 
 	want := fabricengine.MergeStateForTest{
@@ -126,6 +128,8 @@ func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 // TestMergeState_AbsentRecord covers the no-record case: loadMergeState reports not-found and
 // mergeRecordExists reports false.
 func TestMergeState_AbsentRecord(t *testing.T) {
+	t.Parallel()
+
 	f, _ := newMergeStateFixture(t)
 
 	_, found, err := fabricengine.LoadMergeStateForTest(f)
@@ -148,6 +152,8 @@ func TestMergeState_AbsentRecord(t *testing.T) {
 // TestMergeState_DeleteRemovesAndToleratesSecondCall covers deleteMergeState removing a saved
 // record and tolerating a second call against an already-absent one.
 func TestMergeState_DeleteRemovesAndToleratesSecondCall(t *testing.T) {
+	t.Parallel()
+
 	f, _ := newMergeStateFixture(t)
 
 	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{Verb: "merge", Source: "x"}); err != nil {
@@ -170,6 +176,8 @@ func TestMergeState_DeleteRemovesAndToleratesSecondCall(t *testing.T) {
 // staged directly in the warp checkout must report true and leave the foreign state untouched; a
 // clean pair must report false.
 func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
+	t.Parallel()
+
 	f, h := newMergeStateFixture(t)
 
 	present, err := fabricengine.ForeignMergeStatePresentForTest(f)
@@ -255,6 +263,8 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wan
 // exactly as it started — trivially true whether or not a weft reset ever ran, but stated because
 // the weft is no longer a reset target regardless.
 func TestMergeState_ResetMergeSides_WarpSideConflicted(t *testing.T) {
+	t.Parallel()
+
 	f, h := newMergeStateFixture(t)
 	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
 
@@ -295,6 +305,8 @@ func TestMergeState_ResetMergeSides_WarpSideConflicted(t *testing.T) {
 // MERGE_HEAD still present, conflict markers still on disk — since the weft is not a reset target,
 // per abort-does-not-reset-weft.
 func TestMergeState_ResetMergeSides_WeftSideConflicted(t *testing.T) {
+	t.Parallel()
+
 	f, h := newMergeStateFixture(t)
 	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
 
@@ -341,6 +353,8 @@ func TestMergeState_ResetMergeSides_WeftSideConflicted(t *testing.T) {
 // own repo, unlike an AddPair linked worktree); with the weft dropped as a reset target entirely,
 // ownedWeftCheckout is gone and there is no weft-side admission left to pin.
 func TestMergeState_ResetMergeSides_WarpOnly(t *testing.T) {
+	t.Parallel()
+
 	f, h := newMergeStateFixture(t)
 	warpPath := h.PrimeWorktree()
 
