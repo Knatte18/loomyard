@@ -14,12 +14,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -34,20 +32,16 @@ type filedCall struct {
 // selfreportTestFixture bundles the paths and call-counting stub seams every detectAndFileAnomalies
 // test needs.
 type selfreportTestFixture struct {
-	statusPath      string
-	statusLockPath  string
-	markerPath      string
-	markerLockPath  string
-	runLockPath     string
-	isLedgerCalls   int
-	readLedgerCalls int
-	filed           []filedCall
-	fileErr         error
+	statusPath     string
+	statusLockPath string
+	markerPath     string
+	markerLockPath string
+	runLockPath    string
+	filed          []filedCall
+	fileErr        error
 }
 
-// newSelfreportTestFixture builds a fresh fixture rooted at t.TempDir(), with IsLedgerPath and
-// ReadLedger stubs that count their own calls but recognize nothing by default -- a test that
-// wants ledger discovery to fire replaces both fields.
+// newSelfreportTestFixture builds a fresh fixture rooted at t.TempDir().
 func newSelfreportTestFixture(t *testing.T) *selfreportTestFixture {
 	t.Helper()
 	dir := t.TempDir()
@@ -71,14 +65,6 @@ func (f *selfreportTestFixture) deps(ctx context.Context, entry loomengine.Entry
 		MarkerPath:     f.markerPath,
 		MarkerLockPath: f.markerLockPath,
 		RunErr:         runErr,
-		IsLedgerPath: func(path string) bool {
-			f.isLedgerCalls++
-			return false
-		},
-		ReadLedger: func(path string) (shedadapters.Ledger, error) {
-			f.readLedgerCalls++
-			return shedadapters.Ledger{}, fmt.Errorf("unexpected ReadLedger call for %s", path)
-		},
 		FileIssue: func(title string, body *string, labels []string) (string, int, error) {
 			b := ""
 			if body != nil {
@@ -175,21 +161,18 @@ func TestDetectAndFileAnomalies_NonBusyRunError_StillRunsPass(t *testing.T) {
 func TestDetectAndFileAnomalies_BusySentinel_ReadsNothingDetectsNothingFilesNothing(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	// Deliberately do not seed a status file: a read attempt would fail loudly enough to be
-	// noticed, and the call-counting IsLedgerPath/ReadLedger stubs below pin the rest.
+	// noticed.
 
 	detectAndFileAnomalies(f.deps(context.Background(), crashResumeEntry(), fmt.Errorf("wrapped: %w", shedengine.ErrShedBusy)))
 
 	if len(f.filed) != 0 {
 		t.Errorf("filed calls = %d; want 0: %+v", len(f.filed), f.filed)
 	}
-	if f.isLedgerCalls != 0 {
-		t.Errorf("IsLedgerPath calls = %d; want 0", f.isLedgerCalls)
-	}
 }
 
 // TestDetectAndFileAnomalies_SelfreportDisabled_TotalInaction asserts a false selfreport bool
-// gives total inaction, asserted on both the filing seam and the ledger seam -- what distinguishes
-// skipping everything from detecting and then declining to file.
+// gives total inaction on the filing seam -- what distinguishes skipping everything from detecting
+// and then declining to file.
 func TestDetectAndFileAnomalies_SelfreportDisabled_TotalInaction(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 	st := haltStatus()
@@ -202,9 +185,6 @@ func TestDetectAndFileAnomalies_SelfreportDisabled_TotalInaction(t *testing.T) {
 
 	if len(f.filed) != 0 {
 		t.Errorf("filed calls = %d; want 0: %+v", len(f.filed), f.filed)
-	}
-	if f.isLedgerCalls != 0 {
-		t.Errorf("IsLedgerPath calls = %d; want 0", f.isLedgerCalls)
 	}
 }
 
@@ -240,9 +220,6 @@ func TestDetectAndFileAnomalies_DoneContextWithCrash_FilesExactlyOne(t *testing.
 
 	if len(f.filed) != 1 {
 		t.Fatalf("filed calls = %d; want 1: %+v", len(f.filed), f.filed)
-	}
-	if f.isLedgerCalls != 0 {
-		t.Errorf("IsLedgerPath calls = %d; want 0 -- the cancelled-context path must read no ledger", f.isLedgerCalls)
 	}
 }
 
@@ -538,52 +515,15 @@ func TestSelfreportFiledMarker_NewDistinctHaltStillFiles(t *testing.T) {
 	}
 }
 
-// ledgerFixture is one entry in a fake ledger store keyed by path, used by the ledger-discovery
-// and carry-forward-collapse tests below to stub ReadLedger without touching the filesystem.
-type ledgerFixture struct {
-	round   int
-	entries []shedadapters.LedgerEntry
-}
-
-// withLedgerSeams overrides deps's IsLedgerPath/ReadLedger with closures over store:
-// IsLedgerPath recognizes exactly the keys present in store, and ReadLedger looks up a
-// recognized key, both counting their own calls into f.
-func withLedgerSeams(deps selfreportDeps, f *selfreportTestFixture, store map[string]ledgerFixture) selfreportDeps {
-	deps.IsLedgerPath = func(path string) bool {
-		f.isLedgerCalls++
-		// Mirrors shedadapters.IsLedgerPath's own filename-shape recognition, so this stub accepts
-		// a path by NAMING convention alone -- a missing-on-disk ledger is a legal accepted path
-		// that fails only at the read step, never at the predicate.
-		return strings.Contains(path, "bouncer-ledger.md")
-	}
-	deps.ReadLedger = func(path string) (shedadapters.Ledger, error) {
-		f.readLedgerCalls++
-		lf, ok := store[path]
-		if !ok {
-			return shedadapters.Ledger{}, fmt.Errorf("no such ledger fixture: %s", path)
-		}
-		return shedadapters.Ledger{Round: lf.round, Entries: lf.entries}, nil
-	}
-	return deps
-}
-
-// TestRunFilingPass_CarryForwardCollapse pins the collapse step written ahead of it: three ledger
-// files for one segment at rounds three, four, and five, each carrying the same open key with a
-// progressively longer rounds list, all reachable from history, collapse into exactly one
-// recurring-finding anomaly whose body carries the round-five entry's rounds list, filed exactly
-// once. The assertion is at the filing-pass level -- the collapse must be why there is one issue,
-// not a side effect of filing order.
-func TestRunFilingPass_CarryForwardCollapse(t *testing.T) {
+// TestDetectAndFileAnomalies_LedgerInHistory_FilesNothing asserts a final status whose history
+// publishes ledger files, each carrying the same key open across a growing run of rounds, files
+// nothing for them: a recurring ledger finding is no longer an anomaly.
+func TestDetectAndFileAnomalies_LedgerInHistory_FilesNothing(t *testing.T) {
 	f := newSelfreportTestFixture(t)
 
 	const round3 = "/run/round-3-bouncer-ledger.md"
 	const round4 = "/run/round-4-bouncer-ledger.md"
 	const round5 = "/run/round-5-bouncer-ledger.md"
-	store := map[string]ledgerFixture{
-		round3: {round: 3, entries: []shedadapters.LedgerEntry{{Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"}}},
-		round4: {round: 4, entries: []shedadapters.LedgerEntry{{Key: "finding-a", Rounds: []int{1, 2, 3, 4}, Status: "open"}}},
-		round5: {round: 5, entries: []shedadapters.LedgerEntry{{Key: "finding-a", Rounds: []int{1, 2, 3, 4, 5}, Status: "open"}}},
-	}
 
 	st := shedengine.Status{
 		CurrentProducer: "Discussion-Review",
@@ -597,95 +537,9 @@ func TestRunFilingPass_CarryForwardCollapse(t *testing.T) {
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
 	writeSelfreportStatus(t, f.statusPath, f.statusLockPath, st)
 
-	deps := withLedgerSeams(f.deps(context.Background(), loomengine.EntryObservation{}, nil), f, store)
-	detectAndFileAnomalies(deps)
+	detectAndFileAnomalies(f.deps(context.Background(), loomengine.EntryObservation{}, nil))
 
-	if len(f.filed) != 1 {
-		t.Fatalf("filed calls = %d; want 1: %+v", len(f.filed), f.filed)
-	}
-	if !containsAll(f.filed[0].body, "1", "2", "3", "4", "5") {
-		t.Errorf("filed body = %q; want it to carry the round-five entry's full rounds list", f.filed[0].body)
-	}
-}
-
-// containsAll reports whether every one of wants is a substring of s.
-func containsAll(s string, wants ...string) bool {
-	for _, w := range wants {
-		if !strings.Contains(s, w) {
-			return false
-		}
-	}
-	return true
-}
-
-// TestDiscoverLedgers_MixedHistory asserts ledger discovery against a mixed history containing an
-// empty output, a discussion-write entry whose output is a decision record, a Burler entry whose
-// output is a round review file, a Bouncer entry whose output is a real ledger, and a Bouncer
-// entry whose ledger path no longer exists: exactly one ledger is read, neither the producer
-// artifact nor the Burler review file is ever opened, and no skip produces an anomaly or an error.
-// Alongside it, the generation case: a history entry whose ledger path now holds a different
-// generation's file, with round numbering restarted, is read as ordinary content and contributes
-// its anomaly, raising no error -- the accepted imprecision pinned as behaviour.
-func TestDiscoverLedgers_MixedHistory(t *testing.T) {
-	f := newSelfreportTestFixture(t)
-
-	const decisionRecord = "/run/decision-record.md"
-	const reviewFile = "/run/round-2-review.md"
-	const realLedger = "/run/round-3-bouncer-ledger.md"
-	const missingLedger = "/run/round-4-bouncer-ledger.md"
-
-	store := map[string]ledgerFixture{
-		realLedger: {round: 3, entries: []shedadapters.LedgerEntry{{Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"}}},
-	}
-
-	final := shedengine.Status{
-		History: []shedengine.HistoryEntry{
-			{Producer: "Discussion-Bouncer", Outcome: shedengine.Done, Output: "", At: "t0"},
-			{Producer: "Discussion-Write", Outcome: shedengine.Done, Output: decisionRecord, At: "t1"},
-			{Producer: "Discussion-Burler", Outcome: shedengine.Stuck, Output: reviewFile, At: "t2"},
-			{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck, Output: realLedger, At: "t3"},
-			{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck, Output: missingLedger, At: "t4"},
-		},
-	}
-
-	// Only IsLedgerPath/ReadLedger are exercised by discoverLedgers; nothing else on deps matters.
-	deps := withLedgerSeams(selfreportDeps{}, f, store)
-
-	ledgers := discoverLedgers(deps, final)
-
-	if len(ledgers) != 1 {
-		t.Fatalf("discovered ledgers = %d; want 1: %+v", len(ledgers), ledgers)
-	}
-	if ledgers[0].Key != "finding-a" {
-		t.Errorf("discovered ledger key = %q; want %q", ledgers[0].Key, "finding-a")
-	}
-	if f.readLedgerCalls != 2 {
-		t.Errorf("ReadLedger calls = %d; want 2 (the real ledger plus the missing one, never the decision record or the review file)", f.readLedgerCalls)
-	}
-}
-
-// TestDiscoverLedgers_GenerationMismatchStillReads pins the accepted-imprecision behaviour: a
-// history entry whose ledger path now holds a different generation's file, with round numbering
-// restarted, is read as ordinary content, contributes its observation, and raises no error.
-func TestDiscoverLedgers_GenerationMismatchStillReads(t *testing.T) {
-	f := newSelfreportTestFixture(t)
-	const path = "/run/round-1-bouncer-ledger.md"
-	store := map[string]ledgerFixture{
-		path: {round: 1, entries: []shedadapters.LedgerEntry{{Key: "finding-z", Rounds: []int{1}, Status: "open"}}},
-	}
-	final := shedengine.Status{
-		History: []shedengine.HistoryEntry{
-			{Producer: "Plan-Bouncer", Outcome: shedengine.Stuck, Output: path, At: "t0"},
-		},
-	}
-
-	deps := withLedgerSeams(selfreportDeps{}, f, store)
-	ledgers := discoverLedgers(deps, final)
-
-	if len(ledgers) != 1 {
-		t.Fatalf("discovered ledgers = %d; want 1: %+v", len(ledgers), ledgers)
-	}
-	if ledgers[0].Round != 1 {
-		t.Errorf("discovered ledger round = %d; want 1 (the restarted generation's own round, read as ordinary content)", ledgers[0].Round)
+	if len(f.filed) != 0 {
+		t.Fatalf("filed calls = %d; want 0: %+v", len(f.filed), f.filed)
 	}
 }

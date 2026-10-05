@@ -16,13 +16,11 @@ import (
 // worktree, because the status file lives under _lyx and the ledgers under .lyx, in a worktree
 // that may already be torn down. It carries, in this order: the anomaly kind and a one-line
 // statement of what was detected; the task slug and parent branch; the final state, current
-// producer, and error verbatim; the relevant history entries rendered as producer/outcome/at rows;
-// and, for the recurring-finding kind only, the Bouncer row name plus the ledger entry's key, its
-// rounds list, and its status.
+// producer, and error verbatim; and the relevant history entries rendered as producer/outcome/at
+// rows.
 // The error text is rendered inside a fenced block so a producer error containing markdown cannot
-// corrupt the issue body. The recurring-finding section is omitted entirely for the other four
-// kinds rather than emitting empty headings. An empty history renders an explicit "no history
-// entries" line rather than an empty section.
+// corrupt the issue body. An empty history renders an explicit "no history entries" line rather
+// than an empty section.
 func RenderAnomalyBody(a Anomaly) string {
 	var b strings.Builder
 
@@ -46,14 +44,6 @@ func RenderAnomalyBody(a Anomaly) string {
 		}
 	}
 
-	if a.Kind == AnomalyRecurringFinding {
-		b.WriteString("\n**Recurring finding:**\n")
-		fmt.Fprintf(&b, "- Bouncer row: %s\n", a.BouncerRow)
-		fmt.Fprintf(&b, "- Ledger key: %s\n", a.LedgerKey)
-		fmt.Fprintf(&b, "- Rounds: %v\n", a.LedgerRounds)
-		fmt.Fprintf(&b, "- Status: %s\n", a.LedgerStatus)
-	}
-
 	return b.String()
 }
 
@@ -68,8 +58,6 @@ func anomalySummary(a Anomaly) string {
 		return fmt.Sprintf("%s: the run halted after exhausting a producer's bounce budget", a.Kind)
 	case AnomalyProducerFailure:
 		return fmt.Sprintf("%s: a producer returned an engine-level failure", a.Kind)
-	case AnomalyRecurringFinding:
-		return fmt.Sprintf("%s: a ledger finding stayed open across multiple rounds", a.Kind)
 	default:
 		return string(a.Kind)
 	}

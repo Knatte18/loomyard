@@ -46,7 +46,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
@@ -376,8 +375,6 @@ func (c *loomCLI) anomalyDeps(ctx context.Context, runErr error) selfreportDeps 
 		MarkerPath:     loomengine.LoomSelfreportFiled(c.location),
 		MarkerLockPath: loomengine.LoomSelfreportFiledLock(c.location),
 		RunErr:         runErr,
-		IsLedgerPath:   shedadapters.IsLedgerPath,
-		ReadLedger:     shedadapters.ReadLedger,
 		FileIssue:      c.fileIssue,
 	}
 }
