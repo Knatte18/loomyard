@@ -564,6 +564,7 @@ Examples:
 	// merge subcommand: remove slugs, upsert one task, and optionally set status — atomically.
 	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
 	// object is validated identically to the set-status command.
+	var mergeBodyFile string
 	mergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-status",
@@ -579,88 +580,108 @@ Fields:
     "id"     integer     — numeric task ID (mutually exclusive with "slug")
     "status" string|null — new status; null clears
 
+Flag:
+  --body-file <path>  read the upsert's "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
+                      Refused when the payload's "upsert" also carries "body" (drop one of them),
+                      and when the payload argument is itself "-" (stdin can feed only one of them).
+
 Example:
   lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-
-			// Decode into a map first to detect unknown top-level keys.
-			var raw map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-
-			// Enforce strict top-level key set; a stale set_phase errors rather than
-			// being silently dropped (which would skip the status step with no feedback).
-			for k := range raw {
-				if k != "remove_slugs" && k != "upsert" && k != "set_status" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
 				}
-			}
 
-			// Parse remove_slugs (optional, default empty).
-			var removeSlugs []string
-			if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
-				rsArr, ok := rsVal.([]any)
+				// Decode into a map first to detect unknown top-level keys.
+				var raw map[string]any
+				decodeErr := json.Unmarshal([]byte(args[0]), &raw)
+				if decodeErr != nil && mergeBodyFile != "" {
+					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					if err := applyBodyFile(map[string]any{}, mergeBodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
+					}
+				}
+				if decodeErr != nil {
+					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
+				}
+
+				// Enforce strict top-level key set; a stale set_phase errors rather than
+				// being silently dropped (which would skip the status step with no feedback).
+				for k := range raw {
+					if k != "remove_slugs" && k != "upsert" && k != "set_status" {
+						return outputError(out, fmt.Sprintf("unknown field: %q", k))
+					}
+				}
+
+				// Parse remove_slugs (optional, default empty).
+				var removeSlugs []string
+				if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
+					rsArr, ok := rsVal.([]any)
+					if !ok {
+						return outputError(out, "remove_slugs must be an array")
+					}
+					for _, v := range rsArr {
+						s, ok := v.(string)
+						if !ok {
+							return outputError(out, "remove_slugs elements must be strings")
+						}
+						removeSlugs = append(removeSlugs, s)
+					}
+				}
+
+				upsertVal, hasUpsert := raw["upsert"]
+				if !hasUpsert || upsertVal == nil {
+					return outputError(out, "missing required field: upsert")
+				}
+				upsertFields, ok := upsertVal.(map[string]any)
 				if !ok {
-					return outputError(out, "remove_slugs must be an array")
+					return outputError(out, "upsert must be an object")
 				}
-				for _, v := range rsArr {
-					s, ok := v.(string)
-					if !ok {
-						return outputError(out, "remove_slugs elements must be strings")
+				if mergeBodyFile != "" {
+					if err := applyBodyFile(upsertFields, mergeBodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
 					}
-					removeSlugs = append(removeSlugs, s)
 				}
-			}
 
-			upsertVal, hasUpsert := raw["upsert"]
-			if !hasUpsert || upsertVal == nil {
-				return outputError(out, "missing required field: upsert")
-			}
-			upsertFields, ok := upsertVal.(map[string]any)
-			if !ok {
-				return outputError(out, "upsert must be an object")
-			}
-
-			// Parse set_status (optional): validate using the same resolveLookup
-			// logic as the standalone set-status command — {slug,id,status} allowed,
-			// exactly-one-of slug/id, and status key required.
-			var setStatusPtr *boardengine.MergeStatusUpdate
-			if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
-				ssBytes, err := json.Marshal(ssVal)
-				if err != nil {
-					return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
-				}
-				selector, ssMap, err := resolveLookup(ssBytes, "status")
-				if err != nil {
-					return outputError(out, "set_status: "+err.Error())
-				}
-				// status key is required inside set_status, mirroring the standalone command.
-				sv, hasStatusKey := ssMap["status"]
-				if !hasStatusKey {
-					return outputError(out, "set_status: missing required field: status")
-				}
-				var status *string
-				if sv != nil {
-					s, ok := sv.(string)
-					if !ok {
-						return outputError(out, "set_status.status must be a string or null")
+				// Parse set_status (optional): validate using the same resolveLookup
+				// logic as the standalone set-status command — {slug,id,status} allowed,
+				// exactly-one-of slug/id, and status key required.
+				var setStatusPtr *boardengine.MergeStatusUpdate
+				if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
+					ssBytes, err := json.Marshal(ssVal)
+					if err != nil {
+						return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
 					}
-					status = &s
+					selector, ssMap, err := resolveLookup(ssBytes, "status")
+					if err != nil {
+						return outputError(out, "set_status: "+err.Error())
+					}
+					// status key is required inside set_status, mirroring the standalone command.
+					sv, hasStatusKey := ssMap["status"]
+					if !hasStatusKey {
+						return outputError(out, "set_status: missing required field: status")
+					}
+					var status *string
+					if sv != nil {
+						s, ok := sv.(string)
+						if !ok {
+							return outputError(out, "set_status.status must be a string or null")
+						}
+						status = &s
+					}
+					setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
 				}
-				setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
-			}
 
-			task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
+				task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				return outputSuccessWithTask(out, task)
+			})(cmd, args)
+		},
 	}
+	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
 	// set-deps subcommand: replace the depends_on list for a task.
 	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;

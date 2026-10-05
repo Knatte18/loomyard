@@ -51,6 +51,12 @@ Read a long body from a file, or from stdin with `-`, instead of embedding it in
 lyx board upsert '{"slug":"my-task","title":"My Task","kind":"task","labels":["bug"]}' --body-file body.md
 ```
 
+`merge` takes the same flag and sets the body of its `upsert` entry:
+
+```
+lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"my-task","title":"My Task","kind":"task","labels":["bug"]}}' --body-file body.md
+```
+
 Edit a body as a file: `get --body` prints the body alone, verbatim, so write it out, edit it and read it back in:
 
 ```

@@ -313,6 +313,43 @@ func TestCLIUpsertBodyFile(t *testing.T) {
 	runJSON(t, 1, "upsert", "-", "--body-file", "-")
 }
 
+// TestCLIMergeBodyFile drives merge --body-file with a path and with stdin, and refuses a body given twice.
+func TestCLIMergeBodyFile(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	path := filepath.Join(t.TempDir(), "body.md")
+	fileBody := "# Merged\n\nA \"quoted\" line.\n"
+	if err := os.WriteFile(path, []byte(fileBody), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	mustUpsert(t, `{"slug":"old","title":"Old","labels":["bug"]}`)
+	runJSON(t, 0, "merge", `{"remove_slugs":["old"],"upsert":{"slug":"merged","title":"M","labels":["bug"]}}`, "--body-file", path)
+	got := runJSON(t, 0, "get", `{"slug":"merged"}`)["task"].(map[string]any)
+	if got["body"] != fileBody {
+		t.Fatalf("merged body from file = %q, want %q", got["body"], fileBody)
+	}
+
+	stdinBody := "piped body\n"
+	pipeStdin(t, stdinBody)
+	runJSON(t, 0, "merge", `{"upsert":{"slug":"from-stdin","title":"S","labels":["bug"]}}`, "--body-file", "-")
+	got = runJSON(t, 0, "get", `{"slug":"from-stdin"}`)["task"].(map[string]any)
+	if got["body"] != stdinBody {
+		t.Fatalf("merged body from stdin = %q, want %q", got["body"], stdinBody)
+	}
+
+	// Refusals write nothing.
+	mustUpsert(t, `{"slug":"keep","title":"Keep","labels":["bug"]}`)
+	runJSON(t, 1, "merge", `{"remove_slugs":["keep"],"upsert":{"slug":"both","title":"B","body":"x","labels":["bug"]}}`, "--body-file", path)
+	runJSON(t, 1, "merge", "-", "--body-file", "-")
+	if got := runJSON(t, 0, "get", `{"slug":"keep"}`); got["task"] == nil {
+		t.Fatal("refused merge removed keep")
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"both"}`); got["task"] != nil {
+		t.Fatalf("refused merge wrote both: %v", got)
+	}
+}
+
 // TestCLIGetBody prints bodies byte-for-byte, an empty body as nothing, and refuses an absent target.
 func TestCLIGetBody(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
