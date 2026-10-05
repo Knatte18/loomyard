@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":"start"}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":5}}}
+{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":20,"cache_creation_input_tokens":200,"cache_read_input_tokens":2000,"output_tokens":7}}}
+{"type":"system","subtype":"compact_boundary","isSidechain":false,"timestamp":"2026-03-04T05:06:07Z","compactMetadata":{"trigger":"auto","preTokens":2220,"postTokens":321}}

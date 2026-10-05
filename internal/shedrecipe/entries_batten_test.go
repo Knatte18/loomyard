@@ -255,6 +255,33 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	})
 }
 
+// TestInnerRunEntry_NoticeQuietKey covers innerRunEntry's notice_quiet_min config key: absent resolves to defaultInnerRunNoticeQuietMin, an explicit value builds successfully, and a negative value is rejected naming the key.
+func TestInnerRunEntry_NoticeQuietKey(t *testing.T) {
+	t.Run("DefaultIsFortyFive", func(t *testing.T) {
+		if defaultInnerRunNoticeQuietMin != 45 {
+			t.Errorf("defaultInnerRunNoticeQuietMin = %d; want 45", defaultInnerRunNoticeQuietMin)
+		}
+		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("ExplicitValue", func(t *testing.T) {
+		producer, err := innerRunEntry("InnerRun", Config{"notice_quiet_min": 10}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("NegativeIsRejected", func(t *testing.T) {
+		_, err := innerRunEntry("InnerRun", Config{"notice_quiet_min": -1}, newTestEnv(t))
+		if err == nil || !strings.Contains(err.Error(), "notice_quiet_min") {
+			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "notice_quiet_min")
+		}
+	})
+}
+
 // TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
 	t.Run("DefaultIsNineHundred", func(t *testing.T) {

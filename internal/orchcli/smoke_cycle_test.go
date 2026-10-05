@@ -184,7 +184,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	// The soft threshold sits above the hard one, so the manual cycle stays the only trigger.
-	orchCfg := smokeOrchConfig("bypass", 200000000, 100000000, 300)
+	orchCfg := smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300)
 	hubforge.SeedConfig(t, h, map[string]string{
 		"orch":    orchCfg,
 		"reed":    reedengine.ConfigTemplate(),

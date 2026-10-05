@@ -15,7 +15,7 @@
 //
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start --no-attach`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
-//  2. Watch every run's status file with one background loop that exits when any run leaves running, plus a periodic health check of state, minutes since the status changed, and live agent panes per tmux session.
+//  2. Keep no watch loop of your own: batten notices arrive as typed turns from the orch watcher, and on one you check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
 //     Then `lyx loom approve` in the worktree, wait until the session has no agent pane left (the driver removes itself after a hand-back, and an early restart races that removal and leaves no driver), and `lyx loom start --no-attach` again.
 //     Finalize squash-merges, closes the PR and marks the board task done.
@@ -28,6 +28,11 @@
 // # Priorities
 //
 // In order: fewer and recoverable stops, since a false stop costs as much as a wrong landing and every refusal needs a way forward;
-// an automated loop, through batten, the driver's own repairs and the orchestrator's context cycling;
+// an automated loop, through batten, the driver's own repairs and the orchestrator's context cycling, by `/compact` or `/clear` as orch.yaml's `cycle_mode` says;
 // records that survive teardown; and the operator's surface, meaning panes, the IDE workspace and the launch line.
+//
+// # Reaching the orch from another module
+//
+// `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.
+// A module queues a notice through `orchengine.QueueNotice` with those paths and never types into the orch session itself.
 package orchcli

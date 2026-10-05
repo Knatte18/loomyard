@@ -22,7 +22,7 @@ func TestRenderStartPrompt(t *testing.T) {
 	if !strings.Contains(got, "hub orchestrator") {
 		t.Errorf("start prompt missing role text: %q", got)
 	}
-	for _, want := range []string{"lyx loom review", "one-shot fork"} {
+	for _, want := range []string{"lyx loom review", "one-shot fork", "[batten notice]", "lyx batten status"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("start prompt missing %q: %q", want, got)
 		}
@@ -40,6 +40,9 @@ func TestRenderHandoffInstruction(t *testing.T) {
 	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") {
 		t.Errorf("handoff instruction must be one line containing the path: %q", got)
 	}
+	if strings.Contains(got, "watcher") {
+		t.Errorf("handoff instruction must not ask for watchers: %q", got)
+	}
 }
 
 func TestRenderResumePrompt(t *testing.T) {
@@ -55,6 +58,9 @@ func TestRenderResumePrompt(t *testing.T) {
 			t.Errorf("resume prompt missing %q: %q", want, got)
 		}
 	}
+	if strings.Contains(got, "watcher") || strings.Contains(got, "re-arming") {
+		t.Errorf("resume prompt must not ask for watchers: %q", got)
+	}
 }
 
 func TestRenderAdoptPrompt(t *testing.T) {
@@ -64,6 +70,9 @@ func TestRenderAdoptPrompt(t *testing.T) {
 	}
 	if got == "" || strings.ContainsAny(got, "\r\n") {
 		t.Errorf("adopt prompt must be one non-empty line: %q", got)
+	}
+	if !strings.Contains(got, "none is re-armed") {
+		t.Errorf("adopt prompt must say no watcher is re-armed: %q", got)
 	}
 }
 
@@ -75,6 +84,19 @@ func TestRenderSoftHandoffInstruction(t *testing.T) {
 	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") || !strings.Contains(got, "DEFER") {
 		t.Errorf("soft instruction must be one line with the path and DEFER: %q", got)
 	}
+	if strings.Contains(got, "watcher") || strings.Contains(got, "re-arm") {
+		t.Errorf("soft instruction must not ask for watchers: %q", got)
+	}
+}
+
+func TestRenderCompactFocus(t *testing.T) {
+	got, err := RenderCompactFocus(seedStencils(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" || strings.ContainsAny(got, "\r\n") {
+		t.Errorf("compact focus must be one non-empty line: %q", got)
+	}
 }
 
 func TestRenderAdoptAndSoft_MultiLineOverrideFails(t *testing.T) {
@@ -82,6 +104,7 @@ func TestRenderAdoptAndSoft_MultiLineOverrideFails(t *testing.T) {
 		name   string
 		render func(dir string) (string, error)
 	}{
+		{compactStencilName, RenderCompactFocus},
 		{adoptStencilName, RenderAdoptPrompt},
 		{softHandoffStencilName, func(dir string) (string, error) { return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md") }},
 	}

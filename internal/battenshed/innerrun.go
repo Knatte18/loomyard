@@ -126,6 +126,10 @@ type innerRunProducer struct {
 	scratchDir   string
 	// driverExitGrace bounds how long a done child's live driver strand is waited for.
 	driverExitGrace time.Duration
+	// notices is true when the caller wired a Notify, before a nil one resolves to a no-op.
+	notices bool
+	// noticeQuiet is deps.NoticeQuiet, read once at construction.
+	noticeQuiet time.Duration
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
@@ -138,6 +142,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // driverExitGrace bounds the wait for a done child's driver strand to end before the row returns Done anyway.
 //
 // A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
+// A nil deps.Notify resolves to a no-op and switches the notice step off.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -148,6 +153,13 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.OpenIDE == nil {
 		deps.OpenIDE = func(context.Context) error { return nil }
 	}
+	notices := deps.Notify != nil
+	if deps.Notify == nil {
+		deps.Notify = func(context.Context, string) error { return nil }
+	}
+	if deps.AttachDir == nil {
+		deps.AttachDir = func() (string, error) { return "", errors.New("no attach directory wired") }
+	}
 	return &innerRunProducer{
 		name:         name,
 		slug:         slug,
@@ -156,6 +168,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		scratchDir:   scratchDir,
 
 		driverExitGrace: driverExitGrace,
+		notices:         notices,
+		noticeQuiet:     deps.NoticeQuiet,
 	}
 }
 
@@ -178,6 +192,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // A failed spawn returns before the open.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
 // Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
+// Once the child's state is settled, the notice step runs (noticeStep): informational only, one notice per condition per episode, never changing the outcome below.
 // Then by state:
 //   - running sleeps p.pollInterval and returns a counted Stuck;
 //   - awaiting with no decision record sleeps and returns a budget-exempt Stuck naming the hand-off;
@@ -272,6 +287,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear halt-warned marker: %w", p.name, err)
 		}
 	}
+
+	p.noticeStep(ctx, statusPath, status)
 
 	switch status.State {
 	case shedengine.StateDone:

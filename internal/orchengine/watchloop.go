@@ -71,6 +71,18 @@ func (w *Watcher) recordExit(reason string) error {
 	})
 }
 
+// dropQueueWithoutStrand drops the notice queue when the orch state records no strand, since nothing queued then has a session to reach.
+func (w *Watcher) dropQueueWithoutStrand() error {
+	st, err := LoadState(w.paths)
+	if err != nil {
+		return err
+	}
+	if st.Strand != "" {
+		return nil
+	}
+	return DropNotices(w.paths)
+}
+
 // Run holds the watch lock and calls Tick every PollInterval until Tick reports done, ctx is cancelled, or the cap on consecutive tick errors is reached.
 // It returns ErrWatcherRunning when another watcher holds the lock through every retry.
 func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
@@ -84,6 +96,9 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	defer l.Release()
 
 	if err := w.recordExit(""); err != nil {
+		return err
+	}
+	if err := w.dropQueueWithoutStrand(); err != nil {
 		return err
 	}
 

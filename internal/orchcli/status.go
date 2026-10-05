@@ -61,7 +61,7 @@ func (c *orchCLI) statusCmd() *cobra.Command {
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
 whether a watcher holds its lock, the latest context reading against the soft
 threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the
-persisted cycle phase, count, trigger (cycle_trigger), last handoff, abort reason
+persisted cycle phase (idle, handoff-requested, clearing, resuming or compacting), count, trigger (cycle_trigger), last handoff, abort reason
 and last DEFER deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names why an overdue phase is still waiting for the session to go idle.`,
 		Args: cobra.NoArgs,

@@ -44,6 +44,7 @@ producers:
     config:
       poll_interval_s: 30
       driver_exit_grace_s: 900
+      notice_quiet_min: 45
 
   - name: Worktree-Teardown
     engine: WorktreeTeardown

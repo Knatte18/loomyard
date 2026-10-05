@@ -180,6 +180,11 @@ var OrchTemplateAdopt []byte
 //go:embed orch/orch-template-handoff-soft.md
 var OrchTemplateHandoffSoft []byte
 
+// OrchTemplateCompact is orch's shipped-default one-line focus text typed after `/compact`.
+//
+//go:embed orch/orch-template-compact.md
+var OrchTemplateCompact []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -271,6 +276,7 @@ var entries = []registryEntry{
 	{"orch-template-resume", &OrchTemplateResume},
 	{"orch-template-adopt", &OrchTemplateAdopt},
 	{"orch-template-handoff-soft", &OrchTemplateHandoffSoft},
+	{"orch-template-compact", &OrchTemplateCompact},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},

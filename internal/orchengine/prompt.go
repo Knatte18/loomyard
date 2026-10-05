@@ -1,6 +1,6 @@
-// prompt.go renders the orch stencils (orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft).
+// prompt.go renders the orch stencils (orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The handoff, resume, adopt and soft handoff renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
+// The handoff, resume, adopt, soft handoff and compact focus renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
 
 package orchengine
@@ -20,6 +20,7 @@ const (
 
 	adoptStencilName       = "orch-template-adopt"
 	softHandoffStencilName = "orch-template-handoff-soft"
+	compactStencilName     = "orch-template-compact"
 )
 
 // RenderStartPrompt renders the fresh-launch prompt read from stencilsDir.
@@ -45,6 +46,11 @@ func RenderAdoptPrompt(stencilsDir string) (string, error) {
 // RenderSoftHandoffInstruction renders the one-line soft-trigger handoff request, with handoffPath filled in.
 func RenderSoftHandoffInstruction(stencilsDir, handoffPath string) (string, error) {
 	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath}, true)
+}
+
+// RenderCompactFocus renders the one-line focus text typed after `/compact`.
+func RenderCompactFocus(stencilsDir string) (string, error) {
+	return render(stencilsDir, compactStencilName, nil, true)
 }
 
 // render reads and fills one stencil.

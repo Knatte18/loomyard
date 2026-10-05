@@ -118,6 +118,36 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 	}
 }
 
+func TestRun_DropsNoticeQueueWhenNoStrandRecorded(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.alive = false
+	e.queue("stale")
+	e.setState(func(st *State) { st.Strand = "" })
+
+	if err := e.w.Run(context.Background(), noSleep); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := e.noticeLines(); len(got) != 0 {
+		t.Errorf("queue = %v, want it dropped", got)
+	}
+	if _, err := os.Stat(e.paths.NoticesDir); !os.IsNotExist(err) {
+		t.Errorf("notices dir stat = %v, want absent", err)
+	}
+}
+
+func TestRun_KeepsNoticeQueueWhenStrandRecorded(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.alive = false
+	e.queue("kept")
+
+	if err := e.w.Run(context.Background(), noSleep); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
+	}
+}
+
 func TestRun_CancelledContextRecordsSignal(t *testing.T) {
 	e := newWatchEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())

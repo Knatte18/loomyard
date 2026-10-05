@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -31,6 +32,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -414,6 +417,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
+			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime; a notice the orch has no strand to receive is logged by QueueNotice.
+			Notify: func(ctx context.Context, line string) error {
+				_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+				return err
+			},
+			AttachDir: func() (string, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return "", err
+				}
+				return taskLocation.AnchorPath(), nil
+			},
 			// ReadDecision, DriverAlive and ReviewWait resolve the task worktree on Call like every seam here, never at wiring time.
 			ReviewWait: func() (string, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)

@@ -13,6 +13,11 @@ import (
 // orchDirName is the module's own subdirectory beneath the anchor's .lyx directory.
 const orchDirName = "orch"
 
+// PrimePaths returns the orch paths for the prime at location, so another module's CLI wiring reaches the notice queue and the orch state without re-deriving either.
+func PrimePaths(location *lyxcwd.Location) orchengine.Paths {
+	return orchPaths(location)
+}
+
 // orchPaths returns every path orch operates on, rooted at location's anchor.
 func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 	dir := filepath.Join(location.AnchorPath(), lyxdirs.DotLyxDirName, orchDirName)
@@ -24,6 +29,7 @@ func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 		StartLockPath:    filepath.Join(dir, "start.lock"),
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
+		NoticesDir:       filepath.Join(dir, "notices"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 	}
 }

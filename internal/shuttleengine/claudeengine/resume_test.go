@@ -1,6 +1,7 @@
 // resume_test.go covers checkResumable over a temp project directory, a fixture session registry and a fake liveness probe:
 // a malformed id, a missing or unstattable transcript and a live holder refuse,
-// while a dead or non-matching holder proceeds, and an absent registry or an undecodable entry proceeds with a warning.
+// where a live holder whose start time cannot be compared refuses as unproven,
+// while a dead, non-matching or pid-reused holder proceeds, and an absent registry or an undecodable entry proceeds with a warning.
 
 package claudeengine
 
@@ -52,6 +53,7 @@ func TestCheckResumable(t *testing.T) {
 		transcript  bool
 		setup       func(t *testing.T, registryDir string) string // returns the registry dir to use
 		alive       func(int) bool
+		start       func(int) (string, bool) // nil reads "100" for every pid
 		wantErr     string
 		wantWarning bool
 	}{
@@ -74,11 +76,44 @@ func TestCheckResumable(t *testing.T) {
 			id:         resumeTestID,
 			transcript: true,
 			setup: func(t *testing.T, dir string) string {
+				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q,"procStart":"100"}`, resumeTestID))
+				return dir
+			},
+			alive:   aliveAll,
+			wantErr: "live process 4242",
+		},
+		{
+			name:       "live pid with a mismatching start time is reused and proceeds",
+			id:         resumeTestID,
+			transcript: true,
+			setup: func(t *testing.T, dir string) string {
+				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q,"procStart":"99"}`, resumeTestID))
+				return dir
+			},
+			alive: aliveAll,
+		},
+		{
+			name:       "live pid with an unreadable start time refuses as unproven",
+			id:         resumeTestID,
+			transcript: true,
+			setup: func(t *testing.T, dir string) string {
+				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q,"procStart":"99"}`, resumeTestID))
+				return dir
+			},
+			alive:   aliveAll,
+			start:   func(int) (string, bool) { return "", false },
+			wantErr: "could not be proven reused",
+		},
+		{
+			name:       "live pid with no procStart refuses as unproven",
+			id:         resumeTestID,
+			transcript: true,
+			setup: func(t *testing.T, dir string) string {
 				writeRegistryEntry(t, dir, "a.json", fmt.Sprintf(`{"pid":4242,"sessionId":%q}`, resumeTestID))
 				return dir
 			},
 			alive:   aliveAll,
-			wantErr: "4242",
+			wantErr: "and the pid could not be proven reused",
 		},
 		{
 			name:       "dead matching pid proceeds silently",
@@ -129,7 +164,11 @@ func TestCheckResumable(t *testing.T) {
 			if tt.setup != nil {
 				registryDir = tt.setup(t, registryDir)
 			}
-			warning, err := checkResumable(tt.id, projectDir, registryDir, tt.alive)
+			start := tt.start
+			if start == nil {
+				start = func(int) (string, bool) { return "100", true }
+			}
+			warning, err := checkResumable(tt.id, projectDir, registryDir, tt.alive, start)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want containing %q", err, tt.wantErr)
@@ -157,7 +196,7 @@ func TestCheckResumable_UnstattableTranscriptRefusesNamingTheStatFailure(t *test
 	if err := os.WriteFile(projectFile, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := checkResumable(resumeTestID, projectFile, registryDir, func(int) bool { return false })
+	_, err := checkResumable(resumeTestID, projectFile, registryDir, func(int) bool { return false }, func(int) (string, bool) { return "", false })
 	if err == nil || !strings.Contains(err.Error(), "cannot stat the transcript") {
 		t.Fatalf("err = %v, want a refusal naming the stat failure", err)
 	}

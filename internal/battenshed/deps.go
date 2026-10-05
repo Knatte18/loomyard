@@ -134,6 +134,16 @@ type InnerRunDeps struct {
 	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
 	// A nil OpenIDE resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep and Now resolve.
 	OpenIDE func(ctx context.Context) error
+	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch.
+	// Call invokes it at most once per condition per episode (see notice.go); its error is only warned about and never changes the row's outcome.
+	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil OpenIDE resolves, and then no notice step runs at all.
+	Notify func(ctx context.Context, line string) error
+	// NoticeQuiet is how long a running child's status file may stay unchanged, with its driver strand alive, before the row sends a quiet notice.
+	// Zero disables the quiet notice.
+	NoticeQuiet time.Duration
+	// AttachDir returns the task worktree directory the notice's attach command changes into.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	AttachDir func() (string, error)
 }
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no

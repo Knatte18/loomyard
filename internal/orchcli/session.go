@@ -33,12 +33,12 @@ func (s runnerSession) ReadEvents(guid string, offset int64) ([]shuttleengine.Ev
 }
 
 // ContextTokens delegates to Runner.ContextTokens.
-func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (int, bool, error) {
+func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	return s.runner.ContextTokens(turnEnd)
 }
 
 // SessionIdle delegates to Runner.SessionIdle, which captures the pane through tmux.
-func (s runnerSession) SessionIdle(guid string) (bool, error) {
+func (s runnerSession) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 	logger.Debug("orch: session idle probe", "strandGUID", guid)
 	return s.runner.SessionIdle(guid)
 }
@@ -53,4 +53,10 @@ func (s runnerSession) Send(guid, text string) error {
 func (s runnerSession) ClearSession(guid string) error {
 	logger.Debug("orch: clear session", "strandGUID", guid)
 	return s.runner.ClearSession(guid)
+}
+
+// CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.
+func (s runnerSession) CompactSession(guid, focus string) error {
+	logger.Debug("orch: compact session", "strandGUID", guid)
+	return s.runner.CompactSession(guid, focus)
 }

@@ -1,9 +1,24 @@
 package proc
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 )
+
+func TestStartTimeOfOwnProcess(t *testing.T) {
+	got, ok := StartTime(os.Getpid())
+	if !ok || got == "" {
+		t.Fatalf("StartTime(own pid) = %q, %v; want a non-empty value", got, ok)
+	}
+}
+
+func TestStartTimeOfMissingProcess(t *testing.T) {
+	// Pids above the kernel's pid_max (at most 2^22) never exist.
+	if got, ok := StartTime(1 << 30); ok {
+		t.Fatalf("StartTime(missing pid) = %q, true; want false", got)
+	}
+}
 
 func TestHideWindowIsNoop(t *testing.T) {
 	cmd := exec.Command("true")

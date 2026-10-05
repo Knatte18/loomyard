@@ -58,6 +58,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: a Go-authored friction note is written, and none is archived before a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`, never in `shuttleengine` or `reedengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-binary-resolution` — Creating a strand pane in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)

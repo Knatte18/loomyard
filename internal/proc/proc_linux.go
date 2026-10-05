@@ -9,6 +9,8 @@ package proc
 import (
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -22,6 +24,28 @@ func IsAlive(pid int) bool {
 		return false
 	}
 	return process.Signal(syscall.Signal(0)) == nil
+}
+
+// StartTime returns the start time of the process identified by pid, in the form Claude's session registry records as procStart:
+// field 22 of /proc/<pid>/stat (clock ticks since boot).
+// It reports false when the process does not exist or its stat cannot be parsed.
+func StartTime(pid int) (string, bool) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return "", false
+	}
+	// The command name in field 2 may hold spaces or parentheses, so count fields after the last ')'.
+	stat := string(data)
+	end := strings.LastIndexByte(stat, ')')
+	if end < 0 {
+		return "", false
+	}
+	// The remainder starts at field 3, so field 22 is the 20th entry.
+	fields := strings.Fields(stat[end+1:])
+	if len(fields) < 20 {
+		return "", false
+	}
+	return fields[19], true
 }
 
 // KillPID force-kills the process identified by pid.

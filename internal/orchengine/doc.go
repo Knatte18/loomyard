@@ -40,12 +40,19 @@
 //
 // # Permission mode and subagents
 //
-// The orch run's spec carries `permission_mode` from orch.yaml verbatim (template `bypass`), and the claude engine validates it.
-// It also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
+// The orch run's spec carries `permission_mode: bypass`, the only accepted value.
+// LoadConfig resolves an empty value to `bypass` and returns an error for any other, `prompt` included, naming the fix `set permission_mode: bypass or remove the key`; every verb loads the config first, so each refuses before any pane is touched.
+// The spec also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
 // Only the orch run sets the allowance, and it has no orch.yaml switch.
 //
-// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt.
-// The operator's lever is `permission_mode: prompt`, under which those agents prompt in the orch pane.
+// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt, because the orch never prompts per action.
+//
+// # Cycle mode
+//
+// `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
+// `compact` keeps the session id and the Remote Control link and writes no handoff file.
+// `clear` runs the handoff, `/clear` and resume cycle.
+// The trigger selection, gates and re-read under "Idle rules" are shared; the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
 // # The watcher
 //
@@ -64,7 +71,8 @@
 //   - soft: a known reading at or over `soft_threshold_tokens` and below the hard cap.
 //     A soft threshold at or above the hard cap never fires.
 //
-// The trigger is recorded in State.CycleTrigger before the handoff-requested phase is entered, and the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+// The trigger is recorded in State.CycleTrigger before the cycle's first phase is entered.
+// In clear mode the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply; compact mode has no `DEFER` exchange.
 // A hard or requested cycle acts only when all of these hold:
 //
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
@@ -72,13 +80,24 @@
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// Every idle probe goes through one watcher helper.
+// A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
+// The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
+//
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
+// In compact mode a hard trigger is held by the same rule, and a requested cycle never is.
+//
+// A hard or soft cycle also re-reads the context through the newest turn end once those gates pass, saves the new reading, and fires only if it still meets that trigger's threshold.
+// The transcript can change without a turn end, so the reading saved at the last turn end can be stale.
+// A re-read below the hard cap never turns a hard trigger into a soft firing on the same tick; the next tick re-evaluates from the saved reading.
+// A requested cycle is not re-read, so it can cycle a small session on the operator's say.
 //
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
+// A fresh launch or adopt resets the reading to unknown until the new session's first turn end.
 // The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
 //
-// # The four-phase cycle
+// # The four-phase cycle (clear mode)
 //
 // The persisted phases are idle, handoff-requested, clearing and resuming.
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
@@ -108,6 +127,29 @@
 // Once the session is idle it moves on to resuming, and an unconfirmed `/clear` is not retried then, since the handoff is already written and the resume prompt lands in an idle, uncleared session.
 // The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
 //
+// # The compact cycle (compact mode)
+//
+// The persisted phases are idle and compacting.
+// When a trigger fires, the watcher renders the focus stencil first, so a stencil failure changes nothing,
+// then persists compacting with the trigger, clears the cycle request, types `/compact` followed by the focus, and records the injection as confirmed.
+// The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
+// Nothing is typed unless the idle probe passed on the same tick.
+// No handoff file is written, and State.LastHandoff is untouched.
+//
+// A compaction ends without a turn end, so the compacting phase re-reads the context every tick through State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records.
+// The phase completes when the reading is a compaction boundary stamped at or after the phase was entered and the idle probe passes on that tick:
+// the boundary's tokens become the reading, `cycle_count` increments and the watcher returns to idle.
+// An earlier boundary never completes it.
+// Past the handoff timeout the phase returns to idle with the abort reason `compaction timed out`, re-reads the reading, and records the time in State.LastDeferral,
+// which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
+// That hold delays a hard trigger by at most `soft_idle_s` per failed compaction.
+//
+// Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
+// A qualifying boundary read after a restart completes the phase without typing anything.
+//
+// There is no `DEFER` handshake, so a background task's in-flight completion has no handshake protecting it if it does not survive `/compact`;
+// `cycle_mode: clear` restores the handshake.
+//
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,
 // so a watcher never overwrites the binding a concurrent `start` just recorded.
 //
@@ -121,8 +163,25 @@
 //   - cycle-request: the marker `cycle` writes and the watcher consumes.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
+//   - notices/: one file per queued notice, removed on delivery.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
+//
+// # Notices
+//
+// Another module tells the orchestrator about a change through `QueueNotice`, never by typing into its pane:
+// only the orch watcher types into the orch session (PATTERN-orch-pane-single-writer), so the orchestrator keeps no watcher of its own.
+//
+//   - A notice is one line, written as one file under `notices/` whose name sorts by arrival (UTC time to the nanosecond, then a random suffix), so concurrent writers never share a file.
+//     A line containing a newline or beginning with `/` is refused, since it would be typed as several lines or read as a command.
+//   - With no strand recorded in the orch state, the notice is logged and not queued.
+//   - The queue holds at most 50 notices: after a write the oldest beyond the cap are removed and logged.
+//     Concurrent appenders can overshoot the cap transiently by at most one notice each.
+//   - In phase idle, when `tickIdle` has not started a cycle on the tick and the idle probe passes on that tick, the watcher types the oldest notice as a turn and then removes its file.
+//     It delivers one notice per tick, and a non-idle probe, a running cycle or a watcher that is down leaves the queue untouched.
+//   - Delivery is at least once: a watcher that dies between typing and removing types the notice again after a restart.
+//   - A notice can be delayed by a busy session, a too-short pane or a cycle, but is never typed over a draft or a running turn.
+//   - `Watcher.Run` drops the queue at start when the orch state records no strand.
 //
 // # Migrating from an operator's own terminal session
 //
@@ -145,9 +204,10 @@
 //   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box, so a session with a draft is never cycled until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
-//   - A threshold above the auto-compaction point lets Claude Code compact first.
-//   - reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
+//   - A threshold above the auto-compaction point lets Claude Code compact first, and the boundary it writes is a reading, so the watcher reads the shrunken context correctly.
+//   - In clear mode, reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
 //     `lyx orch stop` plus `lyx orch start` relaunches from the last completed handoff instead.
+//     Compact mode keeps the session id, so it does not apply there.
 //
 // # Open risks
 //
@@ -161,5 +221,8 @@
 //     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
 //   - The idle probe passes on a live orch pane.
 //     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which the probe's rule match rejected until it accepted a labelled top rule, so the probe had never passed on a named session.
+//   - Adopting a large session starts within `startup_timeout_s` and leaves no dialog on the pane.
+//     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYX_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
+//     Startup took 43.8s against a `startup_timeout_s` of 90, so a transcript of this size uses about half the budget.
 //   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
 package orchengine
