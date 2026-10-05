@@ -150,12 +150,10 @@ func TestE2ESyncIntegration(t *testing.T) {
 // reported by reconcile's own drift-detection, proving reconcile never gets a chance to look once
 // --set stops silently destroying the key first.
 //
-// Uses "board" rather than "fabric": since configsync.ReconcileAll now skips "fabric" entirely (its
-// config is repo-wide at fabricengine.BoardDir, never per-worktree — see ReconcileAll's doc
-// comment), a module RunCLI(reconcile) still processes generically is needed to exercise this
-// drift-detection path;
-// "board" is that generic module,
-// and the scenario under test (a preserved orphan key surviving --set, then reported by reconcile)
+// Uses "loom" rather than a hub-wide module: ReconcileAll only reports a hub-wide module's
+// per-worktree copy (see ReconcileAll's doc comment), so a per-worktree module is needed to
+// exercise this drift-detection path;
+// the scenario under test (a preserved orphan key surviving --set, then reported by reconcile)
 // is not module-specific.
 func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -167,14 +165,14 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	seedModuleConfig(t, tmpDir, "board", "design_prefix: old-\nlegacy_key: keepme\n")
+	seedModuleConfig(t, tmpDir, "loom", "discussion_timeout_min: 480\nlegacy_key: keepme\n")
 
 	// Run --set via dispatch, exactly as
 	// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning does, using an
 	// explicit *lyxcwd.Location (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
-	setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"board"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"design_prefix=new-"})
+	setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"discussion_timeout_min=60"})
 	if setCode != 0 {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}
@@ -193,23 +191,23 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	if !ok {
 		t.Fatalf("modules is not an array; got %v", result)
 	}
-	var boardMod map[string]any
+	var loomMod map[string]any
 	for _, m := range modules {
 		mod, ok := m.(map[string]any)
 		if !ok {
 			continue
 		}
-		if mod["module"] == "board" {
-			boardMod = mod
+		if mod["module"] == "loom" {
+			loomMod = mod
 			break
 		}
 	}
-	if boardMod == nil {
-		t.Fatalf("no modules entry for \"board\"; got %v", modules)
+	if loomMod == nil {
+		t.Fatalf("no modules entry for \"loom\"; got %v", modules)
 	}
-	removed, ok := boardMod["removed"].([]any)
+	removed, ok := loomMod["removed"].([]any)
 	if !ok {
-		t.Fatalf("board module entry missing \"removed\" field or wrong type; got %v", boardMod)
+		t.Fatalf("loom module entry missing \"removed\" field or wrong type; got %v", loomMod)
 	}
 	found := false
 	for _, r := range removed {
@@ -219,6 +217,6 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("board module's removed = %v; want it to contain \"legacy_key\"", removed)
+		t.Errorf("loom module's removed = %v; want it to contain \"legacy_key\"", removed)
 	}
 }

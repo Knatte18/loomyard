@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -290,7 +291,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, apply)
+	results, err := configsync.ReconcileAll(baseDir, fabricengine.BoardDir(l.HubPath), apply)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
@@ -310,6 +311,14 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		// ordinary module rather than always present as an empty array.
 		if len(result.MigratedFrom) > 0 {
 			m["migratedFrom"] = result.MigratedFrom
+		}
+		// retired and divergent are exceptional too: only a hub-wide module's
+		// leftover per-worktree copy sets them.
+		if result.Retired {
+			m["retired"] = true
+		}
+		if len(result.Divergent) > 0 {
+			m["divergent"] = result.Divergent
 		}
 		modules[i] = m
 	}
@@ -372,7 +381,11 @@ func Command() *cobra.Command {
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
-Pass --apply to write the reconciled files to disk atomically.`,
+Pass --apply to write the reconciled files to disk atomically.
+Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
+per-worktree copy is "retired" when the hub file holds everything it holds
+(--apply deletes it), or "divergent" when it holds an entry the hub file lacks
+(it is left in place).`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {

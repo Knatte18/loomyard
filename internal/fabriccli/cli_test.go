@@ -414,12 +414,15 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// Per-worktree module configs (e.g. "board") must have been reconciled
-	// on the weft side.
+	// Per-worktree module configs (e.g. "loom") must have been reconciled
+	// on the weft side; hub-wide ones (e.g. "board") live at the board dir only.
 	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-warp"), "backend")
-	boardConfigPath := configengine.ConfigFile(weftBase, "board")
-	if _, err := os.Stat(boardConfigPath); err != nil {
-		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
+	loomConfigPath := configengine.ConfigFile(weftBase, "loom")
+	if _, err := os.Stat(loomConfigPath); err != nil {
+		t.Errorf("per-worktree loom config missing at %s: %v", loomConfigPath, err)
+	}
+	if _, err := os.Stat(configengine.ConfigFile(weftBase, "board")); !os.IsNotExist(err) {
+		t.Errorf("per-worktree board config materialized under %s; want it only at the board dir (stat err = %v)", weftBase, err)
 	}
 }
 

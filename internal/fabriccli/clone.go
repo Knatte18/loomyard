@@ -99,9 +99,10 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// leave a tracked artifact behind in the user's repo.
 	//
 	// ReconcileAll returns one Result per registered module, each reporting whether that module's own
-	// file was written — record one KindFileWritten per Result whose Applied is true, not one entry
-	// for the call as a whole, so every materialised per-worktree config file is individually covered.
-	results, err := configsync.ReconcileAll(res.WeftBase, true)
+	// file was written (or, for a retired hub-wide copy, deleted) — record one KindFileWritten per
+	// Result whose Applied is true, not one entry for the call as a whole, so every changed
+	// per-worktree config file is individually covered.
+	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, true)
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -113,7 +114,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		}
 	}
 
-	// Commit the per-worktree module configs ReconcileAll just materialised, on the weft primary
+	// Commit the per-worktree module configs ReconcileAll just materialised or retired, on the weft primary
 	// branch, with no push: an adopt-path re-clone leaves relPaths empty, which
 	// CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no
 	// lock and recording nothing. CommitWeftPaths appends its own KindCommitCreated entry at its

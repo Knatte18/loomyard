@@ -10,6 +10,8 @@ package configsync
 import (
 	"fmt"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -47,7 +49,7 @@ type Result struct {
 	Added []string
 	// Removed is the slice of key-paths that existed in the file but not in the template.
 	Removed []string
-	// Applied reports whether the file was written to disk.
+	// Applied reports whether the file was written to disk, or deleted when Retired.
 	Applied bool
 	// MigratedFrom names the pre-cutover legacy config modules (e.g. "warp",
 	// "weft") whose on-disk values were folded into this reconcile instead of
@@ -61,6 +63,16 @@ type Result struct {
 	// SeedTemplate.
 	// Set on a dry run too; empty for ReconcileAll results.
 	Seed string
+	// Retired reports that a hub-wide module's leftover per-worktree copy adds nothing to the hub
+	// file, so it is removable.
+	// Applied reports the deletion happened.
+	// Set only by ReconcileAll, on a dry run too.
+	Retired bool
+	// Divergent lists, as "<dotted.key>: <value>" sorted, each entry of a hub-wide module's
+	// per-worktree copy that the hub file lacks or holds with a different value.
+	// The copy is left in place.
+	// Set only by ReconcileAll.
+	Divergent []string
 }
 
 // legacyConfig reads the pre-cutover config files the module covers, present
@@ -88,20 +100,109 @@ func legacyConfig(module, baseDir string) (existing []byte, migratedFrom []strin
 	return existing, migratedFrom
 }
 
-// ReconcileAll reconciles all module config files against their templates, returning the slice of
-// results and any I/O or YAML parsing error.
+// leafValues flattens a decoded YAML document into dotted key path to leaf value.
+// Maps are descended, an empty map contributes nothing, and a list is one leaf compared whole.
+func leafValues(prefix string, node any, into map[string]any) {
+	mapping, isMap := node.(map[string]any)
+	if !isMap {
+		into[prefix] = node
+		return
+	}
+	for key, child := range mapping {
+		path := key
+		if prefix != "" {
+			path = prefix + "." + key
+		}
+		leafValues(path, child, into)
+	}
+}
+
+// decodeLeafValues reads a YAML file into its leaf values.
+func decodeLeafValues(data []byte, path string) (map[string]any, error) {
+	var document map[string]any
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	leaves := map[string]any{}
+	for key, child := range document {
+		leafValues(key, child, leaves)
+	}
+	return leaves, nil
+}
+
+// retireHubWideCopy decides the outcome of a hub-wide module's per-worktree copy against the hub file.
+// A missing copy or a missing hub file yields an empty result and leaves the copy alone.
+// A copy whose every leaf is present in the hub file at the same key path with an equal value is
+// Retired, and apply deletes it.
+// Any other copy is Divergent, listing each leaf the hub file lacks or holds differently, and stays.
+func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, error) {
+	result := Result{Module: module}
+
+	copyPath := configengine.ConfigFile(baseDir, module)
+	copyData, err := os.ReadFile(copyPath)
+	if os.IsNotExist(err) {
+		return result, nil
+	}
+	if err != nil {
+		return Result{}, fmt.Errorf("read config for %s: %w", module, err)
+	}
+
+	hubPath := configengine.ConfigFile(boardDir, module)
+	hubData, err := os.ReadFile(hubPath)
+	if os.IsNotExist(err) {
+		return result, nil
+	}
+	if err != nil {
+		return Result{}, fmt.Errorf("read hub config for %s: %w", module, err)
+	}
+
+	copyLeaves, err := decodeLeafValues(copyData, copyPath)
+	if err != nil {
+		return Result{}, err
+	}
+	hubLeaves, err := decodeLeafValues(hubData, hubPath)
+	if err != nil {
+		return Result{}, err
+	}
+
+	for path, value := range copyLeaves {
+		if hubValue, present := hubLeaves[path]; !present || !reflect.DeepEqual(hubValue, value) {
+			result.Divergent = append(result.Divergent, fmt.Sprintf("%s: %v", path, value))
+		}
+	}
+	sort.Strings(result.Divergent)
+	if len(result.Divergent) > 0 {
+		return result, nil
+	}
+
+	result.Retired = true
+	if apply {
+		if err := os.Remove(copyPath); err != nil && !os.IsNotExist(err) {
+			return Result{}, fmt.Errorf("remove retired config for %s: %w", module, err)
+		}
+		result.Applied = true
+	}
+	return result, nil
+}
+
+// ReconcileAll reconciles the per-worktree module config files under baseDir against their
+// templates, returning the slice of results and any I/O or YAML parsing error.
 // Seed-only modules (e.g. "models") with present files are reported untouched;
-// absent files materialize the template verbatim. "fabric" is skipped (see ReconcileHubWideAt for
-// the hub-wide counterpart).
-// When apply is false, files are never written.
-func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
+// absent files materialize the template verbatim.
+// A hub-wide module is never reconciled or written under baseDir: its result reports whether a
+// leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds,
+// and apply deletes it) or Divergent (the copy holds something the hub file lacks, and it stays).
+// When apply is false, files are never written or removed.
+func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 	var results []Result
 
 	for _, m := range configreg.Modules() {
-		if m.Name == "fabric" {
-			// fabric's config is repo-wide, not per-worktree: pathspec/branch_prefix
-			// are materialized once at clone via ReconcileHubWideAt, keyed on the
-			// board dir at fabricengine.BoardDir(Hub), never on a worktree baseDir.
+		if m.HubWide {
+			result, err := retireHubWideCopy(m.Name, baseDir, boardDir, apply)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, result)
 			continue
 		}
 
