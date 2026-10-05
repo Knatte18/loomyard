@@ -176,7 +176,12 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		{
 			name:  "status read failure",
 			setup: func(f *decisionFake, _ *decisionInput) { f.statusErr = errors.New("boom") },
-			want:  []string{"read the run status: boom"},
+			want:  []string{"read the run status: boom", "way forward:", "re-run"},
+		},
+		{
+			name:  "append I/O failure",
+			setup: func(f *decisionFake, _ *decisionInput) { f.appendErr = errors.New("disk full") },
+			want:  []string{"disk full", "way forward:", "re-run"},
 		},
 	}
 	for _, tc := range tests {
