@@ -18,8 +18,8 @@ import (
 
 // testTypes and testLabels are the vocabulary every facade test's Config carries; bugLabels is a valid label set for an entry.
 var (
-	testTypes  = []string{"bug", "enhancement"}
-	testLabels = []string{"undecided"}
+	testTypes  = []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}
+	testLabels = []boardengine.Label{{Name: "undecided"}}
 	bugLabels  = []string{"bug"}
 )
 
@@ -469,7 +469,7 @@ func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
 	if _, err := stale.UpsertTask(map[string]any{"slug": "x", "title": "X", "labels": bugLabels}); err != nil {
 		t.Fatal(err)
 	}
-	narrowed := boardengine.New(boardengine.Config{Path: staleDir, Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"enhancement"}, SkipGit: true})
+	narrowed := boardengine.New(boardengine.Config{Path: staleDir, Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "enhancement"}}, SkipGit: true})
 	done := "done"
 	if err := narrowed.SetStatus("x", &done); err == nil || !strings.Contains(err.Error(), `"bug"`) {
 		t.Errorf("expected status write refused naming bug, got %v", err)
@@ -609,7 +609,7 @@ func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
 func TestFilterLabelValidation(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
-	cfg.Labels = []string{"undecided", "retired"}
+	cfg.Labels = []boardengine.Label{{Name: "undecided"}, {Name: "retired"}}
 	w := boardengine.New(cfg)
 	for _, f := range []map[string]any{
 		{"slug": "old", "kind": "note", "labels": []string{"bug", "retired"}},
@@ -621,7 +621,7 @@ func TestFilterLabelValidation(t *testing.T) {
 	}
 
 	// "retired" is configured only while the entry is written; the narrowed config no longer lists it.
-	cfg.Labels = []string{"undecided"}
+	cfg.Labels = []boardengine.Label{{Name: "undecided"}}
 	narrowed := boardengine.New(cfg)
 
 	t.Run("unknown label refused", func(t *testing.T) {

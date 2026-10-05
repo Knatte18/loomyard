@@ -13,6 +13,7 @@ package yamlengine
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -49,11 +50,27 @@ type SetResult struct {
 // replaces its list whole; a value that is not a YAML list is an error.
 // Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
 // mutated tree is marshalled into SetResult.Merged.
-func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
+//
+// Each openMaps entry is a dotted key path whose value is an open map:
+// any key P.<name> is known,
+// existing's value at P is carried whole,
+// and the pair sets <name> to the scalar value, appending the key when absent.
+// A pair under an open map that holds a list is an error naming the path;
+// the list is never converted.
+// Known lists each open map as P.<name>.
+func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
 	var templateNode yaml.Node
 	if err := yaml.Unmarshal(template, &templateNode); err != nil {
 		return SetResult{}, err
+	}
+
+	var existingNode yaml.Node
+	if len(existing) > 0 {
+		if err := yaml.Unmarshal(existing, &existingNode); err != nil {
+			return SetResult{}, err
+		}
+		carryOpenMaps(&templateNode, &existingNode, openMaps)
 	}
 
 	templateLeaves := make(map[string]*yaml.Node)
@@ -69,6 +86,9 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	for path := range templateSequences {
 		known = append(known, path)
 	}
+	for _, p := range openMaps {
+		known = append(known, p+".<name>")
+	}
 	sort.Strings(known)
 
 	// preserved collects the root-key-granularity graft step's key names
@@ -81,10 +101,6 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// whatever the user already customized rather than resetting untouched
 	// keys back to defaults.
 	if len(existing) > 0 {
-		var existingNode yaml.Node
-		if err := yaml.Unmarshal(existing, &existingNode); err != nil {
-			return SetResult{}, err
-		}
 		existingLeaves := make(map[string]*yaml.Node)
 		collectLeafPaths(&existingNode, existingLeaves)
 
@@ -109,7 +125,8 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	for _, pair := range pairs {
 		_, isLeaf := templateLeaves[pair.Key]
 		_, isSequence := templateSequences[pair.Key]
-		if !isLeaf && !isSequence {
+		_, _, isOpen := splitOpenMapKey(pair.Key, openMaps)
+		if !isLeaf && !isSequence && !isOpen {
 			unknownSet[pair.Key] = true
 		}
 	}
@@ -126,6 +143,12 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// the working tree always contains every template leaf. Apply pairs in
 	// order so a repeated key's later value wins.
 	for _, pair := range pairs {
+		if open, name, ok := splitOpenMapKey(pair.Key, openMaps); ok {
+			if err := setOpenMapEntry(&templateNode, open, name, pair.Value); err != nil {
+				return SetResult{}, err
+			}
+			continue
+		}
 		if sequence, ok := templateSequences[pair.Key]; ok {
 			if err := replaceSequence(sequence, pair); err != nil {
 				return SetResult{}, err
@@ -141,6 +164,48 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	}
 
 	return SetResult{Merged: merged, Known: known, Preserved: preserved}, nil
+}
+
+// splitOpenMapKey splits key into a declared open-map path and the entry name under it.
+func splitOpenMapKey(key string, openMaps []string) (open, name string, ok bool) {
+	for _, p := range openMaps {
+		if rest, found := strings.CutPrefix(key, p+"."); found && rest != "" {
+			return p, rest, true
+		}
+	}
+	return "", "", false
+}
+
+// setOpenMapEntry sets name to the scalar value in the open map at path open, appending the key when absent.
+// A null value becomes an empty mapping first;
+// a list or other shape is an error, never converted.
+// The mapping is given block style,
+// so an empty {} template value is written as a block.
+func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
+	mapping := findValueNode(root, open)
+	if mapping == nil {
+		return fmt.Errorf("open map %s is not in the template", open)
+	}
+	if mapping.Kind == yaml.ScalarNode && mapping.Tag == "!!null" {
+		*mapping = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	}
+	if mapping.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s holds a %s, not a map: rewrite %s as a map of name to description", open, nodeShape(mapping), open)
+	}
+	mapping.Style = 0
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == name {
+			mapping.Content[i+1] = stringNode(value)
+			return nil
+		}
+	}
+	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, stringNode(value))
+	return nil
+}
+
+// stringNode returns a !!str scalar node holding value.
+func stringNode(value string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 }
 
 // replaceSequence replaces sequence's elements with pair.Value parsed as a YAML list, so a list key

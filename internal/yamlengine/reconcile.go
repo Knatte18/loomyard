@@ -18,7 +18,12 @@ import (
 // keys absent from existing are reported in added, keys absent from template are reported in
 // removed.
 // Reconcile is idempotent.
-func Reconcile(template, existing []byte) (merged []byte, added, removed []string, err error) {
+//
+// Each openMaps entry is a dotted key path whose value is an open map.
+// When existing holds the key, its value replaces the template's whole, whatever its kind,
+// and nothing at or under the path is reported added or removed.
+// When existing lacks the key, the template's value stays and added reports the path itself.
+func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, added, removed []string, err error) {
 	// Parse template into node tree
 	var templateNode yaml.Node
 	if parseErr := yaml.Unmarshal(template, &templateNode); parseErr != nil {
@@ -35,6 +40,11 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 			return nil, nil, nil, fmt.Errorf("parse existing YAML: %w", parseErr)
 		}
 	}
+
+	// A declared open map present in existing is carried whole before any leaf is collected,
+	// so both trees agree under it.
+	// One existing lacks is reported as the path itself, below.
+	absentOpenMaps := carryOpenMaps(&templateNode, &existingNode, openMaps)
 
 	// Collect all leaf key-paths from the template
 	templateLeaves := make(map[string]*yaml.Node)
@@ -59,8 +69,12 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 		if base, isElement := sequenceBasePath(path); isElement && existingSequences[base] != nil {
 			continue
 		}
+		if underAny(path, absentOpenMaps) {
+			continue
+		}
 		added = append(added, path)
 	}
+	added = append(added, absentOpenMaps...)
 	sort.Strings(added)
 
 	removed = []string{}
@@ -92,6 +106,8 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 // MissingKeys returns the leaf key-paths present in template but absent from existing.
 // A key present with an empty value counts as present.
 //
+// A template leaf at or under a declared openMaps path is satisfied by the presence of that key in existing, whatever its value.
+//
 // A template list is a DEFAULT, not a minimum length. collectLeafPaths models each sequence element
 // as its own indexed leaf path (`key[0]`, `key[1]`, ...), which is right for the reconcile merge but
 // wrong here: it made a config that shortened a list -- including to the empty list -- fail to load
@@ -101,7 +117,7 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 // internal/landingshed's Publish documents; it was unreachable through this loader.
 // A sequence-element path is therefore satisfied by the presence of its owning KEY in existing,
 // whatever that key's length. Every other leaf path keeps the exact-match rule.
-func MissingKeys(template, existing []byte) ([]string, error) {
+func MissingKeys(template, existing []byte, openMaps ...string) ([]string, error) {
 	// Parse template
 	var templateNode yaml.Node
 	if parseErr := yaml.Unmarshal(template, &templateNode); parseErr != nil {
@@ -141,11 +157,85 @@ func MissingKeys(template, existing []byte) ([]string, error) {
 		if base, isElement := sequenceBasePath(path); isElement && existingKeys[base] {
 			continue
 		}
+		if open, ok := openMapOf(path, openMaps); ok && existingKeys[open] {
+			continue
+		}
 		missing = append(missing, path)
 	}
 	sort.Strings(missing)
 
 	return missing, nil
+}
+
+// underPath reports whether path is p itself or lies under it as a nested key or list element.
+func underPath(path, p string) bool {
+	return path == p || strings.HasPrefix(path, p+".") || strings.HasPrefix(path, p+"[")
+}
+
+// underAny reports whether path is at or under any of the dotted paths.
+func underAny(path string, paths []string) bool {
+	_, ok := openMapOf(path, paths)
+	return ok
+}
+
+// openMapOf returns the first declared open-map path that path is at or under.
+func openMapOf(path string, openMaps []string) (string, bool) {
+	for _, p := range openMaps {
+		if underPath(path, p) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// findValueNode returns the value node of the mapping key at the dotted path, or nil when any step is absent or not a mapping.
+func findValueNode(node *yaml.Node, path string) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	if node.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
+			return nil
+		}
+		node = node.Content[0]
+	}
+	for _, key := range strings.Split(path, ".") {
+		if node.Kind != yaml.MappingNode {
+			return nil
+		}
+		var next *yaml.Node
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == key {
+				next = node.Content[i+1]
+				break
+			}
+		}
+		if next == nil {
+			return nil
+		}
+		node = next
+	}
+	return node
+}
+
+// carryOpenMaps replaces the template's value at each declared open-map path with existing's value whole, whatever its kind.
+// It returns the sorted declared paths the template holds and existing lacks, which keep the template's value.
+func carryOpenMaps(templateNode, existingNode *yaml.Node, openMaps []string) []string {
+	var absent []string
+	for _, p := range openMaps {
+		templateValue := findValueNode(templateNode, p)
+		if templateValue == nil {
+			continue
+		}
+		existingValue := findValueNode(existingNode, p)
+		if existingValue == nil {
+			absent = append(absent, p)
+			continue
+		}
+		*templateValue = *existingValue
+	}
+	sort.Strings(absent)
+	return absent
 }
 
 // sequenceBasePath splits a sequence-element leaf path into its owning key path, reporting whether

@@ -60,8 +60,11 @@ func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 	}{
 		{"readme", "README.md"},
 		{"design_prefix", "design-"},
-		{"types", []any{"bug", "enhancement"}},
-		{"labels", []any{"undecided"}},
+		{"types", map[string]any{
+			"bug":         "Something is broken or behaves wrongly",
+			"enhancement": "A new capability or an improvement to an existing one",
+		}},
+		{"labels", map[string]any{}},
 	}
 
 	for _, tt := range tests {

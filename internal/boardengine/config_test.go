@@ -215,7 +215,33 @@ func writeBoardConfig(t *testing.T, content string) string {
 	return tmpDir
 }
 
-// TestLoadConfig_LabelLists asserts both label lists resolve from a config file that sets them.
+// TestLoadConfig_LabelMaps asserts both label maps resolve in file order with their descriptions.
+func TestLoadConfig_LabelMaps(t *testing.T) {
+	dir := writeBoardConfig(t, `readme: Home.md
+design_prefix: proposal-
+types:
+  idea: A thing to try
+  bug: Broken
+labels:
+  urgent: Do first
+  later:
+`)
+
+	cfg, err := boardengine.LoadConfig(dir, "board")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantTypes := []boardengine.Label{{Name: "idea", Description: "A thing to try"}, {Name: "bug", Description: "Broken"}}
+	if !reflect.DeepEqual(cfg.Types, wantTypes) {
+		t.Errorf("Types = %v; want %v", cfg.Types, wantTypes)
+	}
+	wantLabels := []boardengine.Label{{Name: "urgent", Description: "Do first"}, {Name: "later"}}
+	if !reflect.DeepEqual(cfg.Labels, wantLabels) {
+		t.Errorf("Labels = %v; want %v", cfg.Labels, wantLabels)
+	}
+}
+
+// TestLoadConfig_LabelLists asserts the read-only list shape loads with empty descriptions.
 func TestLoadConfig_LabelLists(t *testing.T) {
 	dir := writeBoardConfig(t, `readme: Home.md
 design_prefix: proposal-
@@ -227,16 +253,41 @@ labels: [urgent, later]
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Types, []string{"bug", "idea"}) {
-		t.Errorf("Types = %v; want [bug idea]", cfg.Types)
+	wantTypes := []boardengine.Label{{Name: "bug"}, {Name: "idea"}}
+	if !reflect.DeepEqual(cfg.Types, wantTypes) {
+		t.Errorf("Types = %v; want %v", cfg.Types, wantTypes)
 	}
-	if !reflect.DeepEqual(cfg.Labels, []string{"urgent", "later"}) {
-		t.Errorf("Labels = %v; want [urgent later]", cfg.Labels)
+	wantLabels := []boardengine.Label{{Name: "urgent"}, {Name: "later"}}
+	if !reflect.DeepEqual(cfg.Labels, wantLabels) {
+		t.Errorf("Labels = %v; want %v", cfg.Labels, wantLabels)
 	}
 }
 
-// TestLoadConfig_LabelListsDefault asserts absent keys resolve to the template defaults.
-func TestLoadConfig_LabelListsDefault(t *testing.T) {
+// TestLoadConfig_LabelsRefused asserts a scalar key and a non-scalar description are refused naming board.yaml and the key.
+func TestLoadConfig_LabelsRefused(t *testing.T) {
+	tests := []struct {
+		name, content, key string
+	}{
+		{"scalar labels", "labels: urgent\n", "labels"},
+		{"mapping description", "types:\n  bug:\n    nested: x\n", "types"},
+		{"sequence description", "labels:\n  area: [a, b]\n", "labels"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\n"+tt.content)
+			_, err := boardengine.LoadConfig(dir, "board")
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), "board.yaml") || !strings.Contains(err.Error(), tt.key) {
+				t.Errorf("error %q must name board.yaml and %q", err, tt.key)
+			}
+		})
+	}
+}
+
+// TestLoadConfig_LabelsDefault asserts absent keys resolve to the template defaults.
+func TestLoadConfig_LabelsDefault(t *testing.T) {
 	dir := writeBoardConfig(t, `readme: Home.md
 design_prefix: proposal-
 `)
@@ -245,18 +296,31 @@ design_prefix: proposal-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !reflect.DeepEqual(cfg.Types, []string{"bug", "enhancement"}) {
-		t.Errorf("Types = %v; want [bug enhancement]", cfg.Types)
+	if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"bug", "enhancement"}) {
+		t.Errorf("type names = %v; want [bug enhancement]", got)
 	}
-	if !reflect.DeepEqual(cfg.Labels, []string{"undecided"}) {
-		t.Errorf("Labels = %v; want [undecided]", cfg.Labels)
+	for _, l := range cfg.Types {
+		if l.Description == "" {
+			t.Errorf("template type %q has no description", l.Name)
+		}
+	}
+	if len(cfg.Labels) != 0 {
+		t.Errorf("Labels = %v; want none", cfg.Labels)
+	}
+}
+
+// TestOutputs_TypesFollowFileOrder asserts Outputs().Types lists the type names in the map's file order.
+func TestOutputs_TypesFollowFileOrder(t *testing.T) {
+	cfg := boardengine.Config{Types: []boardengine.Label{{Name: "idea"}, {Name: "bug"}, {Name: "enhancement"}}}
+	if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"idea", "bug", "enhancement"}) {
+		t.Errorf("Types = %v; want [idea bug enhancement]", got)
 	}
 }
 
 // TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the
 // empty vocabulary of a path-only Config.
 func TestVocabulary(t *testing.T) {
-	v := boardengine.Config{Types: []string{"bug"}, Labels: []string{"undecided"}}.Vocabulary()
+	v := boardengine.Config{Types: []boardengine.Label{{Name: "bug"}}, Labels: []boardengine.Label{{Name: "undecided"}}}.Vocabulary()
 	tests := []struct {
 		label         string
 		isType, known bool
@@ -286,7 +350,7 @@ func TestOutputs(t *testing.T) {
 		Path:         "/some/path",
 		Readme:       "Home.md",
 		DesignPrefix: "proposal-",
-		Types:        []string{"bug", "enhancement"},
+		Types:        []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}},
 	}
 
 	out := cfg.Outputs()

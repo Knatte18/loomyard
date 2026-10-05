@@ -11,9 +11,16 @@
 //
 // # Labels
 //
-// Each entry carries labels, validated against two lists in board.yaml.
-// The types list holds the type labels: a note carries exactly one of them, and a task carries one or more.
-// The labels list holds every other label, such as an area.
+// Each entry carries labels, validated against two maps in board.yaml, each from a label to its one-line description.
+// The types map holds the type labels: a note carries exactly one of them,
+// and a task carries one or more.
+// The labels map holds every other label, such as an area.
+// LoadConfig reads both from the yaml node tree,
+// so Config holds them as Label values in file order.
+// A description may be empty or null,
+// and the older shape, a list of names, still loads read-only with empty descriptions.
+// ConfigOpenMaps names the two keys as open maps,
+// so configengine carries a repository's own entries whole through reconcile and --set.
 // Vocabulary answers both questions, and Board copies it from its Config and sets it on every store it builds.
 // A write that carries a label in neither list is refused, naming the entry, the label and board.yaml.
 // A Board built from a bare path has no outputs configured, cannot write, and validates no label.
@@ -37,6 +44,7 @@
 // The board is the one list, and GitHub is the inbox that selfreport files issues to.
 // An issue reaches the board in three steps: list the open inbox issues no entry records, import one as a note or fold it into an existing entry, then close it.
 // An entry records the issues it came from in its issues field, and an issue already recorded is never imported twice.
+// A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
 //

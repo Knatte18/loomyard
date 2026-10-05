@@ -25,13 +25,36 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
-	// Types are the type labels; Labels are every other configured label.
-	Types  []string `yaml:"types"`
-	Labels []string `yaml:"labels"`
+	// Types are the type labels;
+	// Labels are every other configured label, both in board.yaml order.
+	// LoadConfig decodes them from the yaml node tree,
+	// so the tags are inert.
+	Types  []Label `yaml:"-"`
+	Labels []Label `yaml:"-"`
 	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry;
 	// ApplySkipEnv is the fold every CLI entry calls.
 	SkipGit  bool
 	SkipPush bool
+}
+
+// Label is one configured label with its description, which is empty when board.yaml gives none.
+type Label struct {
+	Name        string `json:"label"`
+	Description string `json:"description"`
+}
+
+// ConfigOpenMaps returns the board.yaml keys whose entries are the repository's own, which configengine carries whole through reconcile and --set.
+func ConfigOpenMaps() []string {
+	return []string{"types", "labels"}
+}
+
+// labelNames returns the names of labels in order.
+func labelNames(labels []Label) []string {
+	names := make([]string, len(labels))
+	for i, l := range labels {
+		names[i] = l.Name
+	}
+	return names
 }
 
 // Outputs represents the output configuration values derived from Config.
@@ -47,7 +70,7 @@ func (c Config) Outputs() Outputs {
 	return Outputs{
 		Readme:       c.Readme,
 		DesignPrefix: c.DesignPrefix,
-		Types:        c.Types,
+		Types:        labelNames(c.Types),
 	}
 }
 
@@ -60,7 +83,7 @@ type Vocabulary struct {
 
 // Vocabulary returns the label vocabulary configured in c.
 func (c Config) Vocabulary() Vocabulary {
-	return Vocabulary{Types: c.Types, Labels: c.Labels}
+	return Vocabulary{Types: labelNames(c.Types), Labels: labelNames(c.Labels)}
 }
 
 // IsType reports whether label is a configured type label.
@@ -76,7 +99,7 @@ func (v Vocabulary) Known(label string) bool {
 // LoadConfig loads and unmarshals the board module configuration.
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Load and resolve the config file using the template.
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
@@ -89,5 +112,53 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("unmarshal board config: %w", err)
 	}
 
+	var raw struct {
+		Types  yaml.Node `yaml:"types"`
+		Labels yaml.Node `yaml:"labels"`
+	}
+	if err := yaml.Unmarshal(resolved, &raw); err != nil {
+		return Config{}, fmt.Errorf("unmarshal board config: %w", err)
+	}
+	if cfg.Types, err = decodeLabels("types", &raw.Types); err != nil {
+		return Config{}, err
+	}
+	if cfg.Labels, err = decodeLabels("labels", &raw.Labels); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// decodeLabels reads one board.yaml key into labels in file order.
+// A mapping gives each name its scalar description, where an empty or null one is the empty string;
+// a sequence of names is the older shape, read with empty descriptions.
+func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
+	switch {
+	case node.Kind == 0, node.Kind == yaml.ScalarNode && node.Tag == "!!null":
+		return nil, nil
+	case node.Kind == yaml.MappingNode:
+		labels := make([]Label, 0, len(node.Content)/2)
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			name, desc := node.Content[i], node.Content[i+1]
+			if desc.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("board.yaml: %s: the description of %q must be a scalar", key, name.Value)
+			}
+			text := desc.Value
+			if desc.Tag == "!!null" {
+				text = ""
+			}
+			labels = append(labels, Label{Name: name.Value, Description: text})
+		}
+		return labels, nil
+	case node.Kind == yaml.SequenceNode:
+		labels := make([]Label, 0, len(node.Content))
+		for _, item := range node.Content {
+			if item.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("board.yaml: %s: each entry of the list must be a label name", key)
+			}
+			labels = append(labels, Label{Name: item.Value})
+		}
+		return labels, nil
+	}
+	return nil, fmt.Errorf("board.yaml: %s must be a map from label to description, or a list of labels", key)
 }

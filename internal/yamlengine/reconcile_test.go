@@ -579,3 +579,96 @@ func TestReconcile_CarriesListsWhole(t *testing.T) {
 		})
 	}
 }
+
+const openMapTemplate = "name: tmpl\nlabels:\n  a: default a\n  b: default b\n"
+
+func TestReconcile_OpenMapKeepsExistingKeysAndAddsNone(t *testing.T) {
+	existing := []byte("name: mine\nlabels:\n  x: my x\n  a: my a\n")
+
+	merged, added, removed, err := Reconcile([]byte(openMapTemplate), existing, "labels")
+	if err != nil {
+		t.Fatalf("Reconcile() unexpected error: %v", err)
+	}
+	if len(added) != 0 || len(removed) != 0 {
+		t.Errorf("Reconcile() added = %v, removed = %v; want both empty", added, removed)
+	}
+	var got struct {
+		Name   string
+		Labels map[string]string
+	}
+	if err := yaml.Unmarshal(merged, &got); err != nil {
+		t.Fatalf("decode merged: %v", err)
+	}
+	if len(got.Labels) != 2 || got.Labels["x"] != "my x" || got.Labels["a"] != "my a" {
+		t.Errorf("labels = %v; want exactly existing's x and a", got.Labels)
+	}
+}
+
+func TestReconcile_OpenMapMissingIsFilledWholeAndReportedAsPath(t *testing.T) {
+	merged, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("name: mine\n"), "labels")
+	if err != nil {
+		t.Fatalf("Reconcile() unexpected error: %v", err)
+	}
+	if len(added) != 1 || added[0] != "labels" {
+		t.Errorf("Reconcile() added = %v; want [labels]", added)
+	}
+	if len(removed) != 0 {
+		t.Errorf("Reconcile() removed = %v; want empty", removed)
+	}
+	if !strings.Contains(string(merged), "a: default a") || !strings.Contains(string(merged), "b: default b") {
+		t.Errorf("merged = %q; want the template's labels whole", merged)
+	}
+}
+
+func TestReconcile_OpenMapCarriesListWhole(t *testing.T) {
+	merged, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("labels:\n  - x\n  - y\n"), "labels")
+	if err != nil {
+		t.Fatalf("Reconcile() unexpected error: %v", err)
+	}
+	if len(removed) != 0 {
+		t.Errorf("Reconcile() removed = %v; want empty", removed)
+	}
+	for _, path := range added {
+		if strings.HasPrefix(path, "labels") {
+			t.Errorf("Reconcile() added %q under the open map", path)
+		}
+	}
+	var got struct{ Labels []string }
+	if err := yaml.Unmarshal(merged, &got); err != nil {
+		t.Fatalf("decode merged: %v\n%s", err, merged)
+	}
+	if len(got.Labels) != 2 || got.Labels[0] != "x" || got.Labels[1] != "y" {
+		t.Errorf("labels = %v; want [x y]", got.Labels)
+	}
+}
+
+func TestReconcile_UndeclaredMappingStillReportsKeys(t *testing.T) {
+	_, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("name: mine\nlabels:\n  x: my x\n  a: my a\n"))
+	if err != nil {
+		t.Fatalf("Reconcile() unexpected error: %v", err)
+	}
+	if len(added) != 1 || added[0] != "labels.b" {
+		t.Errorf("Reconcile() added = %v; want [labels.b]", added)
+	}
+	if len(removed) != 1 || removed[0] != "labels.x" {
+		t.Errorf("Reconcile() removed = %v; want [labels.x]", removed)
+	}
+}
+
+func TestMissingKeys_OpenMapPresentSatisfiesLeavesUnderIt(t *testing.T) {
+	missing, err := MissingKeys([]byte(openMapTemplate), []byte("name: mine\nlabels:\n  x: my x\n"), "labels")
+	if err != nil {
+		t.Fatalf("MissingKeys() unexpected error: %v", err)
+	}
+	if len(missing) != 0 {
+		t.Errorf("MissingKeys() = %v; want empty", missing)
+	}
+
+	missing, err = MissingKeys([]byte(openMapTemplate), []byte("name: mine\n"), "labels")
+	if err != nil {
+		t.Fatalf("MissingKeys() unexpected error: %v", err)
+	}
+	if len(missing) == 0 {
+		t.Errorf("MissingKeys() = empty; want the absent open map reported")
+	}
+}

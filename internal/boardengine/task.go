@@ -49,13 +49,13 @@ func (t Task) ShortNameOrSlug() string {
 	return t.Slug
 }
 
-// maxSlugLength caps a slug's length to fit in directory names without MAX_PATH issues.
-const maxSlugLength = 32
+// MaxSlugLength caps a slug's length to fit in directory names without MAX_PATH issues.
+const MaxSlugLength = 32
 
-// validateSlugLength returns an error when slug exceeds maxSlugLength characters.
+// validateSlugLength returns an error when slug exceeds MaxSlugLength characters.
 func validateSlugLength(slug string) error {
-	if len(slug) > maxSlugLength {
-		return fmt.Errorf("slug exceeds max length of %d characters: %q (%d chars)", maxSlugLength, slug, len(slug))
+	if len(slug) > MaxSlugLength {
+		return fmt.Errorf("slug exceeds max length of %d characters: %q (%d chars)", MaxSlugLength, slug, len(slug))
 	}
 	return nil
 }

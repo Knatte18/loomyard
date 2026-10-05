@@ -77,7 +77,7 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("slug exceeding maxSlugLength is rejected", func(t *testing.T) {
+	t.Run("slug exceeding MaxSlugLength is rejected", func(t *testing.T) {
 		fields := map[string]any{
 			"slug": strings.Repeat("a", 33),
 		}
@@ -90,7 +90,7 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("slug at maxSlugLength is accepted", func(t *testing.T) {
+	t.Run("slug at MaxSlugLength is accepted", func(t *testing.T) {
 		fields := map[string]any{
 			"slug": strings.Repeat("a", 32),
 		}
@@ -295,7 +295,7 @@ func TestApplyPatch(t *testing.T) {
 		}
 	})
 
-	t.Run("patching slug beyond maxSlugLength is rejected", func(t *testing.T) {
+	t.Run("patching slug beyond MaxSlugLength is rejected", func(t *testing.T) {
 		existing := boardengine.Task{ID: 1, Slug: "test"}
 		patch := map[string]any{
 			"slug": strings.Repeat("a", 33),
@@ -309,7 +309,7 @@ func TestApplyPatch(t *testing.T) {
 		}
 	})
 
-	t.Run("patching slug at maxSlugLength is accepted", func(t *testing.T) {
+	t.Run("patching slug at MaxSlugLength is accepted", func(t *testing.T) {
 		existing := boardengine.Task{ID: 1, Slug: "test", Kind: boardengine.KindNote}
 		patch := map[string]any{
 			"slug": strings.Repeat("a", 32),

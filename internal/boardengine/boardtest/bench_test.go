@@ -126,7 +126,7 @@ func BenchmarkUpsertFacade(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
+			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 			w := boardengine.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 

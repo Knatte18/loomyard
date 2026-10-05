@@ -184,3 +184,67 @@ func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
 		t.Errorf("Set() file = %q; want legacy: keepme preserved verbatim", string(finalBytes))
 	}
 }
+
+// openMapSetTemplate holds a mapping at labels that a module may declare open.
+const openMapSetTemplate = "name: x\nlabels:\n  bug: a bug\n"
+
+// writeSetFixture creates _lyx/config/ under a fresh temp dir and writes content as the testmod config file.
+func writeSetFixture(t *testing.T, content string) (baseDir, path string) {
+	t.Helper()
+	baseDir = t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
+		t.Fatalf("failed to create _lyx/config: %v", err)
+	}
+	path = configengine.ConfigFile(baseDir, "testmod")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return baseDir, path
+}
+
+// TestSet_OpenMapAddsEntry verifies that Set with labels declared adds labels.x to a map-shaped file.
+func TestSet_OpenMapAddsEntry(t *testing.T) {
+	baseDir, path := writeSetFixture(t, openMapSetTemplate)
+
+	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "labels.x", Value: "an x"}}, "labels")
+	if err != nil {
+		t.Fatalf("Set() = %v; want nil", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	if !strings.Contains(string(data), "x: an x") || !strings.Contains(string(data), "bug: a bug") {
+		t.Errorf("Set() file = %q; want the new x entry beside bug", data)
+	}
+}
+
+// TestSet_OpenMapRefusesListShape verifies that Set refuses an open-map entry on a list-shaped file and leaves it unchanged.
+func TestSet_OpenMapRefusesListShape(t *testing.T) {
+	content := "name: x\nlabels:\n  - bug\n"
+	baseDir, path := writeSetFixture(t, content)
+
+	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "labels.x", Value: "an x"}}, "labels")
+	if err == nil {
+		t.Fatal("Set() = nil; want an error for a list at labels")
+	}
+
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("failed to read config: %v", readErr)
+	}
+	if string(data) != content {
+		t.Errorf("file rewritten: got %q, want %q", data, content)
+	}
+}
+
+// TestSet_OpenMapUndeclaredKeyStillRefused verifies that an undeclared nonexistent key still refuses with unknown config key(s).
+func TestSet_OpenMapUndeclaredKeyStillRefused(t *testing.T) {
+	baseDir, _ := writeSetFixture(t, openMapSetTemplate)
+
+	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "bogus", Value: "x"}}, "labels")
+	if err == nil || !strings.Contains(err.Error(), "unknown config key(s)") {
+		t.Errorf("Set() error = %v; want unknown config key(s)", err)
+	}
+}

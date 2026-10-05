@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// promote, prune, find, labels and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
@@ -33,6 +33,9 @@ func Command() *cobra.Command {
 	// b is populated by PersistentPreRunE and closed over by each subcommand RunE.
 	var b *boardengine.Board
 	board := func() *boardengine.Board { return b }
+	// config is the Config PersistentPreRunE loaded;
+	// the labels verb reads its Types and Labels.
+	var config boardengine.Config
 
 	cmd := &cobra.Command{
 		Use:   "board",
@@ -98,6 +101,7 @@ available subcommands without requiring a git repo.`,
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
+		config = cfg
 		b = boardengine.New(cfg)
 		return nil
 	}
@@ -113,7 +117,7 @@ Fields (one of):
   "id"   integer — entry id
 
 Example:
-  lyx board promote '{"slug":"my-note"}'`,
+  lyx board promote '{"slug":"my-note"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -219,8 +223,29 @@ Example:
 		}),
 	}
 
+	labelsCmd := &cobra.Command{
+		Use:   "labels",
+		Short: "Print the configured types and labels with their descriptions",
+		Long: `Print the type labels and the other labels configured in board.yaml, each list in file order
+with its descriptions. An empty list prints as []. Takes no payload.
+
+Output:
+  {"ok":true,"types":[{"label":"bug","description":"..."}],"labels":[{"label":"quarry","description":"..."}]}
+
+Example:
+  lyx board labels`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			return output.Ok(out, map[string]any{
+				"types":  labelEntries(config.Types),
+				"labels": labelEntries(config.Labels),
+			})
+		}),
+	}
+
 	cmd.AddCommand(storeVerbs(board)...)
 	cmd.AddCommand(
+		labelsCmd,
 		promoteCmd,
 		pruneCmd,
 		findCmd,
@@ -231,6 +256,21 @@ Example:
 	)
 
 	return cmd
+}
+
+// labelEntries returns labels for JSON output, an empty list rather than null when there are none.
+func labelEntries(labels []boardengine.Label) []boardengine.Label {
+	if labels == nil {
+		return []boardengine.Label{}
+	}
+	return labels
+}
+
+// slugLimitNote is the help paragraph every slug-taking verb ends its Long with.
+// It formats the limit from boardengine.MaxSlugLength,
+// so help and validation cannot drift.
+func slugLimitNote() string {
+	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
 }
 
 // storeVerbs builds the nine store verbs over the one store board returns.
@@ -263,7 +303,7 @@ Flag:
                       and when the payload argument is itself "-" (stdin can feed only one of them).
 
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'`,
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				// cobra strips the "upsert" token; json payload is now args[0].
@@ -273,7 +313,8 @@ Example:
 				fields := map[string]any{}
 				decodeErr := json.Unmarshal([]byte(args[0]), &fields)
 				if bodyFile != "" {
-					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					// Runs before the decode error is reported,
+					// so a "-" payload gets the stdin refusal.
 					if fields == nil {
 						fields = map[string]any{}
 					}
@@ -308,7 +349,7 @@ Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'`,
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -372,7 +413,7 @@ Fields:
 
 Examples:
   lyx board set-status '{"slug":"my-task","status":"active"}'
-  lyx board set-status '{"id":96,"status":null}'`,
+  lyx board set-status '{"id":96,"status":null}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -418,7 +459,7 @@ Fields:
   "id"   integer — numeric task ID (mutually exclusive with "slug")
 
 Example:
-  lyx board remove '{"slug":"my-task"}'`,
+  lyx board remove '{"slug":"my-task"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -437,6 +478,7 @@ Example:
 
 	// get subcommand: fetch a single task by slug or numeric id; returns task:null
 	// for a valid-but-absent target (not an error). Malformed payloads error.
+	var getBody bool
 	getCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
@@ -444,32 +486,49 @@ Example:
 Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
 Malformed payloads (no identifier key, unknown key) are errors.
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
+--body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
+With --body a target that does not exist is an error, since there is no task:null to print.
+Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
+upsert --body-file body.md (merge --body-file takes the same file for a merged entry).
 
 Fields:
   "slug" string  — task slug (mutually exclusive with "id")
   "id"   integer — numeric task ID (mutually exclusive with "slug")
 
-Example:
-  lyx board get '{"id":96}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-			selector, _, err := resolveLookup([]byte(args[0]))
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			task, found, err := board().GetTask(selector)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			if found {
-				return outputGetTask(out, &task)
-			}
-			return outputGetTask(out, nil) // task: null in JSON output
-		}),
+Examples:
+  lyx board get '{"id":96}'
+  lyx board get '{"slug":"my-task"}' --body` + slugLimitNote(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
+				}
+				// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+				selector, _, err := resolveLookup([]byte(args[0]))
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				task, found, err := board().GetTask(selector)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				if getBody {
+					if !found {
+						return outputError(out, fmt.Sprintf("no entry %v: check the slug or id with lyx board list", selector))
+					}
+					if _, err := io.WriteString(out, task.Body); err != nil {
+						return outputError(out, err.Error())
+					}
+					return 0
+				}
+				if found {
+					return outputGetTask(out, &task)
+				}
+				return outputGetTask(out, nil) // task: null in JSON output
+			})(cmd, args)
+		},
 	}
+	getCmd.Flags().BoolVar(&getBody, "body", false, "write the entry's body alone, verbatim, instead of the JSON envelope")
 
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
@@ -486,7 +545,7 @@ A label that is in neither the types nor the labels list of board.yaml and that 
 Examples:
   lyx board list
   lyx board list --text
-  lyx board list --label bug --label undecided`,
+  lyx board list --label bug --label enhancement`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
@@ -514,6 +573,7 @@ Examples:
 	// merge subcommand: remove slugs, upsert one task, and optionally set status — atomically.
 	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
 	// object is validated identically to the set-status command.
+	var mergeBodyFile string
 	mergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-status",
@@ -529,88 +589,111 @@ Fields:
     "id"     integer     — numeric task ID (mutually exclusive with "slug")
     "status" string|null — new status; null clears
 
+Flag:
+  --body-file <path>  read the upsert's "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
+                      Refused when the payload's "upsert" also carries "body" (drop one of them),
+                      and when the payload argument is itself "-" (stdin can feed only one of them).
+
 Example:
-  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-
-			// Decode into a map first to detect unknown top-level keys.
-			var raw map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-
-			// Enforce strict top-level key set; a stale set_phase errors rather than
-			// being silently dropped (which would skip the status step with no feedback).
-			for k := range raw {
-				if k != "remove_slugs" && k != "upsert" && k != "set_status" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
 				}
-			}
 
-			// Parse remove_slugs (optional, default empty).
-			var removeSlugs []string
-			if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
-				rsArr, ok := rsVal.([]any)
+				// Decode into a map first to detect unknown top-level keys.
+				var raw map[string]any
+				decodeErr := json.Unmarshal([]byte(args[0]), &raw)
+				if decodeErr != nil && mergeBodyFile != "" {
+					// Runs before the decode error is reported,
+					// so a "-" payload gets the stdin refusal.
+					if err := applyBodyFile(map[string]any{}, mergeBodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
+					}
+				}
+				if decodeErr != nil {
+					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
+				}
+
+				// Enforce strict top-level key set;
+				// a stale set_phase errors rather than being silently dropped,
+				// which would skip the status step with no feedback.
+				for k := range raw {
+					if k != "remove_slugs" && k != "upsert" && k != "set_status" {
+						return outputError(out, fmt.Sprintf("unknown field: %q", k))
+					}
+				}
+
+				// Parse remove_slugs (optional, default empty).
+				var removeSlugs []string
+				if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
+					rsArr, ok := rsVal.([]any)
+					if !ok {
+						return outputError(out, "remove_slugs must be an array")
+					}
+					for _, v := range rsArr {
+						s, ok := v.(string)
+						if !ok {
+							return outputError(out, "remove_slugs elements must be strings")
+						}
+						removeSlugs = append(removeSlugs, s)
+					}
+				}
+
+				upsertVal, hasUpsert := raw["upsert"]
+				if !hasUpsert || upsertVal == nil {
+					return outputError(out, "missing required field: upsert")
+				}
+				upsertFields, ok := upsertVal.(map[string]any)
 				if !ok {
-					return outputError(out, "remove_slugs must be an array")
+					return outputError(out, "upsert must be an object")
 				}
-				for _, v := range rsArr {
-					s, ok := v.(string)
-					if !ok {
-						return outputError(out, "remove_slugs elements must be strings")
+				if mergeBodyFile != "" {
+					if err := applyBodyFile(upsertFields, mergeBodyFile, args[0], cmd.InOrStdin()); err != nil {
+						return outputError(out, err.Error())
 					}
-					removeSlugs = append(removeSlugs, s)
 				}
-			}
 
-			upsertVal, hasUpsert := raw["upsert"]
-			if !hasUpsert || upsertVal == nil {
-				return outputError(out, "missing required field: upsert")
-			}
-			upsertFields, ok := upsertVal.(map[string]any)
-			if !ok {
-				return outputError(out, "upsert must be an object")
-			}
-
-			// Parse set_status (optional): validate using the same resolveLookup
-			// logic as the standalone set-status command — {slug,id,status} allowed,
-			// exactly-one-of slug/id, and status key required.
-			var setStatusPtr *boardengine.MergeStatusUpdate
-			if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
-				ssBytes, err := json.Marshal(ssVal)
-				if err != nil {
-					return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
-				}
-				selector, ssMap, err := resolveLookup(ssBytes, "status")
-				if err != nil {
-					return outputError(out, "set_status: "+err.Error())
-				}
-				// status key is required inside set_status, mirroring the standalone command.
-				sv, hasStatusKey := ssMap["status"]
-				if !hasStatusKey {
-					return outputError(out, "set_status: missing required field: status")
-				}
-				var status *string
-				if sv != nil {
-					s, ok := sv.(string)
-					if !ok {
-						return outputError(out, "set_status.status must be a string or null")
+				// Parse set_status (optional):
+				// validate using the same resolveLookup logic as the standalone set-status command,
+				// with {slug,id,status} allowed,
+				// exactly-one-of slug/id, and status key required.
+				var setStatusPtr *boardengine.MergeStatusUpdate
+				if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
+					ssBytes, err := json.Marshal(ssVal)
+					if err != nil {
+						return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
 					}
-					status = &s
+					selector, ssMap, err := resolveLookup(ssBytes, "status")
+					if err != nil {
+						return outputError(out, "set_status: "+err.Error())
+					}
+					// status key is required inside set_status, mirroring the standalone command.
+					sv, hasStatusKey := ssMap["status"]
+					if !hasStatusKey {
+						return outputError(out, "set_status: missing required field: status")
+					}
+					var status *string
+					if sv != nil {
+						s, ok := sv.(string)
+						if !ok {
+							return outputError(out, "set_status.status must be a string or null")
+						}
+						status = &s
+					}
+					setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
 				}
-				setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
-			}
 
-			task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			return outputSuccessWithTask(out, task)
-		}),
+				task, err := board().MergeTasks(removeSlugs, upsertFields, setStatusPtr)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				return outputSuccessWithTask(out, task)
+			})(cmd, args)
+		},
 	}
+	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
 	// set-deps subcommand: replace the depends_on list for a task.
 	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;
@@ -627,7 +710,7 @@ Fields:
   "depends_on" array  — complete list of dependency slug strings; replaces existing list (required)
 
 Example:
-  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'`,
+  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")

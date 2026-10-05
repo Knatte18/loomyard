@@ -68,7 +68,7 @@ the comment or close then fails, the error carries the written entry and the "cl
 
 Examples:
   lyx board intake import '{"issue":12,"slug":"retry-backoff"}'
-  lyx board intake import '{"issue":13,"into":"retry-backoff"}'`,
+  lyx board intake import '{"issue":13,"into":"retry-backoff"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")

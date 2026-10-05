@@ -159,6 +159,7 @@ Do not assume a fresh board.
 Use `lyx board list` to observe current state before adding tasks, and use `lyx board remove` to clean up any test tasks you create at session end.
 
 **Watch:** Board CRUD via `lyx board`.
+`lyx board labels` prints `types` and `labels`, each in `board.yaml` file order.
 JSON output sane.
 State transitions work.
 
