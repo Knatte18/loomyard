@@ -45,12 +45,7 @@ func argsFor(cmd *cobra.Command) []string {
 // cliTreeFindings are groups whose bare or bogus invocation differs from the invariant today.
 // Each is a finding to fix in the group's own CLI and then delete from here.
 // An entry fails once its invocation meets the invariant, and an entry naming a group that no longer exists fails as stale.
-var cliTreeFindings = []scankit.Entry{
-	{
-		Key: "selfreport#bogus",
-		Why: "prints help and exits 0 instead of refusing an unknown subcommand",
-	},
-}
+var cliTreeFindings = []scankit.Entry{}
 
 // bareProblems runs a bare group invocation and returns how it breaks the invariant, with its output.
 func bareProblems(args []string, children []*cobra.Command) ([]string, string) {

@@ -336,6 +336,31 @@ func TestRunCreate_WrongArgCount(t *testing.T) {
 	}
 }
 
+// TestGroup_UnknownSubcommandRefuses verifies that an unknown subcommand under the selfreport group
+// exits 1 with the shared unknown-subcommand envelope.
+func TestGroup_UnknownSubcommandRefuses(t *testing.T) {
+	code, stdout := runCLI(t, "bogus")
+
+	if code != 1 {
+		t.Errorf("RunCLI(bogus) exit = %d; want 1\nstdout: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "unknown subcommand") {
+		t.Errorf("output does not contain %q; stdout: %q", "unknown subcommand", stdout)
+	}
+}
+
+// TestGroup_BareListsCreate verifies that a bare selfreport invocation exits 0 and lists create.
+func TestGroup_BareListsCreate(t *testing.T) {
+	code, stdout := runCLI(t)
+
+	if code != 0 {
+		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
+	}
+	if !strings.Contains(stdout, "create") {
+		t.Errorf("output does not name create; stdout: %q", stdout)
+	}
+}
+
 // TestRunCreate_TokenNotResolvable verifies that when the GitHub client factory itself fails -- the
 // CLI-level analogue of the old "gh binary not found on PATH" case -- the envelope is ok:false with
 // exit 1 and the error message surfaces the underlying token-resolution failure.
