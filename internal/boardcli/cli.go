@@ -313,7 +313,8 @@ Example:
 				fields := map[string]any{}
 				decodeErr := json.Unmarshal([]byte(args[0]), &fields)
 				if bodyFile != "" {
-					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					// Runs before the decode error is reported,
+					// so a "-" payload gets the stdin refusal.
 					if fields == nil {
 						fields = map[string]any{}
 					}
@@ -605,7 +606,8 @@ Example:
 				var raw map[string]any
 				decodeErr := json.Unmarshal([]byte(args[0]), &raw)
 				if decodeErr != nil && mergeBodyFile != "" {
-					// Runs before the decode error is reported so a "-" payload gets the stdin refusal.
+					// Runs before the decode error is reported,
+					// so a "-" payload gets the stdin refusal.
 					if err := applyBodyFile(map[string]any{}, mergeBodyFile, args[0], cmd.InOrStdin()); err != nil {
 						return outputError(out, err.Error())
 					}
@@ -614,8 +616,9 @@ Example:
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
 
-				// Enforce strict top-level key set; a stale set_phase errors rather than
-				// being silently dropped (which would skip the status step with no feedback).
+				// Enforce strict top-level key set;
+				// a stale set_phase errors rather than being silently dropped,
+				// which would skip the status step with no feedback.
 				for k := range raw {
 					if k != "remove_slugs" && k != "upsert" && k != "set_status" {
 						return outputError(out, fmt.Sprintf("unknown field: %q", k))
@@ -652,8 +655,9 @@ Example:
 					}
 				}
 
-				// Parse set_status (optional): validate using the same resolveLookup
-				// logic as the standalone set-status command — {slug,id,status} allowed,
+				// Parse set_status (optional):
+				// validate using the same resolveLookup logic as the standalone set-status command,
+				// with {slug,id,status} allowed,
 				// exactly-one-of slug/id, and status key required.
 				var setStatusPtr *boardengine.MergeStatusUpdate
 				if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
