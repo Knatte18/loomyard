@@ -247,6 +247,21 @@ var FrictionDirectiveInterview []byte
 //go:embed friction/friction-template-reflection.md
 var FrictionTemplateReflection []byte
 
+// ParentDirectiveParent is the shared parent directive's shipped-default variant for a run with a recorded parent.
+//
+//go:embed parent/parent-directive-parent.md
+var ParentDirectiveParent []byte
+
+// ParentDirectiveOperatorBan is the shipped-default operator-ban line the parent variant carries for a non-interactive role.
+//
+//go:embed parent/parent-directive-operator-ban.md
+var ParentDirectiveOperatorBan []byte
+
+// ParentDirectiveNone is the shared parent directive's shipped-default no-parent variant.
+//
+//go:embed parent/parent-directive-none.md
+var ParentDirectiveNone []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -301,6 +316,9 @@ var entries = []registryEntry{
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},
 	{"friction-directive-interview", &FrictionDirectiveInterview},
 	{"friction-template-reflection", &FrictionTemplateReflection},
+	{"parent-directive-parent", &ParentDirectiveParent},
+	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
+	{"parent-directive-none", &ParentDirectiveNone},
 }
 
 // registry implements stencilstore.Registry over entries.
