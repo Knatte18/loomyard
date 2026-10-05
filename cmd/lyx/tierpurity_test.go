@@ -23,6 +23,7 @@ import (
 var allowedSpawners = []scankit.Entry{
 	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
 	{Key: "cmd/lyx/tierpurity_test.go", Why: "contains the banned token strings as its own test data"},
+	{Key: "cmd/lyx/llmtier_test.go", Why: "contains the banned `exec.Command` token string as its own fixture data (LLM-tier guard)"},
 	{Key: "cmd/lyx/hermeticenv_test.go", Why: "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)"},
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
 	{Key: "cmd/lyx/ghguard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)"},

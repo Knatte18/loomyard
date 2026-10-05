@@ -77,7 +77,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Testing
 
 - `PATTERN-test-economy` — Writing a test: it pins behavior at a module's public surface and covers something no existing test covers, else it extends an existing test; a review fix adds one only for a coverage gap. — [background](pattern/PATTERN-test-economy.md)
-- `PATTERN-test-speed` — Writing a test: it sits in the lowest of four tiers (untagged, `integration`, `tmux`, `llm`) its substrate needs, a production clock is injectable and tests shorten it, and it calls `t.Parallel` unless a comment names its global state. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-speed` — Writing a test: it sits in the lowest of four tiers (untagged, `integration`, `tmux`, `llm`) its substrate needs, only `llm` files reach an LLM (via `llmkit`), clocks are injectable, and `t.Parallel` runs unless a comment names global state. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing a package: a package that spawns git runs under `gitkit.HermeticGitEnv()`, and one with an `integration`, `tmux` or `llm` test file runs through `tmuxkit.Main`. (test) — [background](pattern/PATTERN-test-isolation.md)
 - `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated or placed under the faked package. (test) — [background](pattern/PATTERN-testkit.md)
 - `PATTERN-hubforge-fixtures` — Building a hub fixture, where no fake or in-memory fixture can test the behavior: `internal/hubforge` through `fabriccli.CloneAndWire`, never hand-assembled and never wrapped in a test-local type. — [background](pattern/PATTERN-hubforge-fixtures.md)

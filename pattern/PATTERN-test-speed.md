@@ -17,6 +17,15 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 - A helper file used by files of two tiers and spawning something carries the disjunction of their tags (`//go:build tmux || llm`); a helper that spawns nothing goes untagged; a helper only one tier uses lives in that tier's file.
 - `llm` files are compiled by `go vet -tags llm ./...` and never run by a gate.
 
+## Only `llm` files reach an LLM
+
+- A test file that imports `internal/testkit/llmkit` is constrained to `llm`, so `//go:build llm` and `//go:build llm && linux` pass while `//go:build tmux || llm`, `integration` and an untagged file fail.
+- A test file outside `internal/testkit/llmkit` never calls `exec.LookPath` with an LLM binary name, as a string literal or a same-file constant; it calls `llmkit.Claude`.
+- A file under `internal/testkit/llmkit` uses no identifier of `os/exec` but `LookPath`, which the Testkit import check cannot see.
+- Enforced by `cmd/lyx/llmtier_test.go`.
+- Bound: the guard sees the static shape only.
+  A `tmux`-tier test that drives `lyx` into spawning an LLM without calling `llmkit` is caught by review.
+
 ## Untagged tests spawn nothing
 
 - No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub` or gitkit spawn outside tier-tagged files.
