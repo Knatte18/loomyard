@@ -9,6 +9,8 @@ package stencils
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // claim is one wording assertion about a stencil's raw text.
@@ -443,6 +445,12 @@ var wordingClaims = []stencilClaims{
 		{must: "File only through `lyx selfreport create`, never through `gh`", why: "filing goes through lyx selfreport create alone"},
 		{must: "Write it only after every issue you decided on was created", why: "Go reads the report's existence as proof that filing succeeded"},
 		{must: "end your turn without writing the report", why: "a failed filing leaves no report, so the notes stay for the next reflection"},
+	}},
+	{"shed-template-driver.md", ShedTemplateDriver, []claim{
+		{must: "`" + shedrun.ParkMarkerFileName + "`", why: "the stencil names the Go-declared park marker filename, so renaming either side without the other fails"},
+		{mustNot: "lyx selfreport create", why: "the driver files no issue itself: the run's reflection is the one filer"},
+		{must: "friction: failed", why: "the parent is notified on a done stop whose envelope reports a failed reflection"},
+		{must: "`parent_notice`", why: "an awaiting stop's parent_notice is relayed to the parent"},
 	}},
 }
 

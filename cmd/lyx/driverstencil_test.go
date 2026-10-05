@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -27,6 +28,11 @@ func TestDriverStencil_IsRecipeBlind(t *testing.T) {
 	for _, name := range shedrun.RecipeNames() {
 		pattern := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(name) + `\b`)
 		tokens = append(tokens, forbiddenToken{label: "recipe name " + name, matches: pattern.MatchString})
+	}
+	// The stencil carries no phase knowledge: no loom row name appears as a whole word, and a hyphenated neighbour does not match.
+	for row := range loomshed.InterruptPolicies {
+		pattern := regexp.MustCompile(`(^|[^A-Za-z-])` + regexp.QuoteMeta(row) + `($|[^A-Za-z-])`)
+		tokens = append(tokens, forbiddenToken{label: "loom row " + row, matches: pattern.MatchString})
 	}
 	for _, literal := range []string{".lyx/", "lyx loom", "lyx batten"} {
 		tokens = append(tokens, forbiddenToken{
