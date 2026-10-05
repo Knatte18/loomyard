@@ -329,6 +329,11 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
 		return nil, Result{}, err
 	}
+	if len(spec.Skills) > 0 {
+		if _, err := r.skillLoader(); err != nil {
+			return nil, Result{}, fmt.Errorf("shuttle: spec names skills %v: %w", spec.Skills, err)
+		}
+	}
 
 	resumeWarning, err := r.checkResume(spec)
 	if err != nil {
@@ -438,7 +443,85 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if err != nil {
 		return nil, result, err
 	}
+	if launch.PromptLine != "" {
+		if result, err := run.loadSkillsThenPrompt(launch.PromptLine); err != nil {
+			return nil, result, err
+		}
+	}
 	return run, Result{}, nil
+}
+
+// loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt:
+// it loads each of spec.Skills in order, then delivers promptLine through the verified send path.
+// The run's events offset ends past every skill-load turn end, so Wait never reads one as the run asking.
+// A pane that dies meanwhile is a died startup.
+func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
+	guid := run.state.StrandGUID
+	if len(run.spec.Skills) > 0 {
+		loader, err := run.runner.skillLoader()
+		if err != nil {
+			return run.abandonStartup(OutcomeDied)
+		}
+		timeout := run.spec.SkillLoadTimeout
+		if timeout <= 0 {
+			timeout = loader.DefaultSkillLoadTimeout()
+		}
+		for _, skill := range run.spec.Skills {
+			died, err := run.loadSkill(loader, skill, timeout)
+			if err != nil {
+				return run.identity(), err
+			}
+			if died {
+				return run.abandonStartup(OutcomeDied)
+			}
+		}
+	}
+	if err := sendVerified(run.runner.reed, run.runner.engine, guid, promptLine); err != nil {
+		return run.identity(), fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err)
+	}
+	return Result{}, nil
+}
+
+// loadSkill plays one skill's load sequence and polls until it ends a turn, the pane reports the skill unknown, or timeout passes.
+// The last two skip the skill, logged with the cause, and report no error.
+// died is true when the strand's pane is no longer live.
+func (run *Run) loadSkill(loader SkillLoader, skill string, timeout time.Duration) (died bool, err error) {
+	reed := run.runner.reed
+	guid := run.state.StrandGUID
+	if err := playInputs(reed, guid, loader.SkillLoadSequence(skill)); err != nil {
+		return false, fmt.Errorf("shuttle: load skill %q: %w", skill, err)
+	}
+	deadline := run.clock.Now().Add(timeout)
+	interval := pollInterval(run.runner.cfg)
+	for {
+		data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
+		if err == nil && len(data) > 0 {
+			events, perr := run.runner.engine.ParseEvents(data)
+			if perr == nil {
+				run.offset = newOffset
+				for _, ev := range events {
+					if ev.Kind == EventStop || ev.Kind == EventWaiting {
+						return false, nil
+					}
+				}
+			}
+		}
+
+		if status, serr := reed.Status(); serr == nil {
+			if strand, tracked := strandStatusByGUID(status.Strands, guid); !tracked || !strand.Live {
+				return true, nil
+			}
+		}
+		if capture, cerr := reed.CapturePane(guid); cerr == nil && loader.SkillUnknown(capture, skill) {
+			logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "unknown", "strandGUID", guid)
+			return false, nil
+		}
+		if !run.clock.Now().Before(deadline) {
+			logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "timeout", "strandGUID", guid)
+			return false, nil
+		}
+		run.clock.Sleep(interval)
+	}
 }
 
 // checkResume runs the engine's SessionResumer check for a spec that resumes an existing session, against the runner's pane cwd.

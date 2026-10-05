@@ -45,6 +45,9 @@ type Launch struct {
 	Cmd       string
 	ResumeCmd string
 	SessionID string
+	// PromptLine, when set, means the engine left the prompt pointer off Cmd:
+	// shuttle delivers this text as a turn once the spec's skills are loaded.
+	PromptLine string
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.
@@ -173,6 +176,18 @@ type SessionResumer interface {
 	// A non-nil error refuses the resume.
 	// A non-empty warning means the check could not confirm something, and the resume proceeds.
 	CheckResume(sessionID, workdir string) (warning string, err error)
+}
+
+// SkillLoader is an optional capability beside Engine: the provider's way of loading a named skill into a live session as a submitted turn.
+// Runner.start requires it of an Engine whenever a spec names skills, and the orch watcher's per-tick reload uses it through Runner.LoadSkill and Runner.SkillUnknown.
+// It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never load a skill.
+type SkillLoader interface {
+	// SkillLoadSequence returns the key choreography that loads skill as a submitted turn.
+	SkillLoadSequence(skill string) []PaneInput
+	// SkillUnknown reports whether capture shows the provider reporting skill unknown.
+	SkillUnknown(capture, skill string) bool
+	// DefaultSkillLoadTimeout is the engine-owned bound on one skill's load.
+	DefaultSkillLoadTimeout() time.Duration
 }
 
 // ContextReading is a provider-neutral reading of how much context a live session holds.

@@ -895,3 +895,121 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 		t.Errorf("Attach() result = %+v; want zero Result", result)
 	}
 }
+
+// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine, with endsTurn and unknown scripting each skill's reaction.
+// It returns the started run (nil with the error on a refused start), the reed double and the virtual time Start took.
+func skillStartFixture(t *testing.T, spec Spec, endsTurn, unknown []string) (*Run, *skillReed, time.Duration, error) {
+	t.Helper()
+	base := &fakeReed{
+		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+		StatusQueue:     liveStrandStatus(true),
+	}
+	engine := &skillFakeEngine{
+		fakeEngine: &fakeEngine{
+			PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: "do the task"},
+			StartupScript: []StartupState{StartupReady},
+		},
+		Timeout: time.Minute,
+	}
+	reed := &skillReed{fakeReed: base, EndsTurn: map[string]bool{}, Unknown: map[string]bool{}}
+	for _, s := range endsTurn {
+		reed.EndsTurn[s] = true
+	}
+	for _, s := range unknown {
+		reed.Unknown[s] = true
+	}
+	fc := newFakeClock(time.Now())
+	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc))
+	reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+	spec.Prompt = "x"
+	spec.OutputFiles = []string{filepath.Join(t.TempDir(), "out.md")}
+	start := fc.Now()
+	run, err := fx.Runner.Start(spec)
+	return run, reed, fc.Now().Sub(start), err
+}
+
+// typedTexts returns the texts typed into the pane, without the Escape keys.
+func typedTexts(reed *skillReed) []string {
+	var texts []string
+	for _, call := range reed.SendTextCalls {
+		texts = append(texts, call.Text)
+	}
+	return texts
+}
+
+func TestStartup_SkillsLoadInOrderBeforePrompt(t *testing.T) {
+	run, reed, _, err := skillStartFixture(t, Spec{Skills: []string{"a", "b"}}, []string{"a", "b"}, nil)
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:a|LOAD:b|do the task"; got != want {
+		t.Errorf("typed = %q; want %q", got, want)
+	}
+	// Both skill-load turn ends lie behind the run's own read offset, so Wait never classifies them.
+	info, err := os.Stat(run.state.EventsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.offset != info.Size() || run.offset == 0 {
+		t.Errorf("offset = %d; want the events file's size %d", run.offset, info.Size())
+	}
+	if data, _, err := readEventsFrom(run.state.EventsPath, run.offset); err != nil || len(data) != 0 {
+		t.Errorf("events past the offset = %q, %v; want none", data, err)
+	}
+}
+
+func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
+	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}
+	runner := newFixture(t, base, engine, withConfig(fastConfig)).Runner
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if len(base.SendTextCalls) != 0 || len(base.SendKeyCalls) != 0 {
+		t.Errorf("typed %+v / %+v; want no input", base.SendTextCalls, base.SendKeyCalls)
+	}
+}
+
+func TestStartup_SkillWithoutTurnEndSkippedAtTimeout(t *testing.T) {
+	spec := Spec{Skills: []string{"slow", "b"}, SkillLoadTimeout: 50 * time.Millisecond}
+	_, reed, elapsed, err := skillStartFixture(t, spec, []string{"b"}, nil)
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:slow|LOAD:b|do the task"; got != want {
+		t.Errorf("typed = %q; want %q", got, want)
+	}
+	if elapsed < spec.SkillLoadTimeout {
+		t.Errorf("virtual elapsed = %s; want at least the %s timeout", elapsed, spec.SkillLoadTimeout)
+	}
+}
+
+func TestStartup_UnknownSkillSkippedAtOnce(t *testing.T) {
+	spec := Spec{Skills: []string{"ghost", "b"}}
+	_, reed, elapsed, err := skillStartFixture(t, spec, []string{"b"}, []string{"ghost"})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:ghost|LOAD:b|do the task"; got != want {
+		t.Errorf("typed = %q; want %q", got, want)
+	}
+	if elapsed != 0 {
+		t.Errorf("virtual elapsed = %s; want 0 — an unknown skill must not wait out the timeout", elapsed)
+	}
+}
+
+func TestStartup_SkillsRefusedWithoutSkillLoader(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	_, err := fx.Runner.Start(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Skills: []string{"a"}})
+	if err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Fatalf("Start() error = %v; want one naming SkillLoader", err)
+	}
+	if len(reed.AddStrandCalls) != 0 {
+		t.Error("a strand was added; the refusal must come before any run exists")
+	}
+	if _, statErr := os.Stat(fx.RunRoot); !os.IsNotExist(statErr) {
+		t.Errorf("run root exists (%v); want no run directory", statErr)
+	}
+}

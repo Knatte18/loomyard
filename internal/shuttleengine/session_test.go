@@ -185,3 +185,32 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 		t.Errorf("reed touched: %v", reed.CallLog)
 	}
 }
+
+func TestRunner_LoadSkillAndSkillUnknown_DelegateToCapability(t *testing.T) {
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"NOSKILL ghost"}}
+	engine := &skillFakeEngine{fakeEngine: &fakeEngine{}}
+	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+
+	if err := runner.LoadSkill("strand-1", "a"); err != nil {
+		t.Fatalf("LoadSkill: %v", err)
+	}
+	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a" || !reed.SendTextCalls[0].Submit {
+		t.Errorf("SendTextCalls = %+v; want the engine's load sequence", reed.SendTextCalls)
+	}
+	if unknown, err := runner.SkillUnknown("strand-1", "ghost"); err != nil || !unknown {
+		t.Errorf("SkillUnknown(ghost) = %v, %v; want true, nil", unknown, err)
+	}
+	if unknown, err := runner.SkillUnknown("strand-1", "other"); err != nil || unknown {
+		t.Errorf("SkillUnknown(other) = %v, %v; want false, nil", unknown, err)
+	}
+}
+
+func TestRunner_LoadSkillAndSkillUnknown_ErrorOnPlainEngine(t *testing.T) {
+	runner := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &fakeEngine{}, withStrand("strand-1")).Runner
+	if err := runner.LoadSkill("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("LoadSkill error = %v; want one naming SkillLoader", err)
+	}
+	if _, err := runner.SkillUnknown("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("SkillUnknown error = %v; want one naming SkillLoader", err)
+	}
+}
