@@ -708,9 +708,9 @@ func contains(s, substr string) bool {
 	return false
 }
 
-// TestReconcileAll_BoardOpenMapsCarriedWhole pins that a repository's own `types` and `labels`
-// entries, map- or list-shaped, are neither reported nor removed by reconcile, and that apply
-// leaves them as written.
+// TestReconcileAll_BoardOpenMapsCarriedWhole pins that a repository's own `types` and `labels` entries,
+// map- or list-shaped, are neither reported nor removed by reconcile,
+// and that apply leaves them as written.
 func TestReconcileAll_BoardOpenMapsCarriedWhole(t *testing.T) {
 	cases := map[string]string{
 		"maps":        "types:\n  chore: housekeeping\nlabels:\n  infra: build and deploy\n",

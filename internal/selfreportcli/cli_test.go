@@ -336,8 +336,8 @@ func TestRunCreate_WrongArgCount(t *testing.T) {
 	}
 }
 
-// TestGroup_UnknownSubcommandRefuses verifies that an unknown subcommand under the selfreport group
-// exits 1 with the shared unknown-subcommand envelope.
+// TestGroup_UnknownSubcommandRefuses verifies that an unknown subcommand under the selfreport group exits 1
+// with the shared unknown-subcommand envelope.
 func TestGroup_UnknownSubcommandRefuses(t *testing.T) {
 	code, stdout := runCLI(t, "bogus")
 
