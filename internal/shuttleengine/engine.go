@@ -6,6 +6,8 @@
 
 package shuttleengine
 
+import "time"
+
 // Outcome classifies how a shuttle run ended: a terminal classification, not an error.
 type Outcome string
 
@@ -79,9 +81,29 @@ const (
 // Message carries the agent's final message (EventStop, EventWaiting) or question text (EventAsk);
 // Raw is the exact JSON line.
 type Event struct {
-	Kind    EventKind // Discriminates which signal this Event carries.
-	Message string    // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
-	Raw     []byte    // Exact JSON line this Event was parsed from.
+	Kind        EventKind        // Discriminates which signal this Event carries.
+	Message     string           // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
+	Raw         []byte           // Exact JSON line this Event was parsed from.
+	Outstanding []BackgroundTask // Background tasks still running at the turn end; set only on an EventWaiting.
+}
+
+// BackgroundKind tells a forked subagent from a background shell.
+type BackgroundKind string
+
+// Kinds of background work a waiting turn end can leave outstanding.
+const (
+	// BackgroundFork is an Agent or Task subagent.
+	BackgroundFork BackgroundKind = "fork"
+	// BackgroundShell is a backgrounded Bash or a Monitor.
+	BackgroundShell BackgroundKind = "shell"
+)
+
+// BackgroundTask is one piece of background work a waiting turn end left outstanding, in a
+// provider-neutral shape.
+type BackgroundTask struct {
+	Kind  BackgroundKind // Fork or shell.
+	ID    string         // Provider's id for the task.
+	Label string         // The shell's command or the Monitor's description; empty for a fork.
 }
 
 // StartupState classifies a pane's captured content during startup, between launch and provider
@@ -153,16 +175,42 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
-// SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it).
+// ContextReading is a provider-neutral reading of how much context a live session holds.
+// A reading with Known false could not be read, and a caller must never treat it as over any threshold.
+type ContextReading struct {
+	// Tokens is the context size; meaningful only when Known is true.
+	Tokens int
+	// Known is false when the usage could not be read.
+	Known bool
+	// Compacted is true when the reading came from a compaction boundary rather than a turn's usage.
+	Compacted bool
+	// BoundaryAt is the compaction boundary's timestamp; zero unless Compacted is true.
+	BoundaryAt time.Time
+}
+
+// IdleProbe is a provider-neutral answer to whether a live session's pane shows the provider idle.
+type IdleProbe struct {
+	// Idle is true when the pane shows the provider's input box empty and no turn in progress.
+	Idle bool
+	// TooShort is true when the pane is too short to draw an input box, so Idle false says nothing about the session; always false when Idle is true.
+	TooShort bool
+}
+
+// SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).
 // An Engine that also implements it lets Runner's session methods work;
 // one that does not makes them return an error naming the missing capability.
 // It is separate from Engine so the many Engine implementers and test fakes whose callers never cycle a session need no method set with no behaviour behind it.
 type SessionCycler interface {
-	// ContextTokens returns the provider's context usage as of the turn end turnEnd records.
-	// known false means usage could not be read, which a caller must never treat as over any threshold.
-	ContextTokens(turnEnd Event) (tokens int, known bool)
+	// ContextTokens returns the provider's context reading as of the turn end turnEnd records.
+	ContextTokens(turnEnd Event) ContextReading
 	// IdleSession reports whether capture shows the provider idle: its input box present and empty, and no turn in progress.
 	IdleSession(capture string) bool
+	// PaneTooShort reports whether capture shows a pane too short to draw the provider's input box, which makes a not-idle answer from IdleSession unreliable.
+	PaneTooShort(capture string) bool
 	// ClearSessionSequence returns the key choreography that clears the live session's context.
 	ClearSessionSequence() []PaneInput
+	// CompactSessionSequence returns the key choreography that compacts the live session's context, keeping what focus names.
+	// An empty focus compacts with no instruction.
+	// The caller guarantees focus is a single line.
+	CompactSessionSequence(focus string) []PaneInput
 }

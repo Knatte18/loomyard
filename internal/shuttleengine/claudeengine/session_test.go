@@ -67,6 +67,47 @@ func TestIdleSession(t *testing.T) {
 	}
 }
 
+func TestPaneTooShort(t *testing.T) {
+	tests := []struct {
+		name    string
+		capture string
+		want    bool
+	}{
+		{"short capture with no box", "● working\n  esc to interrupt\n", true},
+		{"one line", "● working", true},
+		{"busy capture of normal height", "● a\n\n● b\n● c\n  esc to interrupt\n", false},
+		{"idle box", readPaneFixture(t, "pane-idle-empty.txt"), false},
+		{"short capture with a caret", "────\n❯ \n", false},
+	}
+	c := &Claude{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := c.PaneTooShort(tt.capture); got != tt.want {
+				t.Errorf("PaneTooShort = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompactSessionSequence(t *testing.T) {
+	cases := []struct {
+		name  string
+		focus string
+		want  []shuttleengine.PaneInput
+	}{
+		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", Submit: true}}},
+		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", Submit: true}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := (&Claude{}).CompactSessionSequence(tc.focus)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("CompactSessionSequence(%q) = %#v; want %#v", tc.focus, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestClearSessionSequence(t *testing.T) {
 	got := (&Claude{}).ClearSessionSequence()
 	want := []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}

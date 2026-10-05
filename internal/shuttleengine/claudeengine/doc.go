@@ -28,6 +28,25 @@
 // pane is its input-box marker at the bottom, far from any transcript prose above (crucible round
 // fable-high-r7, F1).
 //
+// A Stop line whose turn ended with background work still running becomes EventWaiting, and its
+// Event.Outstanding lists that work as provider-neutral shuttleengine.BackgroundTask values:
+// a fork for an Agent or Task subagent, a shell for a backgrounded Bash or a Monitor.
+// The list merges the running background_tasks[] entries of the Stop payload with the transcript's
+// background launches that no later task notification names, deduplicated by task id.
+//
+// Every Bash command an agent runs gets `/dev/null` as its default stdin through one PreToolUse(Bash) hook in every run's settings:
+// the hook answers with `updatedInput` carrying the command behind the prefix `exec </dev/null; `, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
+// The hook sends no `permissionDecision`, which Claude Code reads as "doesn't decide", so it grants nothing and the agents' allow and deny rules still decide the call.
+// A heredoc, pipe or redirect attached to the command still supplies that command's stdin, and the hook denies nothing.
+//
+// The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
+// The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
+// a boundary reading carries its `postTokens` and timestamp and is marked compacted.
+// Every failure degrades to an unknown reading.
+//
+// The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
+// An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+//
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.

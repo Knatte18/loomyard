@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
 // walkCommands calls fn on cmd and every descendant, skipping cobra's help and completion subtrees.
@@ -40,24 +39,6 @@ func visibleChildren(cmd *cobra.Command) []*cobra.Command {
 // argsFor returns the argument vector that addresses cmd from the root.
 func argsFor(cmd *cobra.Command) []string {
 	return strings.Fields(cmd.CommandPath())[1:]
-}
-
-// cliTreeFindings are groups whose bare or bogus invocation differs from the invariant today.
-// Each is a finding to fix in the group's own CLI and then delete from here.
-// An entry fails once its invocation meets the invariant, and an entry naming a group that no longer exists fails as stale.
-var cliTreeFindings = []scankit.Entry{
-	{
-		Key: "config#bare",
-		Why: "refuses with \"not a git repository\" instead of listing its verbs",
-	},
-	{
-		Key: "config#bogus",
-		Why: "refuses with \"not a git repository\" before reaching the unknown-subcommand refusal",
-	},
-	{
-		Key: "selfreport#bogus",
-		Why: "prints help and exits 0 instead of refusing an unknown subcommand",
-	},
 }
 
 // bareProblems runs a bare group invocation and returns how it breaks the invariant, with its output.
@@ -101,15 +82,10 @@ func bogusProblems(args []string) ([]string, string) {
 	return problems, got
 }
 
-// checkInvocation fails t for every problem, unless the invocation is a known finding, which fails only once its problems are gone.
-func checkInvocation(t *testing.T, args []string, known bool, problems []string, out string) {
+// checkInvocation fails t for every problem.
+func checkInvocation(t *testing.T, args []string, problems []string, out string) {
 	t.Helper()
-	switch {
-	case known && len(problems) == 0:
-		t.Errorf("run(%v) now meets the invariant; remove its cliTreeFindings entry", args)
-	case known:
-		t.Skipf("known finding: %s", strings.Join(problems, "; "))
-	case len(problems) > 0:
+	if len(problems) > 0 {
 		t.Errorf("run(%v): %s\noutput: %s", args, strings.Join(problems, "; "), out)
 	}
 }
@@ -118,7 +94,6 @@ func checkInvocation(t *testing.T, args []string, known bool, problems []string,
 func TestCLITree_EveryCommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	findings := scankit.NewAllowlist(cliTreeFindings)
 	root := newRoot()
 	walked := 0
 	walkCommands(root, func(cmd *cobra.Command) {
@@ -137,19 +112,18 @@ func TestCLITree_EveryCommand(t *testing.T) {
 
 		t.Run(name+"/bare", func(t *testing.T) {
 			problems, out := bareProblems(args, children)
-			checkInvocation(t, args, findings.Allowed(name+"#bare"), problems, out)
+			checkInvocation(t, args, problems, out)
 		})
 
 		t.Run(name+"/bogus", func(t *testing.T) {
 			bogus := append(append([]string{}, args...), "bogus")
 			problems, out := bogusProblems(bogus)
-			checkInvocation(t, bogus, findings.Allowed(name+"#bogus"), problems, out)
+			checkInvocation(t, bogus, problems, out)
 		})
 	})
 	if walked < 2 {
 		t.Fatalf("walked %d commands; the tree walk is not reaching the mounted modules", walked)
 	}
-	findings.RequireNoStale(t)
 }
 
 // TestCLITree_RootLongNamesEveryModule asserts root.Long names every mounted module.

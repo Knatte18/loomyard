@@ -22,6 +22,7 @@ var _ shuttleengine.SessionResumer = (*Claude)(nil)
 type registryEntry struct {
 	PID       int    `json:"pid"`
 	SessionID string `json:"sessionId"`
+	ProcStart string `json:"procStart"`
 }
 
 // CheckResume implements shuttleengine.SessionResumer.
@@ -36,14 +37,15 @@ func (c *Claude) CheckResume(sessionID, workdir string) (string, error) {
 		return "", fmt.Errorf("claudeengine: resolve home dir: %w", err)
 	}
 	registryDir := filepath.Join(home, ".claude", "sessions")
-	return checkResumable(sessionID, projectDir, registryDir, proc.IsAlive)
+	return checkResumable(sessionID, projectDir, registryDir, proc.IsAlive, proc.StartTime)
 }
 
 // checkResumable refuses a resume unless sessionID is well-formed, has a transcript under projectDir, and is not held by a live process in registryDir.
-// Only a positively identified live holder refuses;
-// an unreadable registry returns a warning and the check proceeds.
+// A live pid refuses unless the live process's start time differs from the entry's procStart, which proves the pid was reused;
+// when either start time cannot be read the pid still refuses, so two processes never drive one session.
+// An unreadable registry returns a warning and the check proceeds.
 // It kills, signals and edits nothing.
-func checkResumable(sessionID, projectDir, registryDir string, alive func(pid int) bool) (warning string, err error) {
+func checkResumable(sessionID, projectDir, registryDir string, alive func(pid int) bool, startTime func(pid int) (string, bool)) (warning string, err error) {
 	if err := validateSessionID(sessionID); err != nil {
 		return "", fmt.Errorf("%w; Claude's /status shows the session id", err)
 	}
@@ -75,9 +77,17 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 			warning = fmt.Sprintf("claudeengine: could not decode session registry entry %s (%v); a live holder of session %s could not be ruled out", path, err, sessionID)
 			continue
 		}
-		if entry.SessionID == sessionID && alive(entry.PID) {
+		if entry.SessionID != sessionID || !alive(entry.PID) {
+			continue
+		}
+		live, readable := startTime(entry.PID)
+		if readable && entry.ProcStart != "" {
+			if live != entry.ProcStart {
+				continue
+			}
 			return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s); exit that session first, then resume", sessionID, entry.PID, path)
 		}
+		return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s), and the pid could not be proven reused; exit that session first, then resume", sessionID, entry.PID, path)
 	}
 	return warning, nil
 }

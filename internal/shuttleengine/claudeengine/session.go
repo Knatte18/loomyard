@@ -1,5 +1,5 @@
-// session.go completes Claude's shuttleengine.SessionCycler: the idle-session probe and the clear-session choreography.
-// Both are pure over a capture string or literal text, like startup.go's classifiers,
+// session.go completes Claude's shuttleengine.SessionCycler: the idle-session probe and the clear-session and compact-session choreographies.
+// All are pure over a capture string or literal text, like startup.go's classifiers,
 // and all Claude TUI shape knowledge stays in this package, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
@@ -19,6 +19,19 @@ const boxRuleChars = "─╭╮╰╯│"
 
 // boxInteriorChars are stripped from a line between the rules before judging it blank: the caret and side bars, on top of whitespace.
 const boxInteriorChars = gateCaretMarker + "│>"
+
+// boxMinRows is the fewest pane rows Claude's input box needs: the top rule, the caret line, the bottom rule and the footer under it.
+const boxMinRows = 4
+
+// PaneTooShort reports whether capture shows a pane too short to draw the input box: no caret line anywhere, and fewer rows than boxMinRows.
+// A pane of normal height that is busy or showing a dialog is never too short, whatever it draws.
+func (c *Claude) PaneTooShort(capture string) bool {
+	if strings.Contains(capture, gateCaretMarker) {
+		return false
+	}
+	rows := strings.Split(strings.TrimSuffix(capture, "\n"), "\n")
+	return len(rows) < boxMinRows
+}
 
 // IdleSession reports whether capture shows Claude idle: no turn in progress, the input box on screen, and the box empty.
 //
@@ -113,4 +126,13 @@ func isBlankBoxInterior(line string) bool {
 // and an Escape landing right after another Escape opens Claude's rewind menu instead.
 func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}
+}
+
+// CompactSessionSequence returns /compact typed and submitted, followed by focus when it is non-empty, with no leading Escape for the same reason as ClearSessionSequence.
+func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
+	text := "/compact"
+	if focus != "" {
+		text += " " + focus
+	}
+	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
 }

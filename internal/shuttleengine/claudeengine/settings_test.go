@@ -204,11 +204,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry {
-				hooks, _ := doc["hooks"].(map[string]any)
-				if _, present := hooks["PreToolUse"]; present {
-					t.Errorf("PreToolUse key present with no denies/marker configured; want the key omitted entirely: %v", hooks)
-				}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && len(preToolUse) != 1 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the Bash stdin rewrite entry", preToolUse)
 			}
 		})
 	}
@@ -293,10 +290,53 @@ func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
 			t.Fatalf("buildSettings() error: %v", err)
 		}
 		doc := parseSettings(t, data)
-		if _, present := bashCommand(t, doc); present {
+		if command, _ := bashCommand(t, doc); strings.Contains(command, steerWebsterForkDeny) {
 			t.Error("Bash PreToolUse guard present with forkSubagents=false; want none (no fork can reach the loop)")
 		}
 	})
+}
+
+// TestBuildSettings_BashStdinRewrite pins that every run mode carries the Bash rewrite entry, and that its command embeds the prefix.
+func TestBuildSettings_BashStdinRewrite(t *testing.T) {
+	cases := []struct {
+		name        string
+		interactive bool
+		fork        bool
+		allowAgent  bool
+	}{
+		{"autonomous", false, false, false},
+		{"interactive", true, false, false},
+		{"fork", false, true, false},
+		{"fork_allow_agent", false, true, true},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, tt.allowAgent)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			var found []string
+			for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
+				entry, _ := e.(map[string]any)
+				if entry["matcher"] != "Bash" {
+					continue
+				}
+				hooks, _ := entry["hooks"].([]any)
+				cmd, _ := hooks[0].(map[string]any)
+				command, _ := cmd["command"].(string)
+				if strings.Contains(command, bashStdinPrefix) {
+					found = append(found, command)
+				}
+			}
+			if len(found) != 1 {
+				t.Fatalf("Bash entries embedding the prefix %q = %d; want exactly one (data: %s)", bashStdinPrefix, len(found), data)
+			}
+			if strings.Contains(found[0], "permissionDecision") {
+				t.Errorf("rewrite command = %q; want no permissionDecision", found[0])
+			}
+		})
+	}
 }
 
 // agentCommand returns the Agent PreToolUse entry's command string and
@@ -414,7 +454,7 @@ func TestBuildSettings_AllowAgentTool(t *testing.T) {
 		if _, present := agentCommand(t, doc); present {
 			t.Error("Agent PreToolUse entry present; want none under AllowAgentTool")
 		}
-		if _, present := matcherCommand(doc, "Bash"); present {
+		if bash, _ := matcherCommand(doc, "Bash"); strings.Contains(bash, steerWebsterForkDeny) {
 			t.Error("Bash webster guard present without ForkSubagents; want none")
 		}
 		notice := buildDenyNotice(false, cfg, false, true)

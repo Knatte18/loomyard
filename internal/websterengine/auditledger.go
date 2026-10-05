@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // AuditWarning is one recorded warning: the finding's identity, its class, and the detail line.
@@ -102,7 +103,11 @@ var acceptAuditHeadRefusal = headRefusal{head: "the last batch head", rerun: `re
 // It records no disposition, because a later run's audit covers a new Master session whose finding identities never repeat these.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
-func AcceptPendingAudit(st *State, geom Geometry, parentBranch ParentBranchFunc) ([]PendingAuditFinding, error) {
+//
+// A path that is one of the run's two contract files is judged by contractFileStatus before the check, over the write history engine's audit yields (nil engine: none):
+// a cleared one is resolved, and an uncleared one refuses naming the path, why, and the delete route.
+// The returned bool is true when a path was accepted on an absent contract file, so the caller can tell the operator Master must write the files again.
+func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, parentBranch ParentBranchFunc) (accepted []PendingAuditFinding, onAbsentContract bool, err error) {
 	pending := st.PendingAuditFindings
 	var paths []string
 	pathless := false
@@ -118,54 +123,68 @@ func AcceptPendingAudit(st *State, geom Geometry, parentBranch ParentBranchFunc)
 	}
 	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(bases.Missing) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, missingCommitsClause(bases.Missing))
+		return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, missingCommitsClause(bases.Missing))
 	}
 	head := bases.Last
 	if head != "" {
 		if _, err := reconcileHead(geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
+			return nil, false, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
 		}
 		if head, err = headSHA(geom.WorktreeRoot); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	differing, unverifiable, err := checkSuspectPaths(geom, st, head, paths)
+	writes, err := contractWritesFor(engine, st, geom, paths)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if len(differing) == 0 && len(unverifiable) == 0 && !pathless {
+	contracts, err := splitContractPaths(geom, writes, paths)
+	if err != nil {
+		return nil, false, err
+	}
+	differing, unverifiable, err := checkSuspectPaths(geom, st, head, contracts.Rest)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(differing) == 0 && len(unverifiable) == 0 && len(contracts.Uncleared) == 0 && !pathless {
 		st.PendingAuditFindings = nil
-		return pending, nil
+		return pending, len(contracts.Absent) > 0, nil
 	}
 	var parts []string
+	if len(contracts.Uncleared) > 0 {
+		parts = append(parts, contractDeleteClause(contracts.Uncleared, "lyx webster accept-audit"))
+	}
 	planDiffering, gitDiffering, err := splitPlanPaths(geom, differing)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(planDiffering) > 0 {
 		parts = append(parts, fmt.Sprintf("plan file(s) differ from the plan the run recorded: %s; way forward: %s", strings.Join(planDiffering, ", "), planPathClause("\"lyx webster accept-audit\"")))
 	}
 	if len(gitDiffering) > 0 {
-		parts = append(parts, fmt.Sprintf("differs from the last batch head: %s; way forward: restore each with \"git checkout %s -- <path>\" (delete a path the head does not hold), then re-run \"lyx webster accept-audit\"", strings.Join(gitDiffering, ", "), head))
+		parts = append(parts, fmt.Sprintf("differs from the last batch head; %s", wayForwardSteps(restoreStep(head, gitDiffering), stepAcceptAudit)))
 	}
 	if len(unverifiable) > 0 || pathless {
 		var what []string
-		if len(unverifiable) > 0 {
-			what = append(what, "cannot be checked: "+strings.Join(unverifiable, ", "))
+		for _, p := range unverifiable {
+			reason, _, err := uncheckableReason(geom, st, p)
+			if err != nil {
+				return nil, false, err
+			}
+			if reason == "" {
+				reason = reasonNoBatchHead
+			}
+			what = append(what, fmt.Sprintf("%s cannot be checked: %s", p, reason))
 		}
 		if pathless {
-			what = append(what, "a finding names no path")
+			what = append(what, reasonNoPath)
 		}
-		start := bases.Start
-		if start != "" {
-			start = " " + start
-		}
-		parts = append(parts, fmt.Sprintf("%s; way forward: reset the branch to the run's start commit%s with git and run \"lyx webster run --fresh\"", strings.Join(what, "; "), start))
+		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRunFresh)))
 	}
-	return nil, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
+	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
 // auditWarningText renders w as its envelope line.

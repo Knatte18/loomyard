@@ -17,6 +17,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repository root and state; a module declares a descriptor. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, and its spec row and reaching test land in the same commit. — [background](pattern/PATTERN-refusal-way-forward.md)
+- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny (`git reset --hard`, `git push --force`/`-f`, `rm -rf`); lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 
@@ -58,6 +59,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: a Go-authored friction note is written, and none is archived before a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`, never in `shuttleengine` or `reedengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
+- `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-binary-resolution` — Creating a strand pane in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)

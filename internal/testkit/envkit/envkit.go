@@ -44,6 +44,8 @@ var nilLegal = map[string]bool{
 	"InnerRun.ReviewWait":         true,
 	"InnerRun.Now":                true,
 	"InnerRun.OpenIDE":            true,
+	"InnerRun.Notify":             true,
+	"InnerRun.AttachDir":          true,
 	"PrimeLock.Sleep":             true,
 	"SegmentBounces":              true,
 }

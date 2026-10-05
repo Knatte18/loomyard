@@ -1,0 +1,93 @@
+// runwrites_test.go covers loadRunWrites: every recorded Master session is audited and its events merged,
+// a session id recorded twice is audited once, and an audit error surfaces naming the session.
+// Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.
+
+package websterengine
+
+import (
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+)
+
+func TestLoadRunWrites_MergesEverySessionsEvents(t *testing.T) {
+	st := &State{
+		MasterSessionID: "s1",
+		Batches: map[int]*BatchState{
+			1: {SessionID: "s1"},
+			2: {SessionID: "s2"},
+		},
+	}
+	var audited []string
+	engine := &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+		audited = append(audited, session)
+		return shuttleengine.ForkAudit{
+			ParentWriteEvents: []shuttleengine.WriteEvent{{Path: session + "-master", Succeeded: true}},
+			Forks: []shuttleengine.ForkReport{
+				{WriteEvents: []shuttleengine.WriteEvent{{Path: session + "-fork-a"}}},
+				{WriteEvents: []shuttleengine.WriteEvent{{Path: session + "-fork-b"}}},
+			},
+		}, nil
+	}}
+
+	got, err := loadRunWrites(engine, st, "/wt")
+	if err != nil {
+		t.Fatalf("loadRunWrites: %v", err)
+	}
+	if want := []string{"s1", "s2"}; !reflect.DeepEqual(audited, want) {
+		t.Errorf("audited sessions = %v, want %v", audited, want)
+	}
+	wantMaster := []shuttleengine.WriteEvent{{Path: "s1-master", Succeeded: true}, {Path: "s2-master", Succeeded: true}}
+	if !reflect.DeepEqual(got.Master, wantMaster) {
+		t.Errorf("Master = %v, want %v", got.Master, wantMaster)
+	}
+	wantForks := []shuttleengine.WriteEvent{{Path: "s1-fork-a"}, {Path: "s1-fork-b"}, {Path: "s2-fork-a"}, {Path: "s2-fork-b"}}
+	if !reflect.DeepEqual(got.Forks, wantForks) {
+		t.Errorf("Forks = %v, want %v", got.Forks, wantForks)
+	}
+}
+
+func TestLoadRunWrites_SessionRecordedTwiceAuditedOnce(t *testing.T) {
+	st := &State{
+		MasterSessionID: "s1",
+		Batches: map[int]*BatchState{
+			1: {SessionID: "s1"},
+			2: {SessionID: "s1"},
+			3: {},
+		},
+	}
+	calls := 0
+	engine := &shuttlefake.Engine{AuditForksFn: func(string, string) (shuttleengine.ForkAudit, error) {
+		calls++
+		return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{{Path: "p"}}}, nil
+	}}
+
+	got, err := loadRunWrites(engine, st, "/wt")
+	if err != nil {
+		t.Fatalf("loadRunWrites: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("AuditForks calls = %d, want 1", calls)
+	}
+	if len(got.Master) != 1 {
+		t.Errorf("Master = %v, want one event", got.Master)
+	}
+}
+
+func TestLoadRunWrites_AuditErrorNamesSession(t *testing.T) {
+	st := &State{MasterSessionID: "sess-bad"}
+	boom := errors.New("transcript unreadable")
+	engine := &shuttlefake.Engine{AuditErr: boom}
+
+	_, err := loadRunWrites(engine, st, "/wt")
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want it to wrap %v", err, boom)
+	}
+	if !strings.Contains(err.Error(), "sess-bad") {
+		t.Errorf("err = %q, want it to name the session", err)
+	}
+}

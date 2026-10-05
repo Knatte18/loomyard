@@ -882,6 +882,80 @@ func TestRecoverSpawnOrAttach_RefusesUncheckableFindings(t *testing.T) {
 	}
 }
 
+// TestRecoverSpawnOrAttach_ContractFileEvidence proves a failed batch whose only uncheckable entry is a contract file
+// is refused toward the delete route while a fork wrote the file last, and recovers once Master wrote it after the fork.
+func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
+	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		master    []shuttleengine.WriteEvent
+		wantSpawn bool
+		wantInErr []string
+		notInErr  []string
+	}{
+		{
+			name:      "fork wrote last",
+			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
+			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "after Master's last write"},
+			notInErr:  []string{"--fresh"},
+		},
+		{
+			name:      "master wrote after the fork",
+			master:    []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
+			wantSpawn: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newRecoverFixture(t)
+			contract := websterengine.OutcomePath(fx.Deps.Geom.WebsterDir)
+			if err := os.MkdirAll(filepath.Dir(contract), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(contract, []byte("outcome: done\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			master := slices.Clone(tt.master)
+			master[0].Path = contract
+			fx.Engine.AuditForksFn = func(string, string) (shuttleengine.ForkAudit, error) {
+				return shuttleengine.ForkAudit{
+					ParentWriteEvents: master,
+					Forks:             []shuttleengine.ForkReport{{WriteEvents: []shuttleengine.WriteEvent{{Path: contract, At: at.Add(time.Minute), Succeeded: true}}}},
+				}, nil
+			}
+			fx.Deps.State.MasterSessionID = "s1"
+			rec := failedRecord("fork wrote the contract file")
+			rec.Uncheckable = []string{contract}
+			fx.Deps.State.Batches[1] = rec
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+			_, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if tt.wantSpawn {
+				if err != nil || !spawned {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want a spawned recovery", spawned, err)
+				}
+				return
+			}
+			if err == nil || errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want the delete refusal, not ErrRecoveryNeedsFresh", err)
+			}
+			for _, want := range tt.wantInErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			}
+			for _, bad := range tt.notInErr {
+				if strings.Contains(err.Error(), bad) {
+					t.Errorf("error %q contains %q", err, bad)
+				}
+			}
+			if spawned {
+				t.Error("spawned = true; want no strand")
+			}
+		})
+	}
+}
+
 // TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport proves an OK report a still-running fork writes after the batch failed is archived rather than refused, so no refusal ring re-forms.
 func TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport(t *testing.T) {
 	fx := newRecoverFixture(t)

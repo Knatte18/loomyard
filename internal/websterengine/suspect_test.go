@@ -199,7 +199,7 @@ func TestAcceptPendingAudit_RefusesMissingCommit(t *testing.T) {
 	fx.st.Batches[1].Digest.HeadSHA = missing
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	_, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
@@ -217,7 +217,7 @@ func TestAcceptPendingAudit_UsesExecutionOrderHead(t *testing.T) {
 	fx, _, _, _ := reversedOrderFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	got, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if err != nil {
 		t.Fatalf("AcceptPendingAudit() error = %v; want accepted against the execution-order head", err)
 	}
@@ -230,7 +230,7 @@ func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
-	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	got, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if err != nil {
 		t.Fatalf("AcceptPendingAudit() error = %v", err)
 	}
@@ -252,7 +252,7 @@ func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	_, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
@@ -285,11 +285,11 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 	fx := newSuspectFixture(t)
 	committedPastHead(t, fx)
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	_, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{fx.head, "way forward: move HEAD back to the last batch head " + fx.head, `re-run "lyx webster accept-audit"`} {
+	for _, want := range []string{fx.head, "way forward: 1) run `git reset --keep " + fx.head + "` to move HEAD back to the last batch head", `2) re-run "lyx webster accept-audit"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
@@ -307,7 +307,7 @@ func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
 	committedPastHead(t, fx)
 	gitkit.Git(t, fx.geom.WorktreeRoot, "reset", "--hard", fx.head)
 
-	got, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	got, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if err != nil {
 		t.Fatalf("AcceptPendingAudit() error = %v; want accepted after the reset", err)
 	}
@@ -320,11 +320,11 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"ignored.log"}}}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	_, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{"ignored.log", "run --fresh", fx.start} {
+	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
@@ -339,7 +339,7 @@ func TestAcceptPendingAudit_PlanPathNamesRestorePlan(t *testing.T) {
 	}
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{card}}}
 
-	_, err := AcceptPendingAudit(fx.st, fx.geom, nil)
+	_, _, err := AcceptPendingAudit(nil, fx.st, fx.geom, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}

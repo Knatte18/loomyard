@@ -132,6 +132,10 @@ type Spec struct {
 	// KeepPane, when true, leaves the strand and its pane alive after a
 	// "done" outcome instead of the default RemoveStrand + run-dir cleanup.
 	KeepPane bool
+	// AwaitedShellPrefixes names the background shells the run waits on like a fork:
+	// a shell whose label starts with one of them is bounded only by Timeout, never by background_shell_wait_min.
+	// It is caller data, not provider knowledge, and validate does not inspect it.
+	AwaitedShellPrefixes []string
 }
 
 // validate normalizes s in place and reports an error if it is not

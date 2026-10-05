@@ -5,6 +5,7 @@ package orchengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,9 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 	if cfg.PermissionMode != "bypass" {
 		t.Errorf("PermissionMode = %q, want bypass", cfg.PermissionMode)
 	}
+	if cfg.Mode() != orchengine.CycleCompact {
+		t.Errorf("Mode() = %q, want compact", cfg.Mode())
+	}
 	if got := cfg.Threshold(); got != 400000 {
 		t.Errorf("Threshold() = %d, want 400000", got)
 	}
@@ -60,7 +64,7 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 
 func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	tmpDir := t.TempDir()
-	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: prompt\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 250\n")
+	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: bypass\ncycle_mode: clear\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 250\n")
 
 	cfg, err := orchengine.LoadConfig(tmpDir, "orch")
 	if err != nil {
@@ -69,8 +73,11 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	if cfg.Model != "opus" || cfg.Effort != "high" {
 		t.Errorf("Model/Effort = %q/%q, want opus/high", cfg.Model, cfg.Effort)
 	}
-	if cfg.PermissionMode != "prompt" {
-		t.Errorf("PermissionMode = %q, want prompt", cfg.PermissionMode)
+	if cfg.PermissionMode != "bypass" {
+		t.Errorf("PermissionMode = %q, want bypass", cfg.PermissionMode)
+	}
+	if cfg.Mode() != orchengine.CycleClear {
+		t.Errorf("Mode() = %q, want clear", cfg.Mode())
 	}
 	if got := cfg.Threshold(); got != 90000 {
 		t.Errorf("Threshold() = %d, want 90000", got)
@@ -98,6 +105,70 @@ func TestLoadConfig_InvalidFileErrors(t *testing.T) {
 
 	if _, err := orchengine.LoadConfig(tmpDir, "orch"); err == nil {
 		t.Fatal("LoadConfig on an invalid file = nil error, want error")
+	}
+}
+
+func TestLoadConfig_CycleMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"absent key is compact", "model: opus\n", orchengine.CycleCompact},
+		{"empty is compact", "cycle_mode: \"\"\n", orchengine.CycleCompact},
+		{"clear loads", "cycle_mode: clear\n", orchengine.CycleClear},
+		{"compact loads", "cycle_mode: compact\n", orchengine.CycleCompact},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			seedLyxConfig(t, tmpDir, "orch", tc.content)
+			cfg, err := orchengine.LoadConfig(tmpDir, "orch")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := cfg.Mode(); got != tc.want {
+				t.Errorf("Mode() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("unknown value errors naming both", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		seedLyxConfig(t, tmpDir, "orch", "cycle_mode: restart\n")
+		_, err := orchengine.LoadConfig(tmpDir, "orch")
+		if err == nil {
+			t.Fatal("LoadConfig with cycle_mode: restart = nil error, want error")
+		}
+		if !strings.Contains(err.Error(), "clear") || !strings.Contains(err.Error(), "compact") {
+			t.Errorf("error = %q, want both accepted values named", err)
+		}
+	})
+}
+
+func TestLoadConfig_PermissionMode(t *testing.T) {
+	for _, content := range []string{"model: opus\n", "permission_mode: \"\"\n", "permission_mode: bypass\n"} {
+		tmpDir := t.TempDir()
+		seedLyxConfig(t, tmpDir, "orch", content)
+		cfg, err := orchengine.LoadConfig(tmpDir, "orch")
+		if err != nil {
+			t.Fatalf("%q: unexpected error: %v", content, err)
+		}
+		if cfg.PermissionMode != "bypass" {
+			t.Errorf("%q: PermissionMode = %q, want bypass", content, cfg.PermissionMode)
+		}
+	}
+
+	for _, mode := range []string{"prompt", "plan"} {
+		tmpDir := t.TempDir()
+		seedLyxConfig(t, tmpDir, "orch", "permission_mode: "+mode+"\n")
+		_, err := orchengine.LoadConfig(tmpDir, "orch")
+		if err == nil {
+			t.Fatalf("permission_mode: %s = nil error, want error", mode)
+		}
+		if !strings.Contains(err.Error(), "set permission_mode: bypass or remove the key") {
+			t.Errorf("permission_mode: %s error = %q, want the fix named", mode, err)
+		}
 	}
 }
 

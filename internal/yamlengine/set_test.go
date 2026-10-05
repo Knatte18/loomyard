@@ -350,3 +350,60 @@ func TestSetValues_ListKeyRejectsNonListValue(t *testing.T) {
 		t.Error("SetValues() error = nil; want an error naming the list key")
 	}
 }
+
+const openMapSetTemplate = "name: tmpl\nlabels: {}\n"
+
+func TestSetValues_OpenMapAddsEntry(t *testing.T) {
+	result, err := SetValues([]byte(openMapSetTemplate), []byte("name: mine\nlabels:\n  a: old\n"),
+		[]KV{{Key: "labels.x", Value: "new x"}, {Key: "labels.a", Value: "new a"}}, "labels")
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+	if len(result.Unknown) != 0 {
+		t.Fatalf("Unknown = %v; want none", result.Unknown)
+	}
+	merged := string(result.Merged)
+	if !strings.Contains(merged, "a: new a") || !strings.Contains(merged, "x: new x") || !strings.Contains(merged, "name: mine") {
+		t.Errorf("merged = %q; want a rewritten, x added, name kept", merged)
+	}
+}
+
+func TestSetValues_OpenMapEmptyTemplateWritesBlock(t *testing.T) {
+	result, err := SetValues([]byte(openMapSetTemplate), nil, []KV{{Key: "labels.x", Value: "new x"}}, "labels")
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+	if strings.Contains(string(result.Merged), "{") {
+		t.Errorf("merged = %q; want a block mapping", result.Merged)
+	}
+	if !strings.Contains(string(result.Merged), "  x: new x") {
+		t.Errorf("merged = %q; want x under labels", result.Merged)
+	}
+}
+
+func TestSetValues_OpenMapRefusesList(t *testing.T) {
+	_, err := SetValues([]byte(openMapSetTemplate), []byte("labels:\n  - a\n"), []KV{{Key: "labels.x", Value: "v"}}, "labels")
+	if err == nil {
+		t.Fatal("SetValues() = nil error; want a refusal on a list")
+	}
+	if !strings.Contains(err.Error(), "labels") || !strings.Contains(err.Error(), "map of name to description") {
+		t.Errorf("error = %q; want it to name labels and the rewrite", err)
+	}
+}
+
+func TestSetValues_OpenMapKnownAndUndeclaredStillRefused(t *testing.T) {
+	result, err := SetValues([]byte(openMapSetTemplate), nil, []KV{{Key: "bogus", Value: "v"}}, "labels")
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+	if len(result.Unknown) != 1 || result.Unknown[0] != "bogus" {
+		t.Errorf("Unknown = %v; want [bogus]", result.Unknown)
+	}
+	found := false
+	for _, key := range result.Known {
+		found = found || key == "labels.<name>"
+	}
+	if !found {
+		t.Errorf("Known = %v; want labels.<name>", result.Known)
+	}
+}

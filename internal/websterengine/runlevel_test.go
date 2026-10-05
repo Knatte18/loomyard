@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -718,6 +719,102 @@ func TestRun_MasterSpecCarriesWebsterStrandRole(t *testing.T) {
 	}
 }
 
+// expiredShellRun drives fx's Run to a done outcome whose Master result lists labels as expired shells.
+func expiredShellRun(t *testing.T, fx *runFixture, labels []string) websterengine.RunResult {
+	t.Helper()
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+		},
+	})
+	fx.Starter.handle = &runFakeHandle{
+		strandGUID: "master-strand-shells",
+		result: shuttleengine.Result{
+			Outcome:       shuttleengine.OutcomeDone,
+			SessionID:     "master-session-shells",
+			RunDir:        "/run/dir/shells",
+			ForkAudit:     &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
+			ExpiredShells: labels,
+		},
+		onWait: func() {
+			writeDoneContract(t, fx)
+		},
+	}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-shells", "master-session-shells")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	return result
+}
+
+// TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote proves a waited-out shell on a done outcome warns, lands in summary.md and is named in a friction note.
+func TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Deps.FrictionDir = t.TempDir()
+
+	result := expiredShellRun(t, fx, []string{"sleep 9999"})
+
+	want := "turn end counted after background shell `sleep 9999` ran past `background_shell_wait_min`; the shell may still be running in the session"
+	if !slices.Contains(result.Warnings, want) {
+		t.Errorf("Warnings = %v; want %q", result.Warnings, want)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summary), "## Background shells waited out") || !strings.Contains(string(summary), "- `sleep 9999`") {
+		t.Errorf("summary.md = %q; want the waited-out section naming the shell", summary)
+	}
+	note, err := os.ReadFile(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md"))
+	if err != nil {
+		t.Fatalf("read friction note: %v", err)
+	}
+	if !strings.Contains(string(note), "sleep 9999") || !strings.Contains(string(note), "background_shell_wait_min") {
+		t.Errorf("friction note = %q; want the shell and the bound named", note)
+	}
+}
+
+// TestRun_NoExpiredShellsWritesNothing proves an empty list adds no warning, summary section or friction note.
+func TestRun_NoExpiredShellsWritesNothing(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Deps.FrictionDir = t.TempDir()
+
+	result := expiredShellRun(t, fx, nil)
+
+	if warningsContain(result.Warnings, "background_shell_wait_min") {
+		t.Errorf("Warnings = %v; want no expired-shell warning", result.Warnings)
+	}
+	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if strings.Contains(string(summary), "Background shells waited out") {
+		t.Errorf("summary.md = %q; want no waited-out section", summary)
+	}
+	if _, err := os.Stat(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md")); !os.IsNotExist(err) {
+		t.Errorf("friction note stat error = %v; want not-exist", err)
+	}
+}
+
+// TestRun_MasterSpecAwaitsRecoverBatchShell proves Master's spec declares the recover-batch shell as awaited.
+func TestRun_MasterSpecAwaitsRecoverBatchShell(t *testing.T) {
+	fx := newRunFixture(t, 1)
+
+	fx.Starter.handle = &runFakeHandle{strandGUID: "master-strand-await", waitErr: fmt.Errorf("stop after spawn")}
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-await", "master-session-await")
+
+	if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); err == nil {
+		t.Fatalf("Run() error = nil; want the scripted wait error")
+	}
+
+	got := fx.Starter.startCalls[0].AwaitedShellPrefixes
+	if !slices.Equal(got, []string{"lyx webster recover-batch"}) {
+		t.Errorf("Spec.AwaitedShellPrefixes = %q; want the recover-batch prefix", got)
+	}
+}
+
 // TestRun_MasterStrandPersistedBeforeFindRun proves F14's orphan-window narrowing: when FindRun
 // fails AFTER Master's pane is live (no shuttle run state seeded, so the session-ID resolve
 // errors), Run still errors — but state.json has already recorded MasterStrand, so the next run's
@@ -1034,11 +1131,11 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
 	}
 
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
+	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
 		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
 	}
 	gitkit.Git(t, fx.Worktree, "checkout", "--", "base.txt")
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); err != nil {
+	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); err != nil {
 		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
@@ -2479,6 +2576,33 @@ func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
 	}
 }
 
+// TestRun_FreshContractFileEvidence proves --fresh refuses a pending finding on a contract file no Master write cleared,
+// naming the delete route and --fresh as the re-run, and drops it once the file is absent.
+func TestRun_FreshContractFileEvidence(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	contract := websterengine.OutcomePath(fx.Deps.Geom.WebsterDir)
+	seedFreshPendingState(t, fx, contract)
+	if err := os.WriteFile(contract, []byte("outcome: done\n"), 0o644); err != nil {
+		t.Fatalf("write contract file: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "rm "+contract, "lyx webster run --fresh")
+	if got := fx.Starter.callCount(); got != 0 {
+		t.Errorf("Starter calls = %d; want 0", got)
+	}
+
+	if err := os.Remove(contract); err != nil {
+		t.Fatalf("remove contract file: %v", err)
+	}
+	askingMaster(t, fx, "contract absent")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
+}
+
 // TestRun_FreshDropsFindingsOnceReset proves --fresh drops the pending finding once the branch is reset to the start commit, spawns Master, and names the dropped finding in the warnings.
 func TestRun_FreshDropsFindingsOnceReset(t *testing.T) {
 	const session = "master-session-fresh"
@@ -2630,7 +2754,10 @@ func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
 		t.Fatalf("Run() with HEAD past a start error = %v; want ErrPendingAuditFindings", err)
 	}
-	requireWayForward(t, err, "git merge-base --octopus", "run --fresh")
+	requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+	if strings.Contains(err.Error(), "merge-base --octopus") {
+		t.Errorf("Run() error = %q; want the reset verb, not a git merge-base command", err)
+	}
 	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
 		t.Errorf("state.json was archived: %v", statErr)
 	}
@@ -2684,7 +2811,7 @@ func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
 	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
 		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
 	}
-	requireWayForward(t, err, "git", "run --fresh")
+	requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
 	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
 		t.Errorf("state.json was archived: %v", statErr)
 	}

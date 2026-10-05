@@ -67,7 +67,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		var unnamed []string
 		for _, name := range changedFiles {
 			if name == planOverviewFile {
-				return nil, fmt.Errorf("%w: %s changed; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile)
+				return nil, fmt.Errorf("%w: %s changed; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, freshRestartSteps)
 			}
 			n, convErr := strconv.Atoi(cardNumberOf(name))
 			if convErr != nil || !slices.Contains(deps.Cards, n) {
@@ -128,15 +128,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", n, strings.Join(recorded, ", "), nowText))
 	}
 	if len(changed) > 0 {
-		startCommit := "the run's start commit"
-		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
-		if err != nil {
-			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
-		}
-		if bases.Start != "" {
-			startCommit += " " + bases.Start
-		}
-		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or reset the branch to %s with git and run \"lyx webster run --fresh\"", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), startCommit)
+		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps)
 	}
 
 	previous := deps.State.PlanFingerprint
