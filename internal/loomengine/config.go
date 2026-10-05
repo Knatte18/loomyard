@@ -137,8 +137,14 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 }
 
 // LoomHandoffVoucher returns the path to the machine-local handoff voucher `lyx loom step`
-// records after every completed step: the persisted history length and state as that step left
-// them.
+// records after every completed step and `lyx loom start` records right before it spawns a driver:
+// the persisted history length and state as that step or spawn left them.
+// It suppresses at most one entry observation, the first, and only when its history length and state
+// equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step
+// overwrites it, and suppresses at most one later matching observation;
+// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver
+// log and trace.
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
 // status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
 // It exists because a completed step leaves the status file byte-identical to a mid-run driver

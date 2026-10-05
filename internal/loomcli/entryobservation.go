@@ -18,8 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// handoffVoucher is the machine-local record `lyx loom step` writes after every completed step:
-// the persisted history length and state exactly as that step left them. It exists because a
+// handoffVoucher is the machine-local record `lyx loom step` writes after every completed step
+// and `lyx loom start` writes right before it spawns a driver:
+// the persisted history length and state exactly as that step or spawn left them. It exists because a
 // completed step's on-disk aftermath -- state running, run lock free, history non-empty -- is
 // byte-identical to a mid-run driver death, and without this voucher the next drive's entry
 // observation would read as a crash-resume for every operator handing a supervised task to
@@ -29,10 +30,17 @@ type handoffVoucher struct {
 	State         string `json:"state"`
 }
 
-// recordHandoffVoucher writes the handoff voucher for a step that just completed with
-// historyLength persisted entries in persistedState. A write failure is warned and nothing else:
+// recordHandoffVoucher writes the handoff voucher, replacing any earlier one, for a step that just
+// completed or a driver spawn that is about to start, with historyLength persisted entries in
+// persistedState. A write failure is warned and nothing else:
 // the voucher only narrows a false positive, so losing one write costs at most one spurious
 // crash-resume reading.
+// The voucher suppresses at most one entry observation, the first, and only when its history length
+// and state equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step
+// overwrites it, and suppresses at most one later matching observation;
+// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver
+// log and trace.
 func recordHandoffVoucher(path, lockPath string, historyLength int, persistedState shedengine.State) {
 	voucher := handoffVoucher{HistoryLength: historyLength, State: string(persistedState)}
 	if err := state.WriteJSON(path, lockPath, voucher); err != nil {
