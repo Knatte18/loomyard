@@ -40,6 +40,10 @@ import (
 // Master spawn at once.
 const runLockName = "run.lock"
 
+// masterAwaitedShellPrefix is the background shell Master's wait treats like a fork:
+// the backgrounded recovery verb of the failure ladder.
+const masterAwaitedShellPrefix = "lyx webster recover-batch"
+
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
 // It is webster's own sentinel (per the
@@ -638,9 +642,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Effort:        resolved.Params["effort"],
 		Version:       resolved.Params["version"],
 		ForkSubagents: true,
-		Role:          MerriamStrandRole,
-		Interactive:   false,
-		Timeout:       time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
+		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the gate waits on it like a fork.
+		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
+		Role:                 MerriamStrandRole,
+		Interactive:          false,
+		Timeout:              time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}
 
 	// The state-mutation lease acquired above is held across this call, which now includes the
@@ -692,6 +698,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: run master: %w", err)
 	}
 
+	// The note is best-effort and written whatever the outcome, so a hang's evidence outlives a non-done run.
+	if err := writeBackgroundShellFrictionNote(deps.FrictionDir, result.ExpiredShells, deps.ShuttleCfg.BackgroundShellWaitMin); err != nil {
+		logger.Warn("websterengine: background shell friction note not written", "err", err)
+	}
+
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
 		runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
@@ -721,6 +732,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
+		// A done outcome reports each shell the wait counted a turn end past;
+		// mapMasterDone has already required its summary.md.
+		if runResult.Outcome == outcomeDone {
+			for _, label := range result.ExpiredShells {
+				runResult.Warnings = append(runResult.Warnings, expiredShellWarning(label))
+			}
+			if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.ExpiredShells); err != nil {
+				return RunResult{}, err
+			}
+		}
 		// A done whose verify gate did not pass ends stuck;
 		// Master's own stuck keeps its own reason.
 		// outcome.yaml is never rewritten.

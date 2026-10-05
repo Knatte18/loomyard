@@ -393,6 +393,16 @@
 //
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
 //
+// # Background shells in Master's wait
+//
+// Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
+// recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
+// Every other background shell is waited out after `background_shell_wait_min`, and the labels come back on shuttle's `Result.ExpiredShells`.
+// Whatever the outcome, Run writes those labels into one best-effort `webster-background-shell` friction note.
+// On a done outcome each label is also a `RunResult.Warnings` entry ("turn end counted after background shell `<label>` ran past `background_shell_wait_min`; ...")
+// and a bullet in summary.md's "Background shells waited out" section (AppendBackgroundShells).
+// A non-done outcome keeps its own error or stuck reason.
+//
 // # The verify-gate report and findings
 //
 // Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
