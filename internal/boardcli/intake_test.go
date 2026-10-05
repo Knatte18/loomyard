@@ -159,7 +159,7 @@ func newIntakeBoard(t *testing.T) (*boardengine.Board, string) {
 	dir := t.TempDir()
 	cfg := boardengine.Config{
 		Path: dir, Readme: "Home.md", DesignPrefix: "proposal-",
-		Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true,
+		Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true,
 	}
 	return boardengine.New(cfg), filepath.Join(dir, "board.json")
 }

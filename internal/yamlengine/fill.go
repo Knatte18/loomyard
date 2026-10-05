@@ -4,6 +4,7 @@ package yamlengine
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,10 +18,14 @@ import (
 // A missing key is appended to its mapping after the file's own keys, in template order, as a deep copy of the template's nodes.
 // The reported path is the inserted key's own path, never its descendants.
 //
+// A key at a declared openMaps path that the file holds is skipped before any shape check,
+// so a list at that path against a mapping template is no mismatch;
+// a missing one is appended whole like any other key.
+//
 // Sequences are carried whole and never descended into, so a template key missing inside an element of a present list stays missing, for MissingKeys to report.
 // An empty or comments-only existing returns the template bytes verbatim, reporting every top-level template key.
 // When nothing is missing, existing is returned byte-for-byte with an empty key list.
-func FillMissing(template, existing []byte) (filled []byte, keys []string, err error) {
+func FillMissing(template, existing []byte, openMaps ...string) (filled []byte, keys []string, err error) {
 	var templateDoc yaml.Node
 	if parseErr := yaml.Unmarshal(template, &templateDoc); parseErr != nil {
 		return nil, nil, fmt.Errorf("parse template YAML: %w", parseErr)
@@ -48,7 +53,7 @@ func FillMissing(template, existing []byte) (filled []byte, keys []string, err e
 	}
 
 	keys = []string{}
-	if err := fillMapping(templateRoot, existingRoot, "", &keys); err != nil {
+	if err := fillMapping(templateRoot, existingRoot, "", &keys, openMaps); err != nil {
 		return nil, nil, err
 	}
 	if len(keys) == 0 {
@@ -73,7 +78,8 @@ func documentRoot(doc *yaml.Node) *yaml.Node {
 
 // fillMapping walks template and existing in parallel and appends each missing template key to existing.
 // path is the dotted path of the two mappings; it is empty at the root.
-func fillMapping(template, existing *yaml.Node, path string, keys *[]string) error {
+// A present key at an openMaps path is left alone, whatever its shape.
+func fillMapping(template, existing *yaml.Node, path string, keys *[]string, openMaps []string) error {
 	if template.Kind != yaml.MappingNode {
 		// A scalar or sequence template node has nothing to fill.
 		return nil
@@ -97,13 +103,16 @@ func fillMapping(template, existing *yaml.Node, path string, keys *[]string) err
 			*keys = append(*keys, keyPath)
 			continue
 		}
+		if slices.Contains(openMaps, keyPath) {
+			continue
+		}
 
 		switch valueNode.Kind {
 		case yaml.MappingNode:
 			if fileValue.Kind != yaml.MappingNode {
 				return shapeMismatch(keyPath, "mapping", nodeShape(fileValue))
 			}
-			if err := fillMapping(valueNode, fileValue, keyPath, keys); err != nil {
+			if err := fillMapping(valueNode, fileValue, keyPath, keys, openMaps); err != nil {
 				return err
 			}
 		case yaml.ScalarNode:

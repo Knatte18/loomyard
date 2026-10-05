@@ -102,7 +102,7 @@ func TestRunDispatchesToConfig(t *testing.T) {
 	t.Chdir(cwd)
 
 	var out bytes.Buffer
-	code := run([]string{"config"}, &out)
+	code := run([]string{"config", "--print"}, &out)
 	if code != 1 {
 		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
 	}

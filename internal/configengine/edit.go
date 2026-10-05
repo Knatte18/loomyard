@@ -28,25 +28,38 @@ type EditorFunc func(path string) error
 // pre-existing files unchanged).
 var ErrAborted = errors.New("config edit aborted")
 
-// DefaultEditor resolves the editor from $VISUAL, then $EDITOR, falling back to notepad on Windows
-// and vi elsewhere.
+// resolveEditor picks the editor command as a binary plus the arguments that precede the path.
+// The order is $VISUAL, then $EDITOR, then `code --wait` when code is on PATH, on every OS.
+// With none of those, Windows gets notepad, and elsewhere nano when it is on PATH, else vi.
+// An environment value is taken as one binary name.
+func resolveEditor(getenv func(string) string, lookPath func(string) (string, error), goos string) (string, []string) {
+	if visual := getenv("VISUAL"); visual != "" {
+		return visual, nil
+	}
+	if editor := getenv("EDITOR"); editor != "" {
+		return editor, nil
+	}
+	if _, err := lookPath("code"); err == nil {
+		return "code", []string{"--wait"}
+	}
+	if goos == "windows" {
+		return "notepad", nil
+	}
+	if _, err := lookPath("nano"); err == nil {
+		return "nano", nil
+	}
+	return "vi", nil
+}
+
+// DefaultEditor resolves the editor from $VISUAL, then $EDITOR, then `code --wait` when code is on
+// PATH, then notepad on Windows, and elsewhere nano when it is on PATH, else vi.
 // It runs the editor via os/exec with Stdin/Stdout/Stderr wired to the process std streams.
 // Returns a non-nil error if the editor exits non-zero.
 func DefaultEditor(path string) error {
-	// Resolve editor command from environment or fallback.
-	var editorCmd string
-	if visual := os.Getenv("VISUAL"); visual != "" {
-		editorCmd = visual
-	} else if editor := os.Getenv("EDITOR"); editor != "" {
-		editorCmd = editor
-	} else if runtime.GOOS == "windows" {
-		editorCmd = "notepad"
-	} else {
-		editorCmd = "vi"
-	}
+	editorCmd, editorArgs := resolveEditor(os.Getenv, exec.LookPath, runtime.GOOS)
 
-	// Run the editor with the path as an argument.
-	cmd := exec.Command(editorCmd, path)
+	// Run the editor with the path as the last argument.
+	cmd := exec.Command(editorCmd, append(editorArgs, path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

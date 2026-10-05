@@ -212,7 +212,7 @@ Records paths are computed on demand from geometry and do not require a registry
 
 - **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view, also reporting `merge_in_progress`, whether THIS pair has a fabric merge parked. Paired `lyx fabric add` hard-requires a records repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
 - **`lyx config` command**: ✅ task 008 complete.
-  The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
+  Bare `lyx config` lists modules and verbs, `lyx config menu` is the interactive picker, `lyx config <module>` edits, and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
 - **Portals**: unimplemented;
   the records junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
@@ -302,13 +302,15 @@ User-facing modules each get one `lyx <module>` namespace:
 
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
+  `types` and `labels` in `board.yaml` are maps from label to description, and `lyx board labels` prints both in file order.
   `lyx board intake` lists open inbox issues not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The README renders Tasks split into dependency layers whose entries can run in parallel, then Notes grouped by type label, and links each slug to its design doc.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
-- **config** — interactive menu for viewing and editing module configs;
+- **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
-  `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
+  `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
+  A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`. ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;

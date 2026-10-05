@@ -33,7 +33,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 100)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	const (
@@ -129,7 +129,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 	t.Parallel()
 	cwd := seedWiki(t, 0)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	const writers = 16
@@ -169,7 +169,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 func BenchmarkGetDuringUpsert(b *testing.B) {
 	cwd := seedWiki(b, 100)
 	// seedWiki creates _lyx/config/board.yaml with path: board, so the board dir is <cwd>/board
-	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}, Labels: []string{"undecided"}, SkipGit: true}
+	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}
 	w := boardengine.New(cfg)
 
 	stop := make(chan struct{})

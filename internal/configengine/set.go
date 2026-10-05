@@ -17,9 +17,11 @@ import (
 // Set writes pairs into module's config file under baseDir, scaffolding from template if needed.
 // Unlike Edit, it never opens an editor and never loops on validation failure.
 // Removes freshly-scaffolded files on error, mirroring Edit's contract.
+// openMaps are the module's open-map paths, passed unchanged to yamlengine.SetValues,
+// so a key under one adds or rewrites an entry.
 // Returns the sorted list of pre-existing keys not in template that were preserved verbatim;
 // nil on any error.
-func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error) {
+func Set(baseDir, module, template string, pairs []yamlengine.KV, openMaps ...string) ([]string, error) {
 	// Check that baseDir is initialized.
 	if _, err := FindBaseDir(baseDir); err != nil {
 		return nil, err
@@ -45,7 +47,7 @@ func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, err
 		return nil, err
 	}
 
-	result, err := yamlengine.SetValues([]byte(template), existingBytes, pairs)
+	result, err := yamlengine.SetValues([]byte(template), existingBytes, pairs, openMaps...)
 	if err != nil {
 		removeIfScaffolded()
 		return nil, err
