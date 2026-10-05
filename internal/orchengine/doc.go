@@ -221,5 +221,8 @@
 //     No startup dialog stopped the resume launch; shuttle's startup probe cleared it without operator input.
 //   - The idle probe passes on a live orch pane.
 //     Claude draws the session name into the input box's top rule (`──── tst:orch ─`), which the probe's rule match rejected until it accepted a labelled top rule, so the probe had never passed on a named session.
+//   - Adopting a large session starts within `startup_timeout_s` and leaves no dialog on the pane.
+//     `TestSmokeOrch_AdoptLargeSession` (opt-in through `LYX_SMOKE_ADOPT_SESSION`) adopted a copy of a hub session's transcript of 12827281 bytes on 2026-10-05, Claude Code 2.1.289.
+//     Startup took 43.8s against a `startup_timeout_s` of 90, so a transcript of this size uses about half the budget.
 //   - A visible plain run in the prime shares the orch pane's window and can squeeze it too short to draw an input box, which makes the idle probe fail and holds every cycle until the pane is tall again.
 package orchengine
