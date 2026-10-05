@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // mouse_boot_integration_test.go proves the mouse boot-option contract
 // against a real, running instance of the configured multiplexer binary:

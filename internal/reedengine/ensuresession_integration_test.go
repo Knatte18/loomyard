@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // ensuresession_integration_test.go pins EnsureSession's booted return value and AddStrand's own
 // attribution log line against a real, running multiplexer instance, following

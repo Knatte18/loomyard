@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // unlessname_integration_test.go drives `lyx reed add --unless-name` on a real hub and tmux server, proving a live matching strand makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no live match leaves the add as today.
 

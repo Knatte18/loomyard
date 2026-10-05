@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions: discovery
 // against a real hub with real tmux sessions, the single-instance lock's two outcomes, the idle-exit

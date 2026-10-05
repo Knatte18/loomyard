@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // watchdogreap_integration_test.go carries the orphan-reap tier's live assertions: the end-to-end
 // reap and healthy-sibling non-interference, the never-entered orphan, the empty-shell degradation,

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // cli_integration_test.go holds the reedcli tests that build a real fixture hub (hubforge.NewHub)
 // with reed config resolution against a real fixture hub, so this file is integration-tagged per

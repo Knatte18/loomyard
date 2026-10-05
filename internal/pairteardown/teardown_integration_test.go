@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // teardown_integration_test.go drives the composite on a real hub pair with a real reed session and a stub driver strand.
 
