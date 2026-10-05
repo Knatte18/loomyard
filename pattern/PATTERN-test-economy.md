@@ -2,6 +2,7 @@
 
 A test exists for a behavior, not for a symbol, and no two tests cover the same behavior.
 Enforcement is review discipline, not a test.
+The general rules live in `scribe:testing` and `scribe:golang-testing`; this entry keeps only what is project-specific or stricter here.
 
 - A test targets behavior and contract at a module's public surface (exported API, CLI verb, file contract), not each helper; an unexported helper is tested through the surface that uses it.
 - A behavior testable with a fake or an in-memory fixture is tested untagged that way, never through a real hub, so integration tests stay the exception.

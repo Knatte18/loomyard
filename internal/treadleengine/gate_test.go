@@ -4,7 +4,7 @@
 // not-found paths, and checks writeGateOutput's file shape.
 // The one real-time execGateCommand case (a lingering child holding the output pipe past
 // gateWaitDelay) lives in gate_lingering_test.go under the integration build tag instead — see the
-// PATTERN-test-tier-purity.
+// PATTERN-test-speed.
 
 package treadleengine
 

@@ -1,6 +1,6 @@
 // tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an `integration`- or `smoke`-tagged test file runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
 // "Starts tmux" has no static shape, so the rule keys on "has a tagged test file" instead, at the cost of one temp directory per tagged package.
-// Modelled on hermeticenv_test.go; see `PATTERN-tmux-test-isolation`.
+// Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
 
 package main
 
@@ -258,7 +258,7 @@ func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	scankit.RequireFloor(t, tagged, 1, "tmux isolation scan tagged packages")
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-tmux-test-isolation` violated:\n%s\nadd a TestMain calling os.Exit(tmuxkit.Main(m)) that compiles under every tag set the package's tests compile under", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-test-isolation` violated:\n%s\nadd a TestMain calling os.Exit(tmuxkit.Main(m)) that compiles under every tag set the package's tests compile under", strings.Join(failures, "\n"))
 	}
 }
 

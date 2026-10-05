@@ -1,7 +1,7 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`/`smoke`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
-// See `PATTERN-test-tier-purity`.
+// See `PATTERN-test-speed`.
 // It also flags an untagged file containing a long literal time.Sleep(...) (see
 // cmd/lyx/tiersleep_test.go).
 
@@ -111,7 +111,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	sleepers.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-test-tier-purity` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-test-speed` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

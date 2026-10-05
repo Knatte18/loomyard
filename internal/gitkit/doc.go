@@ -36,6 +36,6 @@
 // before m.Run(), pointing GIT_CONFIG_GLOBAL at a neutral config and setting GIT_CONFIG_NOSYSTEM=1,
 // which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
 // the test binary launches.
-// See PATTERN-hermetic-git-tests for the machine-enforced half of
+// See PATTERN-test-isolation for the machine-enforced half of
 // this contract.
 package gitkit
