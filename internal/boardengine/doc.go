@@ -40,6 +40,7 @@
 // The board is the one list, and GitHub is the inbox that selfreport files issues to.
 // An issue reaches the board in three steps: list the open inbox issues no entry records, import one as a note or fold it into an existing entry, then close it.
 // An entry records the issues it came from in its issues field, and an issue already recorded is never imported twice.
+// A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
 //

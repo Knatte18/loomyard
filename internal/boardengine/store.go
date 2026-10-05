@@ -10,6 +10,7 @@ package boardengine
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -762,7 +763,27 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	return nil
 }
 
+// carriedIssues returns own followed by the issues of each removeSlugs entry, in removeSlugs order.
+// A number already present is not added again, and a slug that matches nothing adds nothing.
+func (s *Store) carriedIssues(own []int, removeSlugs []string) []int {
+	carried := slices.Clone(own)
+	for _, slug := range removeSlugs {
+		for _, t := range s.tasks {
+			if t.Slug != slug {
+				continue
+			}
+			for _, n := range t.Issues {
+				if !slices.Contains(carried, n) {
+					carried = append(carried, n)
+				}
+			}
+		}
+	}
+	return carried
+}
+
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
+// The upserted entry's issues are its own followed by those of each removed entry, so a merge never loses a recorded issue.
 // setStatus is the resolved status-update step,
 // or nil to skip it.
 // When setStatus targets a missing task, SetStatus returns an error and boardCriticalSection discards the in-memory mutation without saving, leaving the on-disk state unchanged.
@@ -814,6 +835,10 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if err != nil {
 		return Task{}, err
 	}
+
+	incoming.Issues = s.carriedIssues(incoming.Issues, removeSlugs)
+	upsert = maps.Clone(upsert)
+	upsert["issues"] = incoming.Issues
 
 	if err := s.validateWrite(projected, incoming); err != nil {
 		return Task{}, err

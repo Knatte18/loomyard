@@ -57,6 +57,8 @@ lyx board upsert '{"slug":"my-task","title":"My Task","kind":"task","labels":["b
 lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"my-task","title":"My Task","kind":"task","labels":["bug"]}}' --body-file body.md
 ```
 
+A merge carries the removed entries' issues onto the upserted entry, after the numbers it already records, whether or not the payload names `issues`.
+
 Edit a body as a file: `get --body` prints the body alone, verbatim, so write it out, edit it and read it back in:
 
 ```
