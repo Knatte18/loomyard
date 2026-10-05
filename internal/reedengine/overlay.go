@@ -214,7 +214,8 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeo
 //
 // It takes no lock and writes no state, because both lived under the gone worktree and nothing is left to guard;
 // it reads no geometry beyond the two strings it is told.
-// It reaches only the exact-match session it is named, on the socket it is given, and kills that socket's server only when no session remains on it, removing that server's socket file.
+// It reaches only the exact-match session it is named, on the socket it is given, and kills that socket's server only when no session remains on it.
+// After that kill it removes the server's socket file as a best effort: it waits a bounded time for the server to stop answering, and a file still answered after that stays, with no error.
 // It must never be pointed at a session whose worktree is still present; Engine.Down is the right call there.
 //
 // It reports whether a session existed and was reaped;
