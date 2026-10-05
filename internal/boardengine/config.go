@@ -27,7 +27,8 @@ type Config struct {
 	DesignPrefix string `yaml:"design_prefix"`
 	// Types are the type labels;
 	// Labels are every other configured label, both in board.yaml order.
-	// LoadConfig decodes them from the yaml node tree, so the tags are inert.
+	// LoadConfig decodes them from the yaml node tree,
+	// so the tags are inert.
 	Types  []Label `yaml:"-"`
 	Labels []Label `yaml:"-"`
 	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry;
