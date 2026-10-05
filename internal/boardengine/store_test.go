@@ -7,6 +7,7 @@ package boardengine_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1368,4 +1369,103 @@ func TestUpsertIssues(t *testing.T) {
 	if got := s.Tasks()[0].Issues; len(got) != 1 || got[0] != 6 {
 		t.Errorf("a refused upsert changed issues to %v", got)
 	}
+}
+
+// TestMergeTasksIssueCarry verifies that a merge records the removed entries' issues on the upserted entry.
+func TestMergeTasksIssueCarry(t *testing.T) {
+	seed := func(t *testing.T) *boardengine.Store {
+		t.Helper()
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "a", "title": "A", "issues": []int{3}},
+			{"slug": "b", "title": "B", "issues": []int{3, 5}},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+		}
+		return s
+	}
+
+	t.Run("carries removed issues after the existing ones", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "c", "title": "C", "issues": []int{1}}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		// The payload does not name issues,
+		// so the existing entry's own list leads.
+		got, err := s.MergeTasks([]string{"a", "b"}, map[string]any{"slug": "c"}, nil)
+		if err != nil {
+			t.Fatalf("merge: %v", err)
+		}
+		if want := []int{1, 3, 5}; !slices.Equal(got.Issues, want) {
+			t.Errorf("returned issues = %v; want %v", got.Issues, want)
+		}
+		saved, _ := s.GetTask("c")
+		if want := []int{1, 3, 5}; !slices.Equal(saved.Issues, want) {
+			t.Errorf("saved issues = %v; want %v", saved.Issues, want)
+		}
+	})
+
+	t.Run("a payload that names issues keeps its own numbers first", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.MergeTasks([]string{"a", "b"}, map[string]any{"slug": "c", "title": "C", "issues": []int{9, 3}}, nil)
+		if err != nil {
+			t.Fatalf("merge: %v", err)
+		}
+		if want := []int{9, 3, 5}; !slices.Equal(got.Issues, want) {
+			t.Errorf("issues = %v; want %v", got.Issues, want)
+		}
+	})
+
+	t.Run("a remove slug that matches nothing adds nothing", func(t *testing.T) {
+		s := seed(t)
+		got, err := s.MergeTasks([]string{"ghost"}, map[string]any{"slug": "c", "title": "C", "issues": []int{1}}, nil)
+		if err != nil {
+			t.Fatalf("merge: %v", err)
+		}
+		if want := []int{1}; !slices.Equal(got.Issues, want) {
+			t.Errorf("issues = %v; want %v", got.Issues, want)
+		}
+	})
+
+	t.Run("a set-status failure leaves the store unchanged", func(t *testing.T) {
+		dir := t.TempDir()
+		s := boardengine.NewStore(dir)
+		if err := s.Load(); err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "b", "title": "B", "issues": []int{3, 5}}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if err := s.Save(); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+
+		s2 := boardengine.NewStore(dir)
+		if err := s2.Load(); err != nil {
+			t.Fatalf("load s2: %v", err)
+		}
+		status := "active"
+		_, err := s2.MergeTasks(
+			[]string{"b"},
+			map[string]any{"slug": "c", "title": "C"},
+			&boardengine.MergeStatusUpdate{Selector: "ghost", Status: &status},
+		)
+		if err == nil {
+			t.Fatalf("expected error when set_status targets a missing slug")
+		}
+
+		s3 := boardengine.NewStore(dir)
+		if err := s3.Load(); err != nil {
+			t.Fatalf("load s3: %v", err)
+		}
+		b, found := s3.GetTask("b")
+		if !found || !slices.Equal(b.Issues, []int{3, 5}) {
+			t.Errorf("on-disk b = %v (found %v); want issues [3 5]", b.Issues, found)
+		}
+		if _, found := s3.GetTask("c"); found {
+			t.Errorf("c was saved despite the failed merge")
+		}
+	})
 }

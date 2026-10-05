@@ -1072,3 +1072,24 @@ func TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown
 		t.Error("the sibling's stray file is gone after the refused shutdown; want the sibling untouched")
 	}
 }
+
+// TestBattenIntegration_AttachDirNamesTheTaskWorktree pins the InnerRun.AttachDir seam to the task worktree's own anchor, resolved on Call over a real pair.
+func TestBattenIntegration_AttachDirNamesTheTaskWorktree(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	slug := "batten-attach-dir"
+	hubforge.AddPair(t, h, slug)
+
+	c := wireForHub(t, h, slug, nil)
+
+	got, err := c.env.InnerRun.AttachDir()
+	if err != nil {
+		t.Fatalf("AttachDir() error = %v; want nil", err)
+	}
+	taskLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve task location: %v", err)
+	}
+	if got != taskLocation.AnchorPath() {
+		t.Errorf("AttachDir() = %q; want %q", got, taskLocation.AnchorPath())
+	}
+}

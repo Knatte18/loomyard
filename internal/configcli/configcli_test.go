@@ -193,28 +193,89 @@ func TestEditOneSyncFails(t *testing.T) {
 	}
 }
 
-// TestMenuSelection tests menu with a valid selection.
-func TestMenuSelection(t *testing.T) {
-	baseDir := t.TempDir()
+// TestBareConfigListsModulesAndVerbs verifies that bare `lyx config` from a non-git directory exits 0,
+// prints help rather than an envelope, and names reconcile, menu and every module.
+func TestBareConfigListsModulesAndVerbs(t *testing.T) {
+	var out bytes.Buffer
+	code := RunCLIIn(t.TempDir(), &out, nil)
 
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
+	if code != 0 {
+		t.Fatalf("lyx config = %d; want 0; output: %q", code, out.String())
+	}
+	got := out.String()
+	if strings.HasPrefix(strings.TrimSpace(got), "{") {
+		t.Errorf("lyx config printed an envelope; want help text: %q", got)
+	}
+	for _, verb := range []string{"reconcile", "menu"} {
+		if !strings.Contains(got, verb) {
+			t.Errorf("lyx config output does not name %s: %q", verb, got)
+		}
+	}
+	for _, name := range configreg.Names() {
+		if !strings.Contains(got, name) {
+			t.Errorf("lyx config output does not name module %q: %q", name, got)
+		}
+	}
+}
+
+// TestUnknownConfigArgumentRefuses verifies that `lyx config bogus` from a non-git directory exits 1
+// with an unknown-subcommand envelope naming the argument and the way forward.
+func TestUnknownConfigArgumentRefuses(t *testing.T) {
+	var out bytes.Buffer
+	code := RunCLIIn(t.TempDir(), &out, []string{"bogus"})
+
+	if code != 1 {
+		t.Fatalf("lyx config bogus = %d; want 1; output: %q", code, out.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("output is not a JSON envelope: %v; got %q", err, out.String())
+	}
+	msg, _ := env["error"].(string)
+	for _, want := range []string{"unknown subcommand", "bogus", `run "lyx config" to list modules and verbs`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q does not contain %q", msg, want)
+		}
+	}
+}
+
+// TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand,
+// since a subcommand name always routes as a subcommand.
+func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
+	subs := map[string]bool{}
+	for _, c := range Command().Commands() {
+		subs[c.Name()] = true
+	}
+	for _, name := range configreg.Names() {
+		if subs[name] {
+			t.Errorf("module %q shares its name with a config subcommand", name)
+		}
+	}
+}
+
+// runMenuWith runs menu over a seeded temp baseDir with the given input,
+// returning the exit code, the output and the sync tracker.
+func runMenuWith(t *testing.T, input string, seed ...string) (int, string, *fakeSyncTracker) {
+	t.Helper()
+	baseDir := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	for _, name := range seed {
+		if err := os.WriteFile(configengine.ConfigFile(baseDir, name), []byte("# "+name+"\n"), 0o644); err != nil {
+			t.Fatalf("failed to write %s.yaml: %v", name, err)
+		}
 	}
 
-	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-
-	// Simulate user input: select item 1 (board), then quit
-	input := strings.NewReader("1\nq\n")
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(l, baseDir, input, &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
+	code := menu(baseDir, strings.NewReader(input), &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
+	return code, out.String(), tracker
+}
+
+// TestMenuSelection tests menu with a valid selection.
+func TestMenuSelection(t *testing.T) {
+	code, output, tracker := runMenuWith(t, "1\nq\n", "board")
 
 	if code != 0 {
 		t.Errorf("menu() = %d; want 0", code)
@@ -222,7 +283,6 @@ func TestMenuSelection(t *testing.T) {
 	if !tracker.called {
 		t.Error("sync should be called for selected module")
 	}
-	output := out.String()
 	if !strings.Contains(output, "board") {
 		t.Errorf("menu output missing board option; got %q", output)
 	}
@@ -230,25 +290,9 @@ func TestMenuSelection(t *testing.T) {
 
 // TestMenuQuit tests menu with 'q' selection.
 func TestMenuQuit(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-
-	input := strings.NewReader("q\n")
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(l, baseDir, input, &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
+	code := menu(t.TempDir(), strings.NewReader("q\n"), &out, makeNeverCalledEditor(t), tracker.syncFunc())
 
 	if code != 0 {
 		t.Errorf("menu() = %d; want 0", code)
@@ -258,71 +302,53 @@ func TestMenuQuit(t *testing.T) {
 	}
 }
 
-// TestMenuInvalidSelection tests menu with invalid input.
+// TestMenuInvalidSelection tests that a non-number and an out-of-range number each exit 1
+// without calling the editor or sync.
 func TestMenuInvalidSelection(t *testing.T) {
-	baseDir := t.TempDir()
+	for _, input := range []string{"abc\n", "999\n"} {
+		var out bytes.Buffer
+		tracker := &fakeSyncTracker{exitCode: 0}
+		code := menu(t.TempDir(), strings.NewReader(input), &out, makeNeverCalledEditor(t), tracker.syncFunc())
 
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-
-	input := strings.NewReader("999\n")
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(l, baseDir, input, &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
-
-	if code != 1 {
-		t.Errorf("menu() = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called on invalid selection")
-	}
-	output := out.String()
-	if !strings.Contains(output, "invalid selection") {
-		t.Errorf("menu output missing invalid selection message; got %q", output)
+		if code != 1 {
+			t.Errorf("menu(%q) = %d; want 1", input, code)
+		}
+		if tracker.called {
+			t.Errorf("sync should not be called on input %q", input)
+		}
+		if !strings.Contains(out.String(), "invalid") {
+			t.Errorf("menu(%q) output missing an invalid message; got %q", input, out.String())
+		}
 	}
 }
 
-// TestMenuStatus tests that menu marks modules as (configured) or (default).
+// TestMenuStatus tests that menu marks seeded modules (configured) and unseeded ones (default).
 func TestMenuStatus(t *testing.T) {
-	baseDir := t.TempDir()
+	_, output, _ := runMenuWith(t, "q\n", "board")
 
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	// Create board.yaml and fabric.yaml to mark them as (configured)
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "fabric"), []byte("# fabric\n"), 0o644); err != nil {
-		t.Fatalf("failed to write fabric.yaml: %v", err)
-	}
-
-	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-
-	input := strings.NewReader("q\n")
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	_ = menu(l, baseDir, input, &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
-
-	output := out.String()
 	if !strings.Contains(output, "board (configured)") {
 		t.Errorf("menu output missing 'board (configured)'; got %q", output)
 	}
-	if !strings.Contains(output, "fabric (configured)") {
-		t.Errorf("menu output missing 'fabric (configured)'; got %q", output)
+	if !strings.Contains(output, "fabric (default)") {
+		t.Errorf("menu output missing 'fabric (default)'; got %q", output)
+	}
+}
+
+// TestConfigMenuRejectsArgument verifies that `lyx config menu bogus` from a non-git directory
+// exits 1 with a JSON error envelope naming the argument, before the handler resolves any cwd.
+func TestConfigMenuRejectsArgument(t *testing.T) {
+	var out bytes.Buffer
+	code := RunCLIIn(t.TempDir(), &out, []string{"menu", "bogus"})
+
+	if code != 1 {
+		t.Fatalf("lyx config menu bogus = %d; want 1; output: %q", code, out.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("output is not a JSON envelope: %v; got %q", err, out.String())
+	}
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "bogus") {
+		t.Errorf("error %q does not name bogus", msg)
 	}
 }
 
@@ -413,7 +439,7 @@ func TestPrintModule_Seeded(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
@@ -434,7 +460,7 @@ func TestPrintModule_KnownButUnseeded(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
@@ -453,7 +479,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, aggregate) = %d; want 0; output: %q", code, out.String())
@@ -482,7 +508,7 @@ func TestPrintUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unknown) = %d; want 1", code)
@@ -522,7 +548,7 @@ func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set) = %d; want 0; output: %q", code, out.String())
@@ -543,13 +569,86 @@ func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
+	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set unknown key) = %d; want 1", code)
 	}
 	if tracker.called {
 		t.Error("sync should not be called when --set names an unknown key")
+	}
+	assertJSONErrContains(t, out.String(), "unknown config key")
+}
+
+// TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped board.yaml
+// writes the entry under that map and syncs once.
+func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+
+	if code != 0 {
+		t.Fatalf("dispatch(--set labels.x) = %d; want 0; output: %q", code, out.String())
+	}
+	if !tracker.called {
+		t.Error("sync should run after a successful --set")
+	}
+	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	if err != nil {
+		t.Fatalf("read board.yaml: %v", err)
+	}
+	if !strings.Contains(string(data), "x: desc") || !strings.Contains(string(data), "old: kept") {
+		t.Errorf("board.yaml lacks the new and the existing label; got %q", data)
+	}
+}
+
+// TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list refuses,
+// writes nothing and never syncs.
+func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
+	baseDir := t.TempDir()
+	seeded := "types:\n  bug: a defect\nlabels:\n  - old\n"
+	seedModuleConfig(t, baseDir, "board", seeded)
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set into list-shaped labels) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called when --set refuses")
+	}
+	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	if err != nil {
+		t.Fatalf("read board.yaml: %v", err)
+	}
+	if string(data) != seeded {
+		t.Errorf("board.yaml changed on a refused --set; got %q", data)
+	}
+}
+
+// TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module with open maps
+// still refuses and never syncs.
+func TestDispatchSet_UndeclaredNonexistentKeyStillRefuses(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"bogus_key=x"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set undeclared key) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called for an undeclared key")
 	}
 	assertJSONErrContains(t, out.String(), "unknown config key")
 }
@@ -562,7 +661,7 @@ func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--print, --set) = %d; want 1", code)
@@ -583,7 +682,7 @@ func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set, no module) = %d; want 1", code)
@@ -604,7 +703,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 		syncCalls++
 		return 0
 	}
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set multiple) = %d; want 0; output: %q", code, out.String())
@@ -622,7 +721,7 @@ func TestDispatchSet_MalformedValue(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set malformed) = %d; want 1", code)
@@ -640,6 +739,9 @@ func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 	if !strings.Contains(longText, "EDITOR") || !strings.Contains(longText, "VISUAL") {
 		t.Errorf("config Long missing EDITOR/VISUAL fallback documentation; Long = %q", longText)
 	}
+	if !strings.Contains(longText, "code --wait") || !strings.Contains(longText, "nano") {
+		t.Errorf("config Long missing code --wait/nano fallback documentation; Long = %q", longText)
+	}
 	if !strings.Contains(longText, "--set") {
 		t.Errorf("config Long missing --set documentation; Long = %q", longText)
 	}
@@ -656,7 +758,7 @@ func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, orphan key) = %d; want 0; output: %q", code, out.String())
@@ -684,7 +786,7 @@ func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, clean file) = %d; want 0; output: %q", code, out.String())

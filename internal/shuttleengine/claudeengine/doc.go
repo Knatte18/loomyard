@@ -39,6 +39,14 @@
 // The hook sends no `permissionDecision`, which Claude Code reads as "doesn't decide", so it grants nothing and the agents' allow and deny rules still decide the call.
 // A heredoc, pipe or redirect attached to the command still supplies that command's stdin, and the hook denies nothing.
 //
+// The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
+// The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
+// a boundary reading carries its `postTokens` and timestamp and is marked compacted.
+// Every failure degrades to an unknown reading.
+//
+// The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
+// An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+//
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.

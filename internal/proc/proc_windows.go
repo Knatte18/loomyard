@@ -50,6 +50,11 @@ func IsAlive(pid int) bool {
 	return err == nil
 }
 
+// StartTime reports the start time as unreadable on Windows, which keeps the resume check failing closed there.
+func StartTime(pid int) (string, bool) {
+	return "", false
+}
+
 // KillPID force-kills the process identified by pid.
 func KillPID(pid int) error {
 	process, err := os.FindProcess(pid)

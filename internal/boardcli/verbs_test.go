@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
@@ -157,9 +159,18 @@ func TestCLIFind(t *testing.T) {
 	}
 }
 
+// seedUndecidedLabel rewrites the seeded board.yaml of cwd to configure the undecided label, which the template no longer does.
+func seedUndecidedLabel(t *testing.T, cwd string) {
+	t.Helper()
+	content := "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+}
+
 func TestCLIListAndFindLabelFilter(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+	seedUndecidedLabel(t, seedCwd(t))
 	mustUpsert(t, `{"slug":"one","title":"One","kind":"note","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"two","title":"Two","kind":"note","labels":["bug","undecided"]}`)
 	mustUpsert(t, `{"slug":"three","title":"Three","kind":"note","labels":["enhancement","undecided"]}`)
@@ -194,7 +205,7 @@ func TestCLIFind_NoArgumentRefused(t *testing.T) {
 
 func TestCLIListAndFindText(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+	seedUndecidedLabel(t, seedCwd(t))
 	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
@@ -302,6 +313,101 @@ func TestCLIUpsertBodyFile(t *testing.T) {
 	runJSON(t, 1, "upsert", "-", "--body-file", "-")
 }
 
+// TestCLIMergeBodyFile drives merge --body-file with a path and with stdin, and refuses a body given twice.
+func TestCLIMergeBodyFile(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	path := filepath.Join(t.TempDir(), "body.md")
+	fileBody := "# Merged\n\nA \"quoted\" line.\n"
+	if err := os.WriteFile(path, []byte(fileBody), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	mustUpsert(t, `{"slug":"old","title":"Old","labels":["bug"]}`)
+	runJSON(t, 0, "merge", `{"remove_slugs":["old"],"upsert":{"slug":"merged","title":"M","labels":["bug"]}}`, "--body-file", path)
+	got := runJSON(t, 0, "get", `{"slug":"merged"}`)["task"].(map[string]any)
+	if got["body"] != fileBody {
+		t.Fatalf("merged body from file = %q, want %q", got["body"], fileBody)
+	}
+
+	stdinBody := "piped body\n"
+	pipeStdin(t, stdinBody)
+	runJSON(t, 0, "merge", `{"upsert":{"slug":"from-stdin","title":"S","labels":["bug"]}}`, "--body-file", "-")
+	got = runJSON(t, 0, "get", `{"slug":"from-stdin"}`)["task"].(map[string]any)
+	if got["body"] != stdinBody {
+		t.Fatalf("merged body from stdin = %q, want %q", got["body"], stdinBody)
+	}
+
+	// Refusals write nothing.
+	mustUpsert(t, `{"slug":"keep","title":"Keep","labels":["bug"]}`)
+	runJSON(t, 1, "merge", `{"remove_slugs":["keep"],"upsert":{"slug":"both","title":"B","body":"x","labels":["bug"]}}`, "--body-file", path)
+	runJSON(t, 1, "merge", "-", "--body-file", "-")
+	if got := runJSON(t, 0, "get", `{"slug":"keep"}`); got["task"] == nil {
+		t.Fatal("refused merge removed keep")
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"both"}`); got["task"] != nil {
+		t.Fatalf("refused merge wrote both: %v", got)
+	}
+}
+
+// TestCLIGetBody prints bodies byte-for-byte, an empty body as nothing, and refuses an absent target.
+func TestCLIGetBody(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	for slug, body := range map[string]string{
+		"multi":    "# Heading\n\nline one\nline two\n",
+		"no-final": "no trailing newline",
+	} {
+		path := filepath.Join(t.TempDir(), "body.md")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("write body file: %v", err)
+		}
+		runJSON(t, 0, "upsert", `{"slug":"`+slug+`","title":"T","labels":["bug"]}`, "--body-file", path)
+		exitCode, stdout := runCLI(t, "get", `{"slug":"`+slug+`"}`, "--body")
+		if exitCode != 0 || stdout != body {
+			t.Fatalf("get --body %s: exit %d, stdout %q, want %q", slug, exitCode, stdout, body)
+		}
+	}
+
+	mustUpsert(t, `{"slug":"empty","title":"E","labels":["bug"]}`)
+	exitCode, stdout := runCLI(t, "get", `{"slug":"empty"}`, "--body")
+	if exitCode != 0 || stdout != "" {
+		t.Fatalf("get --body of an empty body: exit %d, stdout %q, want nothing", exitCode, stdout)
+	}
+
+	result := runJSON(t, 1, "get", `{"slug":"absent"}`, "--body")
+	if msg, _ := result["error"].(string); !strings.Contains(msg, "absent") {
+		t.Fatalf("absent slug: error = %q, want it to name the slug", msg)
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"absent"}`); got["task"] != nil {
+		t.Fatalf("flagless get of an absent slug: %v, want task:null", got)
+	}
+}
+
+// TestCLIGetBodyRoundTrip feeds the bytes of get --body back through upsert --body-file and finds the body unchanged.
+func TestCLIGetBodyRoundTrip(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	body := "# Heading\n\n- item \"one\"\n- item two\n\ntail\n"
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"rt","title":"R","labels":["bug"]}`, "--body-file", path)
+
+	_, printed := runCLI(t, "get", `{"slug":"rt"}`, "--body")
+	if err := os.WriteFile(path, []byte(printed), 0o644); err != nil {
+		t.Fatalf("write printed body: %v", err)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"rt"}`, "--body-file", path)
+	got := runJSON(t, 0, "get", `{"slug":"rt"}`)["task"].(map[string]any)
+	if got["body"] != body {
+		t.Fatalf("body after round trip = %q, want %q", got["body"], body)
+	}
+}
+
 // pipeStdin replaces os.Stdin with a file holding content until the test ends.
 func pipeStdin(t *testing.T, content string) {
 	t.Helper()
@@ -319,4 +425,57 @@ func pipeStdin(t *testing.T, content string) {
 		os.Stdin = orig
 		f.Close()
 	})
+}
+
+// labelPairs returns the label/description pairs of result[key], in order.
+func labelPairs(t *testing.T, result map[string]any, key string) [][2]string {
+	t.Helper()
+	list, ok := result[key].([]any)
+	if !ok {
+		t.Fatalf("expected %s array, got %v", key, result)
+	}
+	pairs := make([][2]string, len(list))
+	for i, v := range list {
+		m := v.(map[string]any)
+		pairs[i] = [2]string{m["label"].(string), m["description"].(string)}
+	}
+	return pairs
+}
+
+func TestCLILabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedCwd(t)
+	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  enhancement: A new capability\n  bug: Something broken\nlabels:\n  quarry: The code index\n  board: The task board\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+
+	result := runJSON(t, 0, "labels")
+	wantTypes := [][2]string{{"enhancement", "A new capability"}, {"bug", "Something broken"}}
+	wantLabels := [][2]string{{"quarry", "The code index"}, {"board", "The task board"}}
+	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
+		t.Fatalf("types = %v, want %v", got, wantTypes)
+	}
+	if got := labelPairs(t, result, "labels"); !slices.Equal(got, wantLabels) {
+		t.Fatalf("labels = %v, want %v", got, wantLabels)
+	}
+}
+
+func TestCLILabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedCwd(t)
+	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [quarry]\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+
+	result := runJSON(t, 0, "labels")
+	wantTypes := [][2]string{{"bug", ""}, {"enhancement", ""}}
+	wantLabels := [][2]string{{"quarry", ""}}
+	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
+		t.Fatalf("types = %v, want %v", got, wantTypes)
+	}
+	if got := labelPairs(t, result, "labels"); !slices.Equal(got, wantLabels) {
+		t.Fatalf("labels = %v, want %v", got, wantLabels)
+	}
 }

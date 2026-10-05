@@ -1,10 +1,16 @@
 package battencli
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
@@ -67,5 +73,73 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		if !slices.Contains(nils, path) {
 			t.Errorf("intentionallyNil lists c.env.%s but wire() now fills it; remove the entry", path)
 		}
+	}
+}
+
+// wiredPrime wires a battenCLI over a prime location rooted in a temp hub with no task worktree.
+func wiredPrime(t *testing.T) (*battenCLI, *lyxcwd.Location) {
+	t.Helper()
+	location := &lyxcwd.Location{
+		RepoName:     "example",
+		HubPath:      t.TempDir(),
+		WorktreeName: "hub-repo",
+		AnchorRel:    ".",
+	}
+	c := &battenCLI{}
+	if err := c.wire(location, "a-slug"); err != nil {
+		t.Fatalf("wire() error = %v; want nil", err)
+	}
+	return c, location
+}
+
+func TestWire_NotifyQueuesOnThePrimesOrch(t *testing.T) {
+	t.Parallel()
+
+	c, location := wiredPrime(t)
+	paths := orchcli.PrimePaths(location)
+	if err := orchengine.SaveState(paths, orchengine.State{Strand: "orch-strand", Phase: orchengine.PhaseIdle}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	if err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil {
+		t.Fatalf("Notify() error = %v; want nil", err)
+	}
+
+	wantDir := filepath.Join(location.AnchorPath(), ".lyx", "orch", "notices")
+	if paths.NoticesDir != wantDir {
+		t.Fatalf("NoticesDir = %q; want %q", paths.NoticesDir, wantDir)
+	}
+	notices, err := orchengine.ListNotices(paths)
+	if err != nil {
+		t.Fatalf("ListNotices: %v", err)
+	}
+	if len(notices) != 1 || notices[0].Line != "batten a-slug: child left running" {
+		t.Errorf("queued notices = %+v; want exactly the one notice line", notices)
+	}
+}
+
+func TestWire_NotifyWritesNothingWithoutAnOrchStrand(t *testing.T) {
+	t.Parallel()
+
+	c, location := wiredPrime(t)
+	paths := orchcli.PrimePaths(location)
+
+	if err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil {
+		t.Fatalf("Notify() error = %v; want nil", err)
+	}
+
+	if _, err := os.Stat(paths.NoticesDir); !os.IsNotExist(err) {
+		t.Errorf("stat %s error = %v; want the queue directory absent", paths.NoticesDir, err)
+	}
+}
+
+func TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
+	t.Parallel()
+
+	c, _ := wiredPrime(t)
+
+	_, err := c.env.InnerRun.AttachDir()
+	if err == nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("AttachDir() error = %v; want the absent-worktree refusal naming the slug", err)
 	}
 }

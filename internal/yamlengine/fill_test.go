@@ -200,3 +200,35 @@ func TestFillMissing_ListElementKeyLeftForMissingKeys(t *testing.T) {
 		t.Errorf("keys = %v, filled = %q", keys, filled)
 	}
 }
+
+func TestFillMissing_OpenMapSkipsPresentKeyWhateverItsShape(t *testing.T) {
+	template := "name: tmpl\nlabels:\n  a: default\n"
+
+	filled, keys, err := FillMissing([]byte(template), []byte("name: x\nlabels:\n  - a\n"), "labels")
+	if err != nil {
+		t.Fatalf("FillMissing() unexpected error: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Errorf("keys = %v; want none", keys)
+	}
+	if !strings.Contains(string(filled), "- a") {
+		t.Errorf("filled = %q; want the list untouched", filled)
+	}
+
+	if _, _, err := FillMissing([]byte(template), []byte("name: x\nlabels:\n  - a\n")); err == nil {
+		t.Errorf("FillMissing() without the declaration: want a shape mismatch")
+	}
+}
+
+func TestFillMissing_OpenMapMissingIsAppendedWhole(t *testing.T) {
+	filled, keys, err := FillMissing([]byte("name: tmpl\nlabels:\n  a: default\n"), []byte("name: x\n"), "labels")
+	if err != nil {
+		t.Fatalf("FillMissing() unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(keys, []string{"labels"}) {
+		t.Errorf("keys = %v; want [labels]", keys)
+	}
+	if !strings.Contains(string(filled), "a: default") {
+		t.Errorf("filled = %q; want the template's labels", filled)
+	}
+}

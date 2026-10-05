@@ -68,17 +68,19 @@ func ConfigFileRel(module string) string {
 // Load loads and resolves configuration from a YAML file using a template.
 // A template key the present file lacks resolves to its template default and is logged;
 // the file is never written.
+// openMaps are the dotted paths of the module's open maps, passed unchanged to yamlengine, which carries each whole.
 // Returns the resolved bytes or an error if the file is absent, has a shape the template does not allow, lacks a key inside a list element, or cannot be resolved.
-func Load(baseDir, module string, template []byte) ([]byte, error) {
-	return load(baseDir, module, template, false)
+func Load(baseDir, module string, template []byte, openMaps ...string) ([]byte, error) {
+	return load(baseDir, module, template, false, openMaps)
 }
 
 // LoadOrTemplate behaves identically to Load except that a provably-absent _lyx/ directory or a
 // provably-absent config file resolves the caller-supplied template instead of erroring.
 // A config file that exists but is invalid still errors, and any non-absence failure (permission,
 // IO, a stat error) propagates unchanged, exactly as it does on the Load path.
-func LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error) {
-	return load(baseDir, module, template, true)
+// openMaps behave as in Load.
+func LoadOrTemplate(baseDir, module string, template []byte, openMaps ...string) ([]byte, error) {
+	return load(baseDir, module, template, true, openMaps)
 }
 
 // load is the shared body behind Load and LoadOrTemplate.
@@ -90,7 +92,7 @@ func LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error) {
 // regardless of fallbackOnAbsent.
 // A present file's missing template keys are filled from the template in memory and logged, under both policies;
 // lyx config reconcile stays the only writer of config files.
-func load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byte, error) {
+func load(baseDir, module string, template []byte, fallbackOnAbsent bool, openMaps []string) ([]byte, error) {
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
 		if fallbackOnAbsent && errors.Is(err, ErrNotInitialized) {
@@ -111,7 +113,7 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byt
 		return nil, fmt.Errorf("read config file %s: %w", cfgPath, err)
 	}
 
-	filled, filledKeys, err := yamlengine.FillMissing(template, fileBytes)
+	filled, filledKeys, err := yamlengine.FillMissing(template, fileBytes, openMaps...)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
 	}
@@ -121,7 +123,7 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byt
 
 	// FillMissing never descends into lists, so a template key missing inside a list element is the one gap left;
 	// reconcile carries lists whole and cannot add it either, so no reconcile hint.
-	missing, err := yamlengine.MissingKeys(template, filled)
+	missing, err := yamlengine.MissingKeys(template, filled, openMaps...)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
 	}

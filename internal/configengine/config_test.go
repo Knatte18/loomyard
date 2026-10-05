@@ -131,6 +131,65 @@ func TestLoad_MissingKey(t *testing.T) {
 	assertOneFillLine(t, buf, "board", "home")
 }
 
+// openMapTemplate holds a mapping at labels that a module may declare open.
+const openMapTemplate = "name: x\nlabels:\n  bug: a bug\n  feature: a feature\n"
+
+// TestLoad_OpenMapAcceptsOwnKeys tests that a declared open map loads with keys the template lacks and without keys the template holds.
+func TestLoad_OpenMapAcceptsOwnKeys(t *testing.T) {
+	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  docs: documentation\n")
+
+	resolved, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate), "labels")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result struct {
+		Labels map[string]string `yaml:"labels"`
+	}
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
+	}
+	if len(result.Labels) != 1 || result.Labels["docs"] != "documentation" {
+		t.Errorf("labels = %v; want only docs: documentation", result.Labels)
+	}
+}
+
+// TestLoad_OpenMapAcceptsList tests that a declared open map loads a list at its path, and that the same file fails without the declaration.
+func TestLoad_OpenMapAcceptsList(t *testing.T) {
+	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  - bug\n  - docs\n")
+
+	resolved, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate), "labels")
+	if err != nil {
+		t.Fatalf("unexpected error with labels declared: %v", err)
+	}
+	var result struct {
+		Labels []string `yaml:"labels"`
+	}
+	if err := yaml.Unmarshal(resolved, &result); err != nil {
+		t.Fatalf("failed to unmarshal resolved config: %v", err)
+	}
+	if len(result.Labels) != 2 || result.Labels[0] != "bug" || result.Labels[1] != "docs" {
+		t.Errorf("labels = %v; want [bug docs]", result.Labels)
+	}
+
+	if _, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate)); err == nil {
+		t.Error("Load without the declaration = nil; want a shape-mismatch error")
+	}
+}
+
+// TestLoadOrTemplate_OpenMapAcceptsOwnKeys tests that LoadOrTemplate passes the declaration through on a present file.
+func TestLoadOrTemplate_OpenMapAcceptsOwnKeys(t *testing.T) {
+	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  docs: documentation\n")
+
+	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte(openMapTemplate), "labels")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(resolved), "docs: documentation") || strings.Contains(string(resolved), "bug:") {
+		t.Errorf("resolved = %q; want the file's labels carried whole", resolved)
+	}
+}
+
 // TestLoad_CompleteFileLogsNoFill tests that a file holding every template key logs no fill line.
 func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
