@@ -102,6 +102,51 @@ func TestListSockets_MissingDirectory(t *testing.T) {
 	}
 }
 
+func TestRemoveDeadSocket(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets are not used on Windows")
+	}
+	dir, err := os.MkdirTemp("", dirPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	listen := func(name string) (string, *net.UnixListener) {
+		path := filepath.Join(dir, name)
+		l, err := net.Listen("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ul := l.(*net.UnixListener)
+		ul.SetUnlinkOnClose(false)
+		t.Cleanup(func() { ul.Close() })
+		return path, ul
+	}
+	live, _ := listen("live")
+	dead, deadListener := listen("dead")
+	// Closing the listener leaves the socket file behind, as a killed tmux server does.
+	deadListener.Close()
+	plain := filepath.Join(dir, "plain")
+	if err := os.WriteFile(plain, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{live, plain, dead, filepath.Join(dir, "absent")} {
+		removeDeadSocket(path, 0)
+	}
+	if _, err := os.Lstat(live); err != nil {
+		t.Errorf("a socket that accepts connections was removed: %v", err)
+	}
+	if _, err := os.Lstat(plain); err != nil {
+		t.Errorf("a regular file was removed: %v", err)
+	}
+	if _, err := os.Lstat(dead); !os.IsNotExist(err) {
+		t.Errorf("a socket that refuses connections survived: %v", err)
+	}
+}
+
 func TestMaxKeyBytes_HoldsReedServerName(t *testing.T) {
 	hub := "/" + strings.Repeat("h", 300) + "-LYXHUB"
 	if got := len(reedengine.ServerName(hub)); got > maxKeyBytes {
