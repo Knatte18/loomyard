@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -46,6 +47,8 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 		"artifacts":  "/abs/artifact.md",
 		"round":      "1",
 		"focus_path": "/abs/round-1-focus.md",
+
+		parentdirective.MarkerName: "PARENT DIRECTIVE",
 	}
 	judgeBase := map[string]string{
 		"rubric":          "# Rubric\n\nBe thorough.\n",
@@ -58,6 +61,8 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 		"verdict_path":    "/abs/round-1-bouncer-verdict.md",
 		"ledger_path":     "/abs/round-1-bouncer-ledger.md",
 		"focus_path":      "/abs/round-2-focus.md",
+
+		parentdirective.MarkerName: "PARENT DIRECTIVE",
 	}
 
 	for _, clusterExcludes := range []bool{false, true} {

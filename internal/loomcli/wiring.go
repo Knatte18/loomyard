@@ -521,6 +521,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
