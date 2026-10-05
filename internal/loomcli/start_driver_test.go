@@ -21,6 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestMustUseLLMDriverArm asserts the go driver value and an empty driver value both select the
@@ -101,8 +103,12 @@ func (f *fakeDriverPaneProbeForArm) RemoveDriverStrand(guid string) error {
 func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPaneProbe) *loomCLI {
 	t.Helper()
 	dir := t.TempDir()
+	stencilsDir := filepath.Join(dir, "stencils")
+	stencilkit.SeedInto(t, stencilsDir)
 	return &loomCLI{
 		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
+		parentName:      "hub:orch",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},
 		driverStarter:   starter,
@@ -149,7 +155,7 @@ func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
 		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
 	}
 	prompt := starter.gotSpec.Prompt
-	if !strings.Contains(prompt, `run-id "pair"`) {
+	if !strings.Contains(prompt, "run `pair`") {
 		t.Errorf("prompt = %q; want it to name the slug run-id \"pair\"", prompt)
 	}
 	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
@@ -285,8 +291,11 @@ func newTestSpawnAndWaitReceiver(t *testing.T, starter driverStarter, probe driv
 	if err := os.MkdirAll(runLockDir, 0o755); err != nil {
 		t.Fatalf("mkdir run lock dir: %v", err)
 	}
+	stencilsDir := filepath.Join(dir, "stencils")
+	stencilkit.SeedInto(t, stencilsDir)
 	c := &loomCLI{
 		location:        &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		runDeps:         websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		runID:           "self",
 		cfg:             loomengine.Config{},
 		registry:        modelspec.Registry{},
@@ -579,10 +588,69 @@ func newResumeBranchReceiver(t *testing.T, starter driverStarter, probe driverPa
 	return c, bootstrapLockPath, marker
 }
 
+// voucherOnDisk reads the handoff voucher the receiver's location names, reporting whether one exists.
+func voucherOnDisk(t *testing.T, c *loomCLI) (handoffVoucher, bool) {
+	t.Helper()
+	if _, err := os.Stat(loomengine.LoomHandoffVoucher(c.location)); errors.Is(err, os.ErrNotExist) {
+		return handoffVoucher{}, false
+	}
+	voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
+	if err != nil {
+		t.Fatalf("read handoff voucher: %v", err)
+	}
+	return voucher, found
+}
+
+func TestRunDriverSpawnAndWait_SpawnVouchesForTheResume(t *testing.T) {
+	tests := []struct {
+		name        string
+		tierTwoOn   bool
+		priorVouch  bool
+		wantVoucher bool
+	}{
+		{"tier 2 on writes the voucher", true, false, true},
+		{"tier 2 on replaces an earlier voucher", true, true, true},
+		{"tier 2 off writes none", false, false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+			if tc.tierTwoOn {
+				c.frictionDir = t.TempDir()
+			}
+			history := []shedengine.HistoryEntry{{Producer: "plan"}, {Producer: "implement"}}
+			if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: shedengine.StateRunning, History: history}); err != nil {
+				t.Fatalf("write status: %v", err)
+			}
+			if tc.priorVouch {
+				recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), 99, shedengine.StateFailed)
+			}
+
+			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
+			ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+			_ = bootstrapLock.Release()
+
+			if !ok || !starter.called {
+				t.Fatalf("runDriverSpawnAndWait() = %v, starter called = %v; want a spawn", ok, starter.called)
+			}
+			voucher, found := voucherOnDisk(t, c)
+			if found != tc.wantVoucher {
+				t.Fatalf("voucher present = %v; want %v", found, tc.wantVoucher)
+			}
+			if tc.wantVoucher && (voucher.HistoryLength != len(history) || voucher.State != string(shedengine.StateRunning)) {
+				t.Errorf("voucher = %+v; want history length %d, state %q", voucher, len(history), shedengine.StateRunning)
+			}
+		})
+	}
+}
+
 func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T) {
 	starter := &fakeDriverStarter{}
 	sender := &fakeDriverSender{}
 	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+	c.frictionDir = t.TempDir()
+	writeTestRunState(t, c, shedengine.StateAwaiting)
 
 	var out bytes.Buffer
 	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
@@ -593,6 +661,9 @@ func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T)
 	}
 	if len(sender.texts) != 1 {
 		t.Errorf("SendDriver calls = %d; want 1", len(sender.texts))
+	}
+	if _, found := voucherOnDisk(t, c); found {
+		t.Error("a parked-driver resume wrote a handoff voucher")
 	}
 	if starter.called {
 		t.Error("the starter was called on a live parked driver")
@@ -683,6 +754,7 @@ func TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp(t *testing.T) {
 	if err := os.Remove(marker); err != nil {
 		t.Fatalf("remove marker: %v", err)
 	}
+	c.frictionDir = t.TempDir()
 	writeTestRunState(t, c, shedengine.StateRunning)
 
 	var out bytes.Buffer
@@ -694,6 +766,9 @@ func TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp(t *testing.T) {
 	}
 	if out.Len() != 0 || len(sender.texts) != 0 || starter.called {
 		t.Errorf("output %q, sent %d line(s), starter called = %v; want none", out.String(), len(sender.texts), starter.called)
+	}
+	if _, found := voucherOnDisk(t, c); found {
+		t.Error("the live-strand no-op wrote a handoff voucher")
 	}
 	_ = bootstrapLock.Release()
 }

@@ -6,6 +6,7 @@
      which shedadapters.SingleLLMProducer drives through the shuttle seam as recipe row 3.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
+     parent_directive is a third optional marker, rendered by internal/parentdirective.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
 
 # Discussion — interview, then write the decision record
@@ -13,16 +14,7 @@
 You are the Discussion producer: a single agent running the one interactive phase of a loom task.
 Your job is to interview about the design, then write two files that become the durable record of what was decided and why.
 
-## Step 0 — Load the writing skills
-
-Before doing anything else, load two scribe skills, in this order:
-
-1. `scribe:prose`
-2. `scribe:conversation`
-
-The order matters: `scribe:conversation` builds on `scribe:prose`.
-Both loads are best-effort — if a skill is unavailable, continue without it rather than treating an unresolvable skill name as an error.
-
+{{.parent_directive}}
 {{.pattern_directive}}
 {{.friction_directive}}
 ## Step 1 — Read the task from the board

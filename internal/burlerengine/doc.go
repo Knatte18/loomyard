@@ -28,6 +28,13 @@
 // import-allowlist test policing the absence of internal/lyxcwd.
 // See PATTERN-told-geometry.
 //
+// # Skills and the parent directive
+//
+// The round session loads `scribe:prose`, `scribe:code-quality` and `scribe:testing` through its spawn spec's skills (`burlerSkills`).
+// The orchestrator stencil renders the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record;
+// standalone geometry leaves it empty, which renders the no-parent variant.
+// The three instruction files carry no directive.
+//
 // # The A/B round
 //
 // A-before-B is a hard gate, not advisory: job A must be complete, with

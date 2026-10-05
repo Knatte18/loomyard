@@ -30,14 +30,19 @@ func (e *watchEnv) compactFocus() string {
 	return focus
 }
 
-// reachCompacting makes one over-threshold turn end and ticks until `/compact` is typed.
+// finishNote writes the pending note and reads a turn end after it, then ticks once: the note gate passes and `/compact` is typed.
+func (e *watchEnv) finishNote() {
+	e.t.Helper()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("note"))
+	e.tick()
+}
+
+// reachCompacting makes one over-threshold turn end and ticks until `/compact` is typed, through the note gate.
 func (e *watchEnv) reachCompacting() {
 	e.t.Helper()
-	e.s.usage["a"] = 2000
-	e.s.events = append(e.s.events, stop("a"))
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
+	e.injectHandoff()
+	e.finishNote()
 	if st := e.state(); st.Phase != PhaseCompacting {
 		e.t.Fatalf("phase = %s, want compacting", st.Phase)
 	}
@@ -71,16 +76,24 @@ func TestCompact_TriggerTypesCompactOnlyOnIdlePass(t *testing.T) {
 
 	e.s.idle = true
 	e.tick()
-	want := "compact:" + e.compactFocus()
-	if len(e.s.calls) != 1 || e.s.calls[0] != want {
-		t.Fatalf("calls = %v, want [%s]", e.s.calls, want)
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleMode != CycleCompact || st.PendingHandoff == "" {
+		t.Fatalf("state = %+v, want a compact-mode note request", st)
 	}
+	e.assertCompactCalls(0)
+	note := e.writeHandoff()
+	e.s.events = append(e.s.events, stop("note"))
+	e.tick()
+	want := "compact:" + e.compactFocus()
+	if got := e.s.calls[len(e.s.calls)-1]; got != want {
+		t.Fatalf("last call = %q, want %q", got, want)
+	}
+	e.assertCompactCalls(1)
 	st := e.state()
 	if st.Phase != PhaseCompacting || !st.PhaseInjected || st.CycleTrigger != TriggerHard {
 		t.Errorf("state = %+v", st)
 	}
-	if st.PendingHandoff != "" || st.LastHandoff != "" {
-		t.Errorf("compact mode wrote handoff state: %+v", st)
+	if st.LastHandoff != note {
+		t.Errorf("LastHandoff = %q, want the note %q", st.LastHandoff, note)
 	}
 	if st.ReadingTurnEnd == nil || st.ReadingTurnEnd.Message != "a" {
 		t.Errorf("ReadingTurnEnd = %+v, want the turn end a", st.ReadingTurnEnd)
@@ -90,12 +103,9 @@ func TestCompact_TriggerTypesCompactOnlyOnIdlePass(t *testing.T) {
 func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
 	e := newCompactEnv(t)
 	var phaseAtCompact Phase
-	e.s.usage["a"] = 2000
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
+	e.injectHandoff()
 	e.w.session = &phaseProbeSession{fakeSession: e.s, probe: func() { phaseAtCompact = e.state().Phase }}
-	e.tick()
+	e.finishNote()
 	if phaseAtCompact != PhaseCompacting {
 		t.Errorf("phase when /compact was typed = %s, want compacting", phaseAtCompact)
 	}
@@ -112,44 +122,40 @@ func (p *phaseProbeSession) CompactSession(guid, focus string) error {
 	return p.fakeSession.CompactSession(guid, focus)
 }
 
-func TestCompact_RequestedCycleClearsRequestAndCompacts(t *testing.T) {
+func TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote(t *testing.T) {
 	e := newCompactEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	requestedAt := e.clock.now
+	if err := RequestCycle(e.paths, CycleCompact, requestedAt); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
 	e.clock.advance(11 * time.Second)
 	e.tick()
-	e.assertCompactCalls(1)
-	if st := e.state(); st.CycleTrigger != TriggerRequested {
-		t.Errorf("trigger = %q", st.CycleTrigger)
+	e.assertCompactCalls(0)
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested || st.CycleMode != CycleCompact || !st.CycleRequestedAt.Equal(requestedAt) {
+		t.Fatalf("state = %+v, want a requested compact note request", st)
 	}
-	if requested, _ := CycleRequested(e.paths); requested {
+	if _, requested, _ := CycleRequested(e.paths); requested {
 		t.Error("cycle request was not cleared")
 	}
+	e.finishNote()
+	e.assertCompactCalls(1)
 }
 
-func TestCompact_RenderFailureChangesNothing(t *testing.T) {
+func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 	e := newCompactEnv(t)
+	e.injectHandoff()
 	if err := os.WriteFile(stencilstore.Path(e.stDir, compactStencilName), []byte("one\ntwo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := RequestCycle(e.paths); err != nil {
-		t.Fatal(err)
-	}
-	e.s.usage["a"] = 10
-	e.s.events = []shuttleengine.Event{stop("a")}
-	e.tick()
-	e.clock.advance(11 * time.Second)
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("note"))
 	e.tickErr()
-	e.assertNoCalls()
-	if st := e.state(); st.Phase != PhaseIdle {
-		t.Errorf("phase = %s, want idle", st.Phase)
-	}
-	if requested, _ := CycleRequested(e.paths); !requested {
-		t.Error("cycle request was cleared by a failed render")
+	e.assertCompactCalls(0)
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.LastHandoff != "" {
+		t.Errorf("state = %+v, want the note phase kept and no LastHandoff", st)
 	}
 }
 
@@ -175,13 +181,39 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	e.s.idle = true
 	e.tick()
 	st := e.state()
-	if st.Phase != PhaseIdle || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
 		t.Errorf("state = %+v", st)
 	}
-	if st.LastAbortReason != "" || st.LastHandoff != "" {
-		t.Errorf("completion recorded an abort or a handoff: %+v", st)
+	if !st.CompactionBaseline.Equal(entered.Add(2 * time.Second)) {
+		t.Errorf("CompactionBaseline = %v, want the handled boundary", st.CompactionBaseline)
+	}
+	if st.LastAbortReason != "" || st.LastHandoff == "" {
+		t.Errorf("completion recorded an abort or lost the note: %+v", st)
 	}
 	e.assertCompactCalls(1)
+}
+
+func TestCompact_CycleReloadsSkillsThenPointerNamingTheNote(t *testing.T) {
+	e := newCompactEnv(t)
+	e.withSkills()
+	e.reachCompacting()
+	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
+	e.tick() // boundary read and the pane idle: the first skill typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != 0 {
+		t.Fatalf("state = %+v", st)
+	}
+	e.endTurn("t1")
+	e.endTurn("t2")
+	e.endTurn("resumed")
+	e.assertReload("compact:", e.state().LastHandoff)
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Errorf("phase = %s, want idle", st.Phase)
+	}
+	e.assertCompactCalls(1)
+	e.tick()
+	if e.s.count("skill:") != len(reloadSkills) {
+		t.Errorf("the compaction's own boundary reloaded again: %v", e.s.calls)
+	}
 }
 
 func TestCompact_BoundaryAtEntryCompletes(t *testing.T) {
@@ -189,7 +221,7 @@ func TestCompact_BoundaryAtEntryCompletes(t *testing.T) {
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt, 150)
 	e.tick()
-	if st := e.state(); st.Phase != PhaseIdle || st.CycleCount != 1 {
+	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
 		t.Errorf("state = %+v", st)
 	}
 }
@@ -220,10 +252,14 @@ func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
 	e.tick()
 	e.clock.advance(11 * time.Second)
 	e.tick()
-	e.assertCompactCalls(1)
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Fatalf("phase = %s, want the hard trigger held in idle", st.Phase)
+	}
 	e.clock.advance(50 * time.Second)
 	e.tick()
-	e.assertCompactCalls(2)
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want a note request once the hold ended", st.Phase)
+	}
 }
 
 func TestCompact_TimeoutHoldsSoftTrigger(t *testing.T) {
@@ -236,6 +272,7 @@ func TestCompact_TimeoutHoldsSoftTrigger(t *testing.T) {
 	e.tick()
 	e.clock.advance(61 * time.Second)
 	e.tick()
+	e.finishNote()
 	e.assertCompactCalls(1)
 
 	e.clock.advance(100 * time.Second)
@@ -249,10 +286,14 @@ func TestCompact_TimeoutHoldsSoftTrigger(t *testing.T) {
 	e.tick()
 	e.clock.advance(30 * time.Second)
 	e.tick()
-	e.assertCompactCalls(1)
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Fatalf("phase = %s, want the soft trigger held in idle", st.Phase)
+	}
 	e.clock.advance(31 * time.Second)
 	e.tick()
-	e.assertCompactCalls(2)
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want a note request once the hold ended", st.Phase)
+	}
 }
 
 func TestCompact_TimeoutDoesNotHoldRequestedCycle(t *testing.T) {
@@ -266,12 +307,16 @@ func TestCompact_TimeoutDoesNotHoldRequestedCycle(t *testing.T) {
 
 	e.s.usage["b"] = 10
 	e.s.events = append(e.s.events, stop("b"))
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
 	e.clock.advance(11 * time.Second)
 	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want the request to start a note request despite the hold", st.Phase)
+	}
+	e.finishNote()
 	e.assertCompactCalls(2)
 }
 
@@ -300,7 +345,7 @@ func TestCompact_RestartCompletesWithoutRetypingWhenBoundaryRead(t *testing.T) {
 	e.w = e.newWatcher()
 	e.tick()
 	e.assertCompactCalls(1)
-	if st := e.state(); st.Phase != PhaseIdle || st.CycleCount != 1 || st.LastContextTokens != 150 {
+	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 {
 		t.Errorf("state = %+v", st)
 	}
 }
@@ -343,4 +388,170 @@ func TestCompact_DeferTurnEndWhileCompactingChangesNothing(t *testing.T) {
 		t.Errorf("DEFER in compacting changed state: %+v", st)
 	}
 	e.assertCompactCalls(1)
+}
+
+func TestCycleRequest_ModeFollowsRequestNotConfig(t *testing.T) {
+	t.Run("clear request in compact config clears", func(t *testing.T) {
+		e := newCompactEnv(t)
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		e.finishNote()
+		if got := e.s.count("clear"); got != 1 {
+			t.Fatalf("clear calls = %d, want 1: %v", got, e.s.calls)
+		}
+		e.assertCompactCalls(0)
+		if st := e.state(); st.Phase != PhaseClearing || st.CycleMode != CycleClear {
+			t.Errorf("state = %+v", st)
+		}
+	})
+	t.Run("compact request in clear config compacts", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.s.boundary = map[string]time.Time{}
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		e.finishNote()
+		e.assertCompactCalls(1)
+		if got := e.s.count("clear"); got != 0 {
+			t.Errorf("clear calls = %d, want 0", got)
+		}
+	})
+	t.Run("automatic trigger follows cycle_mode", func(t *testing.T) {
+		e := newWatchEnv(t)
+		e.injectHandoff()
+		if st := e.state(); st.CycleMode != CycleClear || !st.CycleRequestedAt.IsZero() {
+			t.Errorf("state = %+v, want clear mode and no request time", st)
+		}
+	})
+}
+
+func TestCompact_SoftCycleHonoursDefer(t *testing.T) {
+	e := newCompactEnv(t)
+	e.cfg.SoftThresholdTokens, e.cfg.ThresholdTokens = 500, 5000
+	e.w = e.newWatcher()
+	e.s.usage["a"] = 600
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(61 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerSoft {
+		t.Fatalf("state = %+v, want a soft note request", st)
+	}
+	e.s.events = append(e.s.events, stop("DEFER"))
+	e.tick()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "deferred" || st.LastDeferral.IsZero() {
+		t.Errorf("state = %+v, want idle after the deferral", st)
+	}
+	e.assertCompactCalls(0)
+}
+
+func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
+	t.Run("note never written", func(t *testing.T) {
+		e := newCompactEnv(t)
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		if e.state().Phase != PhaseHandoffRequested {
+			t.Fatalf("phase = %s", e.state().Phase)
+		}
+		e.clock.advance(90 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
+			t.Errorf("state = %+v, want idle after the timeout measured from the request", st)
+		}
+		e.assertCompactCalls(0)
+	})
+	t.Run("idle probe never passes", func(t *testing.T) {
+		e := newCompactEnv(t)
+		e.s.idle = false
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
+			t.Fatal(err)
+		}
+		e.tick()
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		e.clock.advance(100 * time.Second)
+		e.tick()
+		if _, pending, _ := CycleRequested(e.paths); pending {
+			t.Error("request still pending past the timeout")
+		}
+		e.s.idle = true
+		e.clock.advance(11 * time.Second)
+		e.tick()
+		e.assertNoCalls()
+		if st := e.state(); st.Phase != PhaseIdle {
+			t.Errorf("phase = %s, want idle", st.Phase)
+		}
+	})
+}
+
+func TestCycleRequest_StaleMarkerRemovedAtFirstTick(t *testing.T) {
+	for name, write := range map[string]func(*watchEnv){
+		"old request": func(e *watchEnv) {
+			if err := RequestCycle(e.paths, CycleClear, e.clock.now.Add(-101*time.Second)); err != nil {
+				e.t.Fatal(err)
+			}
+		},
+		"unparseable": func(e *watchEnv) {
+			if err := os.WriteFile(e.paths.CycleRequestPath, []byte("cycle\n"), 0o644); err != nil {
+				e.t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newWatchEnv(t)
+			write(e)
+			e.s.usage["a"] = 10
+			e.s.events = []shuttleengine.Event{stop("a")}
+			e.tick()
+			e.clock.advance(11 * time.Second)
+			e.tick()
+			if _, pending, _ := CycleRequested(e.paths); pending {
+				t.Error("stale marker was not removed")
+			}
+			e.assertNoCalls()
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Errorf("phase = %s, want idle", st.Phase)
+			}
+		})
+	}
+}
+
+func TestCycleRequest_RestartedWatcherMeasuresFromRequestTime(t *testing.T) {
+	e := newCompactEnv(t)
+	e.s.usage["a"] = 10
+	e.s.events = []shuttleengine.Event{stop("a")}
+	if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {
+		t.Fatal(err)
+	}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if e.state().Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s", e.state().Phase)
+	}
+	e.w = e.newWatcher()
+	e.clock.advance(90 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
+		t.Errorf("state = %+v, want the restarted watcher to time out from the request time", st)
+	}
 }

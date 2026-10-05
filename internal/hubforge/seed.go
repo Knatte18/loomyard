@@ -53,11 +53,11 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 
 // SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's board and commits it
 // through fabricengine.NewBolt, matching what fabriccli.CloneAndWire itself does after
-// ReconcileFabricAt — the same NewBolt(res.BoardDir).Commit(...) call — so the fixture leaves the
+// ReconcileHubWideAt — the same NewBolt(res.BoardDir).Commit(...) call — so the fixture leaves the
 // board in the same state a real clone does.
 //
 // It writes to configengine.ConfigFile(h.BoardDir(), "fabric"), the repo-wide fabric config base,
-// matching configsync.ReconcileFabricAt's own boardDir argument.
+// matching configsync.ReconcileHubWideAt's own boardDir argument.
 //
 // Leaving it uncommitted would be unsafe rather than merely untidy: h.BoardDir() is the weft:main
 // checkout the destruction gate's dirtiness check observes, so an uncommitted seed would silently

@@ -66,6 +66,7 @@ func (c *loomCLI) reflectFriction(wait bool) string {
 		FrictionDir:   c.frictionDir,
 		ArchivePrefix: loomengine.LoomFrictionArchivePrefix(c.location),
 		StencilsDir:   c.runDeps.Geom.StencilsDir,
+		ParentName:    c.parentName,
 		FrictionSpec:  c.cfg.Friction,
 		Registry:      c.registry,
 		TaskSlug:      seedSlug(c.location.WorktreeName),

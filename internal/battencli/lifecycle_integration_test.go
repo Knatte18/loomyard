@@ -125,7 +125,7 @@ func seedEntryStatus(t *testing.T, c *battenCLI, producer string, rowState shede
 // Worktree-Create through Seed-Child needs one seeded first.
 func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 	t.Helper()
-	cfg, err := boardengine.LoadConfig(h.Location.AnchorPath(), "board")
+	cfg, err := boardengine.LoadConfig(h.BoardDir(), "board")
 	if err != nil {
 		t.Fatalf("load board config: %v", err)
 	}

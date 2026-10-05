@@ -47,7 +47,7 @@ type seedWire struct {
 const (
 	// DriverGo is the shipped driver: a Go-implemented producer arming the run's child directly.
 	DriverGo = "go"
-	// DriverLLM names an ly-drive session inside the run's own worktree, booted by the recipe's
+	// DriverLLM names a loom driver session inside the run's own worktree, booted by the recipe's
 	// bootstrap verb. Whether a given recipe can honour it is decided at the seeding sites by that
 	// recipe's bootstrap-verb capability, not by ValidateDriver.
 	DriverLLM = "llm"

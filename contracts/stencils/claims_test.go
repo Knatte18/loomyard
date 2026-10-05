@@ -9,6 +9,8 @@ package stencils
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // claim is one wording assertion about a stencil's raw text.
@@ -74,6 +76,7 @@ const (
 	websterPlanDriftSection = "## A plan-drift refusal ends your run as stuck"
 	websterGateSection      = "## A gate failure: spawn one fixer fork"
 	websterOutcomeKeysLine  = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
+	orchNoScribeHandoffWhy  = "the orch stencils carry their own handoff procedure, so none names the scribe handoff skill"
 	droppedConceptsWhy      = "the batch-era concept (oversized batches, deferred-verify chains, the per-batch Scope section) is dropped from the prompt"
 )
 
@@ -160,7 +163,8 @@ var wordingClaims = []stencilClaims{
 		wantAll("a card's verify is runnable shell, never prose, and exceptional next to the plan-level verify", "runnable shell commands", "never prose", "exceptional rather than routine", "the single integration check for the whole plan"),
 		wantAll("the type-label grammar reaches the agent", "one or more bold type labels from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`", "sub-bullets are the card's targets for that label"),
 		wantAll("the ImpactSummary requirement reaches the agent", "`**ImpactSummary:**` on `Edit`/`Delete` cards only", "inline on the label line"),
-		wantAll("Step 0 loads the prose and testing skills", "scribe:prose", "scribe:testing"),
+		wantNone("skills load from the spec, so the stencil names none", "scribe:prose", "scribe:testing"),
+		wantAll("the parent directive renders ahead of the pattern directive", "{{.parent_directive}}"),
 		wantNone("the Plan producer is autonomous, with no operator for chat-reply discipline to serve", "scribe:conversation"),
 		wantAll("every glyph lookup goes through the lyx quarry verb group, and a line copied from a quarry answer is copied verbatim",
 			"lyx quarry glyphs <dir>", "lyx quarry glyphs --text <dir>", "lyx quarry resolve <glyph>...", "lyx quarry toc <path>", "lyx quarry expand <glyph>",
@@ -422,15 +426,55 @@ var wordingClaims = []stencilClaims{
 	{"friction-directive-review-fix.md", FrictionDirectiveReviewFix, frictionOptionalClaims},
 	{"friction-directive-orchestrator.md", FrictionDirectiveOrchestrator, frictionOptionalClaims},
 	{"friction-directive-interview.md", FrictionDirectiveInterview, frictionOptionalClaims},
+	{"orch-template-role.md", OrchTemplateRole, joinClaims(
+		wantAll("the role file carries every theme of the orch procedure",
+			"## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
+			"## The board", "## Where a finding goes", "## Acting without asking", "## Status reports", "## Messaging", "## Which role can do what"),
+		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
+		[]claim{
+			{must: "creates the task pair, drives the loom run inside it and tears the pair down", why: "the batten run owns the pair's creation and teardown"},
+			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
+			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
+			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
+			{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
+			{must: "run `lyx loom start` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
+			{must: "A goto leaves the run paused, so run `lyx loom start`", why: "a goto leaves the run paused"},
+			{must: "resume it with `lyx batten run <slug>`", why: "a batten pause or goto is resumed by batten run"},
+			{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
+			{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
+			{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},
+			{mustNot: "squash-merges", why: "Finalize squashes onto main and closes the PR"},
+			{mustNot: "start the run again", why: "batten resumes the child itself"},
+		}),
+	},
+	{"orch-template-note.md", OrchTemplateNote, joinClaims(
+		wantAll("the note template carries the sections a handoff fills in", "## Doing now", "## Next step with the operator", "## Waiting on the operator"),
+		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
+	)},
+	{"orch-template-start.md", OrchTemplateStart, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-handoff.md", OrchTemplateHandoff, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-resume.md", OrchTemplateResume, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-adopt.md", OrchTemplateAdopt, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-handoff-soft.md", OrchTemplateHandoffSoft, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-compact.md", OrchTemplateCompact, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
 	{"friction-template-reflection.md", FrictionTemplateReflection, []claim{
 		{must: "Merge notes that describe the same problem into one issue", why: "duplicates are merged, not filed per note"},
 		{must: "Drop only a note that is about the task's own code, or that describes nothing wrong", why: "filtering is grouping; intake filters later"},
-		{must: "do not file the halt event; file only the lyx problems behind it", why: "Tier 1 anomaly filing files the halt event, the reflection files the lyx problems behind it"},
+		{must: "`loom-crash-resume*`", why: "the crash-resume note is one of the Go-written kinds the reflection reads"},
+		{must: "file an issue only when the notes, the reason or the trace show a lyx problem behind the event", why: "a halt or crash-resume event is filed only when a lyx problem shows behind it"},
+		{must: "states what happened, why it is abnormal and what to do", why: "every issue body carries what happened, why it is abnormal and what to do"},
 		{must: "ends with a provenance line naming the task slug", why: "each issue carries the task slug and its source notes"},
+		{mustNot: "Tier 1", why: "no Go code files an issue, so the reflection has no Tier 1 filer to defer to"},
 		{must: "never quotes the task repository's source, diffs or plan text", why: "the issue repository is public, so the content rule is a hard rule"},
 		{must: "File only through `lyx selfreport create`, never through `gh`", why: "filing goes through lyx selfreport create alone"},
 		{must: "Write it only after every issue you decided on was created", why: "Go reads the report's existence as proof that filing succeeded"},
 		{must: "end your turn without writing the report", why: "a failed filing leaves no report, so the notes stay for the next reflection"},
+	}},
+	{"shed-template-driver.md", ShedTemplateDriver, []claim{
+		{must: "`" + shedrun.ParkMarkerFileName + "`", why: "the stencil names the Go-declared park marker filename, so renaming either side without the other fails"},
+		{mustNot: "lyx selfreport create", why: "the driver files no issue itself: the run's reflection is the one filer"},
+		{must: "friction: failed", why: "the parent is notified on a done stop whose envelope reports a failed reflection"},
+		{must: "`parent_notice`", why: "an awaiting stop's parent_notice is relayed to the parent"},
 	}},
 }
 

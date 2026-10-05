@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
@@ -149,20 +151,73 @@ func TestStatus_UnknownTokensAreNull(t *testing.T) {
 	}
 }
 
-func TestCycle_WritesRequest(t *testing.T) {
+func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
 	t.Parallel()
 
-	c := newTestCLI(t, &fakeStrands{})
-	code, env := runVerb(t, c.cycleCmd())
-	if code != 0 {
-		t.Fatalf("exit = %d; env %v", code, env)
+	tests := []struct {
+		name string
+		verb func(*orchCLI) *cobra.Command
+		want string
+	}{
+		{"cycle clears", (*orchCLI).cycleCmd, orchengine.CycleClear},
+		{"distill compacts", (*orchCLI).distillCmd, orchengine.CycleCompact},
 	}
-	if env["requested"] != true || env["watcher_live"] != false {
-		t.Errorf("cycle envelope = %v; want requested true, watcher_live false", env)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			// The configured mode is the opposite of the verb's, which must not matter.
+			c.cfg.CycleMode = orchengine.CycleClear
+			if tc.want == orchengine.CycleClear {
+				c.cfg.CycleMode = orchengine.CycleCompact
+			}
+			if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			held, acquired, err := lock.TryAcquireWriteLock(c.paths.WatchLockPath)
+			if err != nil || !acquired {
+				t.Fatalf("hold the watch lock: acquired %v, err %v", acquired, err)
+			}
+			defer held.Release()
+
+			code, env := runVerb(t, tc.verb(c))
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			if env["requested"] != true || env["watcher_live"] != true {
+				t.Errorf("envelope = %v; want requested true, watcher_live true", env)
+			}
+			req, pending, err := orchengine.CycleRequested(c.paths)
+			if err != nil || !pending {
+				t.Fatalf("CycleRequested = %v, %v; want pending, nil", pending, err)
+			}
+			if req.Mode != tc.want || req.RequestedAt.IsZero() {
+				t.Errorf("request = %+v; want mode %q and a request time", req, tc.want)
+			}
+		})
 	}
-	pending, err := orchengine.CycleRequested(c.paths)
-	if err != nil || !pending {
-		t.Errorf("CycleRequested = %v, %v; want true, nil", pending, err)
+}
+
+func TestCycleAndDistill_NoWatcherLeavesNoMarker(t *testing.T) {
+	t.Parallel()
+
+	for name, verb := range map[string]func(*orchCLI) *cobra.Command{"cycle": (*orchCLI).cycleCmd, "distill": (*orchCLI).distillCmd} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			code, env := runVerb(t, verb(c))
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			if env["watcher_live"] != false {
+				t.Errorf("envelope = %v; want watcher_live false", env)
+			}
+			if _, pending, err := orchengine.CycleRequested(c.paths); err != nil || pending {
+				t.Errorf("CycleRequested = %v, %v; want no marker, nil", pending, err)
+			}
+		})
 	}
 }
 

@@ -46,13 +46,14 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	}
 
 	deps := landingDeps(location, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
-		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{})
+		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "")
 
-	bc, err := boardengine.LoadConfig(location.AnchorPath(), "board")
+	hubBoardDir := fabricengine.BoardDir(location.HubPath)
+	bc, err := boardengine.LoadConfig(hubBoardDir, "board")
 	if err != nil {
 		t.Fatalf("LoadConfig error = %v; want nil", err)
 	}
-	bc.Path = fabricengine.BoardDir(location.HubPath)
+	bc.Path = hubBoardDir
 	if _, err := os.Stat(bc.Path); err != nil {
 		t.Fatalf("hub board dir %s: %v", bc.Path, err)
 	}

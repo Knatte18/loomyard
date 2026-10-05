@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestReconcile_DryRun verifies that "lyx config reconcile" without --apply writes no files and
@@ -30,16 +32,16 @@ func TestReconcile_DryRun(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	// Create config directory with a sample board file.
+	// Create config directory with a sample loom file.
 	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 
-	boardPath := configengine.ConfigFile(tmpDir, "board")
-	originalContent := "path: board\nstale_key: old_value\n"
-	if err := os.WriteFile(boardPath, []byte(originalContent), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
+	loomPath := configengine.ConfigFile(tmpDir, "loom")
+	originalContent := "discussion_timeout_min: 480\nstale_key: old_value\n"
+	if err := os.WriteFile(loomPath, []byte(originalContent), 0o644); err != nil {
+		t.Fatalf("write loom.yaml: %v", err)
 	}
 
 	// Chdir into the temp repo so lyxcwd.Getwd inside RunCLI resolves to a git repo.
@@ -75,13 +77,13 @@ func TestReconcile_DryRun(t *testing.T) {
 		t.Error("applied is true; want false (dry-run)")
 	}
 
-	// Verify board.yaml was not modified.
-	content, err := os.ReadFile(boardPath)
+	// Verify loom.yaml was not modified.
+	content, err := os.ReadFile(loomPath)
 	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
+		t.Fatalf("read loom.yaml: %v", err)
 	}
 	if string(content) != originalContent {
-		t.Error("board.yaml was modified during dry-run; should be unchanged")
+		t.Error("loom.yaml was modified during dry-run; should be unchanged")
 	}
 
 	// Check modules array exists and contains per-module info.
@@ -120,10 +122,26 @@ func TestReconcile_Apply(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	// Create config directory.
+	// Create config directory, with a per-worktree board.yaml the hub file below subsumes.
 	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
+	}
+	const subsumedBoard = "labels:\n  area-x: Area X\n"
+	boardPath := configengine.ConfigFile(tmpDir, "board")
+	if err := os.WriteFile(boardPath, []byte(subsumedBoard), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+	location, err := lyxcwd.Resolve(tmpDir)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	hubBoardDir := fabricengine.BoardDir(location.HubPath)
+	if err := os.MkdirAll(configengine.ConfigDir(hubBoardDir), 0o755); err != nil {
+		t.Fatalf("mkdir hub config: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(hubBoardDir, "board"), []byte("labels:\n  area-x: Area X\n  area-y: Area Y\n"), 0o644); err != nil {
+		t.Fatalf("write hub board.yaml: %v", err)
 	}
 
 	// Chdir into the temp repo.
@@ -159,13 +177,25 @@ func TestReconcile_Apply(t *testing.T) {
 		t.Error("applied is false; want true")
 	}
 
-	// Verify board.yaml was created on disk. "fabric" is deliberately excluded
-	// from this assertion: since configsync.ReconcileAll skips "fabric"
-	// entirely (its config is repo-wide at fabricengine.BoardDir, materialized
-	// via ReconcileFabricAt at clone time, never per-worktree), "board" is the
-	// generic module this reconcile-writes-to-disk assertion exercises instead.
-	boardPath := configengine.ConfigFile(tmpDir, "board")
-	if _, err := os.Stat(boardPath); err != nil {
-		t.Errorf("board.yaml not created: %v", err)
+	// Verify loom.yaml was created on disk. Hub-wide modules are never written per-worktree, so
+	// "loom" is the generic module this reconcile-writes-to-disk assertion exercises.
+	loomPath := configengine.ConfigFile(tmpDir, "loom")
+	if _, err := os.Stat(loomPath); err != nil {
+		t.Errorf("loom.yaml not created: %v", err)
+	}
+
+	// The per-worktree board.yaml the hub file subsumes is reported retired and deleted.
+	modules, _ := result["modules"].([]any)
+	retired := false
+	for _, m := range modules {
+		if mod, ok := m.(map[string]any); ok && mod["module"] == "board" {
+			retired, _ = mod["retired"].(bool)
+		}
+	}
+	if !retired {
+		t.Errorf("board module not reported retired; modules = %v", modules)
+	}
+	if _, err := os.Stat(boardPath); !os.IsNotExist(err) {
+		t.Errorf("per-worktree board.yaml still present after --apply (stat err = %v)", err)
 	}
 }

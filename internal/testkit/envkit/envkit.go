@@ -64,6 +64,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		ParentBranch:     "fixture-parent",
 		DescriptionPath:  summaryparser.Path(dir),
 		StencilsDir:      dir,
+		ParentName:       "fixture-parent-session",
 		ScratchDir:       filepath.Join(dir, "landing-scratch"),
 		OriginURL:        "https://example.invalid/fixture/fixture.git",
 		PushBranch:       func() error { return nil },

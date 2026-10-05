@@ -1,15 +1,20 @@
 // session.go completes Claude's shuttleengine.SessionCycler: the idle-session probe and the clear-session and compact-session choreographies.
+// It also realizes shuttleengine.SkillLoader: the skill-load choreography and its unknown-skill classifier.
 // All are pure over a capture string or literal text, like startup.go's classifiers,
 // and all Claude TUI shape knowledge stays in this package, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-var _ shuttleengine.SessionCycler = (*Claude)(nil)
+var (
+	_ shuttleengine.SessionCycler = (*Claude)(nil)
+	_ shuttleengine.SkillLoader   = (*Claude)(nil)
+)
 
 // runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
 const runningTurnNeedle = "esctointerrupt"
@@ -135,4 +140,36 @@ func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput 
 		text += " " + focus
 	}
 	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
+}
+
+// Claude Code's unknown-command notice forms in normalizeCapture form, each followed by the unknown name.
+const (
+	unknownSkillNeedle   = "unknownskill:"
+	unknownCommandNeedle = "unknownslashcommand:"
+)
+
+// defaultSkillLoadTimeout bounds one skill's load: a skill load is one short model turn.
+const defaultSkillLoadTimeout = 2 * time.Minute
+
+// SkillLoadSequence returns /<skill> typed and submitted, with no leading Escape for the same reason as ClearSessionSequence.
+func (c *Claude) SkillLoadSequence(skill string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{{Text: "/" + skill, Submit: true}}
+}
+
+// SkillUnknown reports whether capture shows Claude Code's unknown-command notice naming skill, with no running-turn hint.
+// Claude Code's exact reaction to an unknown skill is unverified, so every reaction is bounded:
+// a provider that treats the line as a plain prompt ends a turn, which confirms the load,
+// and one that shows nothing is skipped at the skill-load timeout.
+func (c *Claude) SkillUnknown(capture, skill string) bool {
+	normalized := normalizeCapture(capture)
+	if strings.Contains(normalized, runningTurnNeedle) {
+		return false
+	}
+	name := normalizeCapture(skill)
+	return strings.Contains(normalized, unknownSkillNeedle+name) || strings.Contains(normalized, unknownCommandNeedle+name)
+}
+
+// DefaultSkillLoadTimeout returns the bound on one skill's load.
+func (c *Claude) DefaultSkillLoadTimeout() time.Duration {
+	return defaultSkillLoadTimeout
 }

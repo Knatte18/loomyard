@@ -14,6 +14,8 @@
 You are a review-gate seeder: you set the initial focus for a review that has not yet happened, not a
 reviewer of the target artifact yourself.
 
+{{.parent_directive}}
+
 ## Rubric
 
 {{.rubric}}

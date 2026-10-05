@@ -95,20 +95,19 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 	}
 }
 
-// TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus is the wiring guard for the step
-// clean-handoff marker (crucible round 2, R2-F1): recordStepHandoff and its consume/detect halves
-// are unit-tested in stephandoff_test.go, but a helper nothing calls stays green over an orphan --
+// TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus is the wiring guard for the
+// handoff voucher (crucible round 2, R2-F1): recordHandoffVoucher and its consume/detect halves
+// are unit-tested in handoffvoucher_test.go, but a helper nothing calls stays green over an orphan --
 // the exact shape F-1 shipped in -- so this test drives the real `lyx loom step` binary and asserts
-// the marker landed beside the ephemeral tree's other loom files, matching the persisted status.
+// the voucher landed beside the ephemeral tree's other loom files, matching the persisted status.
 //
-// Without the marker, a completed step leaves state running with a live history and a free run
+// Without the voucher, a completed step leaves state running with a live history and a free run
 // lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
-// selfreport on then files a spurious crash-resume GitHub issue for a task in which nothing
-// crashed.
+// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
 //
 // Like its siblings, this test spawns zero real LLM subprocesses: it dispatches at most the
 // pure-Go precondition rows.
-func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T) {
+func TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus(t *testing.T) {
 	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -124,16 +123,16 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 		t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
 	}
 
-	marker, found, err := state.ReadJSONStrict[stepHandoffMarker](loomengine.LoomStepHandoff(loc), loomengine.LoomStepHandoffLock(loc))
+	voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(loc), loomengine.LoomHandoffVoucherLock(loc))
 	if err != nil {
-		t.Fatalf("read step clean-handoff marker: %v", err)
+		t.Fatalf("read handoff voucher: %v", err)
 	}
 	if !found {
-		t.Fatalf("no clean-handoff marker at %s after a completed step; want one matching the persisted status -- without it the next run files a spurious crash-resume", loomengine.LoomStepHandoff(loc))
+		t.Fatalf("no handoff voucher at %s after a completed step; want one matching the persisted status -- without it the next run files a spurious crash-resume", loomengine.LoomHandoffVoucher(loc))
 	}
-	if marker.HistoryLength != len(persisted.History) || marker.State != string(persisted.State) {
-		t.Errorf("clean-handoff marker = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
-			marker.HistoryLength, marker.State, len(persisted.History), persisted.State)
+	if voucher.HistoryLength != len(persisted.History) || voucher.State != string(persisted.State) {
+		t.Errorf("handoff voucher = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
+			voucher.HistoryLength, voucher.State, len(persisted.History), persisted.State)
 	}
 }
 
@@ -147,7 +146,7 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 // and leaked an internal "no such file or directory" path instead of their own remedy. Neither verb's
 // unit tests could see it: they build both paths under a t.TempDir() that already exists.
 //
-// The ly-drive skill's first move is a status read taken as its baseline, and on a brand-new task
+// The loom driver's first move is a status read taken as its baseline, and on a brand-new task
 // that read must reach the verb's own remedy rather than a lock-directory error.
 func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
 	exe := sharedLyxBinary(t)

@@ -38,8 +38,10 @@ func landingDeps(
 	registry modelspec.Registry,
 	runner *shuttleengine.Runner,
 	cfg landingshed.Config,
+	parentName string,
 ) landingshed.Deps {
 	return landingshed.Deps{
+		ParentName:      parentName,
 		WorktreeRoot:    l.WorktreePath(),
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,
@@ -114,10 +116,11 @@ func landingDeps(
 // openHubBoard opens the hub's board the way boardcli does, but with Path pointed at the hub's board rather than a per-worktree link (Hub Containment),
 // and with boardengine.ApplySkipEnv applied so render and sync behave as they do for `lyx board`.
 func openHubBoard(l *lyxcwd.Location) (*boardengine.Board, error) {
-	bc, err := boardengine.LoadConfig(l.AnchorPath(), "board")
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	bc, err := boardengine.LoadConfig(boardDir, "board")
 	if err != nil {
 		return nil, err
 	}
-	bc.Path = fabricengine.BoardDir(l.HubPath)
+	bc.Path = boardDir
 	return boardengine.New(boardengine.ApplySkipEnv(bc)), nil
 }

@@ -19,9 +19,9 @@ const shedDirName = "shed"
 const driveReportsDirName = "drive-reports"
 
 // ParkMarkerFileName is the filename of the driver park marker, whose path ParkMarker returns.
-// It is exported because the ly-drive skill names the same filename, and a loomcli test pins the two together.
+// It is exported because the driver stencil names the same filename, and a loomcli test pins the two together.
 // The file's content is the path of the stop report the driver parked on.
-// A loom-launched ly-drive driver writes it at a hand-back and removes it before a self-initiated re-step;
+// A loom-launched driver writes it at a hand-back and removes it before a self-initiated re-step;
 // `lyx loom start` removes it when it resumes the driver, or before it spawns a fresh one.
 const ParkMarkerFileName = "driver-parked"
 
@@ -88,7 +88,7 @@ func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "last-commit")
 }
 
-// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the step envelope reports as scratch_dir.
+// ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the full step envelope, held by the step record, reports as scratch_dir.
 func ParkMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
 }

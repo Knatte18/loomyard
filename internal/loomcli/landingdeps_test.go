@@ -43,7 +43,12 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		registry,
 		runner,
 		cfg,
+		"parent-session",
 	)
+
+	if deps.ParentName != "parent-session" {
+		t.Errorf("landingDeps(...).ParentName = %q; want the told parent name", deps.ParentName)
+	}
 
 	v := reflect.ValueOf(deps)
 	typ := v.Type()

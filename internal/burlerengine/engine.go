@@ -31,6 +31,9 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 // burlerRole is the agent-name role this module's burler spawn carries.
 const burlerRole = "burler"
 
+// burlerSkills are the skills the round session loads, in order.
+var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
+
 // Engine drives burler rounds through a Shuttle, resolving Profile paths against geom.WorktreeRoot
 // and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
@@ -157,7 +160,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	inst2Path := filepath.Join(roundDir, "instruction-2-review.md")
 	inst3Path := filepath.Join(roundDir, "instruction-3-fix.md")
 
-	prompt, files, err := composePrompt(e.stencilsDir, &p, directive, frictionDirective, inst1Path, inst2Path, inst3Path)
+	prompt, files, err := composePrompt(e.stencilsDir, e.geom.ParentName, &p, directive, frictionDirective, inst1Path, inst2Path, inst3Path)
 	if err != nil {
 		return Result{}, err
 	}
@@ -175,7 +178,8 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		Effort:        opts.Effort,
 		Timeout:       opts.Timeout,
 		Role:          burlerRole,
-		Round:         opts.Round,
+		Skills:        burlerSkills,
+		Round:        opts.Round,
 		ForkSubagents: p.ClusterFan != "",
 	}
 

@@ -5,9 +5,9 @@
 // promote, prune, find, labels and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
-// Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
-// design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
-// fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve.
+// Configuration resolution happens once in a PersistentPreRunE.
+// The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lyx/config/board.yaml, whatever worktree the verb runs in,
+// and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -48,7 +48,8 @@ one type label, a note exactly one, and every label must be configured in board.
 renders tasks split into dependency layers and notes grouped by type. Agents read and write the
 board through "lyx board", never through the JSON files under _board.
 
-The config file (_lyx/config/board.yaml) controls non-geometry settings: readme
+The config file is the hub's <hub>/_board/_lyx/config/board.yaml, read whatever worktree the verb runs in.
+It controls non-geometry settings: readme
 and design_prefix filenames and the types and labels lists. The board data dir (<hub>/_board) is
 derived from the worktree layout via lyxcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
@@ -84,20 +85,21 @@ available subcommands without requiring a git repo.`,
 				return nil
 			}
 
-			cfg, err = boardengine.LoadConfig(cwd, "board")
-			if err != nil {
-				output.Err(cmd.OutOrStdout(), err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
 			layout, rerr := lyxcwd.Resolve(cwd)
 			if rerr != nil {
 				output.Err(cmd.OutOrStdout(), rerr.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			cfg.Path = fabricengine.BoardDir(layout.HubPath)
+			boardDir := fabricengine.BoardDir(layout.HubPath)
+
+			cfg, err = boardengine.LoadConfig(boardDir, "board")
+			if err != nil {
+				output.Err(cmd.OutOrStdout(), err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+			cfg.Path = boardDir
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)

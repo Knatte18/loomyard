@@ -176,7 +176,7 @@ func providerlessShuttleConfig() string {
 }
 
 // fastDeadlineLoomConfig returns loom's shipped config template with the discussion producer's
-// deadline cut from eight hours to one minute, and self-report auto-filing disabled.
+// deadline cut from eight hours to one minute.
 //
 // The deadline and provider overrides work as a pair with providerlessShuttleConfig above, and
 // neither is sufficient alone. Removing the provider stops a real session from starting; it does
@@ -185,20 +185,8 @@ func providerlessShuttleConfig() string {
 // loom.yaml's discussion_timeout_min, which ships at 480 so an autonomous agent exploring a
 // codebase is never cut off. In a fixture with no agent at all that is an eight-hour block on a
 // thirty-second test.
-//
-// The selfreport override extends that providerless/fast-deadline pair into a trio, and it is
-// load-bearing for a distinct reason: this suite deliberately bounces Discussion-Write until the
-// bounce budget is spent and then blocks, which is exactly the bounce-budget-exhausted trigger.
-// It drives the real compiled cmd/lyx binary as a genuine subprocess, never RunCLI in-process (see
-// this file's own header), so there is no selfreportengine.NewGitHubClient seam to swap here the
-// way selfreport_github_test.go swaps it -- the knob is the only thing standing between this
-// suite and a real filed issue against the upstream repository on every machine with a resolvable
-// GitHub token, combined with the warn-and-continue posture that would still report the test as
-// passing.
 func fastDeadlineLoomConfig() string {
-	cfg := strings.Replace(loomengine.ConfigTemplate(), "discussion_timeout_min: 480", "discussion_timeout_min: 1", 1)
-	cfg = strings.Replace(cfg, "selfreport: true", "selfreport: false", 1)
-	return cfg
+	return strings.Replace(loomengine.ConfigTemplate(), "discussion_timeout_min: 480", "discussion_timeout_min: 1", 1)
 }
 
 // smokeStatusRel is the status file's relative path for the self run.

@@ -174,6 +174,9 @@ type Env struct {
 	// It is legal on Env because Env carries roots and run-wide values,
 	// and a value that differs per row belongs in Config instead -- Slug does not differ between the three batten rows a single caller wires.
 	Slug string
+	// ParentName is the run-wide name of the session this run's spawned roles escalate to, read by the Bouncer entry for shedadapters.BouncerConfig.ParentName.
+	// Empty is the absent value and renders the parent directive's no-parent variant.
+	ParentName string
 	// SegmentBounces answers a row's segment bounce count and budget from the run's persisted history,
 	// read by the Bouncer entry for the budget sentence of its CIRCLING Awaiting Reason.
 	// It is run-wide and takes the row's name, so one closure serves every Bouncer row; inSegment is false for a row outside any segment.

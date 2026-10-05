@@ -27,6 +27,8 @@
 // nor overrides it -- a human put that state there on purpose, and this package has no way to know
 // why, so the safe move is to leave it exactly as found and let a human resolve it.
 //
+// The conflict session loads `scribe:prose` and `scribe:code-quality` before its prompt, and its stencil carries the parent directive that internal/parentdirective renders from the told Deps.ParentName.
+//
 // It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it
 // derives none of its own.

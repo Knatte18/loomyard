@@ -1,7 +1,6 @@
 // halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the two hooks that write it and reflect, loomAfterStep under step and loomPostRun under run.
 //
-// Two paths file a halt and they split it: Tier 1 anomaly filing (detectAndFileAnomalies), which both hooks run first, files the halt event under its stable anomaly title, and the reflection files only the lyx problems behind it.
-// With the selfreport knob on the halt note says so, so one halt is not filed twice.
+// A halt has one path: the halt note, then the reflection, which files only the lyx problems behind the halt.
 
 package loomcli
 
@@ -16,22 +15,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // haltNote describes one `blocked` or `failed` halt.
 type haltNote struct {
-	Producer   string
-	State      shedengine.State
-	Reason     string
-	HistoryLen int
-	TraceFile  string
-	// TierOneFiled is set when Tier 1 anomaly filing is on, which files the halt event itself.
-	TierOneFiled bool
+	Producer  string
+	State     shedengine.State
+	Reason    string
+	History   []shedengine.HistoryEntry
+	TraceFile string
 }
 
-// writeHaltNote records n as a friction note named `loom-halt`.
+// writeHistoryRows appends the history section of a friction note: one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
+func writeHistoryRows(b *strings.Builder, history []shedengine.HistoryEntry) {
+	b.WriteString("\nhistory:\n")
+	if len(history) == 0 {
+		b.WriteString("no history entries\n")
+		return
+	}
+	for _, h := range history {
+		b.WriteString("- " + h.Producer + " / " + string(h.Outcome) + " / " + h.At + "\n")
+	}
+}
+
+// writeHaltNote records n as a friction note named `loom-halt`, carrying the anomaly kind the halt classifies as and the history behind it.
 // It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
 func writeHaltNote(frictionDir string, n haltNote) error {
 	if frictionDir == "" {
@@ -46,13 +56,14 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 	var b strings.Builder
 	b.WriteString("loom halted " + string(n.State) + " at " + n.Producer + "\n\n")
 	b.WriteString("```\n" + n.Reason + "\n```\n\n")
-	if n.TierOneFiled {
-		b.WriteString("Tier 1 anomaly filing files the halt event itself; file only the lyx problems behind it.\n\n")
-	}
 	b.WriteString("producer: " + n.Producer + "\n")
 	b.WriteString("state: " + string(n.State) + "\n")
-	b.WriteString("history_entries: " + strconv.Itoa(n.HistoryLen) + "\n")
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok {
+		b.WriteString("anomaly: " + string(kind) + "\n")
+	}
+	b.WriteString("history_entries: " + strconv.Itoa(len(n.History)) + "\n")
 	b.WriteString("trace_file: " + n.TraceFile + "\n")
+	writeHistoryRows(&b, n.History)
 
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("loom: write halt note %s: %w", path, err)
@@ -67,7 +78,6 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 	if c.frictionDir == "" {
 		return frictionengine.StatusSkipped
 	}
-	n.TierOneFiled = c.cfg.Selfreport
 	if err := writeHaltNote(c.frictionDir, n); err != nil {
 		logger.Warn("loom: could not write the halt note", "dir", c.frictionDir, "error", err)
 	}
@@ -90,22 +100,19 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 		return haltNote{}, false
 	}
 	return haltNote{
-		Producer:   st.CurrentProducer,
-		State:      shedengine.StateFailed,
-		Reason:     st.Error,
-		HistoryLen: len(st.History),
-		TraceFile:  logger.TraceFile(),
+		Producer:  st.CurrentProducer,
+		State:     shedengine.StateFailed,
+		Reason:    st.Error,
+		History:   st.History,
+		TraceFile: logger.TraceFile(),
 	}, true
 }
 
 // loomAfterStep is loom's AfterStep hook and returns the envelope's "friction" key.
-// It first runs Tier 1 anomaly filing on every path, ahead of the halt note and reflection, with the skips detectAndFileAnomalies owns: the knob off, a busy step and a cancelled context each file nothing more.
 // A `failed` halt behind stepErr and a `blocked` result each write a halt note and reflect.
 // `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this process.
 // Every other state, awaiting and paused included, writes nothing and reports skipped.
 func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, stepErr error) string {
-	detectAndFileAnomalies(c.anomalyDeps(ctx, stepErr))
-
 	if stepErr != nil {
 		if n, ok := c.failedHalt(stepErr); ok {
 			return c.reflectHalt(n)
@@ -115,11 +122,11 @@ func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, 
 	switch res.State {
 	case shedengine.StateBlocked:
 		return c.reflectHalt(haltNote{
-			Producer:   res.Producer,
-			State:      shedengine.StateBlocked,
-			Reason:     res.Reason,
-			HistoryLen: len(res.History),
-			TraceFile:  logger.TraceFile(),
+			Producer:  res.Producer,
+			State:     shedengine.StateBlocked,
+			Reason:    res.Reason,
+			History:   res.History,
+			TraceFile: logger.TraceFile(),
 		})
 	case shedengine.StateDone:
 		if c.rowFrictionStatus != "" {

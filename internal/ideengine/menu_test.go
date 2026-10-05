@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -95,11 +96,11 @@ func TestMenuExcludesMain(t *testing.T) {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
-	configDir := configengine.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(fabricengine.BoardDir(container))
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(fabricengine.BoardDir(container), "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -150,11 +151,11 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	configDir := configengine.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(fabricengine.BoardDir(container))
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(fabricengine.BoardDir(container), "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -210,11 +211,11 @@ func TestMenuNumericSelection(t *testing.T) {
 		}
 	}()
 
-	configDir := configengine.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(fabricengine.BoardDir(container))
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(fabricengine.BoardDir(container), "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-

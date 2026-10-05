@@ -89,7 +89,10 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 		return nil, err
 	}
 
-	prompt := driverPrompt(resolvedRunID, reportPath)
+	prompt, err := driverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath)
+	if err != nil {
+		return nil, err
+	}
 	spec := driverSpec(prompt, reportPath, settings)
 
 	run, err := c.driverStarter.StartDriver(spec)
@@ -148,6 +151,25 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	return false
 }
 
+// vouchForSpawnedResume records the handoff voucher for the status file as it stands, replacing any earlier voucher.
+// It writes only when Tier 2 is on, the gate under which the entry observation consumes the voucher;
+// a missing or unreadable status file, or a failed write, is warned and changes nothing else.
+func (c *loomCLI) vouchForSpawnedResume() {
+	if c.frictionDir == "" {
+		return
+	}
+	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if err != nil {
+		logger.Warn("loom: could not read the status file to vouch for the spawned resume", "path", c.shedPaths.StatusPath, "cause", err)
+		return
+	}
+	if !found {
+		logger.Warn("loom: no status file to vouch for the spawned resume", "path", c.shedPaths.StatusPath)
+		return
+	}
+	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(st.History), st.State)
+}
+
 // runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
@@ -160,6 +182,13 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 // so it spawns nothing and resumes that driver through resumeParkedDriver instead.
 // A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
 // over a running run it is a no-op, since the driver is working.
+//
+// On the spawn path only, after the stale-marker removal and right before either arm spawns, it writes the handoff voucher for the status file as it stands, when Tier 2 is on, so the driver's first entry observation does not read this deliberate resume as a crash.
+// The voucher suppresses at most one entry observation, the first, and only when its history length and state equal what start recorded;
+// it lives under `.lyx`, so it never crosses machines or survives a fabric re-wire.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
+// a driver that start spawned and that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
+// The parked-driver resume, the live-strand no-op and every refusal write no voucher.
 //
 // Before the stale-marker removal, the resume line or any spawn it probes the pair's merge state, but only when this invocation would put a driver to work: mustSpawn, or a live strand with the park marker present.
 // An unfinished merge is refused with the shedrun.StartMergeInProgressKind kind;
@@ -227,6 +256,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
 			return false
 		}
+		c.vouchForSpawnedResume()
 	} else if driverAction == driverStrandLive {
 		if parkedLive {
 			if err := c.resumeParkedDriver(driverGUID); err != nil {
@@ -377,14 +407,14 @@ func (c *loomCLI) startCmd() *cobra.Command {
      best-effort -- --no-attach still performs this spawn
   3. read this run's seed and, unless a driver is already alive, spawn the
      driver its recorded choice selects -- the detached Go runner, or a
-     Claude strand running ly-drive in this worktree's own reed session --
+     Claude strand running the loom driver in this worktree's own reed session --
      a second invocation while a driver is running ensures substrate and
      attaches rather than spawning a second one; which driver runs is the
-     seed's recorded choice, never a flag on this command; a live ly-drive
+     seed's recorded choice, never a flag on this command; a live loom
      driver that parked at a hand-back is resumed by typing one line into its
      pane, and start refuses after a bounded wait when that pane is not
      ready, since the driver may be busy having resumed on its own; a live
-     ly-drive driver over a run halted at a hand-back (awaiting, blocked,
+     loom driver over a run halted at a hand-back (awaiting, blocked,
      paused or failed) that has not written its park marker yet is still
      writing its stop report, so start refuses with the kind
      "driver_not_parked" and is retried a few seconds later, while a live
@@ -393,7 +423,7 @@ func (c *loomCLI) startCmd() *cobra.Command {
      worktree carries an unfinished merge, naming the conflicted paths and the
      remedy (the fabric verbs for a fabric merge, git for one fabric did not
      start), while a live driver that is working is left alone; a live
-     ly-drive driver strand that reed marked retiring (some caller of
+     loom driver strand that reed marked retiring (some caller of
      "reed remove --detach" already asked to remove it) is never adopted:
      start removes it and spawns a fresh driver in its place
   4. hand the terminal over, by where the command runs: attach to the
@@ -404,13 +434,12 @@ func (c *loomCLI) startCmd() *cobra.Command {
      "hint" naming the command to attach from outside tmux
 
 The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
-driver-log accessor names, never to this command's own output -- an ly-drive
+driver-log accessor names, never to this command's own output -- a loom driver
 strand writes no such log, since its own pane is where its output already
 lives.
 
-An ly-drive strand needs the ly-drive skill, which ships in loomyard's "ly"
-plugin: install that plugin for the provider on this machine before starting
-an llm-driven run.
+A loom driver strand launches from the driver stencil, read from the
+stencils directory at start time.
 
 A worktree opened through "lyx ide spawn"'s generated VS Code task starts
 "lyx reed up", then "lyx reed add --if-absent --cmd claude --name claude
@@ -426,14 +455,14 @@ file and re-running "lyx ide spawn".
 --no-attach is for unattended callers (scripts, agents): it wins over every
 handover above. It performs steps 1 through 3 and returns once the driver's
 readiness signal confirms it is up, instead of running step 4; for a parked
-ly-drive driver it returns once the delivery of the resume line is verified.
-That readiness signal is the run lock being taken for the Go driver; for an
-ly-drive driver, it is the driver's provider TUI coming up ready, with any
+loom driver it returns once the delivery of the resume line is verified.
+That readiness signal is the run lock being taken for the Go driver; for a
+loom driver, it is the driver's provider TUI coming up ready, with any
 one-time startup gate its provider requires dismissed along the way (shuttle's
 engine seam owns which gates exist), within shuttle's startup_timeout_s. A
 readiness refusal removes the driver strand, so the next start spawns a
 fresh one; the signal is checked only for a driver this invocation spawns,
-and the two cases that can still leave an unready ly-drive strand live --
+and the two cases that can still leave an unready loom driver strand live --
 shuttle could not get a liveness answer from reed at all, or its teardown
 could not remove the strand -- are attached to, or returned over with
 --no-attach, by a later start without re-checking readiness. The documented
@@ -495,7 +524,7 @@ Example:
 				return nil
 			}
 			if mustUseLLMDriverArm(driver) {
-				// The ly-drive strand is the driving surface, so the status band goes;
+				// The loom driver strand is the driving surface, so the status band goes;
 				// a failed removal never fails start.
 				removeStatusStrands(c.reed.Status, c.reed.RemoveStrand)
 			} else if err := c.ensureStatusStrand(); err != nil {
@@ -636,7 +665,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; an ly-drive driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session; a parked ly-drive driver is resumed by one typed line and this returns once that line's delivery is verified")
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; a loom driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session; a parked loom driver is resumed by one typed line and this returns once that line's delivery is verified")
 
 	return cmd
 }

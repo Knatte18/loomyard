@@ -404,6 +404,11 @@ func TestSmokeOrch_CompactCycle(t *testing.T) {
 	if trigger, _ := env["cycle_trigger"].(string); trigger != orchengine.TriggerSoft {
 		t.Errorf("cycle_trigger = %q, want %q", trigger, orchengine.TriggerSoft)
 	}
+	// The compact cycle writes its note first, so a note sits under HandoffsDir after the compaction.
+	notes, _ := filepath.Glob(filepath.Join(f.paths.HandoffsDir, "*.md"))
+	if len(notes) == 0 {
+		t.Errorf("no note under %s after the compact cycle", f.paths.HandoffsDir)
+	}
 	if after, _ := env["strand"].(string); after != guid {
 		t.Errorf("strand = %q after the cycle, want the unchanged %q", after, guid)
 	}
@@ -455,9 +460,8 @@ func killTreeProcs(dir string) {
 
 // TestSmokeOrch_Adopt proves a plain interactive run is adopted as the orch strand with its context, that the adopted session's name is addressable and parents a loom run, and that it cycles.
 func TestSmokeOrch_Adopt(t *testing.T) {
-	loomCfg := strings.Replace(loomengine.ConfigTemplate(), "selfreport: true", "selfreport: false", 1)
 	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), map[string]string{
-		"loom":    loomCfg,
+		"loom":    loomengine.ConfigTemplate(),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "orch-adopt-task"

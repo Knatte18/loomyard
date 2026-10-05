@@ -13,7 +13,9 @@
 //     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
-//   - cycle: writes the cycle request, which makes the watcher cycle at its next idle moment regardless of the token count.
+//   - cycle: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
+//   - distill: the same for a compact cycle: a note, then `/compact`, whatever `cycle_mode` says.
+//     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
 //   - watch: the hidden daemon verb `start` spawns detached; it is not an operator verb.
 //
@@ -34,6 +36,14 @@
 //
 // Steps 2 to 4 are ChooseStartPrompt's own order.
 //
+// Every launch prompt is a one-line pointer: the orch's whole procedure lives in the role stencil, which RenderRoleFile renders to Paths.RolePath, and the pointer names that file.
+// The resume pointer also names the orch note to resume from.
+// A note request names the note path and Paths.NoteTemplatePath, the file RenderNoteTemplateFile renders from the note stencil: what the orch is doing, the agreed next step and the questions waiting on the operator.
+// Every delivery re-renders its file first, so a stencil edit applies from the next delivery:
+// `start` renders the role file before it launches, the watcher renders the note template before it types a note request,
+// and renders the role file before it types the resume pointer after `/clear`.
+// A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
+//
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // attach only, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
@@ -50,8 +60,9 @@
 // # Cycle mode
 //
 // `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
-// `compact` keeps the session id and the Remote Control link and writes no handoff file.
-// `clear` runs the handoff, `/clear` and resume cycle.
+// `compact` keeps the session id and the Remote Control link; `clear` runs the handoff, `/clear` and resume cycle.
+// `cycle_mode` picks the mode of an automatic (hard or soft) cycle; an operator request carries its own mode, `cycle` for clear and `distill` for compact, recorded in State.CycleMode.
+// Both modes write the note first, and neither clears or compacts before the note gate has passed.
 // The trigger selection, gates and re-read under "Idle rules" are shared; the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
 // # The watcher
@@ -72,7 +83,14 @@
 //     A soft threshold at or above the hard cap never fires.
 //
 // The trigger is recorded in State.CycleTrigger before the cycle's first phase is entered.
-// In clear mode the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply; compact mode has no `DEFER` exchange.
+// In both modes the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+//
+// The request marker is JSON holding the mode and the request time.
+// A pending request whose age is at least the handoff timeout is removed with a log entry naming its mode and age, and nothing is acted on;
+// a marker that does not parse counts as that old.
+// The time is on disk, so this covers a request whose idle probe never passes and a marker a dead watcher left, across watcher restarts.
+// State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
+//
 // A hard or requested cycle acts only when all of these hold:
 //
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
@@ -86,7 +104,7 @@
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
-// In compact mode a hard trigger is held by the same rule, and a requested cycle never is.
+// In compact mode a hard trigger is held by the same rule after a failed compaction, and a requested cycle never is.
 //
 // A hard or soft cycle also re-reads the context through the newest turn end once those gates pass, saves the new reading, and fires only if it still meets that trigger's threshold.
 // The transcript can change without a turn end, so the reading saved at the last turn end can be stale.
@@ -110,9 +128,11 @@
 //     A written file wins over `DEFER`, and the cycle proceeds through the clear gate above.
 //     In a hard or requested cycle `DEFER` is never recorded, and the phase waits for the file until the handoff timeout.
 //     A restarted watcher re-sends the stencil matching State.CycleTrigger.
+//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout.
+//     Compact mode runs this same phase and, once the gate passes, starts compacting instead of clearing.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
-//   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
+//   - resuming: the reload sequence, described under "The reload sequence" below; its pointer is the resume prompt, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
 //   - idle: every return, completed or aborted, persists the events position read through.
 //
 // Nothing is ever typed into the pane, an instruction, a prompt or `/clear`, unless the idle probe passed on the same tick,
@@ -129,16 +149,19 @@
 //
 // # The compact cycle (compact mode)
 //
-// The persisted phases are idle and compacting.
-// When a trigger fires, the watcher renders the focus stencil first, so a stencil failure changes nothing,
-// then persists compacting with the trigger, clears the cycle request, types `/compact` followed by the focus, and records the injection as confirmed.
+// The persisted phases are idle, handoff-requested and compacting.
+// A trigger first enters handoff-requested exactly as in clear mode: the session writes a note under handoffs/, and the same gate applies.
+// When the gate passes, the watcher renders the focus stencil first, so a stencil failure changes nothing,
+// then moves LastHandoff to the note, persists compacting, types `/compact` followed by the focus, and records the injection as confirmed.
+// A later fresh `start` therefore resumes from the newest note in either mode.
 // The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
 // Nothing is typed unless the idle probe passed on the same tick.
-// No handoff file is written, and State.LastHandoff is untouched.
 //
 // A compaction ends without a turn end, so the compacting phase re-reads the context every tick through State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records.
 // The phase completes when the reading is a compaction boundary stamped at or after the phase was entered and the idle probe passes on that tick:
-// the boundary's tokens become the reading, `cycle_count` increments and the watcher returns to idle.
+// the boundary's tokens become the reading, `cycle_count` increments, State.CompactionBaseline moves to the boundary,
+// and the watcher renders the role file and the resume pointer naming the cycle's note and enters the reload sequence.
+// A stencil failure there returns to idle with the reason.
 // An earlier boundary never completes it.
 // Past the handoff timeout the phase returns to idle with the abort reason `compaction timed out`, re-reads the reading, and records the time in State.LastDeferral,
 // which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
@@ -147,11 +170,35 @@
 // Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
 // A qualifying boundary read after a restart completes the phase without typing anything.
 //
-// There is no `DEFER` handshake, so a background task's in-flight completion has no handshake protecting it if it does not survive `/compact`;
-// `cycle_mode: clear` restores the handshake.
+// A soft compact cycle keeps the `DEFER` handshake, so a session with a background task in flight can decline before `/compact`.
 //
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,
 // so a watcher never overwrites the binding a concurrent `start` just recorded.
+//
+// # The reload sequence
+//
+// A clear, a compaction and an auto-compaction each lose the session's skills and role, so the resuming phase restores them: it types each orch skill in order, as its own turn, and then the one-line pointer.
+// `start` and `--adopt` load the same skills through the launch spec.
+// The step index, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+//
+//   - A skill step types its load only when the idle probe passed on the same tick.
+//     A turn end read after it was typed confirms it.
+//     It is skipped, with a log entry naming the skill and the cause, when the provider reports it unknown or when the handoff timeout, measured from its first typing, passes.
+//     Confirming and skipping both advance the persisted step, so a restarted watcher never types a confirmed or skipped skill again and never gives it a fresh timeout.
+//   - The pointer step types State.PendingResume under the same rule and ends the phase at its first turn end.
+//     Its timeout runs from its first typing and returns to idle with `resume timed out`.
+//   - A step typed before a restart and not confirmed is typed again once the idle probe passes; loading a skill twice costs one turn and changes nothing.
+//
+// The sequence has three entry points, each entered only on a tick whose idle probe passed:
+//
+//   - After `/clear`: the pointer names the note, as before.
+//   - After a compaction the watcher ran: the pointer names the cycle's note.
+//   - After an auto-compaction: in idle, a turn end read makes the watcher ask for a main-chain compaction boundary after State.CompactionBaseline.
+//     A boundary found enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
+//     A boundary not yet reloaded is held in memory only, and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//
+// State.CompactionBaseline is set to the launch time by a fresh launch, so a boundary an adopted session already carried never reloads,
+// and moves to each handled boundary, including a compaction the watcher ran, so no boundary reloads twice.
 //
 // # The .lyx/orch/ layout
 //
@@ -160,7 +207,7 @@
 //   - state.json and state.json.lock: the persisted State and its lock.
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
-//   - cycle-request: the marker `cycle` writes and the watcher consumes.
+//   - cycle-request: the JSON marker `cycle` and `distill` write and the watcher consumes.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - notices/: one file per queued notice, removed on delivery.
@@ -185,9 +232,9 @@
 //
 // # Migrating from an operator's own terminal session
 //
-// In the running terminal session, run `/scribe:handoff` and note the file it writes, then exit that session.
+// In the running terminal session, ask for a note in the orch note's three sections and note the file it writes, then exit that session.
 // Then run `lyx orch start --handoff <that file>` from the prime.
-// The new orchestrator strand starts from that handoff instead of the start stencil.
+// The new orchestrator strand starts from that note instead of the start stencil.
 //
 // # Adopting a running session
 //

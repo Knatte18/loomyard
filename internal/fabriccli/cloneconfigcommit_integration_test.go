@@ -24,13 +24,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// nonFabricModuleNames returns configreg.Modules() filtered to every entry whose Name is not
-// "fabric" -- the set CloneAndWire's per-worktree reconcile loop covers, derived fresh every call so
-// a tenth registered module never silently makes these tests wrong.
-func nonFabricModuleNames() []string {
+// perWorktreeModuleNames returns configreg.Modules() filtered to every entry that is not hub-wide
+// -- the set CloneAndWire's per-worktree reconcile loop materializes, derived fresh every call so
+// a newly registered module never silently makes these tests wrong.
+func perWorktreeModuleNames() []string {
 	var names []string
 	for _, m := range configreg.Modules() {
-		if m.Name == "fabric" {
+		if m.HubWide {
 			continue
 		}
 		names = append(names, m.Name)
@@ -39,7 +39,7 @@ func nonFabricModuleNames() []string {
 }
 
 // TestCloneConfigCommit_WeftPrimeCleanAfterClone asserts a freshly-built hub's weft prime worktree
-// is clean, and that git ls-files reports every non-fabric module's config file, proving the
+// is clean, and that git ls-files reports every per-worktree module's config file, proving the
 // symptom's "reported dirty, untracked configs" half is fixed.
 func TestCloneConfigCommit_WeftPrimeCleanAfterClone(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -49,7 +49,7 @@ func TestCloneConfigCommit_WeftPrimeCleanAfterClone(t *testing.T) {
 	}
 
 	tracked := gitkit.LsFiles(t, h.PrimeWeft())
-	for _, name := range nonFabricModuleNames() {
+	for _, name := range perWorktreeModuleNames() {
 		want := configengine.ConfigFileRel(name)
 		if !slices.Contains(tracked, want) {
 			t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
@@ -84,7 +84,7 @@ func TestCloneConfigCommit_AnchorScoped(t *testing.T) {
 	}
 
 	tracked := gitkit.LsFiles(t, h.PrimeWeft())
-	for _, name := range nonFabricModuleNames() {
+	for _, name := range perWorktreeModuleNames() {
 		want := "backend/" + configengine.ConfigFileRel(name)
 		if !slices.Contains(tracked, want) {
 			t.Errorf("git ls-files in weft prime does not contain %q; got %v", want, tracked)
@@ -112,7 +112,7 @@ func TestCloneConfigCommit_OneCommitNotOnePerModule(t *testing.T) {
 		t.Errorf("weft primary git log --oneline contains %q %d times; want exactly 1\nlog:\n%s", wantSubject, count, out)
 	}
 
-	results, err := configsync.ReconcileAll(h.WeftBase, true)
+	results, err := configsync.ReconcileAll(h.WeftBase, h.BoardDir(), true)
 	if err != nil {
 		t.Fatalf("second ReconcileAll: %v", err)
 	}
@@ -125,13 +125,13 @@ func TestCloneConfigCommit_OneCommitNotOnePerModule(t *testing.T) {
 
 // TestCloneConfigCommit_MutationRecordShape reads the mutation record CloneAndWire produced for a
 // freshly-built hub through hubforge.Hub's Mutations field, and asserts it contains one
-// KindFileWritten entry per non-fabric module, followed by a KindCommitCreated entry whose Target is
+// KindFileWritten entry per per-worktree module, followed by a KindCommitCreated entry whose Target is
 // the weft worktree, with the commit entry last -- array order is part of the vocabulary.
 func TestCloneConfigCommit_MutationRecordShape(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
 	entries := h.Mutations.Entries()
-	moduleNames := nonFabricModuleNames()
+	moduleNames := perWorktreeModuleNames()
 
 	// The commit entry must be last, and it must be immediately preceded by exactly one
 	// KindFileWritten entry per module in the derived set -- the ReconcileAll loop appends those

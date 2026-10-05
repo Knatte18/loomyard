@@ -34,10 +34,13 @@
 // The list merges the running background_tasks[] entries of the Stop payload with the transcript's
 // background launches that no later task notification names, deduplicated by task id.
 //
-// Every Bash command an agent runs gets `/dev/null` as its default stdin through one PreToolUse(Bash) hook in every run's settings:
-// the hook answers with `updatedInput` carrying the command behind the prefix `exec </dev/null; `, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
-// The hook sends no `permissionDecision`, which Claude Code reads as "doesn't decide", so it grants nothing and the agents' allow and deny rules still decide the call.
-// A heredoc, pipe or redirect attached to the command still supplies that command's stdin, and the hook denies nothing.
+// Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
+// Prepare writes `bash-env.sh` beside settings.json with the content `exec </dev/null`, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,
+// so an interpreter left reading the tool's open stdin ends at once instead of hanging the session, and a resumed session keeps the default.
+// The file runs that one statement and nothing else.
+// It changes only the default stdin of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
+// a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
+// A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
 //
 // The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
 // The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
@@ -46,6 +49,10 @@
 //
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+//
+// Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading as a typed `/<skill>` line, in session.go.
+// A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
+// An unknown-command notice naming the skill marks it unknown; a provider that treats the line as a plain prompt ends a turn, which confirms the load, and one that shows nothing is skipped at the skill-load timeout.
 //
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.

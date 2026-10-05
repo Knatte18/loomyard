@@ -28,6 +28,8 @@
 // With no record, a leftover report is stale and is deleted before a new spec is composed,
 // so shuttleengine.Spec's own OutputFiles-must-not-already-exist rule can never reject the very run meant to replace it.
 //
+// The reflection agent loads `scribe:prose` before its prompt, and its stencil carries the parent directive that internal/parentdirective renders from the told Deps.ParentName.
+//
 // Every runtime failure below Deps validation returns a nil error: this step can never change the
 // run's own outcome, because failing a successful, already-merged run over an optional bookkeeping
 // agent timing out would be strictly worse than filing nothing. The one exception is a malformed

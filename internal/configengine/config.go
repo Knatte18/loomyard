@@ -56,6 +56,12 @@ func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")
 }
 
+// StagingFile returns the path of a module's staging copy for an interactive edit:
+// the ephemeral .lyx counterpart of ConfigFile, at the mirrored subpath, so a staged edit is never tracked.
+func StagingFile(baseDir, module string) string {
+	return filepath.Join(baseDir, lyxdirs.DotLyxDirName, configDirName, module+".yaml")
+}
+
 // ConfigFileRel returns a module's configuration YAML file path relative to a worktree's anchor --
 // the same shape fabricengine.OriginRecordRel returns and the shape fabricengine.CommitAnchoredPaths
 // expects for its relPaths argument.
