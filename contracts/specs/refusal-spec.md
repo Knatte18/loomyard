@@ -118,6 +118,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | the recipe's own, as the message names it: `lyx loom start` for loom, `lyx batten run <slug>` for batten, `lyx shed seed` otherwise |
 | current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto <run-id> --to <producer>` moves the run onto a row that exists |
 | bounce budget exhausted | a segment's bounce budget runs out and the run halts Stuck | correctness halt | `lyx shed goto <run-id> --to <row>` gives the segment or row a fresh budget |
+| escalation record unreadable | a review segment's Bouncer finds round N's `round-<N>-escalation.md` malformed and halts Stuck | correctness halt | fix or delete the named escalation file, then `lyx loom start` re-escalates the round |
 | goto on a done run | `goto` names a run whose status is done | correctness halt | seed a new run |
 | goto on a running run | `goto` names a run whose status is running | correctness halt | `lyx shed pause <run-id>` then `lyx shed step <run-id>` leaves the run paused at its next producer boundary, then re-run goto |
 | goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with --to naming one of: `<admitted rows>` |

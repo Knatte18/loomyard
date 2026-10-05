@@ -259,3 +259,16 @@ func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testi
 		t.Errorf("Stat(parent notice) = %v; want it absent", err)
 	}
 }
+
+func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *testing.T) {
+	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
+	if err := os.WriteFile(escalationPath(cfg.RunDir, 2), []byte("not frontmatter\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(escalation record) = %v; want nil", err)
+	}
+
+	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
+	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", escalationPath(cfg.RunDir, 2), "lyx loom start")
+	if ptr.ParentNotice != "" {
+		t.Errorf("ParentNotice = %q; want none", ptr.ParentNotice)
+	}
+}
