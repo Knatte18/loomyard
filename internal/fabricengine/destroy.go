@@ -2,7 +2,7 @@
 // The six primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git
 // worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch
 // -D), deleting a branch on a remote (git push <remote> --delete), and resetting a warp checkout
-// hard (ResetHard). Every one of them is reached only through one of this file's executors, and
+// hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo). Every one of them is reached only through one of this file's executors, and
 // every executor runs the shared check pipeline before performing its act — the gate executes, it
 // does not merely approve.
 //
@@ -75,7 +75,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -280,6 +282,7 @@ const (
 	pathOwnershipFreshlyCreatedWorktree
 	pathOwnershipWiredJunction
 	pathOwnershipDriftedWiredJunction
+	pathOwnershipPairWarpCheckout
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
@@ -293,6 +296,9 @@ type pathOwnership struct {
 	tok            createdToken
 	wiredLinks     []string
 	expectedTarget string
+	// weftDir and parentBranch serve ownedPairWarpCheckout only.
+	weftDir      string
+	parentBranch string
 }
 
 // ownedRegisteredLinkedWorktree declares target as owned when it is registered in repoDir's worktree
@@ -307,6 +313,14 @@ func ownedRegisteredLinkedWorktree(repoDir string) pathOwnership {
 // hub's prime warp worktree, which isRegisteredLinkedWorktreeIn deliberately excludes.
 func ownedWarpCheckout(repoDir string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipWarpCheckout, repoDir: repoDir}
+}
+
+// ownedPairWarpCheckout declares target as owned when it is a registered linked worktree of the warp repo at repoDir, never its main checkout;
+// its checked-out branch is not parentBranch (the ownedPairWarpBranch rule);
+// and the weft checkout at weftDir has WeftBranchName of that branch checked out, so the branch is the pair's own.
+// A detached HEAD on either side fails the predicate.
+func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
@@ -411,6 +425,7 @@ const (
 	pathDirtinessUnset pathDirtinessKind = iota
 	pathDirtinessScope
 	pathDirtinessNA
+	pathDirtinessTrackedExcept
 )
 
 // pathDirtiness declares which dirtiness probe (or N/A) the pipeline runs against a pathRequest's
@@ -420,6 +435,15 @@ type pathDirtiness struct {
 	kind   pathDirtinessKind
 	scope  dirtyScope
 	reason string
+	// ownPaths serves dirtyTrackedExcept only: worktree-relative, slash-separated.
+	ownPaths []string
+}
+
+// dirtyTrackedExcept declares that the pipeline's dirtiness step probes tracked files only, as dirtyScopeTracked does,
+// and refuses only on a dirty tracked path outside ownPaths (worktree-relative, slash-separated).
+// The refusal names each such path.
+func dirtyTrackedExcept(ownPaths []string) pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessTrackedExcept, scope: scopeTracked, ownPaths: ownPaths}
 }
 
 // dirtyScopeTracked declares that the pipeline's dirtiness step probes tracked files only, via
@@ -515,6 +539,9 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		}
 		return true, ""
 
+	case pathOwnershipPairWarpCheckout:
+		return resolvePairWarpCheckout(own, target)
+
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
 			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoardDirName)
@@ -588,6 +615,30 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	default:
 		return false, "no ownership kind declared"
 	}
+}
+
+// resolvePairWarpCheckout implements ownedPairWarpCheckout's predicate.
+// The linked-worktree test runs first, so the prime checkout refuses without a branch read;
+// every branch read that fails, a detached HEAD included, refuses, the conservative direction.
+func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
+	if !isRegisteredLinkedWorktreeIn(own.repoDir, target) {
+		return false, fmt.Sprintf("%s is not a registered linked worktree of %s", target, own.repoDir)
+	}
+	branch, err := gitrepo.New(target).CurrentBranch()
+	if err != nil {
+		return false, fmt.Sprintf("cannot read the branch checked out at %s: %v", target, err)
+	}
+	if ok, reason := resolvePairWarpBranch(branch, own.parentBranch, branch); !ok {
+		return false, reason
+	}
+	weftBranch, err := gitrepo.New(own.weftDir).CurrentBranch()
+	if err != nil {
+		return false, fmt.Sprintf("cannot read the branch checked out at the pair's weft %s: %v", own.weftDir, err)
+	}
+	if weftBranch != WeftBranchName(branch) {
+		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, WeftBranchName(branch), branch)
+	}
+	return true, ""
 }
 
 // isAnyWorktreeOf reports whether target is ANY worktree of the repo at repoDir, prime included —
@@ -797,14 +848,46 @@ func checkPathDirtiness(req pathRequest) error {
 		return nil
 	}
 
-	dirty, _, err := worktreeDirty(req.dirtiness.scope, req.target)
+	dirty, detail, err := worktreeDirty(req.dirtiness.scope, req.target)
 	if err != nil {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
+	}
+	if dirty && req.dirtiness.kind == pathDirtinessTrackedExcept {
+		foreign := dirtyPathsOutside(detail, req.dirtiness.ownPaths)
+		if len(foreign) == 0 {
+			return nil
+		}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "tracked changes outside the run's own paths: " + strings.Join(foreign, ", ")}
 	}
 	if dirty {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
 	}
 	return nil
+}
+
+// dirtyPathsOutside returns the paths a `git status --porcelain` listing reports that are not in ownPaths.
+// The listing is worktreeDirty's trimmed detail, so the first line may have lost its leading status space;
+// each line is read as a run of status letters, spaces, then the path, and a rename reports its new path.
+func dirtyPathsOutside(porcelain string, ownPaths []string) []string {
+	own := make(map[string]bool, len(ownPaths))
+	for _, p := range ownPaths {
+		own[pathpkg.Clean(filepath.ToSlash(p))] = true
+	}
+	var foreign []string
+	for _, line := range strings.Split(porcelain, "\n") {
+		path := strings.TrimLeft(strings.TrimLeft(strings.TrimLeft(line, " "), "MTADRCU?!"), " ")
+		if _, renamed, ok := strings.Cut(path, " -> "); ok {
+			path = renamed
+		}
+		if unquoted, err := strconv.Unquote(path); err == nil {
+			path = unquoted
+		}
+		if path == "" || own[pathpkg.Clean(path)] {
+			continue
+		}
+		foreign = append(foreign, path)
+	}
+	return foreign
 }
 
 // checkBranchRequest runs the gate's checks against req: the same pipeline checkPathRequest runs,
@@ -1457,6 +1540,26 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 		target:    f.warpPath,
 		ownership: ownedWarpCheckout(f.warpPath),
 		dirtiness: dirtyScopeTracked(),
+		force:     false,
+	}
+	return resetHardTo(rec, req, f.warp, sha)
+}
+
+// ResetPairWarp resets a task pair's warp checkout's HEAD, index and working tree to sha.
+// It is the gated executor for the pair-scoped reset, beside ResetHard, which refuses on any tracked dirt and accepts the prime checkout.
+// The request is hardcoded: container is the hub (filepath.Dir(f.warpPath)), target is the warp worktree,
+// ownership is ownedPairWarpCheckout, so the prime checkout, a pair on parentBranch, a pair whose weft is on another branch and a detached HEAD all refuse,
+// dirtiness is dirtyTrackedExcept(ownPaths), so uncommitted tracked changes are discarded only on the paths the caller names,
+// and force is always false.
+// Untracked files are left alone and the weft is never touched.
+// rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
+func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string) error {
+	req := pathRequest{
+		what:      "reset pair warp checkout",
+		container: filepath.Dir(f.warpPath),
+		target:    f.warpPath,
+		ownership: ownedPairWarpCheckout(f.warpPath, f.weftPath, parentBranch),
+		dirtiness: dirtyTrackedExcept(ownPaths),
 		force:     false,
 	}
 	return resetHardTo(rec, req, f.warp, sha)
