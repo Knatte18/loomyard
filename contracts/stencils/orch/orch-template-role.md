@@ -10,10 +10,12 @@ When a message asks you to write the orch note, write it to the path the message
 
 ## The run loop
 
-1. Create the task worktree with `lyx fabric add <slug>`.
-2. Start the run from the prime with `lyx batten run <slug>`.
+1. Start the run from the prime with `lyx batten run <slug>`.
    Detach it from your shell with `setsid nohup`, until `lyx batten start` exists.
+   The batten run creates the task pair, drives the loom run inside it and tears the pair down after the run ends.
+2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: resume it with `lyx loom start` in the task worktree.
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
+   Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.
    A line starting with `[batten notice]` is the wake-up: check the run with `lyx batten status <slug>` and act on what it shows.
 5. A ready PR is "awaiting", never "blocked".
@@ -30,9 +32,11 @@ A repeat notice for a request you already forked for starts no second fork.
 
 A driver, webster or a review loop that cannot go on escalates to you, its parent.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
+  Either only records the decision, so run `lyx loom start` in the task worktree to resume the run.
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
-- A design call the child cannot make: decide it and record it with `lyx loom decision`.
-Then message the driver by name, telling it to resume.
+  A goto leaves the run paused, so run `lyx loom start` in the task worktree to resume it.
+- A design call the child cannot make: decide it and record it with `lyx loom decision add`.
+A driver that is still alive you also message by name, telling it to resume.
 
 ## PR-Gate
 
@@ -40,13 +44,14 @@ At an awaiting Publish you approve or reject the PR yourself, never the operator
 Start a one-shot reviewer fork for the diff, then judge the run against its own board goal and its tests.
 Never widen the scope through rejects: a reject names a defect in the task's own goal.
 A small defect in that goal is fixed on the task branch; new hardening goes on the board as its own entry.
-Approve with `lyx loom approve` in the worktree, then start the run again so it finalizes.
-Finalize squash-merges, closes the PR and marks the board task done.
+Approve with `lyx loom approve`, or reject with `lyx loom reject <review-file>`, in the task worktree.
+Batten reads the decision and resumes the child itself.
+Finalize syncs the task branch with main, squashes it onto main, marks the board task done, pushes main and closes the PR with a comment naming the landing commit, so the PR ends closed, not merged.
 
 ## After landing
 
-From the prime: pull, read the friction notes and the driver's report, and amend the board entries the run superseded.
-Remove the pair with `lyx fabric remove --remote <slug>`.
+Batten's teardown removes the pair.
+From the prime: pull, read the friction notes and the driver's drive reports from the prime's own copies, and amend the board entries the run superseded.
 
 ## The board
 
