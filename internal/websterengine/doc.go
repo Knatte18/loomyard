@@ -418,6 +418,21 @@
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
 //
+// # The reset verb
+//
+// `lyx webster reset --to start|pre-fix` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
+// Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
+// resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
+// clears State.PreFixHead, saves, and fabric-syncs state.json.
+// It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
+// The bound: it can discard only commits above a run-recorded commit on the task's own branch and uncommitted tracked changes to paths the run itself wrote.
+// It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
+// Fabric's own refusal (ownership, dirtiness) is surfaced as the verb's error with fabric's reason.
+// In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
+// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry) and `partial`, always false.
+// A refusal before the reset is a bare error envelope.
+// Each refusal has a row in contracts/specs/refusal-spec.md.
+//
 // # The verify-gate report and findings
 //
 // Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
