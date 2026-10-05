@@ -87,7 +87,7 @@
 //
 // # loomyard's own area labels
 //
-// Before deploying the landed binary, write this list into the parent's live _lyx/config/board.yaml, then delete this paragraph.
+// Before deploying the landed binary, write this list into the hub's live <hub>/_board/_lyx/config/board.yaml, then delete this paragraph.
 // The migration turns every bracketed brief prefix on loomyard's live board that is not a type into a label, and the board refuses writes until board.yaml lists them.
 // The PR description must quote this snippet verbatim, because the hub copies the list from the PR description, not from the diff.
 //
