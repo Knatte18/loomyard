@@ -473,6 +473,9 @@ func TestLoadConfig_RejectsReviewKeysBelowOne(t *testing.T) {
 				if !strings.Contains(err.Error(), key) {
 					t.Errorf("LoadConfig() error = %q; want it to name the key %q", err.Error(), key)
 				}
+				if !strings.Contains(err.Error(), "set it to a positive integer in loom.yaml") {
+					t.Errorf("LoadConfig() error = %q; want it to name the way forward", err.Error())
+				}
 			})
 		}
 	}

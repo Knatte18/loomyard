@@ -430,7 +430,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		{"review_max_bounces", cfg.ReviewMaxBounces},
 	} {
 		if knob.value < 1 {
-			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d", knob.key, knob.value)
+			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set it to a positive integer in loom.yaml", knob.key, knob.value)
 		}
 	}
 

@@ -143,6 +143,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | seed missing | a loom verb addresses a run-id with no seed | correctness halt | run "lyx loom start" first to bootstrap this task |
 | status file missing | `lyx loom status` or `lyx loom approve` finds no status file | correctness halt | run "lyx loom start" first to bootstrap this task |
 | approve: not at PR-Gate | `lyx loom approve` runs while the run is not awaiting or blocked at PR-Gate | correctness halt | `lyx loom status` shows where the run is; approve once it halts at PR-Gate |
+| config: review key below 1 | `loom.yaml`'s `review_circling_checkpoint` or `review_max_bounces` is 0 or negative | correctness halt | set the named key to a positive integer in `loom.yaml`, then re-run the verb |
 | approve: no pull request | no pull request from the task branch to its parent exists | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
 | approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
 | approve: HEAD differs | the local task HEAD differs from the pull request's head | correctness halt | push the task branch with `git push` when the local HEAD is ahead, or pull it with `git pull` when the pull request's head is ahead, then re-run lyx loom approve |
