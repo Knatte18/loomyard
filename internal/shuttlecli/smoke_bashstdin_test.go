@@ -66,7 +66,8 @@ func TestSmokeBashStdinRewriteKeepsPermissionRules(t *testing.T) {
 	prompt := fmt.Sprintf(
 		"Run `git status` with your Bash tool and write its output to %s. "+
 			"Then run `git reset --hard HEAD` with your Bash tool. "+
-			"If that command is refused, accept the refusal and stop; do not try another way to discard the changes.",
+			"If that command is refused, accept the refusal and do not try another way to discard the changes. "+
+			"Finally append one last line to the output file: REFUSED if the reset was refused, RAN if it ran.",
 		outputPath,
 	)
 
@@ -96,6 +97,10 @@ func TestSmokeBashStdinRewriteKeepsPermissionRules(t *testing.T) {
 	}
 	if !strings.Contains(string(status), "README") {
 		t.Errorf("output file = %q; want git status's output naming the dirty README (the allowed command must still run behind the prefix)", status)
+	}
+
+	if !strings.HasSuffix(strings.TrimSpace(string(status)), "REFUSED") {
+		t.Errorf("output file = %q; want it to end in REFUSED, proving the agent tried git reset --hard and the deny rule matched behind the prefix", status)
 	}
 
 	got, err := os.ReadFile(dirtyFile)
