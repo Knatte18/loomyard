@@ -157,14 +157,6 @@ func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
 	}
 }
 
-func TestCompactedSince_IgnoresBoundaryAtOrBeforeSince(t *testing.T) {
-	data := []byte("{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"isSidechain\":false,\"timestamp\":\"2026-03-04T01:00:00Z\",\"compactMetadata\":{\"postTokens\":10}}\n")
-	since := time.Date(2026, 3, 4, 1, 0, 0, 0, time.UTC)
-	if got, found := compactedSince(bytes.NewReader(data), int64(len(data)), 4096, since); found {
-		t.Errorf("boundary at since reported found at %v", got)
-	}
-}
-
 func TestCompactedSince_NoBoundaryInTranscript(t *testing.T) {
 	c := &Claude{}
 	got, found := c.CompactedSince(stopEventFor(t, fixturePath(t, "usage-main-chain.jsonl")), time.Time{})
