@@ -62,8 +62,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
 		// Best-effort, mirroring contract_integration_test.go's own Engine fixtures:
-		// Down may already have nothing left to tear down (the test under test tore it down itself,
-		// or never booted at all on a failure path).
+		// Down may already have nothing left to tear down (the test under test tore it down itself, or never booted at all on a failure path).
 		_, _ = e.Down()
 	})
 
