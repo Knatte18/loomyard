@@ -905,38 +905,57 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	}
 }
 
-func TestWatcher_UnknownSkillSkippedAndLogged(t *testing.T) {
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.s.skillUnknown = map[string]bool{"scribe:prose": true}
-	e.reachClearing()
-	e.tick() // first skill typed
-	e.tick() // reported unknown: skipped, the next typed on the same tick
-	if st := e.state(); st.ReloadStep != 1 {
-		t.Fatalf("ReloadStep = %d, want the unknown skill skipped", st.ReloadStep)
+func TestWatcher_SkillSkipCauses(t *testing.T) {
+	tests := []struct {
+		name     string
+		unknown  map[string]bool
+		advances []time.Duration
+		endTurns []string
+		final    string // "reloaded" or "skippedOnly"
+	}{
+		{
+			name:     "unknown skill is skipped and logged",
+			unknown:  map[string]bool{"scribe:prose": true},
+			endTurns: []string{"t2", "resumed"},
+			final:    "reloaded",
+		},
+		{
+			name:     "silent skill is skipped at the timeout",
+			advances: []time.Duration{99 * time.Second, 2 * time.Second},
+			final:    "skippedOnly",
+		},
 	}
-	e.endTurn("t2")
-	e.endTurn("resumed")
-	e.assertReload("clear", e.state().LastHandoff)
-}
-
-func TestWatcher_SkillLoadTimeoutSkips(t *testing.T) {
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.reachClearing()
-	e.tick()
-	e.clock.advance(99 * time.Second)
-	e.tick()
-	if st := e.state(); st.ReloadStep != 0 {
-		t.Fatalf("ReloadStep = %d before the timeout", st.ReloadStep)
-	}
-	e.clock.advance(2 * time.Second)
-	e.tick()
-	if st := e.state(); st.ReloadStep != 1 {
-		t.Fatalf("ReloadStep = %d, want the silent skill skipped", st.ReloadStep)
-	}
-	if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
-		t.Errorf("calls after clear = %v", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newWatchEnv(t)
+			e.withSkills()
+			e.s.skillUnknown = tt.unknown
+			e.reachClearing()
+			e.tick() // first skill typed
+			for i, d := range tt.advances {
+				if i > 0 {
+					if st := e.state(); st.ReloadStep != 0 {
+						t.Fatalf("ReloadStep = %d before the skip", st.ReloadStep)
+					}
+				}
+				e.clock.advance(d)
+				e.tick()
+			}
+			if len(tt.advances) == 0 {
+				e.tick() // the skip lands, the next skill typed on the same tick
+			}
+			if st := e.state(); st.ReloadStep != 1 {
+				t.Fatalf("ReloadStep = %d, want the skill skipped", st.ReloadStep)
+			}
+			for _, turn := range tt.endTurns {
+				e.endTurn(turn)
+			}
+			if tt.final == "reloaded" {
+				e.assertReload("clear", e.state().LastHandoff)
+			} else if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
+				t.Errorf("calls after clear = %v", got)
+			}
+		})
 	}
 }
 

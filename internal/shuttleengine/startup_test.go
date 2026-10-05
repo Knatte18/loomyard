@@ -970,31 +970,55 @@ func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 	}
 }
 
-func TestStartup_SkillWithoutTurnEndSkippedAtTimeout(t *testing.T) {
-	spec := Spec{Skills: []string{"slow", "b"}, SkillLoadTimeout: 50 * time.Millisecond}
-	_, reed, elapsed, err := skillStartFixture(t, spec, []string{"b"}, nil)
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
+func TestStartup_SkillSkipCauses(t *testing.T) {
+	const (
+		atLeastTimeout = "atLeastTimeout"
+		zero           = "zero"
+	)
+	tests := []struct {
+		name      string
+		spec      Spec
+		endsTurn  []string
+		unknown   []string
+		wantTyped string
+		elapsed   string
+	}{
+		{
+			name:      "skill without a turn end is skipped at the timeout",
+			spec:      Spec{Skills: []string{"slow", "b"}, SkillLoadTimeout: 50 * time.Millisecond},
+			endsTurn:  []string{"b"},
+			wantTyped: "LOAD:slow|LOAD:b|do the task",
+			elapsed:   atLeastTimeout,
+		},
+		{
+			name:      "unknown skill is skipped at once",
+			spec:      Spec{Skills: []string{"ghost", "b"}},
+			endsTurn:  []string{"b"},
+			unknown:   []string{"ghost"},
+			wantTyped: "LOAD:ghost|LOAD:b|do the task",
+			elapsed:   zero,
+		},
 	}
-	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:slow|LOAD:b|do the task"; got != want {
-		t.Errorf("typed = %q; want %q", got, want)
-	}
-	if elapsed < spec.SkillLoadTimeout {
-		t.Errorf("virtual elapsed = %s; want at least the %s timeout", elapsed, spec.SkillLoadTimeout)
-	}
-}
-
-func TestStartup_UnknownSkillSkippedAtOnce(t *testing.T) {
-	spec := Spec{Skills: []string{"ghost", "b"}}
-	_, reed, elapsed, err := skillStartFixture(t, spec, []string{"b"}, []string{"ghost"})
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:ghost|LOAD:b|do the task"; got != want {
-		t.Errorf("typed = %q; want %q", got, want)
-	}
-	if elapsed != 0 {
-		t.Errorf("virtual elapsed = %s; want 0 — an unknown skill must not wait out the timeout", elapsed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, reed, elapsed, err := skillStartFixture(t, tt.spec, tt.endsTurn, tt.unknown)
+			if err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			if got := strings.Join(typedTexts(reed), "|"); got != tt.wantTyped {
+				t.Errorf("typed = %q; want %q", got, tt.wantTyped)
+			}
+			switch tt.elapsed {
+			case atLeastTimeout:
+				if elapsed < tt.spec.SkillLoadTimeout {
+					t.Errorf("virtual elapsed = %s; want at least the %s timeout", elapsed, tt.spec.SkillLoadTimeout)
+				}
+			case zero:
+				if elapsed != 0 {
+					t.Errorf("virtual elapsed = %s; want 0 — an unknown skill must not wait out the timeout", elapsed)
+				}
+			}
+		})
 	}
 }
 
