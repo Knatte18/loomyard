@@ -69,7 +69,7 @@ type State struct {
 	// ReadingTurnEnd is the turn end the current reading was taken through, so a restarted watcher in compacting can re-read the transcript with no turn end in memory; nil when none.
 	ReadingTurnEnd *shuttleengine.Event `json:"reading_turn_end"`
 
-	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear.
+	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear, plus compactions that completed.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
