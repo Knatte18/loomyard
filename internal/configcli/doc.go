@@ -4,6 +4,11 @@
 // With no module and neither `--print` nor `--set`, it prints its help, which names `reconcile` and every known module, and resolves no cwd.
 // An argument that is neither a subcommand nor a module is refused as an unknown subcommand.
 //
+// `lyx config menu` is the interactive picker bare `lyx config` used to open.
+// It lists every module marked `(configured)` or `(default)`, reads one choice, and edits that module through the same path as `lyx config <module>`;
+// `q` quits.
+// Unlike bare `lyx config`, it resolves a cwd.
+//
 // `--print` writes the on-disk YAML verbatim, for one module or for all of them, and never opens an editor.
 //
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.

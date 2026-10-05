@@ -194,7 +194,7 @@ func TestEditOneSyncFails(t *testing.T) {
 }
 
 // TestBareConfigListsModulesAndVerbs verifies that bare `lyx config` from a non-git directory exits 0,
-// prints help rather than an envelope, and names reconcile and every module.
+// prints help rather than an envelope, and names reconcile, menu and every module.
 func TestBareConfigListsModulesAndVerbs(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLIIn(t.TempDir(), &out, nil)
@@ -206,8 +206,10 @@ func TestBareConfigListsModulesAndVerbs(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(got), "{") {
 		t.Errorf("lyx config printed an envelope; want help text: %q", got)
 	}
-	if !strings.Contains(got, "reconcile") {
-		t.Errorf("lyx config output does not name reconcile: %q", got)
+	for _, verb := range []string{"reconcile", "menu"} {
+		if !strings.Contains(got, verb) {
+			t.Errorf("lyx config output does not name %s: %q", verb, got)
+		}
 	}
 	for _, name := range configreg.Names() {
 		if !strings.Contains(got, name) {
@@ -248,6 +250,105 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 		if subs[name] {
 			t.Errorf("module %q shares its name with a config subcommand", name)
 		}
+	}
+}
+
+// runMenuWith runs menu over a seeded temp baseDir with the given input,
+// returning the exit code, the output and the sync tracker.
+func runMenuWith(t *testing.T, input string, seed ...string) (int, string, *fakeSyncTracker) {
+	t.Helper()
+	baseDir := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	for _, name := range seed {
+		if err := os.WriteFile(configengine.ConfigFile(baseDir, name), []byte("# "+name+"\n"), 0o644); err != nil {
+			t.Fatalf("failed to write %s.yaml: %v", name, err)
+		}
+	}
+
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := menu(baseDir, strings.NewReader(input), &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
+	return code, out.String(), tracker
+}
+
+// TestMenuSelection tests menu with a valid selection.
+func TestMenuSelection(t *testing.T) {
+	code, output, tracker := runMenuWith(t, "1\nq\n", "board")
+
+	if code != 0 {
+		t.Errorf("menu() = %d; want 0", code)
+	}
+	if !tracker.called {
+		t.Error("sync should be called for selected module")
+	}
+	if !strings.Contains(output, "board") {
+		t.Errorf("menu output missing board option; got %q", output)
+	}
+}
+
+// TestMenuQuit tests menu with 'q' selection.
+func TestMenuQuit(t *testing.T) {
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := menu(t.TempDir(), strings.NewReader("q\n"), &out, makeNeverCalledEditor(t), tracker.syncFunc())
+
+	if code != 0 {
+		t.Errorf("menu() = %d; want 0", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called on quit")
+	}
+}
+
+// TestMenuInvalidSelection tests that a non-number and an out-of-range number each exit 1
+// without calling the editor or sync.
+func TestMenuInvalidSelection(t *testing.T) {
+	for _, input := range []string{"abc\n", "999\n"} {
+		var out bytes.Buffer
+		tracker := &fakeSyncTracker{exitCode: 0}
+		code := menu(t.TempDir(), strings.NewReader(input), &out, makeNeverCalledEditor(t), tracker.syncFunc())
+
+		if code != 1 {
+			t.Errorf("menu(%q) = %d; want 1", input, code)
+		}
+		if tracker.called {
+			t.Errorf("sync should not be called on input %q", input)
+		}
+		if !strings.Contains(out.String(), "invalid") {
+			t.Errorf("menu(%q) output missing an invalid message; got %q", input, out.String())
+		}
+	}
+}
+
+// TestMenuStatus tests that menu marks seeded modules (configured) and unseeded ones (default).
+func TestMenuStatus(t *testing.T) {
+	_, output, _ := runMenuWith(t, "q\n", "board")
+
+	if !strings.Contains(output, "board (configured)") {
+		t.Errorf("menu output missing 'board (configured)'; got %q", output)
+	}
+	if !strings.Contains(output, "fabric (default)") {
+		t.Errorf("menu output missing 'fabric (default)'; got %q", output)
+	}
+}
+
+// TestConfigMenuRejectsArgument verifies that `lyx config menu bogus` from a non-git directory
+// exits 1 with a JSON error envelope naming the argument, before the handler resolves any cwd.
+func TestConfigMenuRejectsArgument(t *testing.T) {
+	var out bytes.Buffer
+	code := RunCLIIn(t.TempDir(), &out, []string{"menu", "bogus"})
+
+	if code != 1 {
+		t.Fatalf("lyx config menu bogus = %d; want 1; output: %q", code, out.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("output is not a JSON envelope: %v; got %q", err, out.String())
+	}
+	if msg, _ := env["error"].(string); !strings.Contains(msg, "bogus") {
+		t.Errorf("error %q does not name bogus", msg)
 	}
 }
 

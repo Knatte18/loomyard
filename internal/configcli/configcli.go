@@ -238,7 +238,9 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 func buildConfigLong() string {
 	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
 		"success. With no argument it lists the known modules and verbs; with a module\n" +
-		"name it edits that module directly. The editor is resolved from $VISUAL or\n" +
+		"name it edits that module directly; `lyx config menu` is the interactive\n" +
+		"picker, which lists the modules and edits the one you choose. The editor is\n" +
+		"resolved from $VISUAL or\n" +
 		"$EDITOR; with neither set it uses `code --wait` when code is on PATH, else\n" +
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
@@ -373,6 +375,22 @@ Pass --apply to write the reconciled files to disk atomically.`,
 	})
 	configCmd.AddCommand(reconcileCmd)
 
+	// The menu subcommand reads the choice from the command's input,
+	// which clihelp.WrapRunCtx does not carry, so its RunE is written by hand.
+	menuCmd := &cobra.Command{
+		Use:   "menu",
+		Short: "pick a module to edit interactively",
+		Args:  cobra.NoArgs,
+	}
+	menuCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if clihelp.ShouldAbort(cmd.Context()) {
+			return nil
+		}
+		clihelp.SetExit(cmd.Context(), runMenu(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()))
+		return nil
+	}
+	configCmd.AddCommand(menuCmd)
+
 	return configCmd
 }
 
@@ -407,25 +425,43 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
 func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string) int {
-	// Resolve the seam cwd.
-	cwd, err := lyxcwd.CwdFrom(ctx)
+	l, realSync, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
-	}
-
-	// Resolve the layout.
-	l, err := lyxcwd.Resolve(cwd)
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	// Build the real editor and sync functions. The nested fabriccli call carries the
-	// already-resolved cwd rather than re-deriving it from process state -- letting it
-	// do so is precisely the bug this seam removes.
-	realSync := func(w io.Writer) int {
-		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
 	}
 
 	// Dispatch to the print path, --set path, or specific module.
 	return dispatch(l, out, args, configengine.DefaultEditor, realSync, printOnly, setFlags)
+}
+
+// runMenu is the package-private handler for the lyx config menu subcommand.
+//
+// It resolves the layout and builds the real sync exactly as runConfig does,
+// then runs the picker over in with the real editor.
+func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
+	l, realSync, err := resolveReal(ctx)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	return menu(filepath.Join(l.WorktreePath(), l.AnchorRel), in, out, configengine.DefaultEditor, realSync)
+}
+
+// resolveReal resolves the layout from the seam cwd and builds the real sync function.
+//
+// The sync is fabriccli.RunCLIIn with "sync", carrying the already-resolved cwd
+// rather than letting the nested call re-derive it from process state;
+// doing so is precisely the bug this seam removes.
+func resolveReal(ctx context.Context) (*lyxcwd.Location, syncFunc, error) {
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	l, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		return nil, nil, err
+	}
+	realSync := func(w io.Writer) int {
+		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
+	}
+	return l, realSync, nil
 }
