@@ -911,18 +911,17 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 		unknown  map[string]bool
 		advances []time.Duration
 		endTurns []string
-		final    string // "reloaded" or "skippedOnly"
+		reloaded bool // the reload completes after the turn ends, else only the second skill follows the clear
 	}{
 		{
 			name:     "unknown skill is skipped and logged",
 			unknown:  map[string]bool{"scribe:prose": true},
 			endTurns: []string{"t2", "resumed"},
-			final:    "reloaded",
+			reloaded: true,
 		},
 		{
 			name:     "silent skill is skipped at the timeout",
 			advances: []time.Duration{99 * time.Second, 2 * time.Second},
-			final:    "skippedOnly",
 		},
 	}
 	for _, tt := range tests {
@@ -950,7 +949,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			for _, turn := range tt.endTurns {
 				e.endTurn(turn)
 			}
-			if tt.final == "reloaded" {
+			if tt.reloaded {
 				e.assertReload("clear", e.state().LastHandoff)
 			} else if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
 				t.Errorf("calls after clear = %v", got)
