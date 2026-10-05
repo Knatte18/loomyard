@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_attachprobe_test.go is the live-substrate regression guard for the two ways a producer's
 // attach probe has failed a crashed run for real.

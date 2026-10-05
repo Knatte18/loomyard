@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_cluster_test.go is burlerengine's opt-in live-integration smoke test for
 // fork-based cluster review: TestSmokeBurlerClusterCleanFan and
@@ -6,8 +6,8 @@
 // claude handler spawning REAL fork subagents in a REAL tmux pane — over a
 // burlerengine.Config built directly in Go (no burler.yaml seeding needed).
 // Mirrors smoke_round_test.go's build tag, opt-in env gating, fixture/hub
-// setup, and engine wiring; the shared helpers (claudeBinaryPath,
-// deferHubRelease, hubHolders, smokePwshPath) are defined once in
+// setup, and engine wiring; the shared helpers (deferHubRelease,
+// hubHolders, smokePwshPath) are defined once in
 // smoke_round_test.go and reused here rather than redefined, since both
 // files compile into the same burlerengine_test package under the same
 // build tag.
@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // clusterSmokeTimeout is the generous, explicit per-run timeout both cluster
@@ -106,7 +107,7 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 // already has its own unit coverage).
 func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Helper()
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

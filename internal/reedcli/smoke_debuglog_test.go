@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_debuglog_test.go exercises the composed live behavior of the
 // debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine

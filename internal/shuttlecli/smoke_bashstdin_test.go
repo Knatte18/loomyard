@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_bashstdin_test.go is the live proof that the Bash stdin rewrite hook (claudeengine's bashStdinPrefix)
 // leaves the agent's own permission rules in charge:
@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // TestSmokeBashStdinRewriteKeepsPermissionRules runs a real agent in a hub whose prime worktree has one dirty tracked file,
@@ -27,7 +28,7 @@ import (
 // The run reaching done with `git status`'s output written proves the allowed command stayed allowed;
 // the file still being dirty proves the denied `git reset --hard HEAD` stayed denied.
 func TestSmokeBashStdinRewriteKeepsPermissionRules(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

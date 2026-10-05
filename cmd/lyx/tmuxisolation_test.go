@@ -1,4 +1,4 @@
-// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an `integration`- or `smoke`-tagged test file runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
+// tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package with an `integration`-, `tmux`- or `llm`-tagged test file runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
 // "Starts tmux" has no static shape, so the rule keys on "has a tagged test file" instead, at the cost of one temp directory per tagged package.
 // Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
 
@@ -25,11 +25,10 @@ import (
 var allowedNoTmuxMain = []scankit.Entry{}
 
 // isolationTags are the build tags that make a test file tagged.
-// `smoke` stays until the retag card retires it.
-var isolationTags = []string{"integration", "tmux", "llm", "smoke"}
+var isolationTags = []string{"integration", "tmux", "llm"}
 
 // isolationTagSets are the tag sets a package's test files are compiled under: untagged, each isolation tag alone, and the three tier tags combined.
-var isolationTagSets = [][]string{nil, {"integration"}, {"tmux"}, {"llm"}, {"integration", "tmux", "llm"}, {"smoke"}}
+var isolationTagSets = [][]string{nil, {"integration"}, {"tmux"}, {"llm"}, {"integration", "tmux", "llm"}}
 
 // isolationPlatform is one platform a package's test files are compiled for, with the build tags it satisfies.
 type isolationPlatform struct {
@@ -251,7 +250,7 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 	return failures, tagged, scanned
 }
 
-// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration- or smoke-tagged test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
+// TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration-, tmux- or llm-tagged test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
 func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
 	failures, tagged, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)
@@ -272,7 +271,7 @@ func TestFileNamePlatform(t *testing.T) {
 		{"proc_linux_test.go", "linux", ""},
 		{"x_windows_amd64_test.go", "windows", "amd64"},
 		{"x_arm64_test.go", "", "arm64"},
-		{"smoke_procalive_windows_test.go", "windows", ""},
+		{"proc_alive_windows_test.go", "windows", ""},
 	}
 	for _, tt := range tests {
 		goos, goarch := fileNamePlatform(tt.name)
@@ -300,8 +299,8 @@ func TestTmuxIsolation_FixtureTrees(t *testing.T) {
 	}{
 		{"main in every set", map[string]string{"p/main_test.go": withMain, "p/i_test.go": taggedTest}, 1, 0},
 		{"missing kit call", map[string]string{"p/main_test.go": bareMain, "p/i_test.go": taggedTest}, 1, 1},
-		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 6},
-		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 4},
+		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 5},
+		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 3},
 		{"untagged package", map[string]string{"p/a_test.go": untaggedTest}, 0, 0},
 		{"main confined by constraint to another platform", map[string]string{"p/main_test.go": "//go:build windows\n\n" + withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},
 		{"main confined by file name to another platform", map[string]string{"p/main_windows_test.go": withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},

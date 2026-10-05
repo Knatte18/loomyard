@@ -46,7 +46,7 @@ func weftWriteLockPath(t *testing.T, f *Fabric) string {
 // f's combined commit write lock path directly.
 // It lives here rather than in export_test.go because weftWriteLockPath itself is defined in this
 // integration-tagged file;
-// an untagged export_test.go re-export would leave the symbol undefined under `-tags smoke`.
+// an untagged export_test.go re-export would leave the symbol undefined under `-tags tmux` or `-tags llm`.
 func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
 	return weftWriteLockPath(t, f)
 }

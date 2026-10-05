@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_test.go is the tagged smoke suite for the session bootstrap: the one thing nothing else in
 // this package can catch, because it needs a real tmux server, a real detached driver process, and
@@ -59,7 +59,7 @@ import (
 )
 
 // tmuxBinaryPath returns the tmux binary path from the environment or resolved via PATH, skipping
-// the calling test when it is absent so a -tags=smoke run never hard-fails on a machine without the
+// the calling test when it is absent so a -tags=tmux run never hard-fails on a machine without the
 // tool -- mirroring internal/reedcli's own tmuxBinaryPath.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()

@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux || llm
 
 // smoke_test.go is the shared smoke-test harness: the helpers (binary
 // discovery, live-tmux process/pane probes, transcript watching, fixture
@@ -13,7 +13,8 @@
 // prove nothing — tmux's real semantics (positional select-layout, silent
 // split failures, corpse panes, async kill-server) and claude's real
 // transcript persistence only show up live. Excluded from the default `go
-// test ./internal/reedcli/...`; runs under `go test -tags smoke`.
+// test ./internal/reedcli/...`; runs under `go test -tags tmux`, or `-tags llm` for the claude resume test.
+// The file carries `tmux || llm` because both tiers' files use its helpers.
 
 package reedcli
 
@@ -45,7 +46,7 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
 // tmuxBinaryPath returns the tmux binary path from the environment or
 // resolved via PATH, skipping the calling test when it is absent so a
-// -tags=smoke run never hard-fails on a machine without the tool.
+// -tags=tmux run never hard-fails on a machine without the tool.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
 	if path := os.Getenv("LYX_REED_TMUX"); path != "" {
@@ -174,12 +175,6 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	}
 	return socket, session
 }
-
-// smokeClaudeModel is the model every real `claude` process this package spawns must run on.
-// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque
-// resumeCmd replay), never about model capability, so the cheapest model is always the right one —
-// and leaving it unpinned silently bills the operator's default model on every sweep.
-const smokeClaudeModel = "haiku"
 
 // smokeReapLaunchCmd returns the OS-appropriate long-running command line
 // the pane-child-reap fixtures (TestSmokeDownReapsPaneChildProcesses,
@@ -699,79 +694,6 @@ func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string,
 		}
 		time.Sleep(1 * time.Second)
 	}
-}
-
-// claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory for cwd dir.
-func claudeProjectDir(t *testing.T, dir string) string {
-	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("resolve home dir: %v", err)
-	}
-	encoded := []byte(dir)
-	for i, c := range encoded {
-		isAlnum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-		if !isAlnum {
-			encoded[i] = '-'
-		}
-	}
-	return filepath.Join(home, ".claude", "projects", string(encoded))
-}
-
-// claudeTranscriptFiles returns the set of every *.jsonl transcript path under projectDir.
-func claudeTranscriptFiles(t *testing.T, projectDir string) map[string]bool {
-	t.Helper()
-	found := map[string]bool{}
-	_ = filepath.WalkDir(projectDir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".jsonl") {
-			found[path] = true
-		}
-		return nil
-	})
-	return found
-}
-
-// waitTranscriptStable blocks until a new transcript appears in projectDir and stops growing.
-func waitTranscriptStable(t *testing.T, projectDir string, before map[string]bool, dismissTrust func(paneID string), paneID string, timeout time.Duration) string {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	sizes := map[string]int64{}
-	for {
-		dismissTrust(paneID)
-
-		for path := range claudeTranscriptFiles(t, projectDir) {
-			if before[path] {
-				continue // pre-existing — not this test's transcript
-			}
-			info, err := os.Stat(path)
-			if err != nil {
-				continue
-			}
-			prev, seen := sizes[path]
-			if seen && prev > 0 && info.Size() == prev {
-				return path
-			}
-			sizes[path] = info.Size()
-		}
-
-		if time.Now().After(deadline) {
-			t.Fatalf("no new claude transcript persisted+stabilized within %s (env hygiene may be broken — claude in a nested Claude Code session stops writing transcripts)", timeout)
-		}
-		time.Sleep(2 * time.Second)
-	}
-}
-
-// claudeBinaryPath returns the claude CLI's path from the environment or PATH.
-func claudeBinaryPath(t *testing.T) string {
-	t.Helper()
-	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
-		return path
-	}
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude not found on PATH")
-	}
-	return path
 }
 
 // materializeSibling clones h's code bare origin into a second worktree inside the primary hub

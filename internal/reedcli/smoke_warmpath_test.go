@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_warmpath_test.go pins the other half of this task's hard boundary: a `reed add` or `reed
 // attach` against a live session holding at least one pane performs no reconcile, no layout apply, no

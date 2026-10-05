@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_driverstrand_test.go covers the one live-substrate property no Tier 1 test can reach: that a
 // real reed session, driven through three successive "loom start" bootstraps of an llm-seeded

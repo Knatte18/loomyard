@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_selvage_keepalive_test.go pins Selvage's keepalive guarantee — the job the header pane's
 // `--blocking` process once served before this task, now served by a permanent, deliberately

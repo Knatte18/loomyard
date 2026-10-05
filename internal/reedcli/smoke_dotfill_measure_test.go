@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_dotfill_measure_test.go is the measurement gate for the repaint candidates named in reed's
 // repaint-mechanism decision: it installs each candidate's hook body into reed's own window-resized

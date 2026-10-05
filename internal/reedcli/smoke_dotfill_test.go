@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_dotfill_test.go reproduces the tmux client-side dot-fill render artifact described by reed's
 // root-cause-model decision: tmux itself, not reed, paints a run of dot-fill glyphs (see dotFillGlyphs)

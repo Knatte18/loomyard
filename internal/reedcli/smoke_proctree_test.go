@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux || llm
 
 // smoke_proctree_test.go provides the /proc-native process-tree probes the
 // smoke harness uses on Linux — the direct analogue of the Windows helpers'
@@ -15,7 +15,7 @@
 // (parseStatPPID, descendantClosure, matchSocketCmdlines) are unexported and
 // only meaningful bound to an *Engine value. Deliberately a _test.go file
 // (not a _linux.go one): its caller functions in smoke_test.go compile on
-// every GOOS (gated only by the smoke tag) and runtime.GOOS-branch into this
+// every GOOS (gated only by the `tmux || llm` tag) and runtime.GOOS-branch into this
 // file's functions, so this file must compile everywhere too, and it
 // references hubHolder, which is itself declared in smoke_test.go and so
 // only exists inside the test binary — the os.ReadFile/ReadDir/Readlink

@@ -1,4 +1,4 @@
-// Package lyxbin builds the `lyx` binary from `./cmd/lyx` for `integration` and `smoke` tests.
+// Package lyxbin builds the `lyx` binary from `./cmd/lyx` for `integration`, `tmux` and `llm` tests.
 //
 // It is the one kit exempt from the Testkit Invariant's spawn-import rule,
 // and it runs nothing but that `go build`.

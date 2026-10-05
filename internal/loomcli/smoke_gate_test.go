@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_gate_test.go is the live-substrate regression guard for the gate re-prompt loop
 // (internal/shuttleengine's Wait, batch 1): the one mechanism no untagged test can exercise, because
@@ -23,7 +23,7 @@
 //
 // This file's compile gate is its only automatic guard: its build tag excludes it from every
 // untagged run and from the repo-wide done gate, and the task's own chained tagged invocation
-// (`go test -tags smoke -run '^$' ./internal/loomcli/...`) type-checks it without ever executing it.
+// (`go test -tags tmux -run '^$' ./internal/loomcli/...`) type-checks it without ever executing it.
 // An operator runs this test itself, by hand, against a real substrate.
 
 package loomcli

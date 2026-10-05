@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed
 // attach`, run against a worktree that was never brought up and carries no persisted state file at

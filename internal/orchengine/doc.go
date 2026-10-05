@@ -211,7 +211,7 @@
 //
 // # Open risks
 //
-// The smoke suite in internal/orchcli (`go test -tags smoke -run TestSmokeOrch ./internal/orchcli/`) was run against Claude Code 2.1.287 on 2026-10-02, and all four tests passed.
+// The smoke suite in internal/orchcli (`go test -tags llm -run TestSmokeOrch ./internal/orchcli/`) was run against Claude Code 2.1.287 on 2026-10-02, and all four tests passed.
 // What the run showed:
 //
 //   - A background task survives `/clear`: its completion notification reached the resumed session, in the transcript and the pane.
