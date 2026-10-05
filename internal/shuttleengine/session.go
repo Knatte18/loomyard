@@ -1,10 +1,11 @@
-// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear) an orchestrator watcher needs.
+// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear, compact) an orchestrator watcher needs.
 // All of it is provider-invariant; provider specifics stay behind Engine and SessionCycler.
 
 package shuttleengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -13,7 +14,7 @@ import (
 func (r *Runner) sessionCycler() (SessionCycler, error) {
 	cycler, ok := r.engine.(SessionCycler)
 	if !ok {
-		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, IdleSession, ClearSessionSequence), so it cannot cycle a session")
+		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, IdleSession, ClearSessionSequence, CompactSessionSequence), so it cannot cycle a session")
 	}
 	return cycler, nil
 }
@@ -95,4 +96,27 @@ func (r *Runner) ClearSession(guid string) error {
 		return err
 	}
 	return playInputs(r.reed, guid, cycler.ClearSessionSequence())
+}
+
+// CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.
+// Like ClearSession it skips requireReadyAgentPane, since the caller has already probed idleness itself.
+// It refuses a focus containing a newline, since the focus is typed as one line.
+func (r *Runner) CompactSession(guid, focus string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
+	cycler, err := r.sessionCycler()
+	if err != nil {
+		return err
+	}
+	if strings.ContainsAny(focus, "\r\n") {
+		return fmt.Errorf("shuttle: compact focus for strand %q spans several lines; it is typed as one line, so join it into one", guid)
+	}
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return err
+	}
+	return playInputs(r.reed, guid, cycler.CompactSessionSequence(focus))
 }

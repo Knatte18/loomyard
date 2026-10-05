@@ -67,6 +67,25 @@ func TestIdleSession(t *testing.T) {
 	}
 }
 
+func TestCompactSessionSequence(t *testing.T) {
+	cases := []struct {
+		name  string
+		focus string
+		want  []shuttleengine.PaneInput
+	}{
+		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", Submit: true}}},
+		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", Submit: true}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := (&Claude{}).CompactSessionSequence(tc.focus)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("CompactSessionSequence(%q) = %#v; want %#v", tc.focus, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestClearSessionSequence(t *testing.T) {
 	got := (&Claude{}).ClearSessionSequence()
 	want := []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}

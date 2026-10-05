@@ -1,10 +1,11 @@
-// session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle and ClearSession, including the plain-engine refusals.
+// session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle, ClearSession and CompactSession, including the plain-engine refusals.
 
 package shuttleengine
 
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -16,6 +17,7 @@ type cyclerEngine struct {
 	idle     bool
 	clear    []PaneInput
 	captures []string
+	foci     []string
 }
 
 func (e *cyclerEngine) ContextTokens(Event) ContextReading {
@@ -26,6 +28,10 @@ func (e *cyclerEngine) IdleSession(capture string) bool {
 	return e.idle
 }
 func (e *cyclerEngine) ClearSessionSequence() []PaneInput { return e.clear }
+func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
+	e.foci = append(e.foci, focus)
+	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
+}
 
 func TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly(t *testing.T) {
 	fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"))
@@ -80,6 +86,10 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	if err := runner.ClearSession("strand-1"); err == nil {
 		t.Error("ClearSession on a plain engine = nil error")
 	}
+	err := runner.CompactSession("strand-1", "focus")
+	if err == nil || !strings.Contains(err.Error(), "CompactSessionSequence") {
+		t.Errorf("CompactSession on a plain engine = %v, want an error naming the capability", err)
+	}
 	if len(reed.CallLog) != 0 {
 		t.Errorf("reed touched despite missing capability: %v", reed.CallLog)
 	}
@@ -128,6 +138,37 @@ func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
 	want := []string{"Status", "SendKey:Escape", "SendText:/clear"}
 	if !reflect.DeepEqual(reed.CallLog, want) {
 		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	}
+}
+
+func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	engine := &cyclerEngine{}
+	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+
+	if err := runner.CompactSession("strand-1", "the plan"); err != nil {
+		t.Fatalf("CompactSession: %v", err)
+	}
+	if !reflect.DeepEqual(engine.foci, []string{"the plan"}) {
+		t.Errorf("focus passed to the engine = %v, want [the plan]", engine.foci)
+	}
+	want := []string{"Status", "SendText:/compact the plan"}
+	if !reflect.DeepEqual(reed.CallLog, want) {
+		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	}
+}
+
+func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {
+	for _, focus := range []string{"a\nb", "a\r\nb"} {
+		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+		engine := &cyclerEngine{}
+		runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+		if err := runner.CompactSession("strand-1", focus); err == nil {
+			t.Errorf("CompactSession(%q) = nil error", focus)
+		}
+		if len(reed.CallLog) != 0 || len(engine.foci) != 0 {
+			t.Errorf("played despite refusal: calls %v, foci %v", reed.CallLog, engine.foci)
+		}
 	}
 }
 

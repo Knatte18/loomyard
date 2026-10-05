@@ -168,7 +168,7 @@ type ContextReading struct {
 	BoundaryAt time.Time
 }
 
-// SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it).
+// SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).
 // An Engine that also implements it lets Runner's session methods work;
 // one that does not makes them return an error naming the missing capability.
 // It is separate from Engine so the many Engine implementers and test fakes whose callers never cycle a session need no method set with no behaviour behind it.
@@ -179,4 +179,8 @@ type SessionCycler interface {
 	IdleSession(capture string) bool
 	// ClearSessionSequence returns the key choreography that clears the live session's context.
 	ClearSessionSequence() []PaneInput
+	// CompactSessionSequence returns the key choreography that compacts the live session's context, keeping what focus names.
+	// An empty focus compacts with no instruction.
+	// The caller guarantees focus is a single line.
+	CompactSessionSequence(focus string) []PaneInput
 }
