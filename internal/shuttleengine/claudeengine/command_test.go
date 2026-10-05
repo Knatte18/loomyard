@@ -304,7 +304,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 			if sh == nil {
 				sh = shell.Pwsh()
 			}
-			got := buildLaunchCmd(sh, tt.bin, tt.promptPath, tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, false, !tt.interactive, tt.forkSubagents)
+			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}

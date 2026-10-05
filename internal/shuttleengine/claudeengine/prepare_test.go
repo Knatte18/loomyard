@@ -306,3 +306,41 @@ func TestPrepare_BadResumeSessionIDRejectedBeforeArtifacts(t *testing.T) {
 		})
 	}
 }
+
+// TestPrepare_SkillsDeferPromptPointer proves a spec naming skills leaves the prompt pointer off the launch line and returns it as PromptLine,
+// and a spec without skills keeps the pointer on the line with an empty PromptLine, for a fresh and a resumed launch.
+func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
+	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+	for _, resume := range []bool{false, true} {
+		for _, skills := range [][]string{nil, {"scribe:prose"}} {
+			spec := shuttleengine.Spec{Prompt: "do the thing", Skills: skills}
+			if resume {
+				spec.ResumeSessionID = id
+			}
+			runDir := t.TempDir()
+			launch, err := New().Prepare(runDir, spec, shuttleengine.Config{})
+			if err != nil {
+				t.Fatalf("Prepare(resume=%v, skills=%v) error: %v", resume, skills, err)
+			}
+			pointer := launchPointer(filepath.Join(runDir, "prompt.md"))
+			if len(skills) > 0 {
+				if strings.Contains(launch.Cmd, "Read ") {
+					t.Errorf("resume=%v: Launch.Cmd = %q; want no prompt pointer", resume, launch.Cmd)
+				}
+				if launch.PromptLine != pointer {
+					t.Errorf("resume=%v: PromptLine = %q; want %q", resume, launch.PromptLine, pointer)
+				}
+			} else {
+				if !strings.Contains(launch.Cmd, pointer) {
+					t.Errorf("resume=%v: Launch.Cmd = %q; want the prompt pointer", resume, launch.Cmd)
+				}
+				if launch.PromptLine != "" {
+					t.Errorf("resume=%v: PromptLine = %q; want empty", resume, launch.PromptLine)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(runDir, "prompt.md")); err != nil {
+				t.Errorf("resume=%v, skills=%v: prompt.md not written: %v", resume, skills, err)
+			}
+		}
+	}
+}
