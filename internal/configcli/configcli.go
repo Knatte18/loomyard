@@ -184,8 +184,8 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 }
 
 // dispatch routes the config command to the print path (when printOnly is true),
-// the --set path (when setFlags is non-empty), editOne (if a module is
-// specified).
+// the --set path (when setFlags is non-empty),
+// editOne (if a module is specified).
 //
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor.
@@ -196,10 +196,10 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
 	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
 
-	// Handle --set before any --print/edit dispatch: it is a fully
-	// non-interactive write path that never opens the editor, so its
-	// validation (mutual exclusivity with --print, module-required) must run
-	// before either of those branches gets a chance to act.
+	// Handle --set before any --print/edit dispatch:
+	// it is a fully non-interactive write path that never opens the editor,
+	// so its validation (mutual exclusivity with --print, module-required)
+	// must run before either of those branches gets a chance to act.
 	if len(setFlags) > 0 && printOnly {
 		return output.Err(out, "--print and --set are mutually exclusive")
 	}
@@ -398,9 +398,10 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 
 // runConfig is the package-private handler for the lyx config command.
 //
-// It resolves the layout from the seam cwd, builds the real editor (DefaultEditor) and the real
-// sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the
-// nested call re-derive it from process state), and dispatches to dispatch.
+// It resolves the layout from the seam cwd,
+// builds the real editor (DefaultEditor) and the real sync function
+// (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state),
+// and dispatches to dispatch.
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
