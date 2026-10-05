@@ -24,12 +24,14 @@ A note stays as written until the operator decides to build it; then suitable no
 
 ## Labels
 
-Every entry carries `labels`, validated against two lists in `_lyx/config/board.yaml`:
+Every entry carries `labels`, validated against two maps in `_lyx/config/board.yaml`, each from label to description:
 
 - `types`: the type labels, such as `bug` and `enhancement`. A note carries exactly one, and a task one or more.
-- `labels`: every other label, such as an area or `undecided`.
+- `labels`: every other label, such as an area.
 
-A label in neither list is refused; add it to `board.yaml` first.
+Run `lyx board labels` before choosing labels: it prints both maps in file order with their descriptions.
+A label names the lyx module an entry mainly touches; an entry that belongs to no module carries none beyond its type label.
+A label in neither map is refused; add it with `lyx config board --set labels.<name>=<description>`, or edit the maps in the `lyx config board` editor.
 A recipe name goes in `recipe`, never in a label.
 
 ## Verbs
@@ -66,7 +68,7 @@ List every entry, with `--text` for a one-line-per-entry scan, and fetch one ent
 
 ```
 lyx board list --text
-lyx board list --label bug --label undecided
+lyx board list --label bug --label enhancement
 lyx board get '{"slug":"my-task"}'
 ```
 

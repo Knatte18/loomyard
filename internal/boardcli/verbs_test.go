@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -329,4 +330,57 @@ func pipeStdin(t *testing.T, content string) {
 		os.Stdin = orig
 		f.Close()
 	})
+}
+
+// labelPairs returns the label/description pairs of result[key], in order.
+func labelPairs(t *testing.T, result map[string]any, key string) [][2]string {
+	t.Helper()
+	list, ok := result[key].([]any)
+	if !ok {
+		t.Fatalf("expected %s array, got %v", key, result)
+	}
+	pairs := make([][2]string, len(list))
+	for i, v := range list {
+		m := v.(map[string]any)
+		pairs[i] = [2]string{m["label"].(string), m["description"].(string)}
+	}
+	return pairs
+}
+
+func TestCLILabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedCwd(t)
+	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  enhancement: A new capability\n  bug: Something broken\nlabels:\n  quarry: The code index\n  board: The task board\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+
+	result := runJSON(t, 0, "labels")
+	wantTypes := [][2]string{{"enhancement", "A new capability"}, {"bug", "Something broken"}}
+	wantLabels := [][2]string{{"quarry", "The code index"}, {"board", "The task board"}}
+	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
+		t.Fatalf("types = %v, want %v", got, wantTypes)
+	}
+	if got := labelPairs(t, result, "labels"); !slices.Equal(got, wantLabels) {
+		t.Fatalf("labels = %v, want %v", got, wantLabels)
+	}
+}
+
+func TestCLILabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	cwd := seedCwd(t)
+	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [quarry]\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+
+	result := runJSON(t, 0, "labels")
+	wantTypes := [][2]string{{"bug", ""}, {"enhancement", ""}}
+	wantLabels := [][2]string{{"quarry", ""}}
+	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
+		t.Fatalf("types = %v, want %v", got, wantTypes)
+	}
+	if got := labelPairs(t, result, "labels"); !slices.Equal(got, wantLabels) {
+		t.Fatalf("labels = %v, want %v", got, wantLabels)
+	}
 }

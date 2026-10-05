@@ -2,7 +2,7 @@
 //
 // Command() returns the root "board" command over one store, board.json, whose entries carry a kind and labels.
 // The verbs upsert, upsert-batch, set-status, remove, get, list, list-full, merge and set-deps come from storeVerbs.
-// promote, prune, find and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
+// promote, prune, find, labels and retire-legacy, plus the rerender and sync maintenance verbs, are built in Command itself.
 // The intake group (list, import, close) comes from intakeCommand in intake.go.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
@@ -33,6 +33,8 @@ func Command() *cobra.Command {
 	// b is populated by PersistentPreRunE and closed over by each subcommand RunE.
 	var b *boardengine.Board
 	board := func() *boardengine.Board { return b }
+	// config is the Config PersistentPreRunE loaded; the labels verb reads its Types and Labels.
+	var config boardengine.Config
 
 	cmd := &cobra.Command{
 		Use:   "board",
@@ -98,6 +100,7 @@ available subcommands without requiring a git repo.`,
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
+		config = cfg
 		b = boardengine.New(cfg)
 		return nil
 	}
@@ -219,8 +222,29 @@ Example:
 		}),
 	}
 
+	labelsCmd := &cobra.Command{
+		Use:   "labels",
+		Short: "Print the configured types and labels with their descriptions",
+		Long: `Print the type labels and the other labels configured in board.yaml, each list in file order
+with its descriptions. An empty list prints as []. Takes no payload.
+
+Output:
+  {"ok":true,"types":[{"label":"bug","description":"..."}],"labels":[{"label":"quarry","description":"..."}]}
+
+Example:
+  lyx board labels`,
+		Args: cobra.NoArgs,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			return output.Ok(out, map[string]any{
+				"types":  labelEntries(config.Types),
+				"labels": labelEntries(config.Labels),
+			})
+		}),
+	}
+
 	cmd.AddCommand(storeVerbs(board)...)
 	cmd.AddCommand(
+		labelsCmd,
 		promoteCmd,
 		pruneCmd,
 		findCmd,
@@ -231,6 +255,14 @@ Example:
 	)
 
 	return cmd
+}
+
+// labelEntries returns labels for JSON output, an empty list rather than null when there are none.
+func labelEntries(labels []boardengine.Label) []boardengine.Label {
+	if labels == nil {
+		return []boardengine.Label{}
+	}
+	return labels
 }
 
 // storeVerbs builds the nine store verbs over the one store board returns.
@@ -486,7 +518,7 @@ A label that is in neither the types nor the labels list of board.yaml and that 
 Examples:
   lyx board list
   lyx board list --text
-  lyx board list --label bug --label undecided`,
+  lyx board list --label bug --label enhancement`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := board().ListTasksBrief(listLabels)
 			if err != nil {
