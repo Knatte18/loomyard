@@ -194,7 +194,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +210,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Model:       resolved.Model,
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
+		Skills:      roleSkills,
 		Role:        string(RoleRecovery),
 		Round:       batchName,
 		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,

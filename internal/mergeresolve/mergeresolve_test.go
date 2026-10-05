@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
@@ -89,9 +90,9 @@ func (f *fakeMergeSurface) indexOf(name string) int {
 	return -1
 }
 
-// conflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two markers
+// conflictStencilFixture is a minimal, valid conflict stencil carrying exactly the markers
 // buildConflictSpec fills.
-const conflictStencilFixture = "# Conflict\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
+const conflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
 // newTestDeps returns a Deps wired against fake, shuttle, and a fresh worktree/scratch/stencils
 // directory tree under t.TempDir(), with the conflict stencil fixture seeded.
@@ -106,9 +107,7 @@ func newTestDeps(t *testing.T, fake *fakeMergeSurface, shuttle *shedfake.MergeSh
 	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
 		t.Fatalf("MkdirAll(worktreeRoot): %v", err)
 	}
-	if err := os.MkdirAll(stencilsDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(stencilsDir): %v", err)
-	}
+	stencilkit.SeedInto(t, filepath.Dir(stencilsDir))
 	if err := os.WriteFile(filepath.Join(stencilsDir, "landing-template-conflict.md"), []byte(conflictStencilFixture), 0o644); err != nil {
 		t.Fatalf("WriteFile(conflict stencil): %v", err)
 	}
@@ -629,5 +628,40 @@ func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
 	}
 	if staleAtRun {
 		t.Error("the earlier call's report still existed when the session ran; want it cleared at entry")
+	}
+}
+
+// TestBuildConflictSpec_SkillsAndParentDirective covers the conflict session's skill list and its parent directive, with and without a parent.
+func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		parentName string
+		want       string
+	}{
+		{"with parent", "ab:cd:webster", "ab:cd:webster"},
+		{"no parent", "", "No parent is recorded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deps := newTestDeps(t, &fakeMergeSurface{}, &shedfake.MergeShuttle{})
+			deps.ParentName = tt.parentName
+
+			spec, err := buildConflictSpec(deps, []string{"a.txt"}, 1)
+			if err != nil {
+				t.Fatalf("buildConflictSpec error = %v; want nil", err)
+			}
+			if !strings.Contains(spec.Prompt, tt.want) {
+				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
+			}
+			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
+				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
+			}
+			if got := strings.Join(spec.Skills, ","); got != "scribe:prose,scribe:code-quality" {
+				t.Errorf("Skills = %q; want scribe:prose,scribe:code-quality", got)
+			}
+		})
 	}
 }

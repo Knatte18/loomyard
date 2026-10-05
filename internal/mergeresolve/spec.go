@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -21,6 +22,9 @@ const conflictStencilName = "landing-template-conflict"
 
 // conflictRole is the agent-name role this module's conflict-resolution spawn carries.
 const conflictRole = "conflict"
+
+// conflictSkills are the skills the conflict-resolution session loads before its prompt.
+var conflictSkills = []string{"scribe:prose", "scribe:code-quality"}
 
 // reportNamePrefix is the filename prefix every attempt's resolution report shares, followed by the attempt number and ".md".
 // The report path builder and Resolve's stale-report glob both use it.
@@ -70,9 +74,14 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
 	}
+	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
+	}
 	values := map[string]string{
-		"conflicted_paths": renderConflictedPaths(paths),
-		"report_path":      reportPath,
+		"conflicted_paths":         renderConflictedPaths(paths),
+		"report_path":              reportPath,
+		parentdirective.MarkerName: directive,
 	}
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {
@@ -87,6 +96,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        conflictRole,
+		Skills:      conflictSkills,
 		Timeout:     deps.Timeout,
 	}, nil
 }

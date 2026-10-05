@@ -124,6 +124,13 @@
 // never an error — a missed targeting call only costs the round the
 // guidance it would have added, never correctness.
 //
+// # Skills and the parent directive
+//
+// The three spawned roles (judge, triage, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
+// Each opening stencil carries `{{.parent_directive}}` near its top, filled with `parentdirective.Directive` from the told Options.ParentName.
+// An empty ParentName renders the no-parent variant;
+// a directive that cannot be rendered takes the same fail-safe path as an unreadable stencil.
+//
 // # Name-parameterized diagnostics
 //
 // Engine is constructed with a name that every error and Warn string

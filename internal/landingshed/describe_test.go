@@ -11,18 +11,17 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-const describeStencilFixture = "slug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
+const describeStencilFixture = "{{.parent_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
 	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
 
 func newDescribeInputs(t *testing.T) DescribeInputs {
 	t.Helper()
 	stencilsDir := t.TempDir()
+	stencilkit.SeedInto(t, stencilsDir)
 	landingDir := filepath.Join(stencilsDir, "landing")
-	if err := os.MkdirAll(landingDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", landingDir, err)
-	}
 	if err := os.WriteFile(filepath.Join(landingDir, "landing-template-describe.md"), []byte(describeStencilFixture), 0o644); err != nil {
 		t.Fatalf("WriteFile(describe stencil) = %v; want nil", err)
 	}
@@ -67,6 +66,40 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 		if !strings.Contains(spec.Prompt, v) {
 			t.Errorf("prompt %q does not contain input value %q", spec.Prompt, v)
 		}
+	}
+}
+
+func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		parentName string
+		want       string
+	}{
+		{"with parent", "ab:cd:webster", "ab:cd:webster"},
+		{"no parent", "", "No parent is recorded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := newDescribeInputs(t)
+			in.ParentName = tt.parentName
+
+			spec, err := DescribeSpec(in, Config{Describe: "claude:sonnet"}, modelspec.Registry{})
+			if err != nil {
+				t.Fatalf("DescribeSpec = _, %v; want nil error", err)
+			}
+			if !strings.Contains(spec.Prompt, tt.want) {
+				t.Errorf("prompt %q does not contain %q", spec.Prompt, tt.want)
+			}
+			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
+				t.Errorf("prompt %q carries the parent variant; want the no-parent variant", spec.Prompt)
+			}
+			if got := strings.Join(spec.Skills, ","); got != "scribe:prose" {
+				t.Errorf("spec.Skills = %q; want scribe:prose", got)
+			}
+		})
 	}
 }
 

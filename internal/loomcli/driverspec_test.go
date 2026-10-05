@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -9,7 +10,7 @@ import (
 
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
 func TestDriverSpec(t *testing.T) {
-	prompt := "run the ly-drive skill"
+	prompt := "drive the run"
 	reportPath := "/hub/wt/.lyx/shed/wt/drive-report-20260920-120000-cafe.md"
 	settings := loomengine.DriverSettings{
 		Model:   "claude-resolved-model-id",
@@ -22,6 +23,11 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("Prompt", func(t *testing.T) {
 		if got.Prompt != prompt {
 			t.Errorf("driverSpec().Prompt = %q; want %q", got.Prompt, prompt)
+		}
+	})
+	t.Run("Skills", func(t *testing.T) {
+		if want := []string{"scribe:prose"}; !slices.Equal(got.Skills, want) {
+			t.Errorf("driverSpec().Skills = %v; want %v", got.Skills, want)
 		}
 	})
 	t.Run("OutputFiles", func(t *testing.T) {

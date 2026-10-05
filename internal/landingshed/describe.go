@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -51,10 +52,16 @@ const describeStencilName = "landing-template-describe"
 // describeRole is the agent-name role this module's Describe spawn carries.
 const describeRole = "describe"
 
+// describeSkills are the skills the Describe session loads before its prompt.
+var describeSkills = []string{"scribe:prose"}
+
 // DescribeInputs carries the told values one Describe session needs. Every field is required.
 type DescribeInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
+	// ParentName is the name of the session the Describe session escalates to.
+	// Optional: empty renders the no-parent variant of the parent directive.
+	ParentName string
 	// DecisionRecordPath is the run's decision record, which the agent reads.
 	DecisionRecordPath string
 	// RunRecordPath is the live generation's webster summary.md, read only for manual-check items.
@@ -115,13 +122,18 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
 	}
+	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+	}
 	prompt, err := stencil.Fill(template, map[string]string{
-		"slug":                 in.Slug,
-		"decision_record_path": in.DecisionRecordPath,
-		"run_record_paths":     runRecordBullets(in),
-		"description_path":     in.DescriptionPath,
-		"task_branch":          in.TaskBranch,
-		"parent_branch":        in.ParentBranch,
+		parentdirective.MarkerName: directive,
+		"slug":                     in.Slug,
+		"decision_record_path":     in.DecisionRecordPath,
+		"run_record_paths":         runRecordBullets(in),
+		"description_path":         in.DescriptionPath,
+		"task_branch":              in.TaskBranch,
+		"parent_branch":            in.ParentBranch,
 	})
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: fill describe prompt: %w", err)
@@ -135,6 +147,7 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        describeRole,
+		Skills:      describeSkills,
 		Timeout:     time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
 	}, nil
 }

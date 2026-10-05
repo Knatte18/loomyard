@@ -77,6 +77,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 		WorktreeRoot: deps.WorktreeRoot,
 		ScratchDir:   deps.ScratchDir,
 		StencilsDir:  deps.StencilsDir,
+		ParentName:   deps.ParentName,
 		ConflictSpec: deps.Config.Conflict,
 		Registry:     deps.Registry,
 		Timeout:      time.Duration(deps.Config.ConflictTimeoutMin) * time.Minute,

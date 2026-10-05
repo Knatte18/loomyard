@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -36,14 +37,18 @@ import (
 // planRole is the agent-name role this module's Plan-Write spawn carries.
 const planRole = "plan"
 
+// planSkills are the skills the Plan-Write spawn loads, in order.
+var planSkills = []string{"scribe:prose", "scribe:testing"}
+
 // composePlanPrompt builds the Plan producer's prompt by reading the "loom-template-plan" stencil
-// from stencilsDir and filling it. frictionDirective is the caller-resolved Tier 2 note directive for
+// from stencilsDir and filling it. parentDirective is the caller-rendered parent directive and renders as nothing when empty.
+// frictionDirective is the caller-resolved Tier 2 note directive for
 // this run -- an empty string means Tier 2 is off or the read failed, and renders as nothing.
 // specsDir is the told deployed-specs directory, filled into the required specs_dir marker: unlike
 // pattern_directive and friction.MarkerName, specs_dir stays out of the optional-names slice, so a
 // prompt composed without a specs directory fails loudly at composition instead of rendering a blank
 // path into the agent's instructions.
-func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective string) ([]byte, error) {
+func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, patternDirective, frictionDirective, parentDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-plan")
 	if err != nil {
 		return nil, err
@@ -52,15 +57,16 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 	friction.WarnIfMarkerAbsent(template, "loom-template-plan", frictionDirective)
 
 	values := map[string]string{
-		"decision_record_path": decisionRecordPath,
-		"plan_dir":             planDir,
-		"overview_path":        overviewPath,
-		"pattern_directive":    patternDirective,
-		"specs_dir":            specsDir,
-		friction.MarkerName:    frictionDirective,
+		"decision_record_path":     decisionRecordPath,
+		"plan_dir":                 planDir,
+		"overview_path":            overviewPath,
+		"pattern_directive":        patternDirective,
+		"specs_dir":                specsDir,
+		friction.MarkerName:        frictionDirective,
+		parentdirective.MarkerName: parentDirective,
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
 	}
@@ -69,7 +75,8 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 
 // PlanSpec builds the shuttleengine.Spec for one Plan producer run. specsDir is told, never
 // derived: this package is bound by the Told-Geometry Invariant and derives no path of its own.
-func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+// parentName is told likewise; an empty one renders the no-parent directive.
+func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
@@ -88,6 +95,11 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config,
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}
 
+	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: parent directive: %w", err)
+	}
+
 	var frictionDir string
 	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
@@ -102,7 +114,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config,
 		frictionDirective = ""
 	}
 
-	prompt, err := composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective)
+	prompt, err := composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overviewPath, directive, frictionDirective, parentDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}
@@ -115,6 +127,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config,
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        planRole,
+		Skills:      planSkills,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil
 }

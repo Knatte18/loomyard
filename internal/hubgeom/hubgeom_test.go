@@ -125,6 +125,19 @@ func TestBurlerGeometry(t *testing.T) {
 	}
 }
 
+// TestBurlerGeometry_ParentNameFromOriginRecord pins ParentName to what the worktree's origin record names, and to empty when the record names no parent worktree.
+func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
+	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
+	if got, want := BurlerGeometry(l).ParentName, "tst:gone-task:orch"; got != want {
+		t.Errorf("BurlerGeometry(l).ParentName = %q; want %q", got, want)
+	}
+
+	l = hubWithOrigin(t, `{"parent_branch":"main"}`)
+	if got := BurlerGeometry(l).ParentName; got != "" {
+		t.Errorf("BurlerGeometry(l).ParentName without a parent worktree = %q; want empty", got)
+	}
+}
+
 // TestIsPrimeWorktree pins the .git-entry rule ReedGeometry tells the prime from a task worktree by.
 // A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
 // A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.

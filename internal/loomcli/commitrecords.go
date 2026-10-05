@@ -62,7 +62,7 @@ func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 		Short: "commit and push the run's records: status, reviews, friction notes and drive reports",
 		Long: `commit-records commits and pushes the run's records: the status file, the review
 round record, the friction notes under _lyx/loom/friction/ and the drive reports under
-_lyx/shed/<slug>/drive-reports/. The ly-drive end-of-session command runs it after the
+_lyx/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the
 driver writes its stop report. It is safe to run by hand in a task worktree before
 resuming a batten run whose teardown refused uncommitted run records. A tree with nothing
 to commit succeeds without adding a commit.

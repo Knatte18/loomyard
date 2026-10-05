@@ -38,25 +38,34 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this
-// file's one spawn launches. The claude engine's own launch line passes ONE ARGUMENT, a pointer to
-// the run's prompt.md, so the script takes the prompt.md path from the second word of its first
-// positional argument, extracts the drive report path driverPrompt quoted into that file, prints
-// claudeengine's own ready-marker fixture -- shuttle's own startup step now blocks Start until this
+// file's one spawn launches. The driver spec names a skill, so the claude engine's launch line carries no
+// prompt pointer: shuttle types `/<skill>` first and the pointer to the run's prompt.md afterwards.
+// The script prints claudeengine's own ready-marker fixture -- shuttle's own startup step blocks Start until this
 // (or the window closes), so a script that skipped it would make every call here time out at
-// startup_timeout_s instead of returning fast -- then sleeps settleDelay, giving the caller a window
+// startup_timeout_s instead of returning fast -- then reads typed lines: a `/<skill>` line is answered with the
+// unknown-skill notice, which shuttle skips at once, and the first other line is the pointer, from which the script takes the
+// prompt.md path and extracts the drive report path driverPrompt quoted into that file.
+// It then sleeps settleDelay, giving the caller a window
 // to observe the run in flight, past readiness, before the report exists -- writes a one-line report
 // there, and exits.
 func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
-prompt_file=$(printf '%%s' "$1" | awk '{print $2}')
-report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 echo '%s'
+while IFS= read -r line; do
+  case "$line" in
+    /*) echo "Unknown skill: ${line#/}" ;;
+    *) break ;;
+  esac
+done
+prompt_file=$(printf '%%s' "$line" | grep -o '[^ "]*prompt\.md' | head -1)
+report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 sleep %s
 if [ -n "$report" ]; then
   mkdir -p "$(dirname "$report")"
@@ -132,6 +141,8 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	if err := c.wire(loc, worktree); err != nil {
 		t.Fatalf("wire: %v", err)
 	}
+	// The driver prompt is rendered from the shipped stencils, which a fixture hub does not seed.
+	stencilkit.SeedInto(t, c.runDeps.Geom.StencilsDir)
 	t.Cleanup(func() { _, _ = c.reed.Down() })
 	if _, err := c.reed.Up(); err != nil {
 		t.Fatalf("reed.Up: %v", err)

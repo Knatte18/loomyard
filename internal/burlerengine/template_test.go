@@ -38,7 +38,7 @@ func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 		{Name: "style", Text: "pay extra attention to style"},
 	}
 
-	_, files, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	_, files, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -70,7 +70,7 @@ func TestTemplate_OrchestratorExcludesDownstreamBodies(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, _, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	orchestrator, _, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -154,6 +154,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "orchestrator",
 			template:        stencils.BurlerTemplateRoundOrchestrator,
 			values:          orchestratorMarkerValues(),
+			optional:        []string{"parent_directive"},
 			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "instruction_3_path", "review_path"},
 		},
 		{
@@ -346,7 +347,7 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 
-	_, files, err := composePrompt(stencilsDir, &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	_, files, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}

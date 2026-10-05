@@ -41,18 +41,19 @@ func DecideStart(strandLive, watcherLive bool) StartAction {
 // ChooseStartPrompt picks the launch prompt: the resume stencil pointed at handoffFlag, else at s.LastHandoff when it exists, else the start stencil.
 // A handoffFlag naming a missing file is an error, since a silent fallback would resume from the wrong context.
 // Only LastHandoff is consulted, never PendingHandoff, so a partial handoff an aborted cycle left is never chosen.
-func ChooseStartPrompt(stencilsDir, handoffFlag string, s State, exists func(string) bool) (prompt, source string, err error) {
+// Every prompt is a one-line pointer at rolePath, the role file the caller has rendered.
+func ChooseStartPrompt(stencilsDir, rolePath, handoffFlag string, s State, exists func(string) bool) (prompt, source string, err error) {
 	if handoffFlag != "" {
 		if !exists(handoffFlag) {
 			return "", "", fmt.Errorf("orch: --handoff file %q does not exist", handoffFlag)
 		}
-		prompt, err = RenderResumePrompt(stencilsDir, handoffFlag)
+		prompt, err = RenderResumePrompt(stencilsDir, rolePath, handoffFlag)
 		return prompt, SourceFlag, err
 	}
 	if s.LastHandoff != "" && exists(s.LastHandoff) {
-		prompt, err = RenderResumePrompt(stencilsDir, s.LastHandoff)
+		prompt, err = RenderResumePrompt(stencilsDir, rolePath, s.LastHandoff)
 		return prompt, SourceLastHandoff, err
 	}
-	prompt, err = RenderStartPrompt(stencilsDir)
+	prompt, err = RenderStartPrompt(stencilsDir, rolePath)
 	return prompt, SourceFresh, err
 }

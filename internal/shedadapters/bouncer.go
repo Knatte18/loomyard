@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -36,6 +37,12 @@ const bouncerJudgeRole = "bouncer-judge"
 // seed must describe the same run, because Attach matches on the role, round, and OutputFiles alone.
 // A literal in one place and a constant in the other is how the two silently stop matching.
 const bouncerSeedRole = "bouncer-seed"
+
+// bouncerJudgeSkills and bouncerSeedSkills are the skills the judge and seed spawns load, in order.
+var (
+	bouncerJudgeSkills = []string{"scribe:prose"}
+	bouncerSeedSkills  = []string{"scribe:prose"}
+)
 
 // BouncerConfig configures one Bouncer instance.
 type BouncerConfig struct {
@@ -100,6 +107,9 @@ type BouncerConfig struct {
 	// Slug is the task slug the escalation Awaiting Reason addresses the `lyx loom circling` verbs with, and the escalation brief names the task by.
 	// Empty means the verbs run without a slug argument, and the brief render degrades.
 	Slug string
+	// ParentName is the told name of the session this Bouncer's spawned roles escalate to, rendered into the judge and seed prompts by parentdirective.Directive.
+	// Empty renders the directive's no-parent variant.
+	ParentName string
 	// DecisionRecordPath is the absolute decision record path the escalation brief names.
 	// Empty is legal and only degrades the brief render.
 	DecisionRecordPath string
@@ -811,11 +821,18 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
+	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+		return nil
+	}
+
 	seedValues := map[string]string{
-		"rubric":     rubric,
-		"artifacts":  strings.Join(b.cfg.ArtifactPaths, "\n"),
-		"round":      "1",
-		"focus_path": focusPathValue,
+		"rubric":                   rubric,
+		"artifacts":                strings.Join(b.cfg.ArtifactPaths, "\n"),
+		"round":                    "1",
+		"focus_path":               focusPathValue,
+		parentdirective.MarkerName: parentDirective,
 	}
 	maps.Copy(seedValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
 	prompt, err := stencil.Fill(seedTemplate, seedValues)
@@ -832,6 +849,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Version:     b.cfg.Version,
 		Role:        bouncerSeedRole,
 		Round:       "1",
+		Skills:      bouncerSeedSkills,
 	}
 
 	result, attached, err := b.cfg.Shuttle.Attach(spec)
@@ -908,6 +926,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer pattern directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
+	parentDirective, err := parentdirective.Directive(b.cfg.StencilsDir, b.cfg.ParentName, false)
+	if err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
+
 	// The output list is never conditional on the verdict:
 	// shuttleengine classifies a run complete only when every declared output file exists,
 	// so a third entry written only on CONTINUE would make every approval classify non-complete, degrade, and render shedengine.Done unreachable.
@@ -930,6 +953,8 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"verdict_path":    outputs[0],
 		"ledger_path":     outputs[1],
 		"focus_path":      outputs[2],
+
+		parentdirective.MarkerName: parentDirective,
 	}
 	if patternDirective != "" {
 		judgeValues["pattern_directive"] = patternDirective
@@ -948,6 +973,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Version:     b.cfg.Version,
 		Role:        bouncerJudgeRole,
 		Round:       strconv.Itoa(n),
+		Skills:      bouncerJudgeSkills,
 	}
 
 	// Probe for a still-live judge run before archiving anything, exactly as

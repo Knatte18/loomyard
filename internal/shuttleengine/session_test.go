@@ -7,13 +7,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
 type cyclerEngine struct {
 	fakeEngine
-	tokens   int
-	known    bool
 	idle     bool
 	tooShort bool
 	clear    []PaneInput
@@ -21,8 +20,9 @@ type cyclerEngine struct {
 	foci     []string
 }
 
-func (e *cyclerEngine) ContextTokens(Event) ContextReading {
-	return ContextReading{Tokens: e.tokens, Known: e.known}
+func (e *cyclerEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *cyclerEngine) CompactedSince(Event, time.Time) (time.Time, bool) {
+	return time.Time{}, false
 }
 func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)
@@ -82,6 +82,9 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	if _, err := runner.ContextTokens(Event{}); err == nil {
 		t.Error("ContextTokens on a plain engine = nil error")
 	}
+	if _, _, err := runner.CompactedSince(Event{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "SessionCycler") {
+		t.Errorf("CompactedSince on a plain engine = %v, want an error naming SessionCycler", err)
+	}
 	if _, err := runner.SessionIdle("strand-1"); err == nil {
 		t.Error("SessionIdle on a plain engine = nil error")
 	}
@@ -94,15 +97,6 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	}
 	if len(reed.CallLog) != 0 {
 		t.Errorf("reed touched despite missing capability: %v", reed.CallLog)
-	}
-}
-
-func TestRunner_ContextTokens_Delegates(t *testing.T) {
-	engine := &cyclerEngine{tokens: 1234, known: true}
-	runner := newFixture(t, &fakeReed{}, engine, withStrand("strand-1")).Runner
-	reading, err := runner.ContextTokens(Event{})
-	if err != nil || reading.Tokens != 1234 || !reading.Known {
-		t.Errorf("ContextTokens = %+v, %v; want 1234 known, nil", reading, err)
 	}
 }
 
@@ -183,5 +177,55 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 	}
 	if len(reed.CallLog) != 0 {
 		t.Errorf("reed touched: %v", reed.CallLog)
+	}
+}
+
+func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
+	t.Parallel()
+	refused := []struct {
+		name string
+		guid string
+		live bool
+	}{
+		{"unknown guid", "nope", true},
+		{"dead strand", "strand-1", false},
+	}
+	for _, tc := range refused {
+		reed := &fakeReed{StatusQueue: liveStrandStatus(tc.live), CaptureQueue: []string{"NOSKILL ghost"}}
+		runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
+		if err := runner.LoadSkill(tc.guid, "a"); err == nil {
+			t.Errorf("%s: LoadSkill = nil error", tc.name)
+		}
+		if _, err := runner.SkillUnknown(tc.guid, "ghost"); err == nil {
+			t.Errorf("%s: SkillUnknown = nil error", tc.name)
+		}
+		if len(reed.SendTextCalls) != 0 {
+			t.Errorf("%s: typed %+v; want nothing", tc.name, reed.SendTextCalls)
+		}
+	}
+
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"NOSKILL ghost"}}
+	runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
+	if err := runner.LoadSkill("strand-1", "a"); err != nil {
+		t.Fatalf("LoadSkill: %v", err)
+	}
+	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a" || !reed.SendTextCalls[0].Submit {
+		t.Errorf("SendTextCalls = %+v; want the engine's load sequence", reed.SendTextCalls)
+	}
+	if unknown, err := runner.SkillUnknown("strand-1", "ghost"); err != nil || !unknown {
+		t.Errorf("SkillUnknown(ghost) = %v, %v; want true, nil", unknown, err)
+	}
+	if unknown, err := runner.SkillUnknown("strand-1", "other"); err != nil || unknown {
+		t.Errorf("SkillUnknown(other) = %v, %v; want false, nil", unknown, err)
+	}
+}
+
+func TestRunner_LoadSkillAndSkillUnknown_ErrorOnPlainEngine(t *testing.T) {
+	runner := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &fakeEngine{}, withStrand("strand-1")).Runner
+	if err := runner.LoadSkill("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("LoadSkill error = %v; want one naming SkillLoader", err)
+	}
+	if _, err := runner.SkillUnknown("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("SkillUnknown error = %v; want one naming SkillLoader", err)
 	}
 }

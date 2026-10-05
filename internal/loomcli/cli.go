@@ -65,6 +65,10 @@ type loomCLI struct {
 	// re-reading loom.yaml a second time. Left at its zero value by wireLightweight, whose verbs are
 	// all read-only and load no module config.
 	frictionDir string
+	// parentName is the name of the session that spawned this worktree's run, taken in wire from the reed geometry's origin record;
+	// empty when the worktree has no resolvable parent.
+	// Every role loom wires renders its parent directive from it.
+	parentName string
 	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
@@ -106,7 +110,7 @@ type loomCLI struct {
 	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
 	// PreRun returns no envelope map of its own.
 	entryObservation loomengine.EntryObservation
-	// driverStarter is the seam through which the llm arm starts the ly-drive session's shuttle run,
+	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run,
 	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
 	// a concrete type.
@@ -390,7 +394,7 @@ awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start"
 awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
 sends the findings to PR-Rework. "commit-records" commits and
 pushes the run's records (status, reviews, friction notes, drive reports); the
-ly-drive end-of-session command runs it after the driver writes its stop report.
+loom driver's end-of-session command runs it after the driver writes its stop report.
 "review" is the subtree through which a run's parent answers Discussion-Write's
 parent-review gate: "review notify", "review delivered", "review approve" and
 "review reject <review-file>", each taking an optional task slug (required from

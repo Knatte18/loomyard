@@ -7,12 +7,14 @@ package loomengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestDiscussionSpec verifies DiscussionSpec's field mapping for both autonomous values.
@@ -43,7 +45,7 @@ func TestDiscussionSpec(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "add-json-flag", tt.autonomous)
+			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", tt.autonomous)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(..., autonomous=%v) = _, %v; want nil error", tt.autonomous, err)
 			}
@@ -92,7 +94,7 @@ func TestDiscussionSpec_EmptySlug(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "", false); err == nil {
+	if _, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "", false); err == nil {
 		t.Fatal("DiscussionSpec(..., slug=\"\", ...) = _, nil; want non-nil error")
 	}
 }
@@ -119,7 +121,7 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", discussionPath, err)
 	}
 
-	spec, err := DiscussionSpec(layout, stencilsDir, cfg, reg, "add-json-flag", false)
+	spec, err := DiscussionSpec(layout, stencilsDir, "", cfg, reg, "add-json-flag", false)
 	if err != nil {
 		t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
 	}
@@ -142,12 +144,13 @@ func TestDiscussionSpec_MissingStencilsDirIsHardError(t *testing.T) {
 	}
 
 	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
-	_, err = DiscussionSpec(layout, missingStencilsDir, cfg, reg, "add-json-flag", false)
+	_, err = DiscussionSpec(layout, missingStencilsDir, "", cfg, reg, "add-json-flag", false)
 	if err == nil {
 		t.Fatal("DiscussionSpec(..., stencilsDir=<missing>, ...) = _, nil; want non-nil error")
 	}
-	if !strings.Contains(err.Error(), "loom-template-discussion") {
-		t.Errorf("DiscussionSpec(..., stencilsDir=<missing>, ...) error = %q; want it to name the missing stencil %q", err.Error(), "loom-template-discussion")
+	// The parent directive renders before the discussion stencil is read, so it is the first stencil the error names.
+	if !strings.Contains(err.Error(), "parent-directive-none") {
+		t.Errorf("DiscussionSpec(..., stencilsDir=<missing>, ...) error = %q; want it to name the missing stencil %q", err.Error(), "parent-directive-none")
 	}
 }
 
@@ -180,7 +183,7 @@ func TestDiscussionSpec_PatternDirective(t *testing.T) {
 				}
 			}
 
-			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "add-json-flag", false)
+			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "add-json-flag", false)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
 			}
@@ -196,6 +199,74 @@ func TestDiscussionSpec_PatternDirective(t *testing.T) {
 				if directiveAt < 0 || directiveAt > stepOneAt {
 					t.Errorf("designer directive at %d, Step 1 at %d; want the directive before Step 1", directiveAt, stepOneAt)
 				}
+			}
+		})
+	}
+}
+
+// TestProducerSpecs_SkillsAndParentDirective verifies each loom producer spec carries its role's skills in order, names the told parent in its prompt, and renders the no-parent variant for an empty name.
+// The operator-ban line is absent only for the interactive Discussion.
+func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
+	t.Parallel()
+
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Discussion: "opus[effort=high]", Plan: "opus[effort=high]"}
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	const operatorBan = "A question to the operator in your pane is never the way forward."
+	build := map[string]func(parent string) (shuttleengine.Spec, error){
+		"discussion-interactive": func(parent string) (shuttleengine.Spec, error) {
+			return DiscussionSpec(layout, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", false)
+		},
+		"discussion-autonomous": func(parent string) (shuttleengine.Spec, error) {
+			return DiscussionSpec(layout, newTestStencilsDir(t), parent, cfg, reg, "add-json-flag", true)
+		},
+		"plan": func(parent string) (shuttleengine.Spec, error) {
+			return PlanSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg)
+		},
+		"rework": func(parent string) (shuttleengine.Spec, error) {
+			return ReworkSpec(layout, newTestStencilsDir(t), newTestSpecsDir(t), parent, cfg, reg, 4, "prior")
+		},
+	}
+	wantSkills := map[string][]string{
+		"discussion-interactive": {"scribe:prose", "scribe:conversation"},
+		"discussion-autonomous":  {"scribe:prose", "scribe:conversation"},
+		"plan":                   {"scribe:prose", "scribe:testing"},
+		"rework":                 {"scribe:prose", "scribe:testing"},
+	}
+
+	for name, mk := range build {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			withParent, err := mk("shortname:orch")
+			if err != nil {
+				t.Fatalf("spec with parent = _, %v; want nil error", err)
+			}
+			if !reflect.DeepEqual(withParent.Skills, wantSkills[name]) {
+				t.Errorf("Skills = %v; want %v", withParent.Skills, wantSkills[name])
+			}
+			if !strings.Contains(withParent.Prompt, "`shortname:orch`") {
+				t.Errorf("Prompt does not name the told parent %q", "shortname:orch")
+			}
+			wantBan := name != "discussion-interactive"
+			if got := strings.Contains(withParent.Prompt, operatorBan); got != wantBan {
+				t.Errorf("Prompt carries the operator-ban line = %v; want %v", got, wantBan)
+			}
+
+			noParent, err := mk("")
+			if err != nil {
+				t.Fatalf("spec without parent = _, %v; want nil error", err)
+			}
+			if !strings.Contains(noParent.Prompt, "No parent is recorded for this run.") {
+				t.Error("Prompt does not carry the no-parent variant for an empty parent name")
+			}
+			if strings.Contains(noParent.Prompt, "{{") {
+				t.Error("Prompt contains an unrendered marker")
 			}
 		})
 	}

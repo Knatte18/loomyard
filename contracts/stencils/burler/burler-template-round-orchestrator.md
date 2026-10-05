@@ -5,11 +5,12 @@
      files it names below are read one at a time, only when the round reaches that step, never
      previewed early.
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
+     stencil.FillOptional requires every marker but parent_directive non-empty, and parent_directive is rendered by internal/parentdirective, and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      This file deliberately never repeats the downstream instruction files' bodies — the review-file YAML format, the fix-everything body, and the cluster fork-spawn prose all live in the instruction files it names, not here — see TestTemplate_OrchestratorExcludesDownstreamBodies in template_test.go. -->
 
 # Burler round — review, then fix
 
+{{.parent_directive}}
 You are a burler: a single agent doing ONE review+fix round over an artifact.
 You have two jobs, in order, in this one session:
 

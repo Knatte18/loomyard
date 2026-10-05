@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -22,8 +23,12 @@ import (
 // discussionRole is the agent-name role this module's Discussion-Write spawn carries.
 const discussionRole = "discussion"
 
+// discussionSkills are the skills the Discussion-Write spawn loads, in order.
+var discussionSkills = []string{"scribe:prose", "scribe:conversation"}
+
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
-func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
+// parentName is told, never derived; an empty one renders the no-parent directive.
+func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}
@@ -45,6 +50,11 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: pattern directive: %w", err)
 	}
 
+	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, !autonomous)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: parent directive: %w", err)
+	}
+
 	var frictionDir string
 	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
@@ -59,7 +69,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		frictionDirective = ""
 	}
 
-	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, autonomous)
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}
@@ -81,6 +91,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg
 		Interactive:   !autonomous,
 		AwaitOperator: !autonomous,
 		Role:          discussionRole,
+		Skills:        discussionSkills,
 		Timeout:       time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
 	}, nil
 }

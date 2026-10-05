@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -29,6 +30,9 @@ const reworkStencilName = "loom-template-rework"
 
 // reworkRole is the agent-name role this module's PR-Rework spawn carries.
 const reworkRole = "rework"
+
+// reworkSkills are the skills the PR-Rework spawn loads, in order.
+var reworkSkills = []string{"scribe:prose", "scribe:testing"}
 
 // reworkPaths are the told paths composeReworkPrompt fills into the rework stencil.
 type reworkPaths struct {
@@ -43,8 +47,8 @@ type reworkPaths struct {
 
 // composeReworkPrompt builds the rework prompt by reading the "loom-template-rework" stencil from stencilsDir and filling it.
 // firstCard is the number the new generation's first card takes.
-// Only pattern_directive and the friction marker are optional; specs_dir and every path marker fail composition when empty.
-func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard int, patternDirective, frictionDirective string) ([]byte, error) {
+// Only pattern_directive, the friction marker and the parent directive marker are optional; specs_dir and every path marker fail composition when empty.
+func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard int, patternDirective, frictionDirective, parentDirective string) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, reworkStencilName)
 	if err != nil {
 		return nil, err
@@ -53,20 +57,21 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 	friction.WarnIfMarkerAbsent(template, reworkStencilName, frictionDirective)
 
 	values := map[string]string{
-		"rejection_path":       p.rejection,
-		"plan_dir":             p.planDir,
-		"overview_path":        p.overview,
-		"decision_record_path": p.decisionRecord,
-		"coverage_path":        p.coverage,
-		"plan_stencil_path":    p.planStencil,
-		"first_card":           strconv.Itoa(firstCard),
-		"prior_plan_dir":       p.priorPlan,
-		"specs_dir":            specsDir,
-		"pattern_directive":    patternDirective,
-		friction.MarkerName:    frictionDirective,
+		"rejection_path":           p.rejection,
+		"plan_dir":                 p.planDir,
+		"overview_path":            p.overview,
+		"decision_record_path":     p.decisionRecord,
+		"coverage_path":            p.coverage,
+		"plan_stencil_path":        p.planStencil,
+		"first_card":               strconv.Itoa(firstCard),
+		"prior_plan_dir":           p.priorPlan,
+		"specs_dir":                specsDir,
+		"pattern_directive":        patternDirective,
+		friction.MarkerName:        frictionDirective,
+		parentdirective.MarkerName: parentDirective,
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose rework prompt: %w", err)
 	}
@@ -74,11 +79,12 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 }
 
 // ReworkSpec builds the shuttleengine.Spec for one PR-Rework agent run.
-// stencilsDir and specsDir are told, never derived: this package is bound by the Told-Geometry Invariant.
+// stencilsDir, specsDir and parentName are told, never derived: this package is bound by the Told-Geometry Invariant.
+// An empty parentName renders the no-parent directive.
 // firstCard is the number the new generation's first card takes, one past the highest card of the retired generation,
 // and priorPlanDir is where that generation's plan was archived; both are told as values because the session cannot derive them from the worktree it runs in.
 // The plan role's model-spec and PlanTimeoutMin are reused.
-func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (shuttleengine.Spec, error) {
+func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: plan role model-spec: %w", err)
@@ -103,6 +109,11 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}
 
+	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: parent directive: %w", err)
+	}
+
 	var frictionDir string
 	if cfg.Friction != "" {
 		frictionDir = LoomFrictionDir(layout)
@@ -115,7 +126,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		frictionDirective = ""
 	}
 
-	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, firstCard, directive, frictionDirective)
+	prompt, err := composeReworkPrompt(stencilsDir, specsDir, paths, firstCard, directive, frictionDirective, parentDirective)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: ReworkSpec: %w", err)
 	}
@@ -128,6 +139,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir string, cfg Confi
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        reworkRole,
+		Skills:      reworkSkills,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil
 }

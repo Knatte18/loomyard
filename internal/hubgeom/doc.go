@@ -11,12 +11,12 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //
-// ReedGeometry is the one teller that does I/O, and it spawns nothing.
-// It reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent,
-// because the name prefix and parent are Board and run state that no Location carries.
+// The tellers do I/O only for Board and run state that no Location carries, and spawn nothing.
+// ReedGeometry reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent.
+// BurlerGeometry and WebsterGeometry read the parent through ResolveParent too, as the name their spawned roles' parent directive renders.
 // ResolveParent reads the pair's origin record alone; an origin that names no parent worktree, or no origin record, yields no parent.
-// A missing or unreadable .git entry is its one error.
-// It is still the only reader — reedengine resolves neither, per the Told-Geometry Invariant.
+// A missing or unreadable .git entry is ReedGeometry's one error, and an unresolvable parent leaves ParentName empty with a warning in all three.
+// hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
 //
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.

@@ -34,6 +34,23 @@ type fakeSession struct {
 	tokenAsks  []string
 	onSend     func()
 	onAlive    func()
+
+	skillUnknown map[string]bool      // Skill to whether SkillUnknown reports it.
+	autoCompact  map[string]time.Time // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
+}
+
+func (f *fakeSession) LoadSkill(_, skill string) error {
+	f.calls = append(f.calls, "skill:"+skill)
+	return nil
+}
+
+func (f *fakeSession) SkillUnknown(_, skill string) (bool, error) {
+	return f.skillUnknown[skill], nil
+}
+
+func (f *fakeSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
+	at, ok := f.autoCompact[turnEnd.Message]
+	return at, ok && at.After(since), nil
 }
 
 func (f *fakeSession) StrandAlive(string) (bool, error) {
@@ -120,6 +137,8 @@ type watchEnv struct {
 	paths Paths
 	stDir string
 	cfg   Config
+
+	skills []string // The skill list the watcher reloads, set before newWatcher.
 }
 
 func stop(msg string) shuttleengine.Event {
@@ -172,7 +191,7 @@ func (e *watchEnv) noticeLines() []string {
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
-	return NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.clock)
+	return NewWatcher(e.s, e.cfg, e.paths, e.stDir, e.skills, e.clock)
 }
 
 func (e *watchEnv) tick() {
@@ -398,7 +417,7 @@ func TestWatcher_ManualRequestBelowThresholdCycles(t *testing.T) {
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -407,7 +426,7 @@ func TestWatcher_ManualRequestBelowThresholdCycles(t *testing.T) {
 	if e.state().Phase != PhaseHandoffRequested {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
-	if requested, _ := CycleRequested(e.paths); requested {
+	if _, requested, _ := CycleRequested(e.paths); requested {
 		t.Error("cycle request should be cleared")
 	}
 }
@@ -782,7 +801,7 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	breakStencil(t, e.stDir, handoffStencilName)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -792,8 +811,314 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	if e.state().Phase != PhaseIdle {
 		t.Errorf("phase = %s", e.state().Phase)
 	}
-	if requested, _ := CycleRequested(e.paths); !requested {
+	if _, requested, _ := CycleRequested(e.paths); !requested {
 		t.Error("cycle request should be kept")
+	}
+}
+
+func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	if _, err := os.Stat(e.paths.NoteTemplatePath); err != nil {
+		t.Fatalf("note template file not rendered before the request: %v", err)
+	}
+	var sent string
+	for _, c := range e.s.calls {
+		if strings.HasPrefix(c, "send:") {
+			sent = c
+		}
+	}
+	if !strings.Contains(sent, e.paths.NoteTemplatePath) || !strings.Contains(sent, e.state().PendingHandoff) {
+		t.Errorf("note request %q must name the template and the note path", sent)
+	}
+}
+
+var reloadSkills = []string{"scribe:prose", "ly:board"}
+
+// withSkills makes the watcher reload reloadSkills.
+func (e *watchEnv) withSkills() {
+	e.skills = reloadSkills
+	e.w = e.newWatcher()
+}
+
+// callsAfter returns the calls made after the first call with prefix.
+func (e *watchEnv) callsAfter(prefix string) []string {
+	e.t.Helper()
+	for i, c := range e.s.calls {
+		if strings.HasPrefix(c, prefix) {
+			return e.s.calls[i+1:]
+		}
+	}
+	e.t.Fatalf("no call with prefix %q in %v", prefix, e.s.calls)
+	return nil
+}
+
+// endTurn reads one turn end and ticks.
+func (e *watchEnv) endTurn(msg string) {
+	e.t.Helper()
+	e.s.events = append(e.s.events, stop(msg))
+	e.tick()
+}
+
+// assertReload checks the calls after prefix are every skill in order, then a pointer naming the role file and, when note is not empty, the note.
+func (e *watchEnv) assertReload(prefix, note string) {
+	e.t.Helper()
+	got := e.callsAfter(prefix)
+	if len(got) != len(reloadSkills)+1 {
+		e.t.Fatalf("calls after %q = %v, want %d skills and a pointer", prefix, got, len(reloadSkills))
+	}
+	for i, skill := range reloadSkills {
+		if got[i] != "skill:"+skill {
+			e.t.Errorf("call %d = %q, want the skill %s", i, got[i], skill)
+		}
+	}
+	pointer := got[len(got)-1]
+	if !strings.HasPrefix(pointer, "send:") || !strings.Contains(pointer, e.paths.RolePath) {
+		e.t.Errorf("pointer = %q, want it to name the role file", pointer)
+	}
+	if note != "" && !strings.Contains(pointer, note) {
+		e.t.Errorf("pointer = %q, want it to name the note %s", pointer, note)
+	}
+	if note == "" && strings.Contains(pointer, "note") {
+		e.t.Errorf("pointer = %q, want no note", pointer)
+	}
+}
+
+func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.reachClearing()
+	e.tick() // clearing -> resuming, first skill typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != 0 || st.ReloadTypedAt.IsZero() {
+		t.Fatalf("state = %+v", st)
+	}
+	e.endTurn("t1")
+	e.endTurn("t2")
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != len(reloadSkills) {
+		t.Fatalf("state = %+v, want the pointer step", st)
+	}
+	e.s.usage["resumed"] = 300
+	e.endTurn("resumed")
+	e.assertReload("clear", e.state().LastHandoff)
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 300 || st.ReloadStep != 0 {
+		t.Errorf("state = %+v", st)
+	}
+}
+
+func TestWatcher_SkillSkipCauses(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		unknown  map[string]bool
+		advances []time.Duration
+		endTurns []string
+		reloaded bool // the reload completes after the turn ends, else only the second skill follows the clear
+	}{
+		{
+			name:     "unknown skill is skipped and logged",
+			unknown:  map[string]bool{"scribe:prose": true},
+			endTurns: []string{"t2", "resumed"},
+			reloaded: true,
+		},
+		{
+			name:     "silent skill is skipped at the timeout",
+			advances: []time.Duration{99 * time.Second, 2 * time.Second},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			e.s.skillUnknown = tt.unknown
+			e.reachClearing()
+			e.tick() // first skill typed
+			for i, d := range tt.advances {
+				if i > 0 {
+					if st := e.state(); st.ReloadStep != 0 {
+						t.Fatalf("ReloadStep = %d before the skip", st.ReloadStep)
+					}
+				}
+				e.clock.advance(d)
+				e.tick()
+			}
+			if len(tt.advances) == 0 {
+				e.tick() // the skip lands, the next skill typed on the same tick
+			}
+			if st := e.state(); st.ReloadStep != 1 {
+				t.Fatalf("ReloadStep = %d, want the skill skipped", st.ReloadStep)
+			}
+			for _, turn := range tt.endTurns {
+				e.endTurn(turn)
+			}
+			if tt.reloaded {
+				e.assertReload("clear", e.state().LastHandoff)
+			} else if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
+				t.Errorf("calls after clear = %v", got)
+			}
+		})
+	}
+}
+
+func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.reachClearing()
+	e.tick()
+	e.endTurn("t1") // first skill confirmed, second typed
+	typedAt := e.state().ReloadTypedAt
+
+	e.clock.advance(50 * time.Second)
+	e.w = e.newWatcher()
+	e.s.idle = false
+	e.tick()
+	if got := e.callsAfter("clear"); len(got) != 2 {
+		t.Fatalf("typed behind a failing probe: %v", got)
+	}
+	e.s.idle = true
+	e.tick()
+	got := e.callsAfter("clear")
+	if len(got) != 3 || got[2] != "skill:ly:board" {
+		t.Fatalf("calls after clear = %v, want only the unconfirmed skill typed again", got)
+	}
+	if st := e.state(); !st.ReloadTypedAt.Equal(typedAt) || st.ReloadStep != 1 {
+		t.Errorf("state = %+v, want the step and its first typing time kept", st)
+	}
+}
+
+func TestWatcher_ReloadRestartKeepsSkippedSkillSkipped(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.reachClearing()
+	e.tick()
+	e.clock.advance(101 * time.Second)
+	e.tick() // first skill timed out, second typed
+	e.w = e.newWatcher()
+	e.tick()
+	for _, c := range e.callsAfter("clear") {
+		if c == "skill:scribe:prose" && e.s.count("skill:scribe:prose") > 1 {
+			t.Fatalf("a skipped skill was typed again: %v", e.s.calls)
+		}
+	}
+	if st := e.state(); st.ReloadStep != 1 {
+		t.Errorf("ReloadStep = %d, want 1", st.ReloadStep)
+	}
+}
+
+func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.reachClearing()
+	e.s.idleSeq = []bool{true, false, false}
+	e.tick() // clearing probe passes, first skill typed
+	e.s.events = append(e.s.events, stop("t1"))
+	e.tick() // confirmed, but the next probe fails
+	e.tick()
+	if got := e.callsAfter("clear"); len(got) != 1 {
+		t.Fatalf("typed behind a failing probe: %v", got)
+	}
+	e.s.idle = true
+	e.tick()
+	if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
+		t.Fatalf("calls after clear = %v", got)
+	}
+}
+
+func TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	boundary := e.clock.now.Add(time.Second)
+	e.s.autoCompact = map[string]time.Time{"a": boundary}
+	e.s.usage["a"] = 100
+	e.endTurn("a")
+	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) {
+		t.Fatalf("state = %+v, want resuming with the baseline at the boundary", st)
+	}
+	if _, err := os.Stat(e.paths.RolePath); err != nil {
+		t.Errorf("role file not rendered: %v", err)
+	}
+	e.endTurn("t1")
+	e.endTurn("t2")
+	e.endTurn("resumed")
+	if got := e.s.calls; len(got) != len(reloadSkills)+1 {
+		t.Fatalf("calls = %v", got)
+	}
+	pointer := e.s.calls[len(e.s.calls)-1]
+	if !strings.Contains(pointer, e.paths.RolePath) || strings.Contains(pointer, "note") {
+		t.Errorf("pointer = %q, want the role file and no note", pointer)
+	}
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Errorf("phase = %s, want idle", st.Phase)
+	}
+	e.endTurn("later") // the same boundary again: no second reload
+	e.tick()
+	if len(e.s.calls) != len(reloadSkills)+1 {
+		t.Errorf("a handled boundary reloaded twice: %v", e.s.calls)
+	}
+}
+
+func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.setState(func(st *State) { st.CompactionBaseline = e.clock.now })
+	e.w = e.newWatcher()
+	e.s.autoCompact = map[string]time.Time{"a": e.clock.now}
+	e.s.usage["a"] = 100
+	e.endTurn("a")
+	e.tick()
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Errorf("phase = %s", st.Phase)
+	}
+}
+
+func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.s.autoCompact = map[string]time.Time{"a": e.clock.now.Add(time.Second)}
+	e.s.usage["a"] = 100
+	e.s.idle = false
+	e.endTurn("a")
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() {
+		t.Fatalf("state = %+v, want idle with the baseline unmoved", st)
+	}
+	e.s.idle = true
+	e.tick()
+	if e.s.count("skill:") != 1 {
+		t.Fatalf("calls = %v", e.s.calls)
+	}
+}
+
+func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.tick()
+	if e.s.count("clear") != 1 {
+		t.Fatalf("calls = %v; want the clear sent", e.s.calls)
+	}
+	if _, err := os.Stat(e.paths.RolePath); err != nil {
+		t.Errorf("role file not rendered before the resume pointer: %v", err)
+	}
+	if !strings.Contains(e.state().PendingResume, e.paths.RolePath) {
+		t.Errorf("resume pointer %q must name the role file", e.state().PendingResume)
+	}
+}
+
+func TestWatcher_FailingRoleRenderAbortsWithoutClear(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	if err := os.WriteFile(stencilstore.Path(e.stDir, roleStencilName), []byte("{{.nope}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.tick()
+	st := e.state()
+	if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, roleStencilName) {
+		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
 	}
 }
 
@@ -1135,7 +1460,7 @@ func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
 		e := newWatchEnv(t)
 		e.s.usage["a"] = 10
 		e.s.events = []shuttleengine.Event{stop("a")}
-		if err := RequestCycle(e.paths); err != nil {
+		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 			t.Fatal(err)
 		}
 		e.tick()
@@ -1205,7 +1530,7 @@ func TestWatcher_RequestedTriggerRecorded(t *testing.T) {
 	e := newSoftEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -1275,7 +1600,7 @@ func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
 	e.s.events = []shuttleengine.Event{stop("a")}
 	e.tick()
 	asks := len(e.s.tokenAsks)
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.clock.advance(11 * time.Second)

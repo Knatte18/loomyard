@@ -47,6 +47,7 @@ func writeStencil(t *testing.T, baseDir, name, content string) {
 func minimalBouncerConfig(t *testing.T, env Env) Config {
 	t.Helper()
 	writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
+	writeStencil(t, env.StencilsDir, "parent-directive-none", "no parent\n")
 	return Config{
 		"run_subdir":     "review-segment",
 		"artifact_paths": []string{"artifact.md"},
@@ -837,6 +838,45 @@ func layoutBouncerCirclingRounds(t *testing.T, env Env) {
 		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
+	}
+}
+
+// TestBouncerEntry_ParentNamePassesToJudgePrompt covers Env.ParentName reaching the Bouncer's judge prompt through the parent directive, and the empty name rendering the no-parent variant.
+func TestBouncerEntry_ParentNamePassesToJudgePrompt(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		parentName string
+		want       string
+	}{
+		{"WithParent", "hub:parent", "told parent hub:parent"},
+		{"NoParent", "", "no parent here"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.ParentName = tt.parentName
+			shuttle := judgeSeamShuttle()
+			env.Shuttle = shuttle
+			writeStencil(t, env.StencilsDir, "bouncer-template-judge", "{{.parent_directive}}\n")
+			cfg := minimalBouncerConfig(t, env)
+			writeStencil(t, env.StencilsDir, "parent-directive-none", "no parent here\n")
+			writeStencil(t, env.StencilsDir, "parent-directive-parent", "told parent {{.parent_name}}{{.operator_ban}}\n")
+			writeStencil(t, env.StencilsDir, "parent-directive-operator-ban", "ban\n")
+			layoutBouncerRound1Report(t, env)
+
+			producer, err := bouncerEntry("review-bounce", cfg, env)
+			if err != nil {
+				t.Fatalf("bouncerEntry() error = %v; want nil", err)
+			}
+			if _, _, err := producer.Call(context.Background()); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if len(shuttle.Specs) != 1 {
+				t.Fatalf("recorded specs = %d; want 1", len(shuttle.Specs))
+			}
+			if !strings.Contains(shuttle.Specs[0].Prompt, tt.want) {
+				t.Errorf("judge prompt = %q; want it to contain %q", shuttle.Specs[0].Prompt, tt.want)
+			}
+		})
 	}
 }
 

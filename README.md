@@ -64,13 +64,14 @@ what calls it is a choice of driver.
 
 - **`lyx shed step`** — drive one producer forward and report a JSON envelope naming its outcome and the trace it wrote.
   This is the primitive every driver is built on.
-- **`ly-drive`** — a Claude Code skill that drives a run by repeated `lyx shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
+- **the loom driver** — a Claude Code session launched from the driver stencil (`contracts/stencils/shed/shed-template-driver.md`) that drives a run by repeated `lyx shed step`, reads each envelope and trace, repairs what it can, re-steps after a transient failure, and escalates what it cannot.
   It carries no phase knowledge: which recipe runs is a property of the run's seed alone.
   `lyx loom start` (alias `lyx start`) bootstraps a task worktree and launches its driver session.
 - **`lyx batten`** — drives a task worktree's whole lifecycle from the hub's main worktree as one run of its own: create the worktree pair, seed the task's run, watch it to a terminal state, tear the pair down.
 - **`lyx orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
   A detached watcher reads its context usage after each turn;
-  past a threshold, while idle, it has the session write a handoff, clears it, and resumes it from that handoff, so the orchestrator outlives any single context window.
+  past a threshold, while idle, it has the session write a note, then clears it and resumes it from that note, or compacts it in place, so the orchestrator outlives any single context window.
+  `lyx orch cycle` requests the clear cycle and `lyx orch distill` the compact cycle; both write the note first.
 
 The split is the same principle again: the engine decides *what* runs next, and the LLM layers above it only decide how to recover when a step fails.
 
@@ -188,7 +189,7 @@ The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary 
 
 [`plugins/`](plugins/) holds this repo's Claude Code marketplace:
 
-- **ly** — `ly-drive`, the recipe-blind driver described above.
+- **ly** — the `board` skill.
 
 The writing and code conventions every agent loads come from the shared [scribe](https://github.com/Knatte18/scribe) plugin;
 its marketplace also carries `prowler`, the web-fetch plugin that used to live here.

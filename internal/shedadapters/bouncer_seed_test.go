@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -53,6 +54,40 @@ func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
 	}
 	if strings.Contains(prompt, "{{.specs_dir}}") {
 		t.Error("seed call composed prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
+	}
+}
+
+func TestBouncer_SeedCall_SkillAndParentDirective(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		parentName string
+		wantPrompt string
+	}{
+		{"WithParent", "hub:parent", "`hub:parent`"},
+		{"NoParent", "", "No parent is recorded"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			shuttle.DuringRun = func() {
+				path := shuttle.GotSpec.OutputFiles[0]
+				content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+				}
+			}
+			fx := newBouncerFixture(t, withShuttle(shuttle))
+			fx.Config.ParentName = tt.parentName
+			b, _ := fx.Build()
+
+			shedfake.CallOK(t, b)
+
+			if !strings.Contains(shuttle.GotSpec.Prompt, tt.wantPrompt) {
+				t.Errorf("seed prompt does not contain %q", tt.wantPrompt)
+			}
+			if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
+				t.Errorf("seed spec.Skills = %v; want [scribe:prose]", got)
+			}
+		})
 	}
 }
 
@@ -323,8 +358,8 @@ func TestBouncer_ReBounce(t *testing.T) {
 //
 // Reproduced live in crucible round 1: `lyx loom step` SIGKILLed mid-Discussion-Bouncer seed with
 // exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
-// paid-for agent running behind it. That reproduction contradicted what the pre-rewrite ly-drive
-// skill told operators; the rewritten skill makes no such claim.
+// paid-for agent running behind it. That reproduction contradicted what the pre-rewrite driver
+// instructions told operators; the rewritten driver stencil makes no such claim.
 func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 
@@ -425,6 +460,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			"focus_path": "/abs/round-1-focus.md",
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
+		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
 		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
@@ -454,6 +490,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			"focus_path":      "/abs/round-2-focus.md",
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
+		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
 		if values["previous_ledger"] != "(none)" {
 			t.Fatalf("test setup error: previous_ledger must be the literal (none) for round 1")
 		}
@@ -491,6 +528,7 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 			"focus_path": "/abs/round-1-focus.md",
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
+		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
 		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
@@ -514,6 +552,7 @@ func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
 			"focus_path":      "/abs/round-2-focus.md",
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
+		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
 		prompt, err := stencil.FillOptional(stencils.BouncerTemplateJudge, values, []string{"pattern_directive"})
 		if err != nil {
 			t.Fatalf("stencil.Fill(judge template, ...) error = %v; want nil", err)

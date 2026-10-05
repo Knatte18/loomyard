@@ -48,6 +48,9 @@ type Deps struct {
 	// StencilsDir is the absolute directory the conflict-resolution stencil is read from, passed
 	// through unchanged to the resolver both producers construct. Told by the caller.
 	StencilsDir string
+	// ParentName is the name of the session the conflict session escalates to, passed through unchanged to the resolver both producers construct.
+	// Told by the caller; empty renders the no-parent variant.
+	ParentName string
 
 	// ScratchDir is the told absolute scratch directory, used as the resolver's report directory
 	// only. There is deliberately no anchor-path field: carrying both would be a derived

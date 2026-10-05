@@ -67,6 +67,9 @@ type Deps struct {
 	// StencilsDir is the absolute directory the conflict-resolution stencil is read from. Told by
 	// the caller.
 	StencilsDir string
+	// ParentName is the name of the session the conflict session escalates to, rendered into its parent directive.
+	// Told by the caller; empty renders the no-parent variant.
+	ParentName string
 	// ConflictSpec is the model-spec string (see internal/modelspec) selecting the model the
 	// conflict-resolution session runs under. Told by the caller.
 	ConflictSpec string

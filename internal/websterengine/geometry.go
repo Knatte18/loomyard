@@ -54,4 +54,7 @@ type Geometry struct {
 	PlanDir string
 	// VerifyDir is the told directory of the worktree's verified-tree record, running marker and verify log, read by the webster verify gate.
 	VerifyDir string
+	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.
+	// Empty means no parent, which renders the no-parent variant.
+	ParentName string
 }

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -49,6 +50,57 @@ func (f *fakeJudgeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, e
 		}
 	}
 	return f.result, nil
+}
+
+// TestSpawnedRoles_SkillAndParentDirective tables every spawned prompt (circling and milestone judge, triage, targeting)
+// against a told parent name and the no-parent variant, asserting the directive and the role's skill on the spec.
+func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
+	const parentName = "mill:parent"
+	const noParentLine = "No parent is recorded for this run."
+	dir := t.TempDir()
+
+	calls := map[string]func(sh *fakeJudgeShuttle, stencilsDir, parent string){
+		"circling judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runCircling(sh, "gate", judgeInputs{Round: 2, PriorReviews: []string{"/run/round-1-review.md"}, VerdictPath: filepath.Join(dir, "cv.md"), HandoffPath: filepath.Join(dir, "ch.md"), StencilsDir: stencilsDir, ParentName: parent})
+		},
+		"milestone judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runMilestone(sh, "gate", judgeInputs{Round: 5, HardCap: 10, PriorReviews: []string{"/run/round-4-review.md"}, VerdictPath: filepath.Join(dir, "mv.md"), HandoffPath: filepath.Join(dir, "mh.md"), StencilsDir: stencilsDir, ParentName: parent})
+		},
+		"triage": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runTriage(stencilsDir, parent, sh, "gate", 1, "a question", filepath.Join(dir, "tv.md"), "", "")
+		},
+		"targeting": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
+			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), "", "")
+		},
+	}
+
+	for name, call := range calls {
+		for _, tc := range []struct {
+			label, parent string
+			wantParent    bool
+		}{
+			{"with a parent", parentName, true},
+			{"without a parent", "", false},
+		} {
+			t.Run(name+" "+tc.label, func(t *testing.T) {
+				sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+				call(sh, newTestStencilsDir(t), tc.parent)
+
+				if !sh.called {
+					t.Fatal("the call never reached the shuttle")
+				}
+				if got := sh.spec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
+					t.Errorf("spec.Skills = %v; want [scribe:prose]", got)
+				}
+				if strings.Contains(sh.spec.Prompt, parentName) != tc.wantParent {
+					t.Errorf("prompt names the parent = %v; want %v", !tc.wantParent, tc.wantParent)
+				}
+				if strings.Contains(sh.spec.Prompt, noParentLine) == tc.wantParent {
+					t.Errorf("prompt carries the no-parent line = %v; want %v", tc.wantParent, !tc.wantParent)
+				}
+			})
+		}
+	}
 }
 
 func TestRunCircling(t *testing.T) {
@@ -339,7 +391,7 @@ rationale: the fasit file referenced does not exist
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
 
-		verdict, rationale := runTriage(newTestStencilsDir(t), sh, "gate", 2, "should I proceed without the fasit file?", verdictPath, "haiku", "low")
+		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 2, "should I proceed without the fasit file?", verdictPath, "haiku", "low")
 
 		if verdict != TriageGiveUp {
 			t.Errorf("runTriage() verdict = %q; want %q", verdict, TriageGiveUp)
@@ -363,7 +415,7 @@ rationale: the fasit file referenced does not exist
 
 	t.Run("shuttle run error defaults to retry", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{err: errTestShuttle}
-		verdict, rationale := runTriage(newTestStencilsDir(t), sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
+		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
 		if verdict != TriageRetry {
 			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
 		}
@@ -374,7 +426,7 @@ rationale: the fasit file referenced does not exist
 
 	t.Run("non-done outcome defaults to retry", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
-		verdict, rationale := runTriage(newTestStencilsDir(t), sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
+		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
 		if verdict != TriageRetry {
 			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
 		}
@@ -385,7 +437,7 @@ rationale: the fasit file referenced does not exist
 
 	t.Run("missing verdict file defaults to retry", func(t *testing.T) {
 		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		verdict, rationale := runTriage(newTestStencilsDir(t), sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "never-written.md"), "", "")
+		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "never-written.md"), "", "")
 		if verdict != TriageRetry {
 			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
 		}
@@ -399,7 +451,7 @@ rationale: the fasit file referenced does not exist
 			verdictContent: "garbled, not a verdict file",
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		verdict, rationale := runTriage(newTestStencilsDir(t), sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
+		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
 		if verdict != TriageRetry {
 			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
 		}

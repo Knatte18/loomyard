@@ -419,6 +419,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
+	c.parentName = reedGeom.ParentName
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
@@ -520,6 +521,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
+		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
@@ -548,7 +550,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// live-agent evidence, so flipping the key between a crash and a resume is permitted and
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
 		},
 		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
@@ -594,6 +596,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			}
 			return landingshed.DescribeSpec(landingshed.DescribeInputs{
 				StencilsDir:         websterGeom.StencilsDir,
+				ParentName:          c.parentName,
 				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
 				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),
 				PriorRunRecordPaths: priorRecords,
@@ -614,7 +617,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// takes no autonomous argument: the Plan producer is autonomous by design and hard-codes
 		// Interactive: false internally.
 		PlanSpec: func() (shuttleengine.Spec, error) {
-			return loomengine.PlanSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+			return loomengine.PlanSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the
@@ -651,7 +654,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkSpec: func(told loomshed.ReworkTold) (shuttleengine.Spec, error) {
-			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
+			return loomengine.ReworkSpec(location, websterGeom.StencilsDir, websterGeom.SpecsDir, c.parentName, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
 		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: reworkDeps,

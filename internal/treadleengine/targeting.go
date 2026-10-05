@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -22,23 +23,31 @@ import (
 // targetingRole is the agent-name role this module's targeting spawn carries.
 const targetingRole = "targeting"
 
+// targetingSkills are the skills the targeting spawn loads before its prompt.
+var targetingSkills = []string{"scribe:prose"}
+
 // runTargeting spawns the pre-round targeting call: reads a handoff and
 // writes a prose seed brief. Fail-safe: any failure — including the prompt's
 // stencilstore.Read — logs a Warn and returns ("", false), so the round runs
 // without a seed. stencilsDir is the absolute stencils directory this call
 // reads its prompt from, leading rather than trailing so a mis-ordered call
 // site still compiles (see the composePrompt convention this mirrors).
-func runTargeting(stencilsDir string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
-	values := map[string]string{
-		"round":            strconv.Itoa(round),
-		"previous_handoff": previousHandoffMarker(previousHandoffPath),
-		"seed_path":        seedPath,
-	}
-
+func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
 	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
 	if err != nil {
 		logger.Warn(name+": targeting judge template unreadable, round runs without a seed", "round", round, "cause", err)
 		return "", false
+	}
+	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		logger.Warn(name+": targeting judge parent directive unreadable, round runs without a seed", "round", round, "cause", err)
+		return "", false
+	}
+	values := map[string]string{
+		"round":                    strconv.Itoa(round),
+		"previous_handoff":         previousHandoffMarker(previousHandoffPath),
+		"seed_path":                seedPath,
+		parentdirective.MarkerName: directive,
 	}
 
 	prompt, err := stencil.Fill(targetingTemplate, values)
@@ -53,6 +62,7 @@ func runTargeting(stencilsDir string, sh Shuttle, name string, round int, previo
 		Model:       model,
 		Effort:      effort,
 		Role:        targetingRole,
+		Skills:      targetingSkills,
 		Round:       strconv.Itoa(round),
 	}
 

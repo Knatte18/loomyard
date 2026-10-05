@@ -1,9 +1,11 @@
 <!-- This is the asking-triage prompt. It is filled via internal/stencil.Fill
      (judge.go's runTriage) and handed to the shuttle as the agent's entire instruction set — the call runs as a single clean-room agent told only "read this file and do exactly what it says".
      Every marker below is a top-level {{.X}} substitution;
-     stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
+     stencil.Fill requires every marker non-empty, parent_directive included (rendered by internal/parentdirective), and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 
 # Treadle asking-triage
+
+{{.parent_directive}}
 
 You are an asking-triage judge: a review agent working round {{.round}} of a treadle block stopped mid-round instead of finishing, asking a question rather than writing its review.
 Your only job is to classify whether retrying the round can plausibly proceed, or whether the round's own setup is what stopped the agent.

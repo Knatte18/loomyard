@@ -42,6 +42,10 @@ type Options struct {
 	// posture as ScratchDir and GateDir — the caller
 	// resolves it from its own geometry and hands it in.
 	StencilsDir string
+	// ParentName is the told name of the session the spawned judge, triage and
+	// targeting roles escalate to, rendered into their prompts by
+	// parentdirective.Directive. Empty renders the no-parent variant.
+	ParentName string
 }
 
 // Engine drives one treadle block's generalized round loop.
@@ -53,6 +57,7 @@ type Engine struct {
 	runCommand     CommandRunner
 	scratchDir     string
 	stencilsDir    string
+	parentName     string
 }
 
 // New returns an Engine ready to run one treadle block's round loop.
@@ -65,6 +70,7 @@ func New(name string, runner RoundRunner, shuttle Shuttle, opts Options) *Engine
 		runCommand:     opts.RunCommand,
 		scratchDir:     opts.ScratchDir,
 		stencilsDir:    opts.StencilsDir,
+		parentName:     opts.ParentName,
 	}
 }
 

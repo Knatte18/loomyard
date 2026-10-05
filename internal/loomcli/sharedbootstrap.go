@@ -317,6 +317,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		c.registry,
 		c.runner,
 		c.landingCfg,
+		c.parentName,
 	)
 
 	return loomrecipe.New(c.env, c.shedPaths)

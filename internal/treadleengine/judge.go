@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -26,6 +27,12 @@ const judgeRole = "judge"
 
 // triageRole is the agent-name role this module's triage spawn carries.
 const triageRole = "triage"
+
+// judgeSkills and triageSkills are the skills the judge and triage spawns load before their prompt.
+var (
+	judgeSkills  = []string{"scribe:prose"}
+	triageSkills = []string{"scribe:prose"}
+)
 
 // Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by
 // *shuttleengine.Runner in production and fakes in tests.
@@ -52,6 +59,9 @@ type judgeInputs struct {
 	// runMilestone read their prompt from via stencilstore.Read, told by the
 	// caller rather than derived — see Options.StencilsDir.
 	StencilsDir string
+	// ParentName is the told parent name the judge prompt's directive is
+	// rendered for — see Options.ParentName.
+	ParentName string
 }
 
 // runCircling spawns the per-round circling-check progress judge. Fail-safe:
@@ -65,12 +75,18 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 		logger.Warn(name+": circling judge template unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
 		return JudgeProgressing, "", false
 	}
+	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
+	if err != nil {
+		logger.Warn(name+": circling judge parent directive unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
+	}
 	values := map[string]string{
-		"round":            strconv.Itoa(in.Round),
-		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
-		"verdict_path":     in.VerdictPath,
-		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
-		"handoff_path":     in.HandoffPath,
+		"round":                    strconv.Itoa(in.Round),
+		"prior_reviews":            strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":             in.VerdictPath,
+		"previous_handoff":         previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":             in.HandoffPath,
+		parentdirective.MarkerName: directive,
 	}
 	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
 }
@@ -84,13 +100,19 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 		logger.Warn(name+": milestone judge template unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
 		return JudgeContinue, "", false
 	}
+	directive, err := parentdirective.Directive(in.StencilsDir, in.ParentName, false)
+	if err != nil {
+		logger.Warn(name+": milestone judge parent directive unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		return JudgeContinue, "", false
+	}
 	values := map[string]string{
-		"round":            strconv.Itoa(in.Round),
-		"hard_cap":         strconv.Itoa(in.HardCap),
-		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
-		"verdict_path":     in.VerdictPath,
-		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
-		"handoff_path":     in.HandoffPath,
+		"round":                    strconv.Itoa(in.Round),
+		"hard_cap":                 strconv.Itoa(in.HardCap),
+		"prior_reviews":            strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":             in.VerdictPath,
+		"previous_handoff":         previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":             in.HandoffPath,
+		parentdirective.MarkerName: directive,
 	}
 	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
 }
@@ -125,6 +147,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 		Model:       model,
 		Effort:      effort,
 		Role:        judgeRole,
+		Skills:      judgeSkills,
 		Round:       strconv.Itoa(round),
 	}
 
@@ -162,17 +185,22 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 // absolute stencils directory this call reads its prompt from, leading
 // rather than trailing so a mis-ordered call site still compiles (see the
 // composePrompt convention this mirrors).
-func runTriage(stencilsDir string, sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
-	values := map[string]string{
-		"round":        strconv.Itoa(round),
-		"question":     question,
-		"verdict_path": verdictPath,
-	}
-
+func runTriage(stencilsDir, parentName string, sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
 	triageTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-triage")
 	if err != nil {
 		logger.Warn(name+": triage template unreadable, defaulting to retry", "round", round, "cause", err)
 		return TriageRetry, ""
+	}
+	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		logger.Warn(name+": triage parent directive unreadable, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
+	}
+	values := map[string]string{
+		"round":                    strconv.Itoa(round),
+		"question":                 question,
+		"verdict_path":             verdictPath,
+		parentdirective.MarkerName: directive,
 	}
 
 	prompt, err := stencil.Fill(triageTemplate, values)
@@ -187,6 +215,7 @@ func runTriage(stencilsDir string, sh Shuttle, name string, round int, question,
 		Model:       model,
 		Effort:      effort,
 		Role:        triageRole,
+		Skills:      triageSkills,
 		Round:       strconv.Itoa(round),
 	}
 

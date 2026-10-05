@@ -28,7 +28,7 @@ import (
 // single-argument version that read the run lock alone. LockHeld_NoStrand_NoSpawn is the hand-started
 // "lyx loom run" case: an operator ran the go driver by hand against an llm-seeded run, so the lock
 // is held but no driver strand exists -- the bootstrap must still not spawn a second driver.
-// LockFree_LiveStrand_NoSpawn is the ly-drive-between-steps case: the driver session takes the run
+// LockFree_LiveStrand_NoSpawn is the driver-between-steps case: the driver session takes the run
 // lock only inside each "lyx shed step" and releases it between steps, so the lock reads free while
 // the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
 func TestMustSpawnDriver(t *testing.T) {

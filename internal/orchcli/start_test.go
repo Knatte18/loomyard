@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,6 +47,8 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c := newTestCLI(t, fake)
 	c.paths.StartLockPath = filepath.Join(c.paths.Dir, "start.lock")
 	c.paths.HandoffsDir = filepath.Join(c.paths.Dir, "handoffs")
+	c.paths.RolePath = filepath.Join(c.paths.Dir, "role.md")
+	c.paths.NoteTemplatePath = filepath.Join(c.paths.Dir, "note-template.md")
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
 	h := &startHarness{cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid"}}
@@ -86,8 +89,11 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if len(h.starter.specs) != 1 || h.spawns != 1 {
 		t.Fatalf("starts = %d, spawns = %d; want 1 and 1", len(h.starter.specs), h.spawns)
 	}
-	if !strings.Contains(h.starter.specs[0].Prompt, "hub orchestrator") {
-		t.Errorf("prompt = %q; want the start stencil", h.starter.specs[0].Prompt)
+	if !strings.Contains(h.starter.specs[0].Prompt, h.cli.paths.RolePath) {
+		t.Errorf("prompt = %q; want the start pointer at the role file", h.starter.specs[0].Prompt)
+	}
+	if _, err := os.Stat(h.cli.paths.RolePath); err != nil {
+		t.Errorf("role file not rendered before launch: %v", err)
 	}
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)
@@ -253,6 +259,12 @@ func TestStart_SpecShape(t *testing.T) {
 	}
 	if !spec.Interactive || !spec.AwaitOperator || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
 		t.Errorf("spec = %+v; want interactive, await-operator, focused, named orch", spec)
+	}
+	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board"}) {
+		t.Errorf("Skills = %v; want the three orch skills", spec.Skills)
+	}
+	if spec.SkillLoadTimeout != h.cli.cfg.HandoffTimeout() {
+		t.Errorf("SkillLoadTimeout = %v; want the handoff timeout %v", spec.SkillLoadTimeout, h.cli.cfg.HandoffTimeout())
 	}
 	if spec.Model != "opus" || spec.Effort != "high" {
 		t.Errorf("model/effort = %q/%q; want opus/high", spec.Model, spec.Effort)

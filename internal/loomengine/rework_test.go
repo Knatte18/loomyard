@@ -31,7 +31,7 @@ func TestReworkSpec(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 	specsDir := newTestSpecsDir(t)
 	priorPlan := filepath.Join("prior", "plan")
-	spec, err := ReworkSpec(layout, stencilsDir, specsDir, cfg, reg, 4, priorPlan)
+	spec, err := ReworkSpec(layout, stencilsDir, specsDir, "", cfg, reg, 4, priorPlan)
 	if err != nil {
 		t.Fatalf("ReworkSpec(...) = _, %v; want nil error", err)
 	}
@@ -99,7 +99,7 @@ func TestReworkSpec_MissingStencil(t *testing.T) {
 	stencilsDir := newTestStencilsDir(t)
 	stencilkit.Remove(t, stencilsDir, "loom-template-rework")
 
-	if _, err := ReworkSpec(layout, stencilsDir, newTestSpecsDir(t), cfg, reg, 4, "prior"); err == nil {
+	if _, err := ReworkSpec(layout, stencilsDir, newTestSpecsDir(t), "", cfg, reg, 4, "prior"); err == nil {
 		t.Error("ReworkSpec(...) with no rework stencil = nil error; want an error")
 	}
 }

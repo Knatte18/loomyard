@@ -635,7 +635,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, masterNotePath)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, masterNotePath, deps.Geom.ParentName)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -654,6 +654,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		Model:         resolved.Model,
 		Effort:        resolved.Params["effort"],
 		Version:       resolved.Params["version"],
+		Skills:        roleSkills,
 		ForkSubagents: true,
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the gate waits on it like a fork.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},

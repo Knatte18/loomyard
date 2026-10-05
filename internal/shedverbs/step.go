@@ -17,7 +17,7 @@ import (
 // The closed refusal-kind vocabulary step reports on the envelope's "kind" field. This set is
 // closed at five: StepKinds below lists all of them, and a test asserts the set is exactly this and
 // no larger.
-// The ly-drive skill (plugins/ly/skills/ly-drive/SKILL.md) is the single place a driver's
+// The driver stencil (contracts/stencils/shed/shed-template-driver.md) is the single place a driver's
 // disposition per kind is stated.
 const (
 	// KindBusy means the run lock is already held by a live driver or another `step` invocation.

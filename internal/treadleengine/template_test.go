@@ -133,6 +133,7 @@ func judgeCirclingMarkerValues() map[string]string {
 		"verdict_path":     "/run/round-3-judge.md",
 		"previous_handoff": "/run/round-1-handoff.md",
 		"handoff_path":     "/run/round-3-handoff.md",
+		"parent_directive": "the parent directive",
 	}
 }
 
@@ -144,14 +145,16 @@ func judgeMilestoneMarkerValues() map[string]string {
 		"verdict_path":     "/run/round-5-judge.md",
 		"previous_handoff": "/run/round-3-handoff.md",
 		"handoff_path":     "/run/round-5-handoff.md",
+		"parent_directive": "the parent directive",
 	}
 }
 
 func triageMarkerValues() map[string]string {
 	return map[string]string{
-		"round":        "2",
-		"question":     "should I proceed without the fasit file?",
-		"verdict_path": "/run/round-2-triage.md",
+		"round":            "2",
+		"question":         "should I proceed without the fasit file?",
+		"verdict_path":     "/run/round-2-triage.md",
+		"parent_directive": "the parent directive",
 	}
 }
 
@@ -163,6 +166,7 @@ func targetingMarkerValues() map[string]string {
 		"round":            "3",
 		"previous_handoff": "/run/round-2-handoff.md",
 		"seed_path":        "/run/round-3-seed.md",
+		"parent_directive": "the parent directive",
 	}
 }
 
@@ -176,7 +180,7 @@ func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"round", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path"} {
+	for _, marker := range []string{"round", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := judgeCirclingMarkerValues()
 			delete(values, marker)
@@ -200,7 +204,7 @@ func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path"} {
+	for _, marker := range []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := judgeMilestoneMarkerValues()
 			delete(values, marker)
@@ -224,7 +228,7 @@ func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"round", "question", "verdict_path"} {
+	for _, marker := range []string{"round", "question", "verdict_path", "parent_directive"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := triageMarkerValues()
 			delete(values, marker)
@@ -248,7 +252,7 @@ func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"round", "previous_handoff", "seed_path"} {
+	for _, marker := range []string{"round", "previous_handoff", "seed_path", "parent_directive"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := targetingMarkerValues()
 			delete(values, marker)
@@ -286,7 +290,7 @@ rationale: "fine"
 		result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
 
-	runTriage(dir, sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
+	runTriage(dir, "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
 
 	if !sh.called {
 		t.Fatal("runTriage() never called the shuttle")

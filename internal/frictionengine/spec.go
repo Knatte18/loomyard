@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -20,6 +21,9 @@ const reflectionStencilName = "friction-template-reflection"
 
 // frictionRole is the agent-name role this module's reflection spawn carries.
 const frictionRole = "friction"
+
+// frictionSkills are the skills the reflection agent loads before its prompt.
+var frictionSkills = []string{"scribe:prose"}
 
 // buildReflectionSpec builds the shuttleengine.Spec for the reflection run: notes is the sorted set
 // of note file names the scan found, and reportPath is the agent's mandatory output file.
@@ -47,11 +51,16 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
 	}
+	directive, err := parentdirective.Directive(deps.StencilsDir, deps.ParentName, false)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
+	}
 	values := map[string]string{
-		"friction_dir": deps.FrictionDir,
-		"report_path":  reportPath,
-		"note_list":    renderNoteList(notes),
-		"task_slug":    deps.TaskSlug,
+		"friction_dir":             deps.FrictionDir,
+		"report_path":              reportPath,
+		"note_list":                renderNoteList(notes),
+		"task_slug":                deps.TaskSlug,
+		parentdirective.MarkerName: directive,
 	}
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {
@@ -67,6 +76,7 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		Interactive:   false,
 		ForkSubagents: false,
 		Role:          frictionRole,
+		Skills:        frictionSkills,
 		Timeout:       deps.Timeout,
 	}, nil
 }

@@ -46,6 +46,10 @@
 // unanswerable from git history alone afterward. The commit noise an ordinary merge would leave behind
 // -- one surviving commit per card the task landed -- was judged the worse trade.
 //
+// The Describe session loads `scribe:prose` before its prompt.
+// Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
+// DescribeInputs.ParentName for Describe, and Deps.ParentName passed through to the resolver for Publish and Finalize.
+//
 // It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it
 // derives none of its own.

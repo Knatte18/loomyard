@@ -302,6 +302,8 @@
 // from a fork's own thin RenderForkPrompt, since the recovery strand
 // inherits no session context (see the fork-context-hygiene Shared
 // Decision).
+// The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), and their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
+// Forks get no skills and no directive: they inherit the master's context.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.

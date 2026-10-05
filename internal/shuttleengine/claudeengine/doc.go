@@ -47,6 +47,10 @@
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
 //
+// Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading as a typed `/<skill>` line, in session.go.
+// A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
+// An unknown-command notice naming the skill marks it unknown; a provider that treats the line as a plain prompt ends a turn, which confirms the load, and one that shows nothing is skipped at the skill-load timeout.
+//
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.

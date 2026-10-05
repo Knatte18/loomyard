@@ -20,6 +20,7 @@ import (
 // WorktreeRoot, which is l.WorktreePath(). Converging the two would silently change behaviour in a
 // subpath-anchored hub, where the anchor path and the worktree path diverge.
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
+// ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
 func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
 	return websterengine.Geometry{
@@ -34,5 +35,6 @@ func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 		PlanDir:      planparser.PlanDir(anchorPath),
 		VerifyDir:    verifytree.Dir(anchorPath),
+		ParentName:   parentNameOrEmpty(l, "webster prompts"),
 	}
 }

@@ -10,8 +10,10 @@ package shuttleengine
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -390,3 +392,64 @@ func readyStart(reed *fakeReed, engine *fakeEngine) {
 		engine.StartupScript = []StartupState{StartupReady}
 	}
 }
+
+// skillFakeEngine is fakeEngine plus the opt-in SkillLoader capability.
+// SkillLoadSequence types "LOAD:<skill>" and SkillUnknown matches a capture containing "NOSKILL <skill>", so a test scripts both through the reed double's pane.
+type skillFakeEngine struct {
+	*fakeEngine
+
+	Timeout time.Duration
+}
+
+func (e *skillFakeEngine) SkillLoadSequence(skill string) []PaneInput {
+	return []PaneInput{{Text: "LOAD:" + skill, Submit: true}}
+}
+
+func (e *skillFakeEngine) SkillUnknown(capture, skill string) bool {
+	return strings.Contains(capture, "NOSKILL "+skill)
+}
+
+func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Timeout }
+
+var _ SkillLoader = (*skillFakeEngine)(nil)
+
+// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text, and which plays a scripted reaction to each "LOAD:<skill>" typed:
+// a skill in EndsTurn appends a turn end to the run's events file, and one in Unknown makes the next capture report it unknown.
+type skillReed struct {
+	*fakeReed
+
+	EventsPath func() string
+	EndsTurn   map[string]bool
+	Unknown    map[string]bool
+}
+
+func (r *skillReed) SendText(guid, text string, submit bool) error {
+	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
+		return err
+	}
+	if skill, ok := strings.CutPrefix(text, "LOAD:"); ok && r.EndsTurn[skill] {
+		f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = f.WriteString("STOP:loaded " + skill + "\n")
+		return err
+	}
+	return nil
+}
+
+func (r *skillReed) CapturePane(guid string) (string, error) {
+	r.fakeReed.mu.Lock()
+	defer r.fakeReed.mu.Unlock()
+	var b strings.Builder
+	for _, call := range r.fakeReed.SendTextCalls {
+		b.WriteString(call.Text + "\n")
+	}
+	for skill := range r.Unknown {
+		b.WriteString("NOSKILL " + skill + "\n")
+	}
+	return b.String(), nil
+}
+
+var _ ReedOps = (*skillReed)(nil)
