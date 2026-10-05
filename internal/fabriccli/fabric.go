@@ -318,7 +318,14 @@ not reported already-healthy.
 It also restores a pair's hub-level portal junction (_portals/<slug>) and
 launcher directory (_launchers/<slug>) when either has gone missing, reporting
 portal_restored rather than already_healthy. The hub's prime worktree is
-skipped: it never had either, so there is nothing there to repair.`,
+skipped: it never had either, so there is nothing there to repair.
+
+It also heals the hub-wide config files (fabric.yaml and board.yaml) at the
+hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
+when it has one, and the written files are committed in _board and pushed. The
+envelope reports each module under hub_config, a commit or push failure under
+hub_config_detail without changing the exit code, and a board.yaml started from
+the template, which carries no custom types or labels, under warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
