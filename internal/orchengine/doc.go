@@ -40,12 +40,18 @@
 //
 // # Permission mode and subagents
 //
-// The orch run's spec carries `permission_mode` from orch.yaml verbatim (template `bypass`), and the claude engine validates it.
-// It also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
+// The orch run's spec carries `permission_mode: bypass`, the only accepted value.
+// LoadConfig resolves an empty value to `bypass` and returns an error for any other, `prompt` included, naming the fix `set permission_mode: bypass or remove the key`; every verb loads the config first, so each refuses before any pane is touched.
+// The spec also allows the Agent tool and forks, so the session can spawn typed subagents and forks while the fork-context `lyx webster` guard stays installed.
 // Only the orch run sets the allowance, and it has no orch.yaml switch.
 //
-// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt.
-// The operator's lever is `permission_mode: prompt`, under which those agents prompt in the orch pane.
+// Under `bypass`, the orch session and every subagent and fork it spawns run every tool with no permission prompt, because the orch never prompts per action.
+//
+// # Cycle mode
+//
+// `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
+// `compact` keeps the session id and the Remote Control link and writes no handoff file.
+// `clear` runs the handoff, `/clear` and resume cycle.
 //
 // # The watcher
 //
