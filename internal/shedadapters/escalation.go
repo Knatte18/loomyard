@@ -22,6 +22,11 @@ const (
 	EscalationBudget   EscalationCause = "budget"
 )
 
+// ErrEscalationMalformed reports that a round's escalation record is present but unreadable as a record:
+// its frontmatter is missing or invalid, its round disagrees with its filename, or its cause is not one of the two values.
+// A failure to read the file at all is a plain I/O error and never wraps it.
+var ErrEscalationMalformed = errors.New("shedadapters: escalation record is malformed")
+
 // escalationHeader mirrors an escalation file's YAML frontmatter.
 type escalationHeader struct {
 	Round int    `yaml:"round"`
@@ -69,20 +74,21 @@ func readEscalation(runDir string, round int) (EscalationCause, string, bool, er
 		}
 		return "", "", false, fmt.Errorf("shedadapters: read escalation %s: %w", path, err)
 	}
+	malformed := func(err error) error { return fmt.Errorf("%w: %s: %w", ErrEscalationMalformed, path, err) }
 	header, err := splitFrontmatter(raw, "escalation")
 	if err != nil {
-		return "", "", true, err
+		return "", "", true, malformed(err)
 	}
 	var parsed escalationHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", "", true, fmt.Errorf("bouncer: escalation frontmatter is not valid YAML: %w", err)
+		return "", "", true, malformed(fmt.Errorf("bouncer: escalation frontmatter is not valid YAML: %w", err))
 	}
 	if parsed.Round != round {
-		return "", "", true, fmt.Errorf("bouncer: escalation round %d disagrees with its filename's round %d", parsed.Round, round)
+		return "", "", true, malformed(fmt.Errorf("bouncer: escalation round %d disagrees with its filename's round %d", parsed.Round, round))
 	}
 	cause := EscalationCause(parsed.Cause)
 	if cause != EscalationCircling && cause != EscalationBudget {
-		return "", "", true, fmt.Errorf("bouncer: escalation cause must be %q or %q, got %q", EscalationCircling, EscalationBudget, parsed.Cause)
+		return "", "", true, malformed(fmt.Errorf("bouncer: escalation cause must be %q or %q, got %q", EscalationCircling, EscalationBudget, parsed.Cause))
 	}
 
 	noticePath := parentNoticePath(runDir, round)

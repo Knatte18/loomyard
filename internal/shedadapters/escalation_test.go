@@ -91,8 +91,8 @@ func TestEscalation_MalformedRecordIsAnError(t *testing.T) {
 				t.Fatalf("WriteFile = %v; want nil", err)
 			}
 			_, _, exists, err := readEscalation(dir, 4)
-			if err == nil {
-				t.Fatal("readEscalation error = nil; want an error")
+			if !errors.Is(err, ErrEscalationMalformed) {
+				t.Fatalf("readEscalation error = %v; want it to wrap ErrEscalationMalformed", err)
 			}
 			if !exists {
 				t.Error("readEscalation exists = false; want true for a present malformed record")

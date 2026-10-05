@@ -37,7 +37,8 @@ const (
 	circlingWayNoRun     = `way forward: "lyx loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
 	circlingWayNotAtHalt = `way forward: "lyx loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
 	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a CIRCLING judgement or a spent review budget), and a plain CONTINUE round below the budget needs no decision`
-	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom start" in the task worktree to resume the run`
+	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lyx loom start", which re-escalates the round, and re-run the verb`
+	circlingWayDecided   =`way forward: the decision for this round is recorded and stays; run "lyx loom start" in the task worktree to resume the run`
 )
 
 // circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.
@@ -81,6 +82,8 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		return refuse("the latest judged round at %s is not escalated; %s", st.CurrentProducer, circlingWayNot)
 	case errors.Is(err, shedadapters.ErrCirclingDecided):
 		return refuse("a decision is already recorded for the escalated round at %s; %s", st.CurrentProducer, circlingWayDecided)
+	case errors.Is(err, shedadapters.ErrEscalationMalformed):
+		return refuse("%s; %s", err, circlingWayMalformed)
 	case err != nil:
 		return refuse("%s", err)
 	}
