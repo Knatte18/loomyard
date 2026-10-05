@@ -19,6 +19,8 @@ func testPaths(t *testing.T) Paths {
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
+		RolePath:         filepath.Join(dir, "role.md"),
+		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 	}
 }
 

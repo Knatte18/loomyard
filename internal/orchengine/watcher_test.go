@@ -797,6 +797,55 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	}
 }
 
+func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	if _, err := os.Stat(e.paths.NoteTemplatePath); err != nil {
+		t.Fatalf("note template file not rendered before the request: %v", err)
+	}
+	var sent string
+	for _, c := range e.s.calls {
+		if strings.HasPrefix(c, "send:") {
+			sent = c
+		}
+	}
+	if !strings.Contains(sent, e.paths.NoteTemplatePath) || !strings.Contains(sent, e.state().PendingHandoff) {
+		t.Errorf("note request %q must name the template and the note path", sent)
+	}
+}
+
+func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.tick()
+	if e.s.count("clear") != 1 {
+		t.Fatalf("calls = %v; want the clear sent", e.s.calls)
+	}
+	if _, err := os.Stat(e.paths.RolePath); err != nil {
+		t.Errorf("role file not rendered before the resume pointer: %v", err)
+	}
+	if !strings.Contains(e.state().PendingResume, e.paths.RolePath) {
+		t.Errorf("resume pointer %q must name the role file", e.state().PendingResume)
+	}
+}
+
+func TestWatcher_FailingRoleRenderAbortsWithoutClear(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	if err := os.WriteFile(stencilstore.Path(e.stDir, roleStencilName), []byte("{{.nope}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.tick()
+	st := e.state()
+	if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, roleStencilName) {
+		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	}
+}
+
 func TestWatcher_FailingResumeRenderAbortsWithoutClear(t *testing.T) {
 	e := newWatchEnv(t)
 	e.injectHandoff()

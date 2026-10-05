@@ -2,6 +2,7 @@ package orchengine
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,83 +10,102 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
+const (
+	testRolePath         = "/orch/role.md"
+	testNoteTemplatePath = "/orch/note-template.md"
+)
+
 func seedStencils(t *testing.T) string {
 	t.Helper()
 	return stencilkit.Seed(t)
 }
 
-func TestRenderStartPrompt(t *testing.T) {
-	got, err := RenderStartPrompt(seedStencils(t))
+func TestRenderRoleFile_WritesEveryTheme(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orch", "role.md")
+	if err := RenderRoleFile(seedStencils(t), path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, "hub orchestrator") {
-		t.Errorf("start prompt missing role text: %q", got)
+	got := string(data)
+	for _, heading := range []string{
+		"## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
+		"## The board", "## Where a finding goes", "## Acting without asking", "## Status reports", "## Messaging", "## Which role can do what",
+	} {
+		if !strings.Contains(got, heading) {
+			t.Errorf("role file missing heading %q", heading)
+		}
 	}
-	for _, want := range []string{"lyx loom review", "one-shot fork", "[batten notice]", "lyx batten status"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("start prompt missing %q: %q", want, got)
+	if strings.Contains(got, "<!--") {
+		t.Errorf("role file keeps the stencil's leading comment")
+	}
+}
+
+func TestRenderNoteTemplateFile_WritesItsHeadings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orch", "note-template.md")
+	if err := RenderNoteTemplateFile(seedStencils(t), path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, heading := range []string{"## Doing now", "## Next step with the operator", "## Waiting on the operator"} {
+		if !strings.Contains(string(data), heading) {
+			t.Errorf("note template missing heading %q", heading)
 		}
 	}
 }
 
-func TestRenderHandoffInstruction(t *testing.T) {
-	got, err := RenderHandoffInstruction(seedStencils(t), "/tmp/h/one.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(got, "/scribe:handoff ") {
-		t.Errorf("handoff instruction should start with /scribe:handoff: %q", got)
-	}
-	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") {
-		t.Errorf("handoff instruction must be one line containing the path: %q", got)
-	}
-	if strings.Contains(got, "watcher") {
-		t.Errorf("handoff instruction must not ask for watchers: %q", got)
-	}
-}
-
-func TestRenderResumePrompt(t *testing.T) {
-	got, err := RenderResumePrompt(seedStencils(t), "/tmp/h/one.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") {
-		t.Errorf("resume prompt must be one line containing the path: %q", got)
-	}
-	for _, want := range []string{"lyx loom review", "one-shot fork"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("resume prompt missing %q: %q", want, got)
+func TestOrchStencils_NameNoScribeHandoff(t *testing.T) {
+	dir := seedStencils(t)
+	for _, name := range []string{
+		roleStencilName, noteStencilName, startStencilName, handoffStencilName,
+		resumeStencilName, adoptStencilName, softHandoffStencilName, compactStencilName,
+	} {
+		data, err := stencilstore.Read(dir, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "scribe:handoff") {
+			t.Errorf("%s names scribe:handoff", name)
 		}
 	}
-	if strings.Contains(got, "watcher") || strings.Contains(got, "re-arming") {
-		t.Errorf("resume prompt must not ask for watchers: %q", got)
-	}
 }
 
-func TestRenderAdoptPrompt(t *testing.T) {
-	got, err := RenderAdoptPrompt(seedStencils(t))
-	if err != nil {
-		t.Fatal(err)
+func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
+	dir := seedStencils(t)
+	cases := []struct {
+		name   string
+		render func() (string, error)
+		want   []string
+	}{
+		{"start", func() (string, error) { return RenderStartPrompt(dir, testRolePath) }, []string{testRolePath}},
+		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath, "none is re-armed"}},
+		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
+		{"handoff", func() (string, error) { return RenderHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath) }, []string{"/tmp/h/one.md", testNoteTemplatePath}},
+		{"soft", func() (string, error) {
+			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
+		}, []string{"/tmp/h/one.md", testNoteTemplatePath, "DEFER"}},
 	}
-	if got == "" || strings.ContainsAny(got, "\r\n") {
-		t.Errorf("adopt prompt must be one non-empty line: %q", got)
-	}
-	if !strings.Contains(got, "none is re-armed") {
-		t.Errorf("adopt prompt must say no watcher is re-armed: %q", got)
-	}
-}
-
-func TestRenderSoftHandoffInstruction(t *testing.T) {
-	got, err := RenderSoftHandoffInstruction(seedStencils(t), "/tmp/h/one.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.ContainsAny(got, "\r\n") || !strings.Contains(got, "/tmp/h/one.md") || !strings.Contains(got, "DEFER") {
-		t.Errorf("soft instruction must be one line with the path and DEFER: %q", got)
-	}
-	if strings.Contains(got, "watcher") || strings.Contains(got, "re-arm") {
-		t.Errorf("soft instruction must not ask for watchers: %q", got)
+	for _, c := range cases {
+		got, err := c.render()
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got == "" || strings.ContainsAny(got, "\r\n") {
+			t.Errorf("%s: must be one non-empty line: %q", c.name, got)
+		}
+		for _, want := range c.want {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: missing %q: %q", c.name, want, got)
+			}
+		}
+		if strings.Contains(got, "watcher") || strings.Contains(got, "re-arming") {
+			t.Errorf("%s: must not ask for watchers: %q", c.name, got)
+		}
 	}
 }
 
@@ -99,34 +119,26 @@ func TestRenderCompactFocus(t *testing.T) {
 	}
 }
 
-func TestRenderAdoptAndSoft_MultiLineOverrideFails(t *testing.T) {
+func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
 	cases := []struct {
 		name   string
 		render func(dir string) (string, error)
 	}{
 		{compactStencilName, RenderCompactFocus},
-		{adoptStencilName, RenderAdoptPrompt},
-		{softHandoffStencilName, func(dir string) (string, error) { return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md") }},
+		{startStencilName, func(dir string) (string, error) { return RenderStartPrompt(dir, testRolePath) }},
+		{adoptStencilName, func(dir string) (string, error) { return RenderAdoptPrompt(dir, testRolePath) }},
+		{resumeStencilName, func(dir string) (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }},
+		{softHandoffStencilName, func(dir string) (string, error) {
+			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
+		}},
 	}
 	for _, c := range cases {
 		dir := seedStencils(t)
-		if err := os.WriteFile(stencilstore.Path(dir, c.name), []byte("line one\nline two\n"), 0o644); err != nil {
+		if err := os.WriteFile(stencilstore.Path(dir, c.name), []byte("line one {{.role_path}} {{.handoff_path}} {{.note_template_path}}\nline two\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := c.render(dir); err == nil || !strings.Contains(err.Error(), c.name) {
 			t.Errorf("%s: want error naming the stencil, got %v", c.name, err)
 		}
-	}
-}
-
-func TestRenderResumePrompt_MultiLineOverrideFails(t *testing.T) {
-	dir := seedStencils(t)
-	path := stencilstore.Path(dir, resumeStencilName)
-	if err := os.WriteFile(path, []byte("line one {{.handoff_path}}\nline two\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := RenderResumePrompt(dir, "/tmp/h/one.md")
-	if err == nil || !strings.Contains(err.Error(), resumeStencilName) {
-		t.Fatalf("want error naming %s, got %v", resumeStencilName, err)
 	}
 }

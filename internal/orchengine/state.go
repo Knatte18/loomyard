@@ -27,6 +27,9 @@ type Paths struct {
 	HandoffsDir      string // One timestamped handoff file per cycle.
 	NoticesDir       string // One file per queued notice, delivered by the watcher.
 	WatchLogPath     string // Detached watcher's stdout and stderr.
+
+	RolePath         string // Role file rendered from the role stencil before every delivery.
+	NoteTemplatePath string // Note template file rendered before every note request.
 }
 
 // Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.

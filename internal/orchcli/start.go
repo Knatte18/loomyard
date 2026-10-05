@@ -25,6 +25,9 @@ import (
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
 const orchStrandName = agentname.RoleOrch
 
+// orchSkills are the skills shuttle loads into the orch session before its prompt pointer on every launch path.
+var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board"}
+
 // Envelope "action" values.
 const (
 	actionAttachOnly     = "attach-only"
@@ -68,6 +71,9 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		Role:           orchStrandName,
 		NameOverride:   orchStrandName,
 		Display:        render.Display{Focus: true},
+
+		Skills:           orchSkills,
+		SkillLoadTimeout: c.cfg.HandoffTimeout(),
 	}
 }
 
@@ -211,12 +217,15 @@ unless --no-attach is given.`,
 						return fail(err)
 					}
 				}
+				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath); err != nil {
+					return fail(err)
+				}
 				var prompt, source string
 				if adoptFlag != "" {
-					prompt, err = orchengine.RenderAdoptPrompt(c.stencilsDir)
+					prompt, err = orchengine.RenderAdoptPrompt(c.stencilsDir, c.paths.RolePath)
 					source = orchengine.SourceAdopt
 				} else {
-					prompt, source, err = orchengine.ChooseStartPrompt(c.stencilsDir, handoffFlag, st, fileExists)
+					prompt, source, err = orchengine.ChooseStartPrompt(c.stencilsDir, c.paths.RolePath, handoffFlag, st, fileExists)
 				}
 				if err != nil {
 					return fail(err)

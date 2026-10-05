@@ -1,12 +1,15 @@
-// prompt.go renders the orch stencils (orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact).
+// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
-// The handoff, resume, adopt, soft handoff and compact focus renders are typed into the session through shuttle's Send, which refuses multi-line text, so each must render to one line;
+// The role and note stencils render to files the session reads; every other render is typed into the session or handed to shuttle as its launch pointer,
+// and shuttle's Send refuses multi-line text, so each of those must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
 
 package orchengine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -14,6 +17,9 @@ import (
 )
 
 const (
+	roleStencilName = "orch-template-role"
+	noteStencilName = "orch-template-note"
+
 	startStencilName   = "orch-template-start"
 	handoffStencilName = "orch-template-handoff"
 	resumeStencilName  = "orch-template-resume"
@@ -23,34 +29,60 @@ const (
 	compactStencilName     = "orch-template-compact"
 )
 
-// RenderStartPrompt renders the fresh-launch prompt read from stencilsDir.
-func RenderStartPrompt(stencilsDir string) (string, error) {
-	return render(stencilsDir, startStencilName, nil, false)
+// RenderRoleFile renders the role stencil to path, creating its directory.
+// The session reads the file through the one-line pointers, so a stencil edit applies from the next delivery.
+func RenderRoleFile(stencilsDir, path string) error {
+	return renderFile(stencilsDir, roleStencilName, path)
 }
 
-// RenderHandoffInstruction renders the one-line handoff instruction, with handoffPath filled in.
-func RenderHandoffInstruction(stencilsDir, handoffPath string) (string, error) {
-	return render(stencilsDir, handoffStencilName, map[string]string{"handoff_path": handoffPath}, true)
+// RenderNoteTemplateFile renders the note template stencil to path, creating its directory.
+func RenderNoteTemplateFile(stencilsDir, path string) error {
+	return renderFile(stencilsDir, noteStencilName, path)
 }
 
-// RenderResumePrompt renders the one-line resume prompt, with handoffPath filled in.
-func RenderResumePrompt(stencilsDir, handoffPath string) (string, error) {
-	return render(stencilsDir, resumeStencilName, map[string]string{"handoff_path": handoffPath}, true)
+// RenderStartPrompt renders the one-line fresh-launch pointer, with rolePath filled in.
+func RenderStartPrompt(stencilsDir, rolePath string) (string, error) {
+	return render(stencilsDir, startStencilName, map[string]string{"role_path": rolePath}, true)
 }
 
-// RenderAdoptPrompt renders the one-line launch prompt for an adopted session.
-func RenderAdoptPrompt(stencilsDir string) (string, error) {
-	return render(stencilsDir, adoptStencilName, nil, true)
+// RenderHandoffInstruction renders the one-line note request, with handoffPath and noteTemplatePath filled in.
+func RenderHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string) (string, error) {
+	return render(stencilsDir, handoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath}, true)
 }
 
-// RenderSoftHandoffInstruction renders the one-line soft-trigger handoff request, with handoffPath filled in.
-func RenderSoftHandoffInstruction(stencilsDir, handoffPath string) (string, error) {
-	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath}, true)
+// RenderResumePrompt renders the one-line resume pointer, with rolePath and handoffPath filled in.
+func RenderResumePrompt(stencilsDir, rolePath, handoffPath string) (string, error) {
+	return render(stencilsDir, resumeStencilName, map[string]string{"role_path": rolePath, "handoff_path": handoffPath}, true)
+}
+
+// RenderAdoptPrompt renders the one-line launch pointer for an adopted session, with rolePath filled in.
+func RenderAdoptPrompt(stencilsDir, rolePath string) (string, error) {
+	return render(stencilsDir, adoptStencilName, map[string]string{"role_path": rolePath}, true)
+}
+
+// RenderSoftHandoffInstruction renders the one-line soft-trigger note request, with handoffPath and noteTemplatePath filled in.
+func RenderSoftHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string) (string, error) {
+	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath}, true)
 }
 
 // RenderCompactFocus renders the one-line focus text typed after `/compact`.
 func RenderCompactFocus(stencilsDir string) (string, error) {
 	return render(stencilsDir, compactStencilName, nil, true)
+}
+
+// renderFile renders one marker-free stencil and writes it to path, creating the directory.
+func renderFile(stencilsDir, name, path string) error {
+	out, err := render(stencilsDir, name, nil, false)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("orch: create dir for %s: %w", name, err)
+	}
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		return fmt.Errorf("orch: write %s: %w", name, err)
+	}
+	return nil
 }
 
 // render reads and fills one stencil.

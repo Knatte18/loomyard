@@ -31,5 +31,7 @@ func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
 		NoticesDir:       filepath.Join(dir, "notices"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
+		RolePath:         filepath.Join(dir, "role.md"),
+		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 	}
 }

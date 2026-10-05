@@ -408,7 +408,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 
 	path := NewHandoffPath(w.paths, now)
-	text, err := renderHandoffRequest(w.stencilsDir, trigger, path)
+	text, err := w.renderHandoffRequest(trigger, path)
 	if err != nil {
 		return err
 	}
@@ -427,12 +427,15 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	return w.confirm(st)
 }
 
-// renderHandoffRequest renders the handoff request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
-func renderHandoffRequest(stencilsDir, trigger, handoffPath string) (string, error) {
-	if trigger == TriggerSoft {
-		return RenderSoftHandoffInstruction(stencilsDir, handoffPath)
+// renderHandoffRequest renders the note template file, then the note request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
+func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, error) {
+	if err := RenderNoteTemplateFile(w.stencilsDir, w.paths.NoteTemplatePath); err != nil {
+		return "", err
 	}
-	return RenderHandoffInstruction(stencilsDir, handoffPath)
+	if trigger == TriggerSoft {
+		return RenderSoftHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
+	}
+	return RenderHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
 }
 
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
@@ -478,7 +481,7 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if !probe.Idle {
 		return nil
 	}
-	text, err := renderHandoffRequest(w.stencilsDir, st.CycleTrigger, st.PendingHandoff)
+	text, err := w.renderHandoffRequest(st.CycleTrigger, st.PendingHandoff)
 	if err != nil {
 		return err
 	}
@@ -500,10 +503,13 @@ func handoffWritten(path string) (bool, error) {
 	return info.Size() > 0, nil
 }
 
-// startClearing renders the resume prompt first, so the text the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
+// startClearing renders the role file and the resume prompt first, so what the cleared session needs is known good before /clear runs, then persists clearing and types /clear.
 // The caller must have seen the session idle on this tick.
 func (w *Watcher) startClearing(st State, now time.Time) error {
-	resume, err := RenderResumePrompt(w.stencilsDir, st.PendingHandoff)
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
+		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
+	}
+	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.PendingHandoff)
 	if err != nil {
 		return w.toIdle(st, fmt.Sprintf("resume stencil %s failed to render: %v", resumeStencilName, err))
 	}

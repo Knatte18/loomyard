@@ -34,6 +34,14 @@
 //
 // Steps 2 to 4 are ChooseStartPrompt's own order.
 //
+// Every launch prompt is a one-line pointer: the orch's whole procedure lives in the role stencil, which RenderRoleFile renders to Paths.RolePath, and the pointer names that file.
+// The resume pointer also names the orch note to resume from.
+// A note request names the note path and Paths.NoteTemplatePath, the file RenderNoteTemplateFile renders from the note stencil: what the orch is doing, the agreed next step and the questions waiting on the operator.
+// Every delivery re-renders its file first, so a stencil edit applies from the next delivery:
+// `start` renders the role file before it launches, the watcher renders the note template before it types a note request,
+// and renders the role file before it types the resume pointer after `/clear`.
+// A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
+//
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
 // attach only, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
@@ -185,9 +193,9 @@
 //
 // # Migrating from an operator's own terminal session
 //
-// In the running terminal session, run `/scribe:handoff` and note the file it writes, then exit that session.
+// In the running terminal session, ask for a note in the orch note's three sections and note the file it writes, then exit that session.
 // Then run `lyx orch start --handoff <that file>` from the prime.
-// The new orchestrator strand starts from that handoff instead of the start stencil.
+// The new orchestrator strand starts from that note instead of the start stencil.
 //
 // # Adopting a running session
 //

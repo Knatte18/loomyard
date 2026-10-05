@@ -36,34 +36,34 @@ func existsOnly(paths ...string) func(string) bool {
 func TestChooseStartPrompt_FlagWinsOverLastHandoff(t *testing.T) {
 	dir := seedStencils(t)
 	s := State{LastHandoff: "/h/last.md"}
-	got, src, err := ChooseStartPrompt(dir, "/h/flag.md", s, existsOnly("/h/flag.md", "/h/last.md"))
+	got, src, err := ChooseStartPrompt(dir, testRolePath, "/h/flag.md", s, existsOnly("/h/flag.md", "/h/last.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if src != SourceFlag || !strings.Contains(got, "/h/flag.md") || strings.Contains(got, "/h/last.md") {
+	if src != SourceFlag || !strings.Contains(got, "/h/flag.md") || !strings.Contains(got, testRolePath) || strings.Contains(got, "/h/last.md") {
 		t.Errorf("source=%q prompt=%q", src, got)
 	}
 }
 
 func TestChooseStartPrompt_MissingFlagFileErrors(t *testing.T) {
-	_, _, err := ChooseStartPrompt(seedStencils(t), "/h/gone.md", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
+	_, _, err := ChooseStartPrompt(seedStencils(t), testRolePath, "/h/gone.md", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
 	if err == nil {
 		t.Fatal("want error for missing flag file")
 	}
 }
 
 func TestChooseStartPrompt_LastHandoffWhenPresent(t *testing.T) {
-	got, src, err := ChooseStartPrompt(seedStencils(t), "", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
+	got, src, err := ChooseStartPrompt(seedStencils(t), testRolePath, "", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if src != SourceLastHandoff || !strings.Contains(got, "/h/last.md") {
+	if src != SourceLastHandoff || !strings.Contains(got, "/h/last.md") || !strings.Contains(got, testRolePath) {
 		t.Errorf("source=%q prompt=%q", src, got)
 	}
 }
 
 func TestChooseStartPrompt_LastHandoffGoneFallsToFresh(t *testing.T) {
-	_, src, err := ChooseStartPrompt(seedStencils(t), "", State{LastHandoff: "/h/last.md"}, existsOnly())
+	_, src, err := ChooseStartPrompt(seedStencils(t), testRolePath, "", State{LastHandoff: "/h/last.md"}, existsOnly())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,11 +75,11 @@ func TestChooseStartPrompt_LastHandoffGoneFallsToFresh(t *testing.T) {
 func TestChooseStartPrompt_PendingHandoffIgnored(t *testing.T) {
 	dir := seedStencils(t)
 	s := State{PendingHandoff: "/h/partial.md"}
-	got, src, err := ChooseStartPrompt(dir, "", s, existsOnly("/h/partial.md"))
+	got, src, err := ChooseStartPrompt(dir, testRolePath, "", s, existsOnly("/h/partial.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := RenderStartPrompt(dir)
+	want, err := RenderStartPrompt(dir, testRolePath)
 	if err != nil {
 		t.Fatal(err)
 	}
