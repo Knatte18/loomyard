@@ -82,7 +82,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -575,6 +577,8 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // and the next real turn end is the boundary.
 // The deferral holds only while the session is live.
 // The run deadline and the liveness checks still classify Done from the files and evaluate the gate one final time.
+// A waiting turn end that leaves only background shells outstanding is the one case that does not wait forever:
+// on every tick, with or without new bytes, expiredTurnEnd counts it as a turn end once each non-awaited shell has been outstanding for background_shell_wait_min.
 // Returns outcome == "" when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, string, error) {
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
@@ -582,7 +586,7 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 		return "", "", err
 	}
 	if len(data) == 0 {
-		return "", "", nil
+		return run.expiredTurnEnd()
 	}
 
 	events, err := run.runner.engine.ParseEvents(data)
@@ -594,20 +598,106 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	// retry rather than discarding them unread.
 	run.offset = newOffset
 	if len(events) == 0 {
-		return "", "", nil
+		return run.expiredTurnEnd()
 	}
 
 	last := events[len(events)-1]
+	if last.Kind == EventWaiting {
+		run.recordWaiting(last)
+	} else {
+		run.waitingTasks = nil
+	}
 	if last.Kind == EventWaiting && len(run.gate) > 0 {
-		return "", "", nil
+		return run.expiredTurnEnd()
 	}
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, "", nil
 	}
 	if last.Kind == EventWaiting {
-		return "", "", nil
+		return run.expiredTurnEnd()
 	}
 	return OutcomeAsking, last.Message, nil
+}
+
+// recordWaiting keeps a waiting turn end's outstanding list and stamps each shell id not seen before with now.
+func (run *Run) recordWaiting(ev Event) {
+	run.waitingTasks = ev.Outstanding
+	run.waitingMessage = ev.Message
+	now := run.clock.Now()
+	for _, task := range ev.Outstanding {
+		if task.Kind != BackgroundShell {
+			continue
+		}
+		if _, seen := run.shellFirstSeen[task.ID]; !seen {
+			if run.shellFirstSeen == nil {
+				run.shellFirstSeen = map[string]time.Time{}
+			}
+			run.shellFirstSeen[task.ID] = now
+		}
+	}
+}
+
+// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end,
+// flooring a non-positive hand-built value to the template default as pollInterval does.
+func (run *Run) shellWaitBound() time.Duration {
+	minutes := run.runner.cfg.BackgroundShellWaitMin
+	if minutes <= 0 {
+		minutes = defaultBackgroundShellWaitMin
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+// defaultBackgroundShellWaitMin is the template.yaml default shell wait bound in minutes.
+const defaultBackgroundShellWaitMin = 10
+
+// awaitedShell reports whether the shell's label starts with one of the spec's awaited prefixes.
+func (run *Run) awaitedShell(task BackgroundTask) bool {
+	for _, prefix := range run.spec.AwaitedShellPrefixes {
+		if strings.HasPrefix(task.Label, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// expiredTurnEnd classifies the recorded waiting turn end as a turn end once every outstanding task is a non-awaited shell that is already expired or has been outstanding for the bound.
+// A fork, or an awaited shell, keeps the turn waiting.
+// It marks each newly expired shell, logs it and clears the waiting list, then classifies as a Stop would:
+// OutcomeDone when every output file exists, otherwise OutcomeAsking with the waiting event's message.
+// Returns outcome == "" while the turn keeps waiting.
+func (run *Run) expiredTurnEnd() (Outcome, string, error) {
+	if len(run.waitingTasks) == 0 {
+		return "", "", nil
+	}
+	now := run.clock.Now()
+	bound := run.shellWaitBound()
+	var newlyExpired []BackgroundTask
+	for _, task := range run.waitingTasks {
+		if task.Kind != BackgroundShell || run.awaitedShell(task) {
+			return "", "", nil
+		}
+		if run.expiredShells[task.ID] {
+			continue
+		}
+		if now.Sub(run.shellFirstSeen[task.ID]) < bound {
+			return "", "", nil
+		}
+		newlyExpired = append(newlyExpired, task)
+	}
+	for _, task := range newlyExpired {
+		if run.expiredShells == nil {
+			run.expiredShells = map[string]bool{}
+		}
+		run.expiredShells[task.ID] = true
+		run.expiredLabels = append(run.expiredLabels, task.Label)
+		logger.Warn("shuttle: background shell waited out; counting the turn end", "runDir", run.runDir, "shell", task.Label)
+	}
+	message := run.waitingMessage
+	run.waitingTasks = nil
+	if allOutputFilesExist(run.spec.OutputFiles) {
+		return OutcomeDone, "", nil
+	}
+	return OutcomeAsking, message, nil
 }
 
 // readEventsFrom reads path from byte offset onward, returning bytes up to
@@ -999,6 +1089,7 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		StrandGUID:           run.state.StrandGUID,
 		LastAssistantMessage: message,
 		RunDir:               run.runDir,
+		ExpiredShells:        slices.Clone(run.expiredLabels),
 	}
 
 	if outcome == OutcomeDone {

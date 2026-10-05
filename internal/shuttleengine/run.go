@@ -195,6 +195,9 @@ type Result struct {
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
 	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
+	// ExpiredShells holds the labels of the background shells this run waited out, in expiry order:
+	// each outlasted background_shell_wait_min and was let through as a turn end.
+	ExpiredShells []string
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
@@ -219,6 +222,17 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+
+	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and by an expiry.
+	waitingTasks []BackgroundTask
+	// waitingMessage is that EventWaiting's message, which an expiry classified as asking carries.
+	waitingMessage string
+	// shellFirstSeen records when each shell id was first seen outstanding.
+	shellFirstSeen map[string]time.Time
+	// expiredShells holds the shell ids already waited out in this run, so a later turn end listing one again does not restart its wait.
+	expiredShells map[string]bool
+	// expiredLabels is the labels of expiredShells in expiry order, reported as Result.ExpiredShells.
+	expiredLabels []string
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec

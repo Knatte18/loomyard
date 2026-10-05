@@ -150,7 +150,7 @@ func TestAttach_NoCandidates(t *testing.T) {
 			if found {
 				t.Errorf("found = true; want false")
 			}
-			if result != (Result{}) {
+			if !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result", result)
 			}
 			if len(reed.CallLog) != 0 {
@@ -205,7 +205,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 			if found != tt.wantFound {
 				t.Errorf("found = %v; want %v", found, tt.wantFound)
 			}
-			if !tt.wantFound && result != (Result{}) {
+			if !tt.wantFound && !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result when not found", result)
 			}
 		})
@@ -239,7 +239,7 @@ func TestAttach_Multiplicity(t *testing.T) {
 		if found {
 			t.Errorf("found = true; want false")
 		}
-		if result != (Result{}) {
+		if !isZeroResult(result) {
 			t.Errorf("result = %+v; want zero Result", result)
 		}
 	})
@@ -324,7 +324,7 @@ func TestAttach_DeadPane(t *testing.T) {
 			if found {
 				t.Errorf("found = true; want false — a dead pane is unambiguous evidence the agent is gone")
 			}
-			if result != (Result{}) {
+			if !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result", result)
 			}
 		})
@@ -346,7 +346,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 	if found {
 		t.Errorf("found = true; want false — output files do not match, so no candidate matched")
 	}
-	if result != (Result{}) {
+	if !isZeroResult(result) {
 		t.Errorf("result = %+v; want zero Result", result)
 	}
 	if len(reed.CallLog) != 0 {
@@ -696,7 +696,7 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 			if found {
 				t.Errorf("found = true; want false — an unsatisfied file contract is not a finished run to harvest")
 			}
-			if result != (Result{}) {
+			if !isZeroResult(result) {
 				t.Errorf("result = %+v; want zero Result", result)
 			}
 		})
