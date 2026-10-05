@@ -47,14 +47,6 @@ func argsFor(cmd *cobra.Command) []string {
 // An entry fails once its invocation meets the invariant, and an entry naming a group that no longer exists fails as stale.
 var cliTreeFindings = []scankit.Entry{
 	{
-		Key: "config#bare",
-		Why: "refuses with \"not a git repository\" instead of listing its verbs",
-	},
-	{
-		Key: "config#bogus",
-		Why: "refuses with \"not a git repository\" before reaching the unknown-subcommand refusal",
-	},
-	{
 		Key: "selfreport#bogus",
 		Why: "prints help and exits 0 instead of refusing an unknown subcommand",
 	},

@@ -76,7 +76,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(codeLayout, os.Stdin, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
+	code := dispatch(codeLayout, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
@@ -174,7 +174,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	// explicit *lyxcwd.Location (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
-	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"board"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"design_prefix=new-"})
+	setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"board"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"design_prefix=new-"})
 	if setCode != 0 {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}

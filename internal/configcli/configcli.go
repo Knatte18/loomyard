@@ -184,17 +184,17 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 
 // dispatch routes the config command to the print path (when printOnly is true),
 // the --set path (when setFlags is non-empty), editOne (if a module is
-// specified), or menu (for the interactive numbered menu).
+// specified).
 //
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
-// without opening an editor. The print path is evaluated before any edit/menu logic.
+// without opening an editor. The print path is evaluated before any edit logic.
 // The --set path is a fully non-interactive write: it never calls edit and is
 // mutually exclusive with --print. The baseDir is computed from the layout as
 // filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
+func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
 	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
 
-	// Handle --set before any --print/edit/menu dispatch: it is a fully
+	// Handle --set before any --print/edit dispatch: it is a fully
 	// non-interactive write path that never opens the editor, so its
 	// validation (mutual exclusivity with --print, module-required) must run
 	// before either of those branches gets a chance to act.
@@ -212,7 +212,7 @@ func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, ed
 		return setModule(baseDir, out, args[0], pairs, sync)
 	}
 
-	// Handle --print before any edit/menu dispatch; the print path is read-only
+	// Handle --print before any edit dispatch; the print path is read-only
 	// and never opens the editor.
 	if printOnly {
 		if len(args) >= 1 {
@@ -221,10 +221,12 @@ func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, ed
 		return printAll(baseDir, out)
 	}
 
-	if len(args) >= 1 {
-		return editOne(baseDir, out, args[0], edit, sync)
+	// Command lists modules for a bare invocation before dispatch runs, so a
+	// module is always present here.
+	if len(args) < 1 {
+		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
 	}
-	return menu(l, baseDir, in, out, edit, sync)
+	return editOne(baseDir, out, args[0], edit, sync)
 }
 
 // buildConfigLong constructs the Long description for the config command,
@@ -232,10 +234,9 @@ func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, ed
 // stays in sync without requiring manual updates when modules are added or removed.
 func buildConfigLong() string {
 	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
-		"success. With no argument it opens an interactive numbered menu of the known\n" +
-		"modules; with a module name it edits that module directly. The editor is\n" +
-		"resolved from $VISUAL or $EDITOR; with neither set it falls back to notepad\n" +
-		"on Windows or vi elsewhere.\n\n" +
+		"success. With no argument it lists the known modules and verbs; with a module\n" +
+		"name it edits that module directly. The editor is resolved from $VISUAL or\n" +
+		"$EDITOR; with neither set it falls back to notepad on Windows or vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
 		"bypassing the editor entirely, e.g.\n" +
@@ -317,7 +318,9 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 // Args is cobra.MaximumNArgs(1) so extra positionals are rejected.
 // ValidArgs is set to the known config module names for shell completion only.
 // A reconcile subcommand is registered so that "lyx config reconcile" is routed there while "lyx
-// config <module>" continues to invoke the edit/menu RunE.
+// config <module>" continues to invoke the edit RunE.
+// The RunE decides before resolving any cwd: a bare invocation with neither --print nor --set prints
+// the help, and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:       "config [module]",
@@ -330,15 +333,27 @@ func Command() *cobra.Command {
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
-	configCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
-		printOnly, _ := configCmd.Flags().GetBool("print")
-		setFlags, _ := configCmd.Flags().GetStringArray("set")
-		return runConfig(ctx, out, args, printOnly, setFlags)
-	})
+	configCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if clihelp.ShouldAbort(cmd.Context()) {
+			return nil
+		}
+		printOnly, _ := cmd.Flags().GetBool("print")
+		setFlags, _ := cmd.Flags().GetStringArray("set")
+		if len(args) == 0 && !printOnly && len(setFlags) == 0 {
+			return cmd.Help()
+		}
+		if len(args) > 0 {
+			if _, ok := configreg.Template(args[0]); !ok {
+				return fmt.Errorf("unknown subcommand %q for %q; run \"lyx config\" to list modules and verbs", args[0], cmd.CommandPath())
+			}
+		}
+		clihelp.SetExit(cmd.Context(), runConfig(cmd.Context(), cmd.OutOrStdout(), args, printOnly, setFlags))
+		return nil
+	}
 
 	// Build the reconcile subcommand and register it so cobra routes
 	// "lyx config reconcile" here while "lyx config <module>" continues
-	// to invoke the edit/menu RunE above.
+	// to invoke the edit RunE above.
 	reconcileCmd := &cobra.Command{
 		Use:   "reconcile",
 		Short: "reconcile module configs against templates",
@@ -381,8 +396,7 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 //
 // It resolves the layout from the seam cwd, builds the real editor (DefaultEditor) and the real
 // sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the
-// nested call re-derive it from process state), and dispatches to dispatch with os.Stdin as the
-// interactive input reader.
+// nested call re-derive it from process state), and dispatches to dispatch.
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
@@ -406,6 +420,6 @@ func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool
 		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
 	}
 
-	// Dispatch to the print path, --set path, interactive menu, or specific module.
-	return dispatch(l, os.Stdin, out, args, configengine.DefaultEditor, realSync, printOnly, setFlags)
+	// Dispatch to the print path, --set path, or specific module.
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, printOnly, setFlags)
 }
