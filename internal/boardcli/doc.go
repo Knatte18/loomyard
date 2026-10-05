@@ -14,6 +14,9 @@
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
 //
+// `get` takes `--body` to write the entry's body alone, verbatim, with no envelope; an empty body writes nothing, and an absent target is an error.
+// Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
+//
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order, an empty list is `[]`, and a list-shaped `board.yaml` prints its names with empty descriptions.
 package boardcli

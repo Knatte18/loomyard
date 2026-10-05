@@ -51,6 +51,13 @@ Read a long body from a file, or from stdin with `-`, instead of embedding it in
 lyx board upsert '{"slug":"my-task","title":"My Task","kind":"task","labels":["bug"]}' --body-file body.md
 ```
 
+Edit a body as a file: `get --body` prints the body alone, verbatim, so write it out, edit it and read it back in:
+
+```
+lyx board get '{"slug":"my-task"}' --body > body.md
+lyx board upsert '{"slug":"my-task"}' --body-file body.md
+```
+
 Promote a note to a task:
 
 ```

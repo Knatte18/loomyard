@@ -469,6 +469,7 @@ Example:
 
 	// get subcommand: fetch a single task by slug or numeric id; returns task:null
 	// for a valid-but-absent target (not an error). Malformed payloads error.
+	var getBody bool
 	getCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single task",
@@ -476,32 +477,49 @@ Example:
 Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
 Malformed payloads (no identifier key, unknown key) are errors.
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
+--body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
+With --body a target that does not exist is an error, since there is no task:null to print.
+Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
+upsert --body-file body.md (merge --body-file takes the same file for a merged entry).
 
 Fields:
   "slug" string  — task slug (mutually exclusive with "id")
   "id"   integer — numeric task ID (mutually exclusive with "slug")
 
-Example:
-  lyx board get '{"id":96}'`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			if len(args) == 0 {
-				return outputError(out, "json payload required")
-			}
-			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-			selector, _, err := resolveLookup([]byte(args[0]))
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			task, found, err := board().GetTask(selector)
-			if err != nil {
-				return outputError(out, err.Error())
-			}
-			if found {
-				return outputGetTask(out, &task)
-			}
-			return outputGetTask(out, nil) // task: null in JSON output
-		}),
+Examples:
+  lyx board get '{"id":96}'
+  lyx board get '{"slug":"my-task"}' --body`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return clihelp.WrapRun(func(out io.Writer, args []string) int {
+				if len(args) == 0 {
+					return outputError(out, "json payload required")
+				}
+				// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+				selector, _, err := resolveLookup([]byte(args[0]))
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				task, found, err := board().GetTask(selector)
+				if err != nil {
+					return outputError(out, err.Error())
+				}
+				if getBody {
+					if !found {
+						return outputError(out, fmt.Sprintf("no entry %v: check the slug or id with lyx board list", selector))
+					}
+					if _, err := io.WriteString(out, task.Body); err != nil {
+						return outputError(out, err.Error())
+					}
+					return 0
+				}
+				if found {
+					return outputGetTask(out, &task)
+				}
+				return outputGetTask(out, nil) // task: null in JSON output
+			})(cmd, args)
+		},
 	}
+	getCmd.Flags().BoolVar(&getBody, "body", false, "write the entry's body alone, verbatim, instead of the JSON envelope")
 
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool

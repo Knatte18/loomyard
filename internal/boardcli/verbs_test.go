@@ -313,6 +313,64 @@ func TestCLIUpsertBodyFile(t *testing.T) {
 	runJSON(t, 1, "upsert", "-", "--body-file", "-")
 }
 
+// TestCLIGetBody prints bodies byte-for-byte, an empty body as nothing, and refuses an absent target.
+func TestCLIGetBody(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	for slug, body := range map[string]string{
+		"multi":    "# Heading\n\nline one\nline two\n",
+		"no-final": "no trailing newline",
+	} {
+		path := filepath.Join(t.TempDir(), "body.md")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("write body file: %v", err)
+		}
+		runJSON(t, 0, "upsert", `{"slug":"`+slug+`","title":"T","labels":["bug"]}`, "--body-file", path)
+		exitCode, stdout := runCLI(t, "get", `{"slug":"`+slug+`"}`, "--body")
+		if exitCode != 0 || stdout != body {
+			t.Fatalf("get --body %s: exit %d, stdout %q, want %q", slug, exitCode, stdout, body)
+		}
+	}
+
+	mustUpsert(t, `{"slug":"empty","title":"E","labels":["bug"]}`)
+	exitCode, stdout := runCLI(t, "get", `{"slug":"empty"}`, "--body")
+	if exitCode != 0 || stdout != "" {
+		t.Fatalf("get --body of an empty body: exit %d, stdout %q, want nothing", exitCode, stdout)
+	}
+
+	result := runJSON(t, 1, "get", `{"slug":"absent"}`, "--body")
+	if msg, _ := result["error"].(string); !strings.Contains(msg, "absent") {
+		t.Fatalf("absent slug: error = %q, want it to name the slug", msg)
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"absent"}`); got["task"] != nil {
+		t.Fatalf("flagless get of an absent slug: %v, want task:null", got)
+	}
+}
+
+// TestCLIGetBodyRoundTrip feeds the bytes of get --body back through upsert --body-file and finds the body unchanged.
+func TestCLIGetBodyRoundTrip(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	seedCwd(t)
+
+	body := "# Heading\n\n- item \"one\"\n- item two\n\ntail\n"
+	path := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"rt","title":"R","labels":["bug"]}`, "--body-file", path)
+
+	_, printed := runCLI(t, "get", `{"slug":"rt"}`, "--body")
+	if err := os.WriteFile(path, []byte(printed), 0o644); err != nil {
+		t.Fatalf("write printed body: %v", err)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"rt"}`, "--body-file", path)
+	got := runJSON(t, 0, "get", `{"slug":"rt"}`)["task"].(map[string]any)
+	if got["body"] != body {
+		t.Fatalf("body after round trip = %q, want %q", got["body"], body)
+	}
+}
+
 // pipeStdin replaces os.Stdin with a file holding content until the test ends.
 func pipeStdin(t *testing.T, content string) {
 	t.Helper()
