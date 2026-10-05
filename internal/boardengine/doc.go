@@ -11,9 +11,12 @@
 //
 // # Labels
 //
-// Each entry carries labels, validated against two lists in board.yaml.
-// The types list holds the type labels: a note carries exactly one of them, and a task carries one or more.
-// The labels list holds every other label, such as an area.
+// Each entry carries labels, validated against two maps in board.yaml, each from a label to its one-line description.
+// The types map holds the type labels: a note carries exactly one of them, and a task carries one or more.
+// The labels map holds every other label, such as an area.
+// LoadConfig reads both from the yaml node tree, so Config holds them as Label values in file order.
+// A description may be empty or null, and the older shape, a list of names, still loads read-only with empty descriptions.
+// ConfigOpenMaps names the two keys as open maps, so configengine carries a repository's own entries whole through reconcile and --set.
 // Vocabulary answers both questions, and Board copies it from its Config and sets it on every store it builds.
 // A write that carries a label in neither list is refused, naming the entry, the label and board.yaml.
 // A Board built from a bare path has no outputs configured, cannot write, and validates no label.

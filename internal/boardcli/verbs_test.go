@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
@@ -157,9 +158,18 @@ func TestCLIFind(t *testing.T) {
 	}
 }
 
+// seedUndecidedLabel rewrites the seeded board.yaml of cwd to configure the undecided label, which the template no longer does.
+func seedUndecidedLabel(t *testing.T, cwd string) {
+	t.Helper()
+	content := "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n"
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.yaml: %v", err)
+	}
+}
+
 func TestCLIListAndFindLabelFilter(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+	seedUndecidedLabel(t, seedCwd(t))
 	mustUpsert(t, `{"slug":"one","title":"One","kind":"note","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"two","title":"Two","kind":"note","labels":["bug","undecided"]}`)
 	mustUpsert(t, `{"slug":"three","title":"Three","kind":"note","labels":["enhancement","undecided"]}`)
@@ -194,7 +204,7 @@ func TestCLIFind_NoArgumentRefused(t *testing.T) {
 
 func TestCLIListAndFindText(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+	seedUndecidedLabel(t, seedCwd(t))
 	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
