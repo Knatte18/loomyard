@@ -112,6 +112,7 @@ Compaction rules for this file:
   A decision record that re-litigates what was *not* chosen is not distilled.
 - **Must-cover test scenarios go under `## Acceptance criteria`.**
   There is no separate `## Testing` section.
+  A scenario names a behavior to cover, not a test to write, and an existing test or a new table row may meet it.
 - **A Decision that adds an edge or weakens a guard states its bound.**
   When a Decision introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, state in that Decision what it can now skip or let through and what bounds it.
   Discussion-Review flags one left unbounded.

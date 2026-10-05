@@ -16,7 +16,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree mounted under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, a `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repository root and state; a module declares a descriptor. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, and its spec row and reaching test land in the same commit. — [background](pattern/PATTERN-refusal-way-forward.md)
+- `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, its spec row lands in the same commit, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny (`git reset --hard`, `git push --force`/`-f`, `rm -rf`); lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
@@ -68,16 +68,22 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `tokenvocab`, `buildinfo`, `standalonestate`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
-## Testing
+## Build and tooling
 
-- `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated or placed under the faked package. (test) — [background](pattern/PATTERN-testkit.md)
-- `PATTERN-hubforge-fixtures` — Building a hub fixture: `internal/hubforge` through `fabriccli.CloneAndWire`, never hand-assembled and never wrapped in a test-local type. — [background](pattern/PATTERN-hubforge-fixtures.md)
-- `PATTERN-test-tier-purity` — Writing an untagged test: no git, process, tmux or `lyxbin` spawn and no sleep of a second or more; those need `integration` or `smoke`. (test) — [background](pattern/PATTERN-test-tier-purity.md)
-- `PATTERN-hermetic-git-tests` — Testing a package that spawns git: its `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or the package is allowlisted. — [background](pattern/PATTERN-hermetic-git-tests.md)
-- `PATTERN-tmux-test-isolation` — Testing a package with an `integration` or `smoke` file: every `TestMain` calls `tmuxkit.Main`, so no test touches the default tmux socket. (test) — [background](pattern/PATTERN-tmux-test-isolation.md)
 - `PATTERN-sandbox-coverage` — Registering a lyx module: the sandbox suite exercises it, or explicitly excludes it with a reason.
 - `PATTERN-dev-prod-binary-separation` — Resolving `lyx` in sandbox tooling: `resolveLyx` (`.dev-bin` first, then PATH), never a bare-PATH lookup.
 - `PATTERN-quarry-cgo` — Building this module: it needs `CGO_ENABLED=1` and a C compiler, because quarry links tree-sitter's C grammars and refuses a cgo-free build. — [background](pattern/PATTERN-quarry-cgo.md)
+
+## Testing
+
+- `PATTERN-test-economy` — Writing a test: it pins behavior at a module's public surface and covers something no existing test covers, else it extends an existing test; a review fix adds one only for a coverage gap. — [background](pattern/PATTERN-test-economy.md)
+- `PATTERN-test-time-seam` — Testing time-driven behavior: the interval, timeout or clock is injectable and the test shortens it; no test in any tier waits out a production duration.
+- `PATTERN-test-parallel` — Writing a test: it calls `t.Parallel` unless it touches process-global state (env, cwd, a shared fixture), and a comment at the test, or once atop its file, names that state.
+- `PATTERN-testkit` — Sharing test support between packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated or placed under the faked package. (test) — [background](pattern/PATTERN-testkit.md)
+- `PATTERN-hubforge-fixtures` — Building a hub fixture, where no fake or in-memory fixture can test the behavior: `internal/hubforge` through `fabriccli.CloneAndWire`, never hand-assembled and never wrapped in a test-local type. — [background](pattern/PATTERN-hubforge-fixtures.md)
+- `PATTERN-test-tier-purity` — Writing an untagged test: no git, process, tmux or `lyxbin` spawn and no sleep of a second or more; those need `integration` or `smoke`. (test) — [background](pattern/PATTERN-test-tier-purity.md)
+- `PATTERN-hermetic-git-tests` — Testing a package that spawns git: its `TestMain` calls `gitkit.HermeticGitEnv()` before `m.Run()`, or the package is allowlisted. — [background](pattern/PATTERN-hermetic-git-tests.md)
+- `PATTERN-tmux-test-isolation` — Testing a package with an `integration` or `smoke` file: every `TestMain` calls `tmuxkit.Main`, so no test touches the default tmux socket. (test) — [background](pattern/PATTERN-tmux-test-isolation.md)
 
 ## Docs
 

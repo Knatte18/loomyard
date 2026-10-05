@@ -10,7 +10,7 @@
 
 The subject under review is the **committed diff**, not a file and not a directory.
 Ordinary diff review is the base: read the diff as code, with no checklist supplied, and judge it the way a careful reviewer judges any change.
-The two dimensions under `## Also flag` are added on top of that base, never a replacement for it.
+The dimensions under `## Also flag` are added on top of that base, never a replacement for it.
 
 The measuring stick is the plan — `_lyx/plan/00-overview.md` and the card files its Card Index names.
 The Card model the plan implements is described in `{{.specs_dir}}/loom/loom-plan-spec.md`, and the format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`.
@@ -66,6 +66,14 @@ Do not flag any of the following as a finding:
   This rubric checks compliance with the target repository's own standard, not loomyard's.
 - **Per-card mechanical check.**
   Confirm every one of the card's own groups' type-specific mechanical checks actually ran and passed, each against that group's own targets, not just the first label's — the AST-script-plus-grep for a `Rename` group, `assert-no-callers` for a `Delete` group, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md` — not merely that the diff compiles and its tests pass.
+- **Test economy.**
+  `PATTERN-test-economy` holds the rule; each of these is a finding, and each names what grounds it:
+  - a new test that duplicates an existing test's coverage, naming the covering test;
+  - a per-helper test the public surface's test already covers, naming that public-surface test;
+  - a review-fix test added for a finding that was not a coverage gap, naming that finding;
+  - a behavior the diff adds with no coverage, naming the uncovered behavior.
+
+  A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 
 ## Finding class
 
