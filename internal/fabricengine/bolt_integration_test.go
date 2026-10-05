@@ -167,6 +167,7 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 
 // TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns, leaving
 // other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
+// It also pins deletion staging, the empty path list and the SkipGit gate.
 func TestBolt_CommitWritten(t *testing.T) {
 	t.Parallel()
 
@@ -215,6 +216,52 @@ func TestBolt_CommitWritten(t *testing.T) {
 		}
 		if committed || sha != "" {
 			t.Errorf("CommitWritten() = (%q, %v); want no commit", sha, committed)
+		}
+		if got := gitkit.RevParse(t, repoPath, "HEAD"); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
+		}
+	})
+
+	t.Run("a deleted path is committed as a deletion", func(t *testing.T) {
+		sha, committed, err := b.CommitWritten("bolt deleted", func() ([]string, error) {
+			return []string{"seed.md"}, os.Remove(filepath.Join(repoPath, "seed.md"))
+		}, SyncOptions{})
+		if err != nil {
+			t.Fatalf("CommitWritten() error = %v; want nil", err)
+		}
+		if !committed || sha == "" {
+			t.Fatalf("CommitWritten() = (%q, %v); want a new commit", sha, committed)
+		}
+		if status := gitStatusPorcelain(t, repoPath); strings.Contains(status, "seed.md") {
+			t.Errorf("git status --porcelain = %q; want the seed.md deletion committed", status)
+		}
+	})
+
+	t.Run("an empty path list commits nothing", func(t *testing.T) {
+		headBefore := gitkit.RevParse(t, repoPath, "HEAD")
+
+		sha, committed, err := b.CommitWritten("bolt empty", func() ([]string, error) {
+			return nil, nil
+		}, SyncOptions{})
+		if err != nil || committed || sha != "" {
+			t.Errorf("CommitWritten() = (%q, %v, %v); want no commit and no error", sha, committed, err)
+		}
+		if got := gitkit.RevParse(t, repoPath, "HEAD"); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
+		}
+	})
+
+	t.Run("SkipGit runs write and commits nothing", func(t *testing.T) {
+		headBefore := gitkit.RevParse(t, repoPath, "HEAD")
+
+		sha, committed, err := b.CommitWritten("bolt skipped", func() ([]string, error) {
+			return []string{"skipped.md"}, os.WriteFile(filepath.Join(repoPath, "skipped.md"), []byte("skipped"), 0o644)
+		}, SyncOptions{SkipGit: true})
+		if err != nil || committed || sha != "" {
+			t.Errorf("CommitWritten(SkipGit) = (%q, %v, %v); want no commit and no error", sha, committed, err)
+		}
+		if _, statErr := os.Stat(filepath.Join(repoPath, "skipped.md")); statErr != nil {
+			t.Errorf("skipped.md was not written under SkipGit: %v", statErr)
 		}
 		if got := gitkit.RevParse(t, repoPath, "HEAD"); got != headBefore {
 			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
