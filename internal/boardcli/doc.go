@@ -15,6 +15,8 @@
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
 // `merge` takes the same flag and sets the `upsert` object's `body` under the same refusals.
 //
+// Every verb that takes a slug (`get`, `upsert`, `upsert-batch`, `set-status`, `remove`, `merge`, `promote`, `set-deps` and `intake import`) states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
+//
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope; an empty body writes nothing, and an absent target is an error.

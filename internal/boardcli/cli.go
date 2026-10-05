@@ -116,7 +116,7 @@ Fields (one of):
   "id"   integer — entry id
 
 Example:
-  lyx board promote '{"slug":"my-note"}'`,
+  lyx board promote '{"slug":"my-note"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -265,6 +265,12 @@ func labelEntries(labels []boardengine.Label) []boardengine.Label {
 	return labels
 }
 
+// slugLimitNote is the help paragraph every slug-taking verb ends its Long with.
+// It formats the limit from boardengine.MaxSlugLength, so help and validation cannot drift.
+func slugLimitNote() string {
+	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
+}
+
 // storeVerbs builds the nine store verbs over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
@@ -295,7 +301,7 @@ Flag:
                       and when the payload argument is itself "-" (stdin can feed only one of them).
 
 Example:
-  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'`,
+  lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				// cobra strips the "upsert" token; json payload is now args[0].
@@ -340,7 +346,7 @@ Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
 
 Example:
-  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'`,
+  lyx board upsert-batch '{"tasks":[{"slug":"t1","title":"One","kind":"task","labels":["bug"]},{"slug":"t2","title":"Two","kind":"task","labels":["bug"]}]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -404,7 +410,7 @@ Fields:
 
 Examples:
   lyx board set-status '{"slug":"my-task","status":"active"}'
-  lyx board set-status '{"id":96,"status":null}'`,
+  lyx board set-status '{"id":96,"status":null}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -450,7 +456,7 @@ Fields:
   "id"   integer — numeric task ID (mutually exclusive with "slug")
 
 Example:
-  lyx board remove '{"slug":"my-task"}'`,
+  lyx board remove '{"slug":"my-task"}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -488,7 +494,7 @@ Fields:
 
 Examples:
   lyx board get '{"id":96}'
-  lyx board get '{"slug":"my-task"}' --body`,
+  lyx board get '{"slug":"my-task"}' --body` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				if len(args) == 0 {
@@ -586,7 +592,7 @@ Flag:
                       and when the payload argument is itself "-" (stdin can feed only one of them).
 
 Example:
-  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`,
+  lyx board merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				if len(args) == 0 {
@@ -698,7 +704,7 @@ Fields:
   "depends_on" array  — complete list of dependency slug strings; replaces existing list (required)
 
 Example:
-  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'`,
+  lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")

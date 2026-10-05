@@ -7,10 +7,12 @@ package boardcli_test
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
 // runHelp invokes RunCLI for a leaf command (identified by one or more path
@@ -137,6 +139,30 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",
 						tt.args, bad, helpText)
 				}
+			}
+		})
+	}
+}
+
+// TestHelpStatesSlugLimit asserts every slug-taking verb's --help states the limit formatted from
+// boardengine.MaxSlugLength, so the sentence cannot drift from validation.
+func TestHelpStatesSlugLimit(t *testing.T) {
+	want := fmt.Sprintf("A slug is at most %d characters.", boardengine.MaxSlugLength)
+	verbs := [][]string{
+		{"get"},
+		{"upsert"},
+		{"upsert-batch"},
+		{"set-status"},
+		{"remove"},
+		{"merge"},
+		{"promote"},
+		{"set-deps"},
+		{"intake", "import"},
+	}
+	for _, args := range verbs {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			if helpText := runHelp(t, args...); !strings.Contains(helpText, want) {
+				t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s", args, want, helpText)
 			}
 		})
 	}

@@ -38,6 +38,7 @@ A recipe name goes in `recipe`, never in a label.
 
 Each verb below shows one payload.
 `lyx board <verb> --help` lists the full key set, so this skill does not restate it.
+Every verb that takes a slug states the slug length limit there too.
 
 Create or update an entry, demotion included:
 
