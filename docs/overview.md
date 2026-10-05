@@ -332,7 +332,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
   The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`) under the same rules. ✅ Implemented.
-- **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, triggered two ways: manually (`lyx selfreport create <title>`) and automatically, off `loom`'s own status file (`internal/loomcli`'s `selfreport.go`), which detects four Tier-1 structural anomalies — a crash-resume, an escalation-to-human halt, a bounce-budget-exhausted halt and a producer-hard-failure halt — and files them after every `lyx loom run` and `lyx loom step` call, an anomaly whose filing failed staying pending in the filed-title marker and being retried on every later pass, gated by the `selfreport` key in `loom.yaml` (default on).
+- **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, filed by `lyx selfreport create <title>`, run by the operator or by an agent; the friction reflection is its only automatic caller, and no Go code files an issue itself.
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.
   Target repo is hardcoded;
   supports `--body` (or `-` for stdin) and `--label`;
@@ -413,7 +413,8 @@ User-facing modules each get one `lyx <module>` namespace:
   so a fix committed by hand outside loom is pushed by the operator before `approve`, or goes through `reject` instead.
   `commit-records` commits and pushes the run's records through fabric — the status file, the review round record, friction notes and drive reports — and is what the loom driver's end-of-session command runs after the driver writes its stop report, and what a loom-launched driver runs at a hand-back before it parks until `lyx loom start` resumes it; a tree with nothing to commit succeeds without a commit.
   Friction notes live under `_lyx/loom/friction/` and drive reports under `_lyx/shed/<slug>/drive-reports/`, both committed with the run.
-  Besides the agents' notes, the friction directory holds the Go-written halt notes and `lyx webster` refusal notes, and the driver's repair records.
+  Besides the agents' notes, the friction directory holds the Go-written halt notes, which name their anomaly kind, the crash-resume notes written at a `run` or `step` entry and `lyx webster` refusal notes, and the driver's repair records.
+  `lyx loom start` writes a handoff voucher right before it spawns a driver, so a deliberate resume never reads as a crash.
   The landing tail runs `Webster-Review`, then `Describe`, then `Publish`, then `PR-Gate`, then `Finalize`;
   `Publish` returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message carries exactly one `Co-Authored-By` trailer that Go appends from `landing.yaml`'s `co_authored_by`.

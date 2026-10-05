@@ -151,6 +151,25 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	return false
 }
 
+// vouchForSpawnedResume records the handoff voucher for the status file as it stands, replacing any earlier voucher.
+// It writes only when Tier 2 is on, the gate under which the entry observation consumes the voucher;
+// a missing or unreadable status file, or a failed write, is warned and changes nothing else.
+func (c *loomCLI) vouchForSpawnedResume() {
+	if c.frictionDir == "" {
+		return
+	}
+	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if err != nil {
+		logger.Warn("loom: could not read the status file to vouch for the spawned resume", "path", c.shedPaths.StatusPath, "cause", err)
+		return
+	}
+	if !found {
+		logger.Warn("loom: no status file to vouch for the spawned resume", "path", c.shedPaths.StatusPath)
+		return
+	}
+	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(st.History), st.State)
+}
+
 // runDriverSpawnAndWait performs steps 5 and 6 of the bootstrap: it probes the run lock and the
 // driver strand table once, decides via mustSpawnDriver whether a spawn is needed, and -- when one
 // is -- branches on driver into the go arm's detached spawn and run-lock handshake (both
@@ -163,6 +182,13 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 // so it spawns nothing and resumes that driver through resumeParkedDriver instead.
 // A live strand with no marker over a run halted at a hand-back is refused with the shedrun.StartNotParkedKind kind, since that driver has not parked yet;
 // over a running run it is a no-op, since the driver is working.
+//
+// On the spawn path only, after the stale-marker removal and right before either arm spawns, it writes the handoff voucher for the status file as it stands, when Tier 2 is on, so the driver's first entry observation does not read this deliberate resume as a crash.
+// The voucher suppresses at most one entry observation, the first, and only when its history length and state equal what start recorded;
+// it lives under `.lyx`, so it never crosses machines or survives a fabric re-wire.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
+// a driver that start spawned and that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
+// The parked-driver resume, the live-strand no-op and every refusal write no voucher.
 //
 // Before the stale-marker removal, the resume line or any spawn it probes the pair's merge state, but only when this invocation would put a driver to work: mustSpawn, or a live strand with the park marker present.
 // An unfinished merge is refused with the shedrun.StartMergeInProgressKind kind;
@@ -230,6 +256,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			clihelp.SetExit(ctx, output.Err(out, err.Error()))
 			return false
 		}
+		c.vouchForSpawnedResume()
 	} else if driverAction == driverStrandLive {
 		if parkedLive {
 			if err := c.resumeParkedDriver(driverGUID); err != nil {
