@@ -20,58 +20,33 @@ func seedStencils(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-func TestRenderRoleFile_WritesEveryTheme(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "orch", "role.md")
-	if err := RenderRoleFile(seedStencils(t), path); err != nil {
-		t.Fatal(err)
+func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
+	cases := []struct {
+		name   string
+		file   string
+		render func(dir, path string) error
+	}{
+		{"role", "role.md", RenderRoleFile},
+		{"note template", "note-template.md", RenderNoteTemplateFile},
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(data)
-	for _, heading := range []string{
-		"## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
-		"## The board", "## Where a finding goes", "## Acting without asking", "## Status reports", "## Messaging", "## Which role can do what",
-	} {
-		if !strings.Contains(got, heading) {
-			t.Errorf("role file missing heading %q", heading)
-		}
-	}
-	if strings.Contains(got, "<!--") {
-		t.Errorf("role file keeps the stencil's leading comment")
-	}
-}
-
-func TestRenderNoteTemplateFile_WritesItsHeadings(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "orch", "note-template.md")
-	if err := RenderNoteTemplateFile(seedStencils(t), path); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, heading := range []string{"## Doing now", "## Next step with the operator", "## Waiting on the operator"} {
-		if !strings.Contains(string(data), heading) {
-			t.Errorf("note template missing heading %q", heading)
-		}
-	}
-}
-
-func TestOrchStencils_NameNoScribeHandoff(t *testing.T) {
-	dir := seedStencils(t)
-	for _, name := range []string{
-		roleStencilName, noteStencilName, startStencilName, handoffStencilName,
-		resumeStencilName, adoptStencilName, softHandoffStencilName, compactStencilName,
-	} {
-		data, err := stencilstore.Read(dir, name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(data), "scribe:handoff") {
-			t.Errorf("%s names scribe:handoff", name)
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "orch", c.file)
+			if err := c.render(seedStencils(t), path); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(data) == 0 {
+				t.Errorf("%s file is empty", c.name)
+			}
+			if strings.Contains(string(data), "<!--") {
+				t.Errorf("%s file keeps the stencil's leading comment", c.name)
+			}
+		})
 	}
 }
 

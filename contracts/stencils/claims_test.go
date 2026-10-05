@@ -76,6 +76,7 @@ const (
 	websterPlanDriftSection = "## A plan-drift refusal ends your run as stuck"
 	websterGateSection      = "## A gate failure: spawn one fixer fork"
 	websterOutcomeKeysLine  = "`{{.outcome_path}}` itself carries exactly these three keys, quoted here, exactly:"
+	orchNoScribeHandoffWhy  = "the orch stencils carry their own handoff procedure, so none names the scribe handoff skill"
 	droppedConceptsWhy      = "the batch-era concept (oversized batches, deferred-verify chains, the per-batch Scope section) is dropped from the prompt"
 )
 
@@ -421,21 +422,37 @@ var wordingClaims = []stencilClaims{
 	{"friction-directive-review-fix.md", FrictionDirectiveReviewFix, frictionOptionalClaims},
 	{"friction-directive-orchestrator.md", FrictionDirectiveOrchestrator, frictionOptionalClaims},
 	{"friction-directive-interview.md", FrictionDirectiveInterview, frictionOptionalClaims},
-	{"orch-template-role.md", OrchTemplateRole, []claim{
-		{must: "creates the task pair, drives the loom run inside it and tears the pair down", why: "the batten run owns the pair's creation and teardown"},
-		{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
-		{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
-		{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
-		{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
-		{must: "run `lyx loom start` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
-		{must: "A goto leaves the run paused, so run `lyx loom start`", why: "a goto leaves the run paused"},
-		{must: "resume it with `lyx batten run <slug>`", why: "a batten pause or goto is resumed by batten run"},
-		{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
-		{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
-		{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},
-		{mustNot: "squash-merges", why: "Finalize squashes onto main and closes the PR"},
-		{mustNot: "start the run again", why: "batten resumes the child itself"},
-	}},
+	{"orch-template-role.md", OrchTemplateRole, joinClaims(
+		wantAll("the role file carries every theme of the orch procedure",
+			"## The run loop", "## Parent-review", "## Escalations from a child", "## PR-Gate", "## After landing",
+			"## The board", "## Where a finding goes", "## Acting without asking", "## Status reports", "## Messaging", "## Which role can do what"),
+		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
+		[]claim{
+			{must: "creates the task pair, drives the loom run inside it and tears the pair down", why: "the batten run owns the pair's creation and teardown"},
+			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
+			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
+			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
+			{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
+			{must: "run `lyx loom start` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
+			{must: "A goto leaves the run paused, so run `lyx loom start`", why: "a goto leaves the run paused"},
+			{must: "resume it with `lyx batten run <slug>`", why: "a batten pause or goto is resumed by batten run"},
+			{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
+			{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
+			{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},
+			{mustNot: "squash-merges", why: "Finalize squashes onto main and closes the PR"},
+			{mustNot: "start the run again", why: "batten resumes the child itself"},
+		}),
+	},
+	{"orch-template-note.md", OrchTemplateNote, joinClaims(
+		wantAll("the note template carries the sections a handoff fills in", "## Doing now", "## Next step with the operator", "## Waiting on the operator"),
+		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
+	)},
+	{"orch-template-start.md", OrchTemplateStart, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-handoff.md", OrchTemplateHandoff, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-resume.md", OrchTemplateResume, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-adopt.md", OrchTemplateAdopt, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-handoff-soft.md", OrchTemplateHandoffSoft, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
+	{"orch-template-compact.md", OrchTemplateCompact, wantNone(orchNoScribeHandoffWhy, "scribe:handoff")},
 	{"friction-template-reflection.md", FrictionTemplateReflection, []claim{
 		{must: "Merge notes that describe the same problem into one issue", why: "duplicates are merged, not filed per note"},
 		{must: "Drop only a note that is about the task's own code, or that describes nothing wrong", why: "filtering is grouping; intake filters later"},
