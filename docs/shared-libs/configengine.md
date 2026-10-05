@@ -162,8 +162,9 @@ On failure, an empty string and an error.
 - If stat fails for another reason: `stat _lyx: <underlying error>`.
   This branch deliberately does not wrap `ErrNotInitialized` — a stat failure (permission, IO) is not absence.
 
-**Note on error rewrapping:** The four strict callers of `Load` — `fabricengine.LoadConfig`, `boardengine.LoadConfig`, `loomengine.LoadConfig`, and `batcher.Active` — match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lyx fabric reconcile"`.
-The `ErrNotInitialized` sentinel makes migrating these four onto `errors.Is` possible;
+**Note on error rewrapping:** The strict callers of `Load` `fabricengine.LoadConfig`, `loomengine.LoadConfig` and `batcher.Active` match the substring `"not initialized"` in the error text to rewrap it into a module-level message: `not initialized here; run "lyx fabric reconcile"`.
+`boardengine.LoadConfig` instead detects absence with `errors.Is(err, configengine.ErrNotInitialized)` and an absent-file check, and names the hub's `board.yaml`: `board config <path> not initialized; run "lyx fabric reconcile"`.
+The `ErrNotInitialized` sentinel makes migrating the other callers onto `errors.Is` possible;
 that migration is available, not done, and the substring match remains supported for callers that still use it.
 Do not conflate:
 - Raw `FindBaseDir` error: `not initialized: _lyx/ directory not found`
