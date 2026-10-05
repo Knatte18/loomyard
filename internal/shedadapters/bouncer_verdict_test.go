@@ -182,15 +182,18 @@ func TestBouncer_Verdict_ContinueReturnsStuckWithLedgerPointer(t *testing.T) {
 }
 
 func TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CIRCLING"), bouncerLedgerContent(1), true)
+	shuttle := judgeFakeShuttle(2, bouncerVerdictContent("CIRCLING"), openGatingLedgerContent(2), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
+		{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: openGatingLedgerContent(1)},
+		{round: 2, report: bouncerReport(2)},
+	})
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
+	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 	}
-	if !strings.Contains(ptr.Reason, "round 1") || !strings.Contains(ptr.Reason, "no progress") {
+	if !strings.Contains(ptr.Reason, "round 2") || !strings.Contains(ptr.Reason, "no progress") {
 		t.Errorf("Call() Reason = %q; want it to name the round and that the judge found no progress", ptr.Reason)
 	}
 
@@ -215,12 +218,13 @@ func TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests(t *testing.T) 
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
 	}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CIRCLING"), ledger: bouncerLedgerContent(1),
-	}})
-	realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the judge's own targeting\"]\n---\n"
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
+		{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: openGatingLedgerContent(1)},
+		{round: 2, report: bouncerReport(2), verdict: bouncerVerdictContent("CIRCLING"), ledger: openGatingLedgerContent(2)},
+	})
+	realFocus := "---\nround: 3\nexclude_lenses: []\nfocus: [\"the judge's own targeting\"]\n---\n"
 	attach.DuringAttach = func() {
-		_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
+		_ = os.WriteFile(focusPath(cfg.RunDir, 3), []byte(realFocus), 0o644)
 	}
 
 	shedfake.RequireOutcome(t, b, shedengine.Awaiting)
@@ -230,11 +234,11 @@ func TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests(t *testing.T) 
 	if attach.Called {
 		t.Error("Run was called; want a live judge attached to, never respawned over")
 	}
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 2))
+	got, err := os.ReadFile(focusPath(cfg.RunDir, 3))
 	if err != nil {
-		t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
+		t.Fatalf("ReadFile(round-3-focus.md) = %v; want nil", err)
 	}
 	if string(got) != realFocus {
-		t.Errorf("round-2-focus.md = %q; want the live judge's own targeting %q", got, realFocus)
+		t.Errorf("round-3-focus.md = %q; want the live judge's own targeting %q", got, realFocus)
 	}
 }

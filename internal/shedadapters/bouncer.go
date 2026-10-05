@@ -104,6 +104,10 @@ type BouncerConfig struct {
 	// The Awaiting Reason adds its budget-block sentence only when ok is true and count has reached budget.
 	// Nil is the absent value, ok false means unknown, and an error warns; each omits the sentence and none blocks the Awaiting.
 	Bounces func() (count, budget int, ok bool, err error)
+	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
+	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
+	// It must be positive.
+	CirclingCheckpoint int
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -169,6 +173,9 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 	}
 	if cfg.Shuttle == nil {
 		return nil, fmt.Errorf("shedadapters: NewBouncer: Shuttle must not be nil")
+	}
+	if cfg.CirclingCheckpoint < 1 {
+		return nil, fmt.Errorf("shedadapters: NewBouncer: CirclingCheckpoint must be positive, got %d", cfg.CirclingCheckpoint)
 	}
 	// Model, Effort, and Version are accepted empty and defer to the provider default.
 	if cfg.Now == nil {
@@ -551,6 +558,13 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 
 	ptr := shedengine.OutputPointer{Path: ledgerPath(b.cfg.RunDir, round)}
 
+	if verdict == verdictCircling {
+		if reason := b.unearnedCircling(round); reason != "" {
+			logger.Warn("shedadapters: bouncer read an unearned CIRCLING verdict as CONTINUE", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "reason", reason)
+			verdict = verdictContinue
+		}
+	}
+
 	switch verdict {
 	case verdictConverged:
 		if b.cfg.Approve != nil {
@@ -577,6 +591,25 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 		// Unreachable: parseRecordedVerdict only ever returns one of the three verdict constants.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file carries an unrecognized verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
 	}
+}
+
+// unearnedCircling returns why a CIRCLING verdict for round does not stand, or "" when it does.
+// It narrows CIRCLING to CONTINUE and nothing else: a round that already has a decision file stands as recorded,
+// an unreadable decision file is left for settleCircling to degrade on,
+// and otherwise the verdict stands only from CirclingCheckpoint on and only over a gating key open in this round and an earlier one.
+// It reads only on-disk state, so a harvest and a later replay of the same round agree.
+func (b *Bouncer) unearnedCircling(round int) string {
+	_, _, _, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+	if err != nil || exists {
+		return ""
+	}
+	if round < b.cfg.CirclingCheckpoint {
+		return fmt.Sprintf("round %d is below the circling checkpoint %d", round, b.cfg.CirclingCheckpoint)
+	}
+	if len(circlingEvidence(b.cfg.RunDir, round)) == 0 {
+		return "no gating finding is open in this round and an earlier one"
+	}
+	return ""
 }
 
 // settleCircling maps a CIRCLING round onto the operator's recorded decision.
@@ -805,6 +838,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"facts_path":      factsPath(b.cfg.RunDir, n),
 		"round":           strconv.Itoa(n),
 		"next_round":      strconv.Itoa(n + 1),
+		"decision_rule":   decisionRuleMarker(n, b.cfg.CirclingCheckpoint),
 		"report_path":     reportPath,
 		"previous_ledger": previousLedger,
 		"verdict_path":    outputs[0],

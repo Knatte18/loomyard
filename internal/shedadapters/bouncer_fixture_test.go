@@ -134,6 +134,8 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		RubricStencil: spec.rubricName,
 		SpecsDir:      spec.specsDir,
 		Shuttle:       spec.shuttle,
+
+		CirclingCheckpoint: 1,
 	}
 	switch {
 	case spec.clock != nil:

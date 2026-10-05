@@ -144,8 +144,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		Rework: ReworkDeps(t, dir),
 
-		Slug:             "test-slug",
-		ReviewMaxBounces: 5,
+		Slug:                     "test-slug",
+		ReviewMaxBounces:         5,
+		ReviewCirclingCheckpoint: 3,
 
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),
 		CreateWorktree: func(context.Context) error { return nil },

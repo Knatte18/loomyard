@@ -149,6 +149,9 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireSeam("Bouncer", "Shuttle", env.Shuttle); err != nil {
 		return nil, err
 	}
+	if env.ReviewCirclingCheckpoint < 1 {
+		return nil, fmt.Errorf("shedrecipe: Bouncer: Env.ReviewCirclingCheckpoint must be positive, got %d", env.ReviewCirclingCheckpoint)
+	}
 
 	runDir, err := resolveUnderRoot("Bouncer", "run_subdir", env.RunRoot, runSubdir)
 	if err != nil {
@@ -203,6 +206,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 		Now:             env.Now,
 		Slug:            env.Slug,
 		Bounces:         bounces,
+
+		CirclingCheckpoint: env.ReviewCirclingCheckpoint,
 	}
 
 	// NewBouncer's own eager rubric-stencil probe is what makes a mistyped rubric_stencil fail here,

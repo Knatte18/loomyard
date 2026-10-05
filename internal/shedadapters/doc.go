@@ -56,6 +56,10 @@
 //     A parsed CONTINUE verdict maps to Stuck on harvest or on a CONTINUE replay,
 //     and a parsed CIRCLING verdict maps to Awaiting on harvest or on a replay without spawning anything,
 //     all three reporting the round's ledger path as the pointer.
+//     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker) and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
+//     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
+//     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
+//     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.
 //     A CIRCLING round acts on the operator's recorded decision:
 //     a recorded continue maps to Stuck, a pending accept settles its record and maps to Done after Approve and Commit,
 //     and no decision maps to Awaiting whose Reason names the `lyx loom circling` verbs, the `lyx loom start` resume and,

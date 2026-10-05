@@ -670,7 +670,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Slug:           seedSlug(location.WorktreeName),
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
 
-		ReviewMaxBounces: loomCfg.ReviewMaxBounces,
+		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,
