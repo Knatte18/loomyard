@@ -398,7 +398,7 @@ func TestWatcher_ManualRequestBelowThresholdCycles(t *testing.T) {
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -407,7 +407,7 @@ func TestWatcher_ManualRequestBelowThresholdCycles(t *testing.T) {
 	if e.state().Phase != PhaseHandoffRequested {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
-	if requested, _ := CycleRequested(e.paths); requested {
+	if _, requested, _ := CycleRequested(e.paths); requested {
 		t.Error("cycle request should be cleared")
 	}
 }
@@ -782,7 +782,7 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	breakStencil(t, e.stDir, handoffStencilName)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -792,7 +792,7 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 	if e.state().Phase != PhaseIdle {
 		t.Errorf("phase = %s", e.state().Phase)
 	}
-	if requested, _ := CycleRequested(e.paths); !requested {
+	if _, requested, _ := CycleRequested(e.paths); !requested {
 		t.Error("cycle request should be kept")
 	}
 }
@@ -1184,7 +1184,7 @@ func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
 		e := newWatchEnv(t)
 		e.s.usage["a"] = 10
 		e.s.events = []shuttleengine.Event{stop("a")}
-		if err := RequestCycle(e.paths); err != nil {
+		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 			t.Fatal(err)
 		}
 		e.tick()
@@ -1254,7 +1254,7 @@ func TestWatcher_RequestedTriggerRecorded(t *testing.T) {
 	e := newSoftEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.tick()
@@ -1324,7 +1324,7 @@ func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
 	e.s.events = []shuttleengine.Event{stop("a")}
 	e.tick()
 	asks := len(e.s.tokenAsks)
-	if err := RequestCycle(e.paths); err != nil {
+	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
 	e.clock.advance(11 * time.Second)

@@ -1,6 +1,9 @@
-// watcher.go — the watcher's decision core: one poll of the idle check and the persisted cycle, which Config.Mode picks between two machines.
-// Clear mode runs four phases (idle, handoff-requested, clearing, resuming);
-// compact mode runs two (idle, compacting), types `/compact` with a focus text and writes no handoff.
+// watcher.go — the watcher's decision core: one poll of the idle check and the persisted cycle, whose mode (State.CycleMode) picks between two machines.
+// Both modes start with the note gate: idle, then handoff-requested, which writes the note.
+// Clear mode then runs clearing and resuming;
+// compact mode then runs compacting, which types `/compact` with a focus text.
+// Neither clears or compacts before the note gate passed.
+// The cycle's mode is the request's for an operator request and Config.Mode for an automatic trigger.
 // Both share the idle trigger selection, its gates and its re-read of the context.
 //
 // Every provider and reed interaction goes through the Session seam, so the whole state machine runs against a fake in untagged unit tests.
@@ -342,9 +345,17 @@ func (w *Watcher) deliverNotice() error {
 }
 
 func (w *Watcher) tickIdle(st State, now time.Time) error {
-	requested, err := CycleRequested(w.paths)
+	req, requested, err := CycleRequested(w.paths)
 	if err != nil {
 		return err
+	}
+	if requested && now.Sub(req.RequestedAt) >= w.cfg.HandoffTimeout() {
+		// The time is on disk, so this covers a request whose idle probe never passed and a marker a dead watcher left.
+		logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
+		if err := ClearCycleRequest(w.paths); err != nil {
+			return err
+		}
+		requested = false
 	}
 	// The trigger is chosen in a fixed order: the hard cap wins over a request, which wins over the soft threshold.
 	var trigger string
@@ -361,7 +372,10 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if w.newest == nil || !isTurnEnd(*w.newest) {
 		return nil
 	}
-	compact := w.cfg.Mode() == CycleCompact
+	mode, requestedAt := w.cfg.Mode(), time.Time{}
+	if trigger == TriggerRequested {
+		mode, requestedAt = req.Mode, req.RequestedAt
+	}
 	deferralHolds := !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < w.cfg.SoftIdle()
 	quiet := w.cfg.IdleGrace()
 	if trigger == TriggerSoft {
@@ -370,7 +384,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 			return nil
 		}
 	}
-	if compact && trigger == TriggerHard && deferralHolds {
+	if mode == CycleCompact && trigger == TriggerHard && deferralHolds {
 		// A failed compaction holds every automatic trigger for the soft idle; a requested cycle is never held.
 		return nil
 	}
@@ -403,10 +417,6 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 		}
 	}
 
-	if compact {
-		return w.startCompacting(st, trigger, now)
-	}
-
 	path := NewHandoffPath(w.paths, now)
 	text, err := w.renderHandoffRequest(trigger, path)
 	if err != nil {
@@ -414,6 +424,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	st.PendingHandoff = path
 	st.CycleTrigger = trigger
+	st.CycleMode, st.CycleRequestedAt = mode, requestedAt
 	if st, err = w.enter(st, PhaseHandoffRequested, now); err != nil {
 		return err
 	}
@@ -448,6 +459,9 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 			return err
 		}
 		if probe.Idle {
+			if st.CycleMode == CycleCompact {
+				return w.startCompacting(st, now)
+			}
 			return w.startClearing(st, now)
 		}
 	}
@@ -465,7 +479,12 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 			}
 		}
 	}
-	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
+	// A requested cycle's clock starts at the request, which predates the phase entry.
+	started := st.PhaseEnteredAt
+	if !st.CycleRequestedAt.IsZero() && st.CycleRequestedAt.Before(started) {
+		started = st.CycleRequestedAt
+	}
+	if now.Sub(started) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
 	}
 	if st.PhaseInjected {
@@ -591,20 +610,17 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 }
 
 // startCompacting renders the focus first, so a stencil failure changes nothing, then persists compacting and types `/compact`.
-// The caller must have seen the session idle on this tick.
-func (w *Watcher) startCompacting(st State, trigger string, now time.Time) error {
+// The caller must have seen the session idle on this tick and the note gate pass, so the note becomes LastHandoff.
+func (w *Watcher) startCompacting(st State, now time.Time) error {
 	focus, err := RenderCompactFocus(w.stencilsDir)
 	if err != nil {
 		return err
 	}
-	st.CycleTrigger = trigger
+	st.LastHandoff = st.PendingHandoff
 	if st, err = w.enter(st, PhaseCompacting, now); err != nil {
 		return err
 	}
 	w.newest = nil
-	if err := ClearCycleRequest(w.paths); err != nil {
-		return err
-	}
 	if err := w.session.CompactSession(st.Strand, focus); err != nil {
 		return err
 	}

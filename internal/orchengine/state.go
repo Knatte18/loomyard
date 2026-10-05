@@ -6,6 +6,7 @@
 package orchengine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -79,6 +80,9 @@ type State struct {
 
 	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
 	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
+
+	CycleMode        string    `json:"cycle_mode"`         // Mode of the current or last cycle: CycleClear or CycleCompact.
+	CycleRequestedAt time.Time `json:"cycle_requested_at"` // When the request that started the cycle was made; zero for an automatic trigger.
 }
 
 // LoadState reads the persisted state, returning a zero State in phase idle when the file is absent.
@@ -137,27 +141,42 @@ func updateState(p Paths, mutate func(State) State) error {
 	return nil
 }
 
-// RequestCycle writes the cycle request file.
-func RequestCycle(p Paths) error {
+// CycleRequest is the recorded content of the cycle request marker.
+type CycleRequest struct {
+	Mode        string    `json:"mode"`         // CycleClear or CycleCompact.
+	RequestedAt time.Time `json:"requested_at"` // When the request was made.
+}
+
+// RequestCycle writes the cycle request marker recording mode and the request time at.
+func RequestCycle(p Paths, mode string, at time.Time) error {
+	data, err := json.Marshal(CycleRequest{Mode: mode, RequestedAt: at})
+	if err != nil {
+		return fmt.Errorf("orch: encode cycle request: %w", err)
+	}
 	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
 		return fmt.Errorf("orch: create request dir: %w", err)
 	}
-	if err := os.WriteFile(p.CycleRequestPath, []byte("cycle\n"), 0o644); err != nil {
+	if err := os.WriteFile(p.CycleRequestPath, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("orch: write cycle request: %w", err)
 	}
 	return nil
 }
 
-// CycleRequested reports whether a cycle request is pending.
-func CycleRequested(p Paths) (bool, error) {
-	_, err := os.Stat(p.CycleRequestPath)
-	if err == nil {
-		return true, nil
-	}
+// CycleRequested returns the pending cycle request and whether one is pending.
+// A marker that does not parse, or names no known mode, is pending with a zero request, so its age is unbounded and the watcher treats it as stale.
+func CycleRequested(p Paths) (CycleRequest, bool, error) {
+	data, err := os.ReadFile(p.CycleRequestPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return CycleRequest{}, false, nil
 	}
-	return false, fmt.Errorf("orch: stat cycle request: %w", err)
+	if err != nil {
+		return CycleRequest{}, false, fmt.Errorf("orch: read cycle request: %w", err)
+	}
+	var req CycleRequest
+	if err := json.Unmarshal(data, &req); err != nil || (req.Mode != CycleClear && req.Mode != CycleCompact) {
+		return CycleRequest{}, true, nil
+	}
+	return req, true, nil
 }
 
 // ClearCycleRequest removes the cycle request; an absent request is not an error.
