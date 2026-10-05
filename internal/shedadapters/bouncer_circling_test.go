@@ -186,7 +186,7 @@ func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 	if err != nil || outcome != shedengine.Stuck {
 		t.Fatalf("settle(...) = (%q, %v); want Stuck and nil", outcome, err)
 	}
-	requireReasonContains(t, ptr.Reason, "already settled")
+	requireReasonContains(t, ptr.Reason, "already settled", "way forward:", "lyx loom start")
 	if len(seams.order) != 0 {
 		t.Errorf("seams ran %v; want none", seams.order)
 	}
@@ -200,7 +200,7 @@ func TestBouncer_Circling_MalformedDecisionReturnsStuckAndRunsNoSeam(t *testing.
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	requireReasonContains(t, ptr.Reason, "circling decision")
+	requireReasonContains(t, ptr.Reason, "circling decision", "way forward:", circlingDecisionPath(cfg.RunDir, 2), "lyx loom start")
 	if len(seams.order) != 0 {
 		t.Errorf("seams ran %v; want none", seams.order)
 	}

@@ -616,7 +616,7 @@ func (b *Bouncer) unearnedCircling(round int) string {
 func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	decision, cause, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 	if err != nil {
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v", round, err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v; way forward: fix or delete %s, then run `lyx loom start` to resume the round", round, err, circlingDecisionPath(b.cfg.RunDir, round)), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
 	switch {
 	case !exists:
@@ -626,7 +626,7 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 		ptr.BudgetExempt = cause == EscalationBudget
 		return shedengine.Stuck, ptr, nil
 	case settled:
-		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lyx loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 
 	if err := settleCirclingAccept(b.cfg.RunDir, round); err != nil {
