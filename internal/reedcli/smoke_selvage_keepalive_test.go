@@ -176,6 +176,11 @@ func TestSmokeSelvageSurvivesCtrlCAtIdlePrompt(t *testing.T) {
 	selvage := selvagePaneID(t, h.PrimeWorktree())
 	socket, session := socketAndSession(t)
 
+	// Bash ignores SIGINT only once it sits at its prompt; a Ctrl-C that lands during startup kills it, so wait for the prompt to render.
+	waitForCondition(t, 10*time.Second, func() bool {
+		return strings.TrimSpace(capturePane(t, tmuxPath, socket, selvage)) != ""
+	})
+
 	if err := exec.Command(tmuxPath, "-L", socket, "send-keys", "-t", selvage, "C-c").Run(); err != nil {
 		t.Fatalf("send-keys C-c to idle Selvage %s: %v", selvage, err)
 	}
