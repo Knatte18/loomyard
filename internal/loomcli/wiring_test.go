@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -715,13 +716,31 @@ func TestWire_BouncerSlugAndSegmentBounces(t *testing.T) {
 		t.Fatalf("WriteJSON(status) = %v; want nil", err)
 	}
 
-	routing, err := loomrecipe.Routing()
+	routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
 	if err != nil {
-		t.Fatalf("loomrecipe.Routing() = %v; want nil", err)
+		t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
 	}
 	wantCount, wantBudget, wantIn := routing.Bounces(row, history)
 	if !wantIn || wantCount == 0 {
 		t.Fatalf("Routing.Bounces(%q, history) = (%d, %d, %v); want a segment row with a non-zero count", row, wantCount, wantBudget, wantIn)
+	}
+	if wantBudget != c.cfg.ReviewMaxBounces {
+		t.Errorf("Routing.Bounces(%q, history) budget = %d; want the configured %d", row, wantBudget, c.cfg.ReviewMaxBounces)
+	}
+
+	// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
+	c.env.Landing = envkit.LandingDeps(t.TempDir())
+	shed, err := loomrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)
+	}
+	for _, def := range shed.Producers {
+		if def.Name != row {
+			continue
+		}
+		if def.MaxBounces != wantBudget {
+			t.Errorf("built Shed row %q MaxBounces = %d; SegmentBounces reports budget %d; want equal", row, def.MaxBounces, wantBudget)
+		}
 	}
 
 	count, budget, inSegment, err := c.env.SegmentBounces(row)

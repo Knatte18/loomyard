@@ -247,7 +247,7 @@ func TestResolveReviewTarget(t *testing.T) {
 	atTask := &lyxcwd.Location{HubPath: hub, WorktreeName: "task-a"}
 	d := fakeReviewTarget("repo", "task-a", "task-b")
 
-	for _, group := range []string{"review", "circling"} {
+	for _, group := range []string{"review", "circling", "decision"} {
 		t.Run(group, func(t *testing.T) {
 			t.Run("task worktree addresses itself", func(t *testing.T) {
 				got, err := resolveReviewTarget(group, "notify", atTask, "", d)

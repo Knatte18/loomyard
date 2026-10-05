@@ -6,6 +6,7 @@ package shedrecipe
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -399,6 +400,26 @@ func TestBouncerEntry_ConstructionFailures(t *testing.T) {
 		assertErrContains(t, err, "Shuttle")
 	})
 
+	t.Run("NonPositiveEnvReviewCirclingCheckpoint", func(t *testing.T) {
+		for _, checkpoint := range []int{0, -1} {
+			env := newTestEnv(t)
+			cfg := minimalBouncerConfig(t, env)
+			env.ReviewCirclingCheckpoint = checkpoint
+			_, err := bouncerEntry("review-bounce", cfg, env)
+			assertErrContains(t, err, "ReviewCirclingCheckpoint")
+		}
+	})
+
+	t.Run("EnvReviewCirclingCheckpointReachesTheBouncer", func(t *testing.T) {
+		env := newTestEnv(t)
+		cfg := minimalBouncerConfig(t, env)
+		env.ReviewCirclingCheckpoint = 4
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil || producer == nil {
+			t.Fatalf("bouncerEntry() = (%v, %v); want a producer and nil", producer, err)
+		}
+	})
+
 	t.Run("NilEnvNowConstructsSuccessfully", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
@@ -781,29 +802,53 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 	})
 }
 
-// circlingSeamShuttle returns a shedfake.Shuttle whose Run writes round 1's CIRCLING verdict and ledger to the spec's declared OutputFiles, so a bouncerEntry-built producer settles on an undecided circling round within one Call.
+// circlingOpenLedger is a ledger for round holding one gating key open, so two such ledgers make a CIRCLING verdict earned.
+func circlingOpenLedger(round int) string {
+	return fmt.Sprintf("---\nround: %d\nledger:\n  - key: alpha\n    status: open\n    rounds: [1]\n    class: design\n    severity: MEDIUM\n---\nprose\n", round)
+}
+
+// circlingSeamShuttle returns a shedfake.Shuttle whose Run writes round 2's CIRCLING verdict and ledger to the spec's declared OutputFiles, so a bouncerEntry-built producer settles on an undecided circling round within one Call.
+// The ledger holds the gating key layoutBouncerCirclingRounds left open in round 1, which earns the verdict.
 func circlingSeamShuttle() *shedfake.Shuttle {
 	return &shedfake.Shuttle{
 		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 			if len(spec.OutputFiles) == 3 {
 				verdict := "---\nverdict: CIRCLING\nrationale: \"no progress\"\n---\n"
 				_ = os.WriteFile(spec.OutputFiles[0], []byte(verdict), 0o644)
-				ledger := "---\nround: 1\nledger: []\n---\nno open findings\n"
-				_ = os.WriteFile(spec.OutputFiles[1], []byte(ledger), 0o644)
+				_ = os.WriteFile(spec.OutputFiles[1], []byte(circlingOpenLedger(2)), 0o644)
 			}
 			return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 		},
 	}
 }
 
-// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's circling Awaiting Reason, and the row built with neither.
+// layoutBouncerCirclingRounds writes a judged round 1 (CONTINUE, with a gating key open) and a round 2 review into env.RunRoot/review-segment,
+// so the judge call that follows is round 2, at the test env's circling checkpoint.
+func layoutBouncerCirclingRounds(t *testing.T, env Env) {
+	t.Helper()
+	layoutBouncerRound1Report(t, env)
+	runDir := filepath.Join(env.RunRoot, "review-segment")
+	files := map[string]string{
+		"round-1-bouncer-verdict.md": "---\nverdict: CONTINUE\nrationale: \"findings remain\"\n---\n",
+		"round-1-bouncer-ledger.md":  circlingOpenLedger(1),
+		"round-2-review.md":          "a review\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+}
+
+// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's escalation Awaiting Reason, and the row built with neither.
 func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 	callReason := func(t *testing.T, env Env) string {
 		t.Helper()
 		env.Shuttle = circlingSeamShuttle()
+		env.ReviewCirclingCheckpoint = 2
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
 		cfg := minimalBouncerConfig(t, env)
-		layoutBouncerRound1Report(t, env)
+		layoutBouncerCirclingRounds(t, env)
 
 		producer, err := bouncerEntry("review-bounce", cfg, env)
 		if err != nil {
@@ -829,7 +874,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		}
 
 		reason := callReason(t, env)
-		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "5 of 5 spent"} {
+		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "cause: budget"} {
 			if !strings.Contains(reason, want) {
 				t.Errorf("Reason = %q; want it to contain %q", reason, want)
 			}
@@ -839,22 +884,22 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		}
 	})
 
-	t.Run("BudgetLeftOmitsTheSentence", func(t *testing.T) {
+	t.Run("BudgetLeftEscalatesAsCircling", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Slug = "my-task"
 		env.SegmentBounces = func(string) (int, int, bool, error) { return 2, 5, true, nil }
 
-		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence while budget remains", reason)
+		if reason := callReason(t, env); !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause while budget remains", reason)
 		}
 	})
 
-	t.Run("RowOutsideASegmentOmitsTheSentence", func(t *testing.T) {
+	t.Run("RowOutsideASegmentEscalatesAsCircling", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.SegmentBounces = func(string) (int, int, bool, error) { return 5, 5, false, nil }
 
-		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence for a row outside a segment", reason)
+		if reason := callReason(t, env); !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause for a row outside a segment", reason)
 		}
 	})
 
@@ -865,8 +910,8 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		if !strings.Contains(reason, "`lyx loom circling accept`") {
 			t.Errorf("Reason = %q; want the verbs without a slug argument", reason)
 		}
-		if strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence without the seam", reason)
+		if !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause without the seam", reason)
 		}
 	})
 }

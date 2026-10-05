@@ -1,5 +1,7 @@
-// Package discussionparser is the SOLE reader of `_lyx/discussion/`'s on-disk format: the decision
-// record's required H2 sections and the support log's existence.
+// Package discussionparser is the SOLE reader and SOLE appender of `_lyx/discussion/`'s on-disk
+// format: the decision record's required H2 sections and the support log's existence, and the one
+// write path into the record, AppendDecision, which adds a post-Discussion design call to its
+// `## Decisions` section.
 // It takes told absolute paths and declares no on-disk location of its own — loomengine's
 // DiscussionDecisionRecord/DiscussionSupportLog accessors remain the sole declarers of where
 // `_lyx/discussion/` is, because those accessors take a *lyxcwd.Location, which this stdlib-only

@@ -106,6 +106,18 @@ var BouncerTemplateSeed []byte
 //go:embed bouncer/bouncer-template-judge.md
 var BouncerTemplateJudge []byte
 
+// BouncerTemplateEscalation is the Bouncer's shipped-default escalation brief, read by a one-shot
+// fork of the run's parent session.
+//
+//go:embed bouncer/bouncer-template-escalation.md
+var BouncerTemplateEscalation []byte
+
+// BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice, which
+// points the parent at the escalation brief.
+//
+//go:embed bouncer/bouncer-template-parent-notice.md
+var BouncerTemplateParentNotice []byte
+
 // TreadleTemplateJudgeCircling is treadle's shipped-default per-round circling-check judge prompt.
 //
 //go:embed treadle/treadle-template-judge-circling.md
@@ -262,6 +274,8 @@ var entries = []registryEntry{
 	{"burler-focus-directive", &BurlerFocusDirective},
 	{"bouncer-template-seed", &BouncerTemplateSeed},
 	{"bouncer-template-judge", &BouncerTemplateJudge},
+	{"bouncer-template-escalation", &BouncerTemplateEscalation},
+	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
 	{"treadle-template-triage", &TreadleTemplateTriage},

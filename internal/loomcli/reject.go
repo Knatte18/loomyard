@@ -161,7 +161,7 @@ Example:
 			ctx := cmd.Context()
 			location := c.location
 
-			routing, err := loomrecipe.Routing()
+			routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "loom: reject: "+err.Error()))
 				return nil

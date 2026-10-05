@@ -16,17 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // selfreportDeps carries every input detectAndFileAnomalies needs, told rather than derived, so
 // the whole branch suite can be driven with stub seams and no filesystem, git, or tmux access.
-// IsLedgerPath and ReadLedger are function fields, not shedadapters calls made directly, so the
-// branch suite can count calls without reaching the engine or the filesystem; drive fills them
-// with shedadapters.IsLedgerPath and shedadapters.ReadLedger. FileIssue matches
-// selfreportengine.CreateIssue's own shape and is filled with that function in production.
+// FileIssue matches selfreportengine.CreateIssue's own shape and is filled with that function in
+// production.
 type selfreportDeps struct {
 	// Ctx is the drive verb's own context, consulted only for its Err(), never for cancellation
 	// propagation into any I/O this step performs.
@@ -47,10 +44,6 @@ type selfreportDeps struct {
 	// RunErr is the error shed.Run returned, told rather than re-derived, which is what keeps
 	// every branch reachable with no real run.
 	RunErr error
-	// IsLedgerPath recognizes a history entry's output value as a ledger file path.
-	IsLedgerPath func(path string) bool
-	// ReadLedger reads and parses a recognized ledger file path.
-	ReadLedger func(path string) (shedadapters.Ledger, error)
 	// FileIssue files one GitHub issue, matching selfreportengine.CreateIssue's own signature.
 	FileIssue func(title string, body *string, labels []string) (url string, number int, err error)
 }
@@ -158,8 +151,7 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, stepHan
 }
 
 // detectAndFileAnomalies owns all three skips itself, checked before anything is read: first, a
-// disabled knob returns immediately, before the status file, before any ledger, before the
-// marker; second, a busy shed.Run error returns immediately, because that return means this
+// disabled knob returns immediately, before the status file, before the marker; second, a busy shed.Run error returns immediately, because that return means this
 // process never ran the machine and never owned the run lock, so anything it observed at entry
 // belongs to a live driver; third, a done context returns -- but only after one exception, filing
 // a lone crash-resume anomaly when deps.Entry reports one, because the cancellation arm persists
@@ -207,52 +199,7 @@ func detectFinalAnomalies(deps selfreportDeps) []loomengine.Anomaly {
 		}
 	}
 
-	ledgers := discoverLedgers(deps, final)
-	return loomengine.DetectAnomalies(deps.Entry, final, product, ledgers)
-}
-
-// discoverLedgers walks final's history entries, offering every non-empty output value to
-// deps.IsLedgerPath and reading each distinct accepted path through deps.ReadLedger. Three skips
-// apply, each non-fatal and none producing an anomaly: an empty output is skipped before the
-// predicate is consulted, since the Bouncer's seed call publishes an explicitly empty pointer; a
-// non-empty output the predicate rejects is skipped and never read, so a fail-loud parser is never
-// handed a producer artifact or one of the Burler's own same-prefix files; and an accepted path
-// whose read or parse fails -- including a file that no longer exists, which is normal for an
-// ephemeral ledger -- is warned and skipped.
-// Each parsed ledger entry becomes one loomengine.LedgerObservation carrying the round the file
-// claimed and the producer name read from the history entry that published the path, never a
-// recipe row name re-declared here.
-func discoverLedgers(deps selfreportDeps, final shedengine.Status) []loomengine.LedgerObservation {
-	seen := make(map[string]bool)
-	var ledgers []loomengine.LedgerObservation
-	for _, h := range final.History {
-		if h.Output == "" {
-			continue
-		}
-		if !deps.IsLedgerPath(h.Output) {
-			continue
-		}
-		if seen[h.Output] {
-			continue
-		}
-		seen[h.Output] = true
-
-		ledger, err := deps.ReadLedger(h.Output)
-		if err != nil {
-			logger.Warn("loomcli: could not read a discovered ledger for self-report detection", "path", h.Output, "cause", err)
-			continue
-		}
-		for _, e := range ledger.Entries {
-			ledgers = append(ledgers, loomengine.LedgerObservation{
-				Producer: h.Producer,
-				Round:    ledger.Round,
-				Key:      e.Key,
-				Rounds:   e.Rounds,
-				Status:   e.Status,
-			})
-		}
-	}
-	return ledgers
+	return loomengine.DetectAnomalies(deps.Entry, final, product)
 }
 
 // runFilingPass performs the ordered steps of the filing pass.
@@ -300,39 +247,25 @@ func runFilingPass(deps selfreportDeps, anomalies []loomengine.Anomaly) {
 	}
 }
 
-// collapseAnomaliesByTitle reduces anomalies to one anomaly per distinct title, keeping the
-// highest Round when the duplicates are recurring-finding anomalies and the first occurrence
-// otherwise, in the input slice's own order of first appearance.
-// This is required, not defensive tidying -- the judge carries an open entry forward losslessly
-// into every later round's ledger, so from round three onward one recurring finding appears in
-// several ledger files at once and would otherwise produce one identically-titled anomaly per
-// file. Keeping the highest-round occurrence is what makes the body carry the fullest rounds list.
+// collapseAnomaliesByTitle reduces anomalies to one anomaly per distinct title, keeping the first
+// occurrence, in the input slice's own order of first appearance.
+// One detection returns at most one anomaly per title shape: one loomengine.DetectAnomalies call
+// returns at most one crash-resume and at most one halt-kind anomaly, whose title shapes collide
+// neither with each other nor with any other.
+// A duplicate is therefore unreachable and is discarded silently, with deliberately no guard.
+// If a future change to the detector's output makes it reachable, the symptom is a dropped anomaly
+// with nothing reported anywhere, so the fix then is to add the guard rather than to widen this
+// comment.
 func collapseAnomaliesByTitle(anomalies []loomengine.Anomaly) []loomengine.Anomaly {
 	order := make([]string, 0, len(anomalies))
 	byTitle := make(map[string]loomengine.Anomaly, len(anomalies))
 
 	for _, a := range anomalies {
-		existing, ok := byTitle[a.Title]
-		if !ok {
-			byTitle[a.Title] = a
-			order = append(order, a.Title)
+		if _, ok := byTitle[a.Title]; ok {
 			continue
 		}
-		if a.Kind == loomengine.AnomalyRecurringFinding {
-			if a.Round > existing.Round {
-				byTitle[a.Title] = a
-			}
-			continue
-		}
-		// Falling through here keeps the first occurrence and discards this one, silently. That is
-		// the whole behaviour -- there is deliberately no guard, because the case is unreachable by
-		// construction: only recurring-finding anomalies carry a non-zero Round, and one
-		// loomengine.DetectAnomalies call returns at most one crash-resume and at most one halt-kind
-		// anomaly, whose title shapes collide neither with each other nor with a recurring-finding
-		// title.
-		// If a future change to the detector's output makes it reachable, the symptom is a dropped
-		// anomaly with nothing reported anywhere, so the fix then is to add the guard rather than to
-		// widen this comment.
+		byTitle[a.Title] = a
+		order = append(order, a.Title)
 	}
 
 	collapsed := make([]loomengine.Anomaly, 0, len(order))

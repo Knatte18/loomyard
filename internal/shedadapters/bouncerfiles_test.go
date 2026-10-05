@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -277,6 +278,55 @@ func TestParseLedgerSpecific(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseLedger_ClassAndSeverity(t *testing.T) {
+	tests := []struct {
+		name         string
+		entry        string
+		wantClass    burlerengine.Class
+		wantSeverity burlerengine.Severity
+		wantErr      string
+	}{
+		{
+			name:         "valid class and severity carried",
+			entry:        "    class: design\n    severity: MEDIUM\n",
+			wantClass:    burlerengine.ClassDesign,
+			wantSeverity: burlerengine.SeverityMedium,
+		},
+		{
+			name:  "neither parses with both empty",
+			entry: "",
+		},
+		{
+			name:    "class outside vocabulary names the key",
+			entry:   "    class: nonsense\n    severity: LOW\n",
+			wantErr: `entry "finding-1" has class "nonsense"`,
+		},
+		{
+			name:    "severity outside vocabulary names the key",
+			entry:   "    class: scope\n    severity: HUGE\n",
+			wantErr: `entry "finding-1" has severity "HUGE"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := "---\nround: 1\nledger:\n  - key: finding-1\n    rounds: [1]\n    status: open\n" + tt.entry + "---\n"
+			lf, err := parseLedger([]byte(content))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := lf.Entries[0]; got.Class != tt.wantClass || got.Severity != tt.wantSeverity {
+				t.Fatalf("entry class/severity = %q/%q, want %q/%q", got.Class, got.Severity, tt.wantClass, tt.wantSeverity)
 			}
 		})
 	}

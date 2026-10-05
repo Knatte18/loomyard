@@ -52,6 +52,9 @@
 # pair routing to its partner via a mutual on_stuck -- internal/shedengine's validator rejects an
 # OnStuck naming a producer in a different Segment, so each pair needs its own non-empty, shared
 # label for that pair of edges to build at all.
+#
+# The rows of those three segments declare no max_bounces: their budget comes from loom.yaml's
+# review_max_bounces, applied by internal/loomrecipe. PR-Gate keeps its literal max_bounces.
 
 version: 1
 entry: Preflight
@@ -89,7 +92,6 @@ producers:
   - name: Discussion-Bouncer
     engine: Bouncer
     segment: Discussion-Review
-    max_bounces: 5
     on_stuck: Discussion-Burler
     on_done: Plan-Write
     config:
@@ -109,7 +111,6 @@ producers:
   - name: Discussion-Burler
     engine: BurlerRound
     segment: Discussion-Review
-    max_bounces: 5
     on_stuck: Discussion-Bouncer
     # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
     # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
@@ -158,7 +159,6 @@ producers:
   - name: Plan-Bouncer
     engine: Bouncer
     segment: Plan-Review
-    max_bounces: 5
     on_stuck: Plan-Burler
     on_done: Batchifier
     config:
@@ -195,7 +195,6 @@ producers:
   - name: Plan-Burler
     engine: BurlerRound
     segment: Plan-Review
-    max_bounces: 5
     on_stuck: Plan-Bouncer
     # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
     # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
@@ -257,7 +256,6 @@ producers:
   - name: Webster-Bouncer
     engine: Bouncer
     segment: Webster-Review
-    max_bounces: 5
     on_stuck: Webster-Burler
     on_done: Describe
     config:
@@ -287,7 +285,6 @@ producers:
   - name: Webster-Burler
     engine: BurlerRound
     segment: Webster-Review
-    max_bounces: 5
     on_stuck: Webster-Bouncer
     # BurlerProducer never returns Done, so this edge is unreachable -- but an empty on_done is
     # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,

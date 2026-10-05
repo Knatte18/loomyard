@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -43,7 +44,7 @@ type roundFactsRow struct {
 	Gating   int
 }
 
-// recurringKey is a ledger key seen in two or more distinct rounds.
+// recurringKey is a ledger key open in two or more distinct ledger rounds.
 type recurringKey struct {
 	Key      string
 	Rounds   []int
@@ -102,15 +103,19 @@ func reviewFactsRow(runDir string, round int, reportName func(int) string) round
 	return row
 }
 
-// recurringKeys collects the keys of ledgers 1..last whose rounds hold two or more distinct rounds.
-// A key is reopened when an earlier ledger has it resolved and a later ledger has it open.
-func recurringKeys(runDir string, last int) []recurringKey {
-	type keyState struct {
-		rounds   map[int]bool
-		resolved bool
-		reopened bool
-	}
-	states := map[string]*keyState{}
+// keyHistory is what ledgers 1..last say about one key:
+// the ledger rounds in which its entry was open, ascending, and whether an open entry followed a resolved one.
+type keyHistory struct {
+	openRounds []int
+	resolved   bool
+	reopened   bool
+}
+
+// ledgerHistories reads ledgers 1..last inside runDir and returns each key's keyHistory.
+// The rounds are the ledgers' own round numbers, never the entry's judge-written rounds list.
+// An unreadable or unparseable ledger contributes nothing.
+func ledgerHistories(runDir string, last int) map[string]*keyHistory {
+	histories := map[string]*keyHistory{}
 	for n := 1; n <= last; n++ {
 		raw, err := os.ReadFile(ledgerPath(runDir, n))
 		if err != nil {
@@ -121,38 +126,74 @@ func recurringKeys(runDir string, last int) []recurringKey {
 			continue
 		}
 		for _, e := range ledger.Entries {
-			st := states[e.Key]
-			if st == nil {
-				st = &keyState{rounds: map[int]bool{}}
-				states[e.Key] = st
-			}
-			for _, r := range e.Rounds {
-				st.rounds[r] = true
+			h := histories[e.Key]
+			if h == nil {
+				h = &keyHistory{}
+				histories[e.Key] = h
 			}
 			switch e.Status {
 			case "resolved":
-				st.resolved = true
+				h.resolved = true
 			case "open":
-				if st.resolved {
-					st.reopened = true
+				if h.resolved {
+					h.reopened = true
+				}
+				if len(h.openRounds) == 0 || h.openRounds[len(h.openRounds)-1] != n {
+					h.openRounds = append(h.openRounds, n)
 				}
 			}
 		}
 	}
+	return histories
+}
 
+// recurringKeys collects the keys that ledgers 1..last have open in two or more distinct rounds.
+// A key is reopened when an earlier ledger has it resolved and a later ledger has it open.
+func recurringKeys(runDir string, last int) []recurringKey {
 	var out []recurringKey
-	for key, st := range states {
-		if len(st.rounds) < 2 {
+	for key, h := range ledgerHistories(runDir, last) {
+		if len(h.openRounds) < 2 {
 			continue
 		}
-		rounds := make([]int, 0, len(st.rounds))
-		for r := range st.rounds {
-			rounds = append(rounds, r)
-		}
-		sort.Ints(rounds)
-		out = append(out, recurringKey{Key: key, Rounds: rounds, Reopened: st.reopened})
+		out = append(out, recurringKey{Key: key, Rounds: h.openRounds, Reopened: h.reopened})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
+}
+
+// isGatingEntry reports whether e is gating by the judge stencil's definition:
+// a design finding at MEDIUM or BLOCKING, or any BLOCKING.
+// An unlabelled entry is not gating.
+func isGatingEntry(e ledgerEntry) bool {
+	if e.Severity == burlerengine.SeverityBlocking {
+		return true
+	}
+	return e.Class == burlerengine.GatingClass && e.Severity == burlerengine.SeverityMedium
+}
+
+// circlingEvidence returns, sorted, the keys that are gating and open in ledger round and were open in an earlier ledger too.
+// Only a key open in two rounds counts, so a rising finding count or new keys alone yield nothing.
+// An unreadable or unparseable ledger round yields no evidence.
+func circlingEvidence(runDir string, round int) []string {
+	raw, err := os.ReadFile(ledgerPath(runDir, round))
+	if err != nil {
+		return nil
+	}
+	ledger, err := parseLedger(raw)
+	if err != nil {
+		return nil
+	}
+	earlier := ledgerHistories(runDir, round-1)
+	var out []string
+	for _, e := range ledger.Entries {
+		if e.Status != "open" || !isGatingEntry(e) {
+			continue
+		}
+		if h := earlier[e.Key]; h != nil && len(h.openRounds) > 0 && !slices.Contains(out, e.Key) {
+			out = append(out, e.Key)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -204,7 +245,7 @@ func renderRoundFacts(f roundFacts) []byte {
 		writeTableRow(&b, cells)
 	}
 
-	b.WriteString("\n## Recurring keys\n\n")
+	b.WriteString("\n## Recurring keys (ledger rounds each key was open in)\n\n")
 	if len(f.Recurring) == 0 {
 		b.WriteString("No ledger key recurs across rounds.\n")
 	}

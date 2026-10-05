@@ -73,6 +73,12 @@ func bouncerLedgerContent(round int) string {
 	return fmt.Sprintf("---\nround: %d\nledger: []\n---\nno open findings\n", round)
 }
 
+// openGatingLedgerContent is a well-formed ledger for round holding one gating key open since round 1,
+// so a CIRCLING verdict over it is earned once round is 2 or later and the other rounds' ledgers carry the same key.
+func openGatingLedgerContent(round int) string {
+	return fmt.Sprintf("---\nround: %d\nledger:\n  - key: alpha\n    status: open\n    rounds: [1]\n    class: design\n    severity: MEDIUM\n---\nprose\n", round)
+}
+
 // judgeFakeShuttle returns a shedfake.Shuttle whose DuringRun writes verdict, ledger, and (unless
 // omitted) a next-round focus file to the spec's declared OutputFiles, then reports OutcomeDone.
 func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool) *shedfake.Shuttle {

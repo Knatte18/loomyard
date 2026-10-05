@@ -67,6 +67,17 @@ func circlingDecisionPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-circling-decision.md", round))
 }
 
+// escalationPath returns the path of the escalation brief file for round inside runDir.
+// The file lives in the run directory so it is committed with the run like the ledger.
+func escalationPath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-escalation.md", round))
+}
+
+// parentNoticePath returns the path of the one-line parent notice file for round inside runDir.
+func parentNoticePath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-parent-notice.md", round))
+}
+
 // judgeOutputs returns the three files one judge pass for round declares as its shuttle run's
 // OutputFiles, in the fixed order the judge prompt's own markers are filled from: the verdict, the
 // ledger, and the NEXT round's focus file.

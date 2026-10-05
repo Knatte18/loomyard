@@ -132,16 +132,15 @@ func seedLLMDriver(t *testing.T, loc *lyxcwd.Location) {
 	}
 }
 
-// driverStrand returns the tracked strand named driverStrandDisplayName from eng's own Status(), and
-// whether one was found -- the same findStatusStrand helper bootstrap.go already exports within this
-// package, applied to the driver strand's own name instead of the status strand's.
+// driverStrand returns the tracked driver strand from eng's own Status(), and whether one was found,
+// through the findDriverStrand helper bootstrap.go uses.
 func driverStrand(t *testing.T, eng *reedengine.Engine) (reedengine.StrandStatus, bool) {
 	t.Helper()
 	status, err := eng.Status()
 	if err != nil {
 		t.Fatalf("reed status: %v", err)
 	}
-	return findStatusStrand(status.Strands, driverStrandDisplayName)
+	return findDriverStrand(status.Strands)
 }
 
 // waitDriverStrandDead blocks until eng reports a strand named driverStrandDisplayName that is
@@ -212,7 +211,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if !found || !strand.Live {
 		t.Fatalf("driver strand after the first bootstrap = (found=%v live=%v); want a live strand", found, found && strand.Live)
 	}
-	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
+	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the first bootstrap = %d; want exactly 1", count)
 	}
 	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
@@ -228,7 +227,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if secondExit != 0 {
 		t.Fatalf("second loom start exited %d; want 0 -- output: %s", secondExit, secondOut)
 	}
-	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
+	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the second bootstrap = %d; want exactly 1 -- a do-not-spawn verdict must leave reed holding one strand, not two", count)
 	}
 	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
@@ -262,7 +261,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if thirdExit != 0 {
 		t.Fatalf("third loom start exited %d; want 0 -- output: %s", thirdExit, thirdOut)
 	}
-	if count := statusStrandCount(t, eng, driverStrandDisplayName); count != 1 {
+	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the third bootstrap = %d; want exactly 1 -- corpse removal must replace the dead entry, never add a second one beside it", count)
 	}
 	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {

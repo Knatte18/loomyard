@@ -304,23 +304,20 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // the producer it bounces to, consumes none of Discussion-Bouncer's own budget -- each producer's
 // episode count is its own.
 //
-// Discussion-Bouncer's max_bounces is declared directly on its own recipe row
-// (contracts/recipes/loom-recipe.yaml), not inherited from ShedPaths.MaxBounces the way
-// Discussion-Validate's budget once was, so this test drives discussionBouncerMaxBounces+1 round
+// Discussion-Bouncer's budget is the fixture's Env.ReviewMaxBounces, which New applies to the row
+// (the recipe declares none), not inherited from ShedPaths.MaxBounces the way
+// Discussion-Validate's budget once was, so this test drives that budget+1 round
 // trips rather than parameterizing a small paths.MaxBounces.
 //
 // The Bouncer is what this test binds its assertion to, never the Burler, even though both segment
-// rows declare their own max_bounces of 5: Discussion-Bouncer's own Stuck sequence runs one ahead of
+// rows carry the same review budget: Discussion-Bouncer's own Stuck sequence runs one ahead of
 // the round producer's count -- its seed call authors the segment's very first Stuck before
 // Discussion-Burler ever runs once -- so with equal budgets Discussion-Bouncer exhausts first,
 // within the segment's first generation, and Discussion-Burler's own budget is never spent at all.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
-	// discussionBouncerMaxBounces mirrors the "max_bounces: 5" this task's Card 25 left untouched
-	// on the Discussion-Bouncer row of contracts/recipes/loom-recipe.yaml.
-	const discussionBouncerMaxBounces = 5
-
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)
+	discussionBouncerMaxBounces := env.ReviewMaxBounces
 
 	shed, err := New(env, paths)
 	if err != nil {

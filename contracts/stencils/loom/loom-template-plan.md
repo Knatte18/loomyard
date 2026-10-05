@@ -29,6 +29,10 @@ Read `{{.decision_record_path}}`.
 This is your **sole** input — never read the support log or the board.
 If the file is missing or empty, STOP and report that rather than inventing scope.
 
+A scope addition that arrives after the Discussion is a design call, so you record it before planning on it, with `lyx loom decision add --by <who> --title <title> --decision <what> --rationale <why>`.
+`--by` names the source of the addition: `operator` when the operator gave it, otherwise `parent`.
+Never write such an addition into the plan as an operator addition.
+
 ## Step 2 — Explore the codebase
 
 Before planning, read the relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.

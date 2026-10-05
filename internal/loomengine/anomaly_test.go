@@ -152,11 +152,10 @@ func TestDetectAnomalies(t *testing.T) {
 		entry   EntryObservation
 		final   shedengine.Status
 		product Status
-		ledgers []LedgerObservation
 		want    []AnomalyKind
 	}{
 		{
-			name:    "CleanDoneRun_NoLedgers_Empty",
+			name:    "CleanDoneRun_Empty",
 			entry:   baseEntry(),
 			final:   baseFinal(),
 			product: baseProduct(),
@@ -243,44 +242,33 @@ func TestDetectAnomalies(t *testing.T) {
 			want:    []AnomalyKind{AnomalyProducerFailure},
 		},
 		{
-			name:    "LedgerOpenThreeRounds_RecurringFinding",
-			entry:   baseEntry(),
-			final:   baseFinal(),
+			// A ledger path published in the history, whose key is open across three rounds, raises no anomaly of its own.
+			name:  "HistoryPublishesLedgerOpenThreeRounds_None",
+			entry: baseEntry(),
+			final: func() shedengine.Status {
+				f := baseFinal()
+				f.History = append(f.History, shedengine.HistoryEntry{
+					Producer: "Discussion-Review", Outcome: shedengine.Done, Output: "/run/round-3-bouncer-ledger.md", At: "2026-07-17T10:02:30Z",
+				})
+				return f
+			}(),
 			product: baseProduct(),
-			ledgers: []LedgerObservation{
-				{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"},
-			},
-			want: []AnomalyKind{AnomalyRecurringFinding},
+			want:    nil,
 		},
 		{
-			name:    "LedgerOpenTwoRounds_None",
-			entry:   baseEntry(),
-			final:   baseFinal(),
+			name:  "HistoryPublishesLedger_OnlyHaltKind",
+			entry: baseEntry(),
+			final: func() shedengine.Status {
+				f := baseFinal()
+				f.State = shedengine.StateFailed
+				f.Error = "arbitrary failure text"
+				f.History = append(f.History, shedengine.HistoryEntry{
+					Producer: "Discussion-Review", Outcome: shedengine.Done, Output: "/run/round-3-bouncer-ledger.md", At: "2026-07-17T10:02:30Z",
+				})
+				return f
+			}(),
 			product: baseProduct(),
-			ledgers: []LedgerObservation{
-				{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2}, Status: "open"},
-			},
-			want: nil,
-		},
-		{
-			name:    "LedgerOpenFiveRounds_OneNotThree",
-			entry:   baseEntry(),
-			final:   baseFinal(),
-			product: baseProduct(),
-			ledgers: []LedgerObservation{
-				{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2, 3, 4, 5}, Status: "open"},
-			},
-			want: []AnomalyKind{AnomalyRecurringFinding},
-		},
-		{
-			name:    "LedgerResolvedLongRounds_None",
-			entry:   baseEntry(),
-			final:   baseFinal(),
-			product: baseProduct(),
-			ledgers: []LedgerObservation{
-				{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2, 3, 4, 5}, Status: "resolved"},
-			},
-			want: nil,
+			want:    []AnomalyKind{AnomalyProducerFailure},
 		},
 		{
 			name: "MultipleAnomalies_PinnedOrder",
@@ -297,17 +285,13 @@ func TestDetectAnomalies(t *testing.T) {
 				return f
 			}(),
 			product: baseProduct(),
-			ledgers: []LedgerObservation{
-				{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"},
-				{Producer: "Plan-Review", Key: "finding-b", Rounds: []int{1, 2, 3, 4}, Status: "open"},
-			},
-			want: []AnomalyKind{AnomalyCrashResume, AnomalyProducerFailure, AnomalyRecurringFinding, AnomalyRecurringFinding},
+			want:    []AnomalyKind{AnomalyCrashResume, AnomalyProducerFailure},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DetectAnomalies(tt.entry, tt.final, tt.product, tt.ledgers)
+			got := DetectAnomalies(tt.entry, tt.final, tt.product)
 			if len(got) != len(tt.want) {
 				t.Fatalf("DetectAnomalies() = %d anomalies %+v; want %d %+v", len(got), got, len(tt.want), tt.want)
 			}
@@ -342,8 +326,8 @@ func TestTitleStability_HaltKindSurvivesResumeAppend(t *testing.T) {
 		}),
 	}
 
-	firstAnomalies := DetectAnomalies(EntryObservation{}, first, product, nil)
-	resumedAnomalies := DetectAnomalies(EntryObservation{}, resumed, product, nil)
+	firstAnomalies := DetectAnomalies(EntryObservation{}, first, product)
+	resumedAnomalies := DetectAnomalies(EntryObservation{}, resumed, product)
 
 	if len(firstAnomalies) != 1 || len(resumedAnomalies) != 1 {
 		t.Fatalf("expected exactly one anomaly each: first=%+v resumed=%+v", firstAnomalies, resumedAnomalies)
@@ -369,8 +353,8 @@ func TestTitleDistinctness_HaltKind(t *testing.T) {
 		State:           shedengine.StateBlocked,
 		Error:           shedengine.ReasonNoOnStuckTarget,
 	}
-	aAnomalies := DetectAnomalies(EntryObservation{}, atProducerA, product, nil)
-	bAnomalies := DetectAnomalies(EntryObservation{}, atProducerB, product, nil)
+	aAnomalies := DetectAnomalies(EntryObservation{}, atProducerA, product)
+	bAnomalies := DetectAnomalies(EntryObservation{}, atProducerB, product)
 	if aAnomalies[0].Title == bAnomalies[0].Title {
 		t.Errorf("expected distinct titles at different producers, got same: %q", aAnomalies[0].Title)
 	}
@@ -388,32 +372,10 @@ func TestTitleDistinctness_HaltKind(t *testing.T) {
 			{Producer: "Discussion-Review", Outcome: shedengine.Done, At: "2026-07-17T09:00:00Z"},
 		},
 	}
-	noDoneAnomalies := DetectAnomalies(EntryObservation{}, noPriorDone, product, nil)
-	oneDoneAnomalies := DetectAnomalies(EntryObservation{}, onePriorDone, product, nil)
+	noDoneAnomalies := DetectAnomalies(EntryObservation{}, noPriorDone, product)
+	oneDoneAnomalies := DetectAnomalies(EntryObservation{}, onePriorDone, product)
 	if noDoneAnomalies[0].Title == oneDoneAnomalies[0].Title {
 		t.Errorf("expected distinct titles at different done counts, got same: %q", noDoneAnomalies[0].Title)
-	}
-}
-
-// TestTitleDistinctness_Trigger5 asserts two ledger observations carrying the same key but
-// different Producer values yield two distinct titles, and the same producer-and-key pair
-// recurring after a resolved round yields the same title, asserted as intended identity-dedupe
-// behaviour rather than a bug.
-func TestTitleDistinctness_Trigger5(t *testing.T) {
-	product := baseProduct()
-
-	ledgerA := LedgerObservation{Producer: "Discussion-Review", Key: "finding-x", Rounds: []int{1, 2, 3}, Status: "open"}
-	ledgerB := LedgerObservation{Producer: "Plan-Review", Key: "finding-x", Rounds: []int{1, 2, 3}, Status: "open"}
-	anomaliesA := DetectAnomalies(EntryObservation{}, shedengine.Status{}, product, []LedgerObservation{ledgerA})
-	anomaliesB := DetectAnomalies(EntryObservation{}, shedengine.Status{}, product, []LedgerObservation{ledgerB})
-	if anomaliesA[0].Title == anomaliesB[0].Title {
-		t.Errorf("expected distinct titles for same key, different producer, got same: %q", anomaliesA[0].Title)
-	}
-
-	recurringSame := LedgerObservation{Producer: "Discussion-Review", Key: "finding-x", Rounds: []int{4, 5, 6}, Status: "open"}
-	anomaliesRecurring := DetectAnomalies(EntryObservation{}, shedengine.Status{}, product, []LedgerObservation{recurringSame})
-	if anomaliesA[0].Title != anomaliesRecurring[0].Title {
-		t.Errorf("expected identical titles for same producer+key recurring after resolve, got %q vs %q", anomaliesA[0].Title, anomaliesRecurring[0].Title)
 	}
 }
 
@@ -427,12 +389,9 @@ func TestDetectAnomalies_Deterministic(t *testing.T) {
 	final.State = shedengine.StateFailed
 	final.Error = "boom"
 	product := baseProduct()
-	ledgers := []LedgerObservation{
-		{Producer: "Discussion-Review", Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"},
-	}
 
-	first := DetectAnomalies(entry, final, product, ledgers)
-	second := DetectAnomalies(entry, final, product, ledgers)
+	first := DetectAnomalies(entry, final, product)
+	second := DetectAnomalies(entry, final, product)
 
 	if len(first) != len(second) {
 		t.Fatalf("non-deterministic anomaly count: %d vs %d", len(first), len(second))
