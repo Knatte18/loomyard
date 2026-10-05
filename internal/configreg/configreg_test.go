@@ -42,6 +42,17 @@ func TestModules_SeedOnly(t *testing.T) {
 	}
 }
 
+// TestModules_HubWide pins the hub-wide flag: "fabric" and "board" describe hub-level facts, so they
+// are the only entries with HubWide == true.
+func TestModules_HubWide(t *testing.T) {
+	for _, m := range Modules() {
+		want := m.Name == "fabric" || m.Name == "board"
+		if m.HubWide != want {
+			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, want)
+		}
+	}
+}
+
 func TestTemplate_Found(t *testing.T) {
 	got, ok := Template("fabric")
 	if !ok {
