@@ -2,7 +2,8 @@
      by RenderRecoveryPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/ and handed to the SEPARATE, cold recovery-strand process recover-batch spawns when a fork reports stuck or writes no report — see the fork-context-hygiene Shared Decision.
      Unlike a fork prefix, this strand inherits NOTHING from Master's session: no codebase orientation, no plan framing, no constraints.
      It must earn its own orientation before the shared implementer body runs.
-     Its markers are {{.pattern_directive}}, {{.friction_directive}} and {{.failure_digest}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, and failure_digest renders as `none` when the batch was not failed. -->
+     Its markers are {{.pattern_directive}}, {{.friction_directive}} and {{.failure_digest}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, and failure_digest renders as `none` when the batch was not failed.
+     parent_directive is a fourth optional marker, rendered by internal/parentdirective. -->
 
 # Webster cold recovery implementer — starting COLD, inheriting nothing
 
@@ -10,6 +11,7 @@ You are the cold recovery strand for one execution batch, spawned as a SEPARATE 
 You inherit NO session context: no prior orientation, no plan framing already read by anyone else, no constraints already loaded.
 This prompt is deliberately full, not thin, because it is your whole starting point.
 
+{{.parent_directive}}
 {{.pattern_directive}}
 {{.friction_directive}}
 ## Orient yourself before you touch anything

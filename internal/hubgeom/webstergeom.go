@@ -5,6 +5,7 @@ package hubgeom
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -20,8 +21,16 @@ import (
 // WorktreeRoot, which is l.WorktreePath(). Converging the two would silently change behaviour in a
 // subpath-anchored hub, where the anchor path and the worktree path diverge.
 // RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
+// ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
 func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
+	var parent string
+	resolved, parentErr := ResolveParent(l)
+	if parentErr != nil {
+		logger.Warn("hubgeom: parent unresolvable; webster prompts get no parent", "worktree", l.WorktreeName, "error", parentErr)
+	} else {
+		parent = resolved.Name
+	}
 	return websterengine.Geometry{
 		AnchorRoot:   anchorPath,
 		WorktreeRoot: anchorPath,
@@ -34,5 +43,6 @@ func WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry {
 		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 		PlanDir:      planparser.PlanDir(anchorPath),
 		VerifyDir:    verifytree.Dir(anchorPath),
+		ParentName:   parent,
 	}
 }
