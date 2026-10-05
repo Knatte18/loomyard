@@ -136,23 +136,17 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
 }
 
-// LoomHandoffVoucher returns the path to the machine-local handoff voucher `lyx loom step`
-// records after every completed step and `lyx loom start` records right before it spawns a driver:
+// LoomHandoffVoucher returns the path to the machine-local handoff voucher.
+// `lyx loom step` records it after every completed step, and `lyx loom start` records it right before it spawns a driver:
 // the persisted history length and state as that step or spawn left them.
-// It suppresses at most one entry observation, the first, and only when its history length and state
-// equal what was recorded.
-// A voucher whose spawn then fails its readiness check stays until the next start or completed step
-// overwrites it, and suppresses at most one later matching observation;
-// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver
-// log and trace.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
-// It exists because a completed step leaves the status file byte-identical to a mid-run driver
-// death -- state running, run lock free, history non-empty -- so without this voucher the next
-// run's entry observation reads as a crash-resume for a task in which nothing crashed. A step
-// killed mid-producer never writes it, so a genuine step-crash still reports.
-// Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume
-// note, which is why it is machine-local rather than durable.
+// It suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
+// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
+// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
+// It exists because a completed step leaves the status file byte-identical to a mid-run driver death -- state running, run lock free, history non-empty --
+// so without this voucher the next run's entry observation reads as a crash-resume for a task in which nothing crashed.
+// A step killed mid-producer never writes it, so a genuine step-crash still reports.
+// Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume note, which is why it is machine-local rather than durable.
 func LoomHandoffVoucher(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json")
 }

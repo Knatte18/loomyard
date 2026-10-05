@@ -8,12 +8,10 @@
 //
 // # Why the leaf exists
 //
-// An agent that files an issue only when it explicitly decides to, at the end of a session it
-// otherwise judges successful, misses the run that never reaches that reflective moment at all —
-// an unsupervised agent that gets stuck, times out, or dies mid-task leaves no self-report behind,
-// because self-report is itself a deliberate, closing act the agent never performed. Tier 2 asks every code-touching or
-// orchestrating agent, throughout the run rather than only at its end, to jot a short freeform note
-// whenever something felt like friction, so a later reflection pass — internal/frictionengine, one
+// An agent that files an issue only when it explicitly decides to, at the end of a session it otherwise judges successful, misses the run that never reaches that reflective moment at all.
+// An unsupervised agent that gets stuck, times out, or dies mid-task leaves no self-report behind, because self-report is itself a deliberate, closing act the agent never performed.
+// Tier 2 asks every code-touching or orchestrating agent, throughout the run rather than only at its end, to jot a short freeform note whenever something felt like friction,
+// so a later reflection pass — internal/frictionengine, one
 // batch downstream of this package — has raw material to work from even when the agent that hit the
 // friction never got to finish. This package is the leaf every one of those seven composers imports
 // for that one purpose: turning a told note path and a role into the directive text injected beside
