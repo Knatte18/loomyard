@@ -19,18 +19,21 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 
 // fakeSession scripts the Session seam; event offsets are indexes into events.
 type fakeSession struct {
-	alive     bool
-	events    []shuttleengine.Event
-	usage     map[string]int // Turn-end message to tokens; a missing message is unknown.
-	idle      bool
-	idleSeq   []bool // Consumed before idle.
-	sendErrs  []error
-	clearErr  error // Returned by every ClearSession while set.
-	clearErrs []error
-	calls     []string // "send:<text>" and "clear", in order.
-	tokenAsks []string
-	onSend    func()
-	onAlive   func()
+	alive      bool
+	events     []shuttleengine.Event
+	usage      map[string]int       // Turn-end message to tokens; a missing message is unknown.
+	boundary   map[string]time.Time // Turn-end message to a compaction boundary read through it; the boundary's tokens are usage's.
+	idle       bool
+	idleSeq    []bool // Consumed before idle.
+	tooShort   bool   // Reported with every probe that is not idle.
+	sendErrs   []error
+	clearErr   error // Returned by every ClearSession while set.
+	clearErrs  []error
+	compactErr error    // Returned by every CompactSession while set.
+	calls      []string // "send:<text>", "clear" and "compact:<focus>", in order.
+	tokenAsks  []string
+	onSend     func()
+	onAlive    func()
 }
 
 func (f *fakeSession) StrandAlive(string) (bool, error) {
@@ -47,19 +50,20 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 	return append([]shuttleengine.Event(nil), f.events[offset:]...), int64(len(f.events)), nil
 }
 
-func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (int, bool, error) {
+func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
-	return n, ok, nil
+	at, compacted := f.boundary[ev.Message]
+	return shuttleengine.ContextReading{Tokens: n, Known: ok, Compacted: compacted, BoundaryAt: at}, nil
 }
 
-func (f *fakeSession) SessionIdle(string) (bool, error) {
+func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
+	idle := f.idle
 	if len(f.idleSeq) > 0 {
-		v := f.idleSeq[0]
+		idle = f.idleSeq[0]
 		f.idleSeq = f.idleSeq[1:]
-		return v, nil
 	}
-	return f.idle, nil
+	return shuttleengine.IdleProbe{Idle: idle, TooShort: !idle && f.tooShort}, nil
 }
 
 func (f *fakeSession) Send(_, text string) error {
@@ -84,6 +88,14 @@ func (f *fakeSession) ClearSession(string) error {
 		err := f.clearErrs[0]
 		f.clearErrs = f.clearErrs[1:]
 		return err
+	}
+	return nil
+}
+
+func (f *fakeSession) CompactSession(_, focus string) error {
+	f.calls = append(f.calls, "compact:"+focus)
+	if f.compactErr != nil {
+		return f.compactErr
 	}
 	return nil
 }
@@ -126,14 +138,37 @@ func newWatchEnv(t *testing.T) *watchEnv {
 		paths: testPaths(t),
 		stDir: seedStencils(t),
 		s:     &fakeSession{alive: true, idle: true, usage: map[string]int{}},
-		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100},
+		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100, CycleMode: CycleClear},
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
+	e.paths.NoticesDir = filepath.Join(e.paths.Dir, "notices")
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 		t.Fatal(err)
 	}
 	e.w = e.newWatcher()
 	return e
+}
+
+// queue queues line as a notice, failing the test when it is not queued.
+func (e *watchEnv) queue(line string) {
+	e.t.Helper()
+	e.clock.advance(time.Millisecond)
+	if queued, err := QueueNotice(e.paths, line, e.clock.now); err != nil || !queued {
+		e.t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
+	}
+}
+
+func (e *watchEnv) noticeLines() []string {
+	e.t.Helper()
+	ns, err := ListNotices(e.paths)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var lines []string
+	for _, n := range ns {
+		lines = append(lines, n.Line)
+	}
+	return lines
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
@@ -282,6 +317,50 @@ func TestWatcher_IdleProbeFalseThenPasses(t *testing.T) {
 	e.tick()
 	if e.s.count("send:") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
+	}
+}
+
+func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.idle, e.s.tooShort = false, true
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	st := e.state()
+	if st.Phase != PhaseIdle || st.Stuck != paneTooShortReason {
+		t.Fatalf("state = %+v, want idle stuck on the too-short reason", st)
+	}
+
+	e.s.tooShort = false
+	e.tick()
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after a probe that is not too short, want cleared", st.Stuck)
+	}
+	e.assertNoCalls()
+
+	e.s.idle = true
+	e.tick()
+	if e.s.count("send:") != 1 {
+		t.Errorf("calls = %v, want the handoff request once the pane is idle", e.s.calls)
+	}
+}
+
+func TestWatcher_PassingProbeLeavesOtherStuckReasonsAlone(t *testing.T) {
+	e := newWatchEnv(t)
+	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle, Stuck: "something else"}); err != nil {
+		t.Fatal(err)
+	}
+	e.s.idle = false
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if got := e.state().Stuck; got != "something else" {
+		t.Errorf("Stuck = %q, want an unrelated reason untouched by the probe", got)
 	}
 }
 
@@ -1146,5 +1225,137 @@ func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
 	e.tick()
 	if len(e.s.calls) != 2 || e.s.calls[1] != first || !strings.Contains(e.s.calls[1], "DEFER") {
 		t.Fatalf("calls = %v", e.s.calls)
+	}
+}
+
+// TestWatcher_StaleReadingIsRereadBeforeFiring replays the 2026-10-04 incident:
+// the transcript is compacted without a turn end, so the reading saved at the last turn end is stale.
+func TestWatcher_StaleReadingIsRereadBeforeFiring(t *testing.T) {
+	e := newSoftEnv(t)
+	e.cfg.ThresholdTokens, e.cfg.SoftThresholdTokens = 400000, 300000
+	e.w = e.newWatcher()
+	e.s.usage["a"] = 354815
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	if st := e.state(); st.LastContextTokens != 354815 {
+		t.Fatalf("saved reading = %d, want 354815", st.LastContextTokens)
+	}
+	e.s.usage["a"] = 13673
+	e.clock.advance(21 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 13673 || !st.LastContextKnown {
+		t.Errorf("state = %+v, want idle with the re-read 13673", st)
+	}
+}
+
+func TestWatcher_HardTriggerRereadBelowCapDoesNotFire(t *testing.T) {
+	e := newSoftEnv(t)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	// Below the hard cap but at the soft threshold: no soft firing on the same tick.
+	e.s.usage["a"] = 600
+	e.clock.advance(21 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 600 {
+		t.Errorf("state = %+v, want idle with reading 600", st)
+	}
+	// The next tick re-evaluates from the saved reading and fires soft.
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerSoft {
+		t.Errorf("state = %+v, want a soft handoff request on the next tick", st)
+	}
+}
+
+func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.usage["a"] = 10
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	asks := len(e.s.tokenAsks)
+	if err := RequestCycle(e.paths); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested {
+		t.Fatalf("state = %+v, want a requested handoff", st)
+	}
+	if len(e.s.tokenAsks) != asks {
+		t.Errorf("ContextTokens asked %d more times, want none", len(e.s.tokenAsks)-asks)
+	}
+}
+
+func TestWatcher_NoticesDeliveredOldestFirstOnePerTick(t *testing.T) {
+	e := newWatchEnv(t)
+	e.queue("first")
+	e.queue("second")
+
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:first" {
+		t.Fatalf("calls after tick 1 = %q, want send:first", got)
+	}
+	if got := e.noticeLines(); len(got) != 1 || got[0] != "second" {
+		t.Errorf("queue after tick 1 = %v, want [second]", got)
+	}
+
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:first|send:second" {
+		t.Fatalf("calls after tick 2 = %q", got)
+	}
+	if got := e.noticeLines(); len(got) != 0 {
+		t.Errorf("queue after tick 2 = %v, want empty", got)
+	}
+}
+
+func TestWatcher_NoticeWaitsOnANonIdleProbe(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.idle = false
+	e.queue("hold")
+	e.tick()
+	e.assertNoCalls()
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
+	}
+
+	e.s.idle = true
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:hold" {
+		t.Errorf("calls = %q, want send:hold", got)
+	}
+}
+
+func TestWatcher_NoticeWaitsOutANonIdlePhase(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.s.calls = nil
+	e.queue("later")
+	e.tick()
+	if n := e.s.count("send:later"); n != 0 {
+		t.Fatalf("notice typed during a cycle: %v", e.s.calls)
+	}
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
+	}
+}
+
+func TestWatcher_TickThatStartsACycleDeliversNoNotice(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.queue("not now")
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want handoff-requested", st.Phase)
+	}
+	if n := e.s.count("send:not now"); n != 0 {
+		t.Errorf("notice typed on the cycle's own tick: %v", e.s.calls)
+	}
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
 	}
 }

@@ -123,8 +123,11 @@ func TestResetForFreshLaunch(t *testing.T) {
 		if got.PhaseEventsOffset != 0 || got.LastInjectionOffset != 0 {
 			t.Errorf("offsets not zeroed: %+v", got)
 		}
-		if got.LastHandoff != "h" || got.CycleCount != 2 || got.LastContextTokens != 9 || !got.LastContextKnown {
+		if got.LastHandoff != "h" || got.CycleCount != 2 {
 			t.Errorf("survivors lost: %+v", got)
+		}
+		if got.LastContextTokens != 0 || got.LastContextKnown {
+			t.Errorf("reading = %d known=%v, want unknown", got.LastContextTokens, got.LastContextKnown)
 		}
 	})
 	t.Run("non-idle", func(t *testing.T) {

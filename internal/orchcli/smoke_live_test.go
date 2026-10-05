@@ -1,6 +1,6 @@
 //go:build smoke
 
-// smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger, and adopting a running session.
+// smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger, the compact cycle, and adopting a running session.
 // Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lyx and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
 // A test's own plain shuttle runs go through an in-process shuttleengine.Runner, since the CLI exposes neither the permission mode nor a run handle.
 
@@ -46,9 +46,10 @@ type liveFixture struct {
 }
 
 // smokeOrchConfig renders an orch.yaml carrying the full key set, since a config missing a template key fails to load.
-func smokeOrchConfig(permissionMode string, softThreshold, hardThreshold, softIdleS int) string {
+func smokeOrchConfig(cycleMode, permissionMode string, softThreshold, hardThreshold, softIdleS int) string {
 	return fmt.Sprintf(`model: ""
 effort: ""
+cycle_mode: %s
 permission_mode: %s
 soft_threshold_tokens: %d
 soft_idle_s: %d
@@ -56,7 +57,7 @@ threshold_tokens: %d
 idle_grace_s: 3
 handoff_timeout_s: 300
 poll_interval_ms: 500
-`, permissionMode, softThreshold, softIdleS, hardThreshold)
+`, cycleMode, permissionMode, softThreshold, softIdleS, hardThreshold)
 }
 
 // requireLiveSubstrate skips the test without tmux or a claude binary.
@@ -203,6 +204,9 @@ func (f *liveFixture) sendTurn(t *testing.T, guid, eventsPath, text string, atte
 // permissionDialogMarker is the text Claude Code's permission dialog shows.
 const permissionDialogMarker = "Do you want to"
 
+// bypassFooterMarker is the lower-cased text Claude Code's footer shows while the session runs in bypass-permissions mode.
+const bypassFooterMarker = "bypass permissions on"
+
 // waitForFile polls for path to exist, failing the test if the pane of guid ever shows a permission dialog meanwhile.
 func (f *liveFixture) waitForFile(t *testing.T, guid, path string, attempts int) {
 	t.Helper()
@@ -267,22 +271,19 @@ func backgroundShells(path string) int {
 
 // TestSmokeOrch_BypassAgentAndIdle proves the orch session runs in bypass mode with the Agent tool allowed, and that the idle probe passes once a turn ends.
 func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
-	f := newLiveFixture(t, smokeOrchConfig("bypass", 200000000, 100000000, 300), nil)
+	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), nil)
 	guid, run := f.startOrch(t)
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
 
-	markerDir := t.TempDir()
-	bashMarker := filepath.Join(markerDir, "bash-marker")
-	agentMarker := filepath.Join(markerDir, "agent-marker")
+	// The footer shows the session's actual permission mode, which a tool the user's own settings already allow could not prove.
+	waitFor(t, 30, "the bypass-permissions footer in the orch pane", func() bool {
+		pane, err := f.reed.CapturePane(guid)
+		return err == nil && strings.Contains(strings.ToLower(pane), bypassFooterMarker)
+	})
+
+	agentMarker := filepath.Join(t.TempDir(), "agent-marker")
 
 	before := turnEnds(run.EventsPath)
-	if err := f.reed.SendText(guid, fmt.Sprintf("Run the Bash command `touch %s`, then end your turn.", bashMarker), true); err != nil {
-		t.Fatalf("send bash turn: %v", err)
-	}
-	f.waitForFile(t, guid, bashMarker, 120)
-	waitFor(t, 120, "the bash turn to end", func() bool { return turnEnds(run.EventsPath) > before })
-
-	before = turnEnds(run.EventsPath)
 	if err := f.reed.SendText(guid, fmt.Sprintf("Use the Agent tool to spawn a general-purpose subagent whose only task is to run the Bash command `touch %s`. Wait for it, then end your turn.", agentMarker), true); err != nil {
 		t.Fatalf("send agent turn: %v", err)
 	}
@@ -307,8 +308,8 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 	polls := 0
 	waitFor(t, 30, "the idle probe to pass", func() bool {
 		polls++
-		idle, err := f.runner.SessionIdle(guid)
-		if err == nil && idle {
+		probe, err := f.runner.SessionIdle(guid)
+		if err == nil && probe.Idle {
 			return true
 		}
 		if polls == 30 {
@@ -325,7 +326,7 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 // TestSmokeOrch_SoftCycle proves the soft trigger starts a cycle at a turn end below an unreachable hard cap.
 func TestSmokeOrch_SoftCycle(t *testing.T) {
 	// The start prompt's own turn end already qualifies at this soft threshold, so soft_idle_s is long enough for the background-shell turn below to land first.
-	f := newLiveFixture(t, smokeOrchConfig("bypass", 1, 100000000, 45), nil)
+	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 1, 100000000, 45), nil)
 	guid, run := f.startOrch(t)
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
 	startTranscript := latestTranscript(t, run.EventsPath)
@@ -367,6 +368,75 @@ func TestSmokeOrch_SoftCycle(t *testing.T) {
 	f.stopOrch(t)
 }
 
+const (
+	// compactSoftThreshold sits above a fresh orch session's context and below what the filler turn adds, so only that turn's end fires the soft trigger, and a compacted context falls back under it.
+	compactSoftThreshold = 60000
+	// compactBackgroundSleepS keeps the background task running through the compaction, so its completion arrives on the compacted session.
+	compactBackgroundSleepS = 150
+	// compactBackgroundAnswer is what the background task echoes, computed by the shell so the command text itself never contains it.
+	compactBackgroundAnswer = "BGCOMPACT-42"
+)
+
+// TestSmokeOrch_CompactCycle proves the compact cycle keeps the session id and the strand, brings the context reading under the soft threshold, counts one cycle, and leaves a background task able to complete into the session.
+func TestSmokeOrch_CompactCycle(t *testing.T) {
+	// soft_idle_s is long enough for the filler turn below to end before the soft trigger may fire.
+	f := newLiveFixture(t, smokeOrchConfig("compact", "bypass", compactSoftThreshold, 100000000, 45), nil)
+	guid, run := f.startOrch(t)
+	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
+
+	// The filler turn grows the context past the soft threshold; the background task is started in the same turn, before any cycle.
+	prompt := "Run the Bash command `head -c 20000 /dev/urandom | base64 -w0` three times, as three separate Bash calls, without reading their output closely. " +
+		fmt.Sprintf("Then start a background shell task with `sleep %d; echo BGCOMPACT-$((6*7))` (run_in_background), and end your turn immediately without waiting for it.", compactBackgroundSleepS)
+	if err := f.reed.SendText(guid, prompt, true); err != nil {
+		t.Fatalf("send filler turn: %v", err)
+	}
+	backgroundDue := time.Now().Add(compactBackgroundSleepS * time.Second)
+
+	var env map[string]any
+	waitForDiag(t, 900, "cycle_count 1 in phase idle", func() bool {
+		env = smokeStatus(t, f.exe, f.prime)
+		count, _ := env["cycle_count"].(float64)
+		return count == 1 && env["phase"] == string(orchengine.PhaseIdle)
+	}, func() string {
+		status, _ := json.Marshal(smokeStatus(t, f.exe, f.prime))
+		pane, _ := f.reed.CapturePane(guid)
+		watchLog, _ := os.ReadFile(f.paths.WatchLogPath)
+		return string(status) + "\n" + pane + "\nwatch.log:\n" + string(watchLog)
+	})
+
+	if trigger, _ := env["cycle_trigger"].(string); trigger != orchengine.TriggerSoft {
+		t.Errorf("cycle_trigger = %q, want %q", trigger, orchengine.TriggerSoft)
+	}
+	if after, _ := env["strand"].(string); after != guid {
+		t.Errorf("strand = %q after the cycle, want the unchanged %q", after, guid)
+	}
+	afterState, _, err := shuttleengine.FindRun(f.shuttleCfg, f.prime, guid)
+	if err != nil {
+		t.Fatalf("FindRun(%s) after the cycle: %v", guid, err)
+	}
+	if afterState.SessionID != run.SessionID {
+		t.Errorf("session id = %q after the cycle, want the unchanged %q", afterState.SessionID, run.SessionID)
+	}
+	tokens, known := env["context_tokens"].(float64)
+	if !known {
+		t.Errorf("context_tokens is unknown after the cycle: %v", env)
+	} else if tokens >= compactSoftThreshold {
+		t.Errorf("context_tokens = %v after the cycle, want below the soft threshold %d", tokens, compactSoftThreshold)
+	}
+	t.Logf("context reading after the compact cycle: %v", env["context_tokens"])
+
+	// The background task outlives the compaction: its completion must reach the session.
+	if wait := time.Until(backgroundDue.Add(smokeNotificationMargin)); wait > 0 {
+		time.Sleep(wait)
+	}
+	waitFor(t, 120, "the background task's completion in the session's transcript", func() bool {
+		body, _ := os.ReadFile(latestTranscript(t, run.EventsPath))
+		return bytes.Contains(body, []byte(compactBackgroundAnswer))
+	})
+
+	f.stopOrch(t)
+}
+
 // killTreeProcs kills every process whose command line names dir or whose working directory is under it, so a detached loom run and its agents, which a test provoked, never outlive it.
 func killTreeProcs(dir string) {
 	entries, err := os.ReadDir("/proc")
@@ -389,7 +459,7 @@ func killTreeProcs(dir string) {
 // TestSmokeOrch_Adopt proves a plain interactive run is adopted as the orch strand with its context, that the adopted session's name is addressable and parents a loom run, and that it cycles.
 func TestSmokeOrch_Adopt(t *testing.T) {
 	loomCfg := strings.Replace(loomengine.ConfigTemplate(), "selfreport: true", "selfreport: false", 1)
-	f := newLiveFixture(t, smokeOrchConfig("bypass", 200000000, 100000000, 300), map[string]string{
+	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), map[string]string{
 		"loom":    loomCfg,
 		"webster": websterengine.ConfigTemplate(),
 	})

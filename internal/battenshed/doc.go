@@ -12,8 +12,10 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
-// A driver strand that dies mid-run, that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal -- an llm driver escalating a failure it cannot repair or finding its skill unavailable, each leaving its report under the task worktree's _lyx/shed/<slug>/drive-reports/ -- is not detected here, by design: for a running child the InnerRun row watches the persisted status file, never the driver's own liveness or progress.
-// A long-quiet Run-Shed therefore means "possibly dead, parked or stopped", not "working", until the row's bounce budget runs out; an operator tells the cases apart by attaching to the child's session.
+// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, and a running child whose status file stays unchanged for the quiet window (notice_quiet_min) with its driver alive, and it notifies through the injected Notify seam (notice.go).
+// A notice is one line, sent once per episode; an episode ends when the child returns to running or the status file changes, and a marker under the row's scratch directory keeps a batten restart from notifying an episode already notified.
+// Control flow is unchanged: a notice is informational, a Notify error is only warned about, and the outcomes, bounce budget, halts and waits are the same with or without it.
+// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
 // batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom start" in the task worktree) as its reason.

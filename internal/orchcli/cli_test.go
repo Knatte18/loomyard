@@ -109,6 +109,24 @@ func TestStatus_ReportsPopulatedState(t *testing.T) {
 	}
 }
 
+func TestStatus_ReportsTooShortPaneUnderStuck(t *testing.T) {
+	t.Parallel()
+
+	const reason = "orch pane too short for the idle probe; resize or use the larger client"
+	fake := &fakeStrands{strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}}
+	c := newTestCLI(t, fake)
+	if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, Stuck: reason}); err != nil {
+		t.Fatal(err)
+	}
+	code, env := runVerb(t, c.statusCmd())
+	if code != 0 {
+		t.Fatalf("exit = %d; env %v", code, env)
+	}
+	if env["stuck"] != reason || env["phase"] != "idle" {
+		t.Errorf("status = stuck %v, phase %v; want the too-short reason in phase idle", env["stuck"], env["phase"])
+	}
+}
+
 func TestStatus_UnknownTokensAreNull(t *testing.T) {
 	t.Parallel()
 

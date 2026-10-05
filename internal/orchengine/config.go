@@ -23,13 +23,25 @@ const (
 	defaultPollIntervalMS      = 2000
 )
 
+// The accepted cycle_mode values.
+const (
+	// CycleClear runs the handoff, /clear and resume cycle.
+	CycleClear = "clear"
+	// CycleCompact compacts the session in place, keeping its session id and Remote Control link.
+	CycleCompact = "compact"
+)
+
+// permissionBypass is the only accepted permission_mode.
+const permissionBypass = "bypass"
+
 // Config represents the resolved orch.yaml configuration.
 // Read the numeric knobs through their accessors, which floor a non-positive value.
 type Config struct {
 	Model  string `yaml:"model"`  // Model alias; empty is the provider default.
 	Effort string `yaml:"effort"` // Effort level in shuttle's engine vocabulary; empty is the provider default.
 
-	PermissionMode string `yaml:"permission_mode"` // Passed verbatim to the orch run's Spec.PermissionMode; the engine validates it.
+	PermissionMode string `yaml:"permission_mode"` // Only bypass is accepted; LoadConfig resolves an empty value to bypass and refuses any other.
+	CycleMode      string `yaml:"cycle_mode"`      // CycleClear or CycleCompact; read it through Mode, which resolves empty to CycleCompact.
 
 	ThresholdTokens     int `yaml:"threshold_tokens"`      // Hard cap: context tokens at which the watcher cycles the session.
 	SoftThresholdTokens int `yaml:"soft_threshold_tokens"` // Context tokens at which the watcher may cycle at a natural break.
@@ -53,7 +65,28 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("unmarshal orch config: %w", err)
 	}
 
+	switch cfg.CycleMode {
+	case "", CycleClear, CycleCompact:
+	default:
+		return Config{}, fmt.Errorf("orch config: cycle_mode %q is not accepted; set cycle_mode to %q or %q", cfg.CycleMode, CycleClear, CycleCompact)
+	}
+	switch cfg.PermissionMode {
+	case "":
+		cfg.PermissionMode = permissionBypass
+	case permissionBypass:
+	default:
+		return Config{}, fmt.Errorf("orch config: permission_mode %q is not accepted; set permission_mode: bypass or remove the key", cfg.PermissionMode)
+	}
+
 	return cfg, nil
+}
+
+// Mode returns the cycle mode, resolving an empty value to CycleCompact.
+func (c Config) Mode() string {
+	if c.CycleMode == "" {
+		return CycleCompact
+	}
+	return c.CycleMode
 }
 
 // Threshold returns the context-token count that triggers a cycle, flooring a non-positive value to the template default so a zero can never cycle on every turn.

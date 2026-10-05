@@ -1,10 +1,11 @@
-// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear) an orchestrator watcher needs.
+// session.go holds Runner's session-cycling surface: reading a live run's events from a caller-held offset, and the SessionCycler-backed operations (context usage, idle probe, clear, compact) an orchestrator watcher needs.
 // All of it is provider-invariant; provider specifics stay behind Engine and SessionCycler.
 
 package shuttleengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -13,7 +14,7 @@ import (
 func (r *Runner) sessionCycler() (SessionCycler, error) {
 	cycler, ok := r.engine.(SessionCycler)
 	if !ok {
-		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, IdleSession, ClearSessionSequence), so it cannot cycle a session")
+		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, IdleSession, ClearSessionSequence, CompactSessionSequence), so it cannot cycle a session")
 	}
 	return cycler, nil
 }
@@ -44,38 +45,41 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 }
 
 // ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
-// known false means usage could not be read.
-func (r *Runner) ContextTokens(turnEnd Event) (int, bool, error) {
+// A reading with Known false means usage could not be read.
+func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 	if r.toldErr != nil {
-		return 0, false, r.toldErr
+		return ContextReading{}, r.toldErr
 	}
 	cycler, err := r.sessionCycler()
 	if err != nil {
-		return 0, false, err
+		return ContextReading{}, err
 	}
-	tokens, known := cycler.ContextTokens(turnEnd)
-	return tokens, known, nil
+	return cycler.ContextTokens(turnEnd), nil
 }
 
-// SessionIdle reports whether the live pane of the run identified by guid shows the provider idle.
-func (r *Runner) SessionIdle(guid string) (bool, error) {
+// SessionIdle probes the live pane of the run identified by guid for the provider idle.
+// TooShort is filled only for a pane that is not idle.
+func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
-		return false, r.toldErr
+		return IdleProbe{}, r.toldErr
 	}
 	cycler, err := r.sessionCycler()
 	if err != nil {
-		return false, err
+		return IdleProbe{}, err
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return false, err
+		return IdleProbe{}, err
 	}
 	capture, err := r.reed.CapturePane(guid)
 	if err != nil {
-		return false, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
+		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
 	}
-	idle := cycler.IdleSession(capture)
-	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", idle)
-	return idle, nil
+	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
+	if !probe.Idle {
+		probe.TooShort = cycler.PaneTooShort(capture)
+	}
+	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort)
+	return probe, nil
 }
 
 // ClearSession plays the provider's clear-session key choreography into the live pane of the run identified by guid.
@@ -96,4 +100,27 @@ func (r *Runner) ClearSession(guid string) error {
 		return err
 	}
 	return playInputs(r.reed, guid, cycler.ClearSessionSequence())
+}
+
+// CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.
+// Like ClearSession it skips requireReadyAgentPane, since the caller has already probed idleness itself.
+// It refuses a focus containing a newline, since the focus is typed as one line.
+func (r *Runner) CompactSession(guid, focus string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
+	cycler, err := r.sessionCycler()
+	if err != nil {
+		return err
+	}
+	if strings.ContainsAny(focus, "\r\n") {
+		return fmt.Errorf("shuttle: compact focus for strand %q spans several lines; it is typed as one line, so join it into one", guid)
+	}
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return err
+	}
+	return playInputs(r.reed, guid, cycler.CompactSessionSequence(focus))
 }
