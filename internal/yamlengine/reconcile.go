@@ -20,7 +20,8 @@ import (
 // Reconcile is idempotent.
 //
 // Each openMaps entry is a dotted key path whose value is an open map.
-// When existing holds the key, its value replaces the template's whole, whatever its kind, and nothing at or under the path is reported added or removed.
+// When existing holds the key, its value replaces the template's whole, whatever its kind,
+// and nothing at or under the path is reported added or removed.
 // When existing lacks the key, the template's value stays and added reports the path itself.
 func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, added, removed []string, err error) {
 	// Parse template into node tree
@@ -186,8 +187,7 @@ func openMapOf(path string, openMaps []string) (string, bool) {
 	return "", false
 }
 
-// findValueNode returns the value node of the mapping key at the dotted path, or nil when any step
-// is absent or not a mapping.
+// findValueNode returns the value node of the mapping key at the dotted path, or nil when any step is absent or not a mapping.
 func findValueNode(node *yaml.Node, path string) *yaml.Node {
 	if node == nil {
 		return nil
