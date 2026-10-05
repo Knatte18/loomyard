@@ -554,6 +554,79 @@ func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "unknown config key")
 }
 
+// TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped
+// board.yaml writes the entry under that map and syncs once.
+func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+
+	if code != 0 {
+		t.Fatalf("dispatch(--set labels.x) = %d; want 0; output: %q", code, out.String())
+	}
+	if !tracker.called {
+		t.Error("sync should run after a successful --set")
+	}
+	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	if err != nil {
+		t.Fatalf("read board.yaml: %v", err)
+	}
+	if !strings.Contains(string(data), "x: desc") || !strings.Contains(string(data), "old: kept") {
+		t.Errorf("board.yaml lacks the new and the existing label; got %q", data)
+	}
+}
+
+// TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list
+// refuses, writes nothing and never syncs.
+func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
+	baseDir := t.TempDir()
+	seeded := "types:\n  bug: a defect\nlabels:\n  - old\n"
+	seedModuleConfig(t, baseDir, "board", seeded)
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set into list-shaped labels) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called when --set refuses")
+	}
+	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	if err != nil {
+		t.Fatalf("read board.yaml: %v", err)
+	}
+	if string(data) != seeded {
+		t.Errorf("board.yaml changed on a refused --set; got %q", data)
+	}
+}
+
+// TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module
+// with open maps still refuses and never syncs.
+func TestDispatchSet_UndeclaredNonexistentKeyStillRefuses(t *testing.T) {
+	baseDir := t.TempDir()
+	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+
+	l := makeLayoutAt(baseDir)
+	var out bytes.Buffer
+	tracker := &fakeSyncTracker{exitCode: 0}
+	code := dispatch(l, nil, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"bogus_key=x"})
+
+	if code != 1 {
+		t.Errorf("dispatch(--set undeclared key) = %d; want 1", code)
+	}
+	if tracker.called {
+		t.Error("sync should not be called for an undeclared key")
+	}
+	assertJSONErrContains(t, out.String(), "unknown config key")
+}
+
 // TestDispatchSet_PrintMutuallyExclusive verifies that passing both --print and --set returns the
 // mutual-exclusivity error, with neither the editor nor sync invoked.
 func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {

@@ -149,15 +149,15 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
 func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int {
-	// Look up the template for this module.
-	template, ok := configreg.Template(module)
+	// Look up the module; its declared open maps let --set add or rewrite one entry.
+	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
 	// Call configengine.Set to scaffold-if-missing and apply pairs directly,
 	// with no editor invocation.
-	preserved, err := configengine.Set(baseDir, module, template(), pairs)
+	preserved, err := configengine.Set(baseDir, module, mod.Template(), pairs, mod.OpenMaps...)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -242,6 +242,11 @@ func buildConfigLong() string {
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lyx config landing --set 'require_pr_to_base=[]'\n" +
+		"A module may declare an open map, whose keys are the repo's own; --set\n" +
+		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
+		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
+		"Removing an entry stays an editor edit, and a list-shaped value must be\n" +
+		"rewritten as a map in the editor before --set can reach it.\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
 		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +
