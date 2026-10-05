@@ -11,7 +11,6 @@
 package loomcli
 
 import (
-	"errors"
 	"io"
 	"testing"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -107,9 +105,6 @@ type loomCLI struct {
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
-	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
-	// PreRun returns no envelope map of its own.
-	entryObservation loomengine.EntryObservation
 	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run,
 	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
@@ -133,14 +128,6 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
-	// fileIssue is the filer both hooks pass to detectAndFileAnomalies, matching selfreportengine.CreateIssue.
-	// newLoomCLI assigns it, and a test that pins filing replaces it with a fake.
-	fileIssue func(title string, body *string, labels []string) (url string, number int, err error)
-}
-
-// refuseFileIssue is the filer a test binary gets from newLoomCLI: it files nothing and reports an error, so no test files a real issue.
-func refuseFileIssue(string, *string, []string) (string, int, error) {
-	return "", 0, errors.New("loomcli: filing issues is disabled under go test")
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -148,15 +135,10 @@ func refuseFileIssue(string, *string, []string) (string, int, error) {
 // of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
 // spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
-	fileIssue := selfreportengine.CreateIssue
-	if testing.Testing() {
-		fileIssue = refuseFileIssue
-	}
 	return &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
-		fileIssue:             fileIssue,
 		spec:                  &shedverbs.Spec{},
 	}
 }
@@ -284,13 +266,15 @@ and then drives exactly one producer through shedengine.Shed's own Step.
 
 step spawns no detached driver, hands the terminal to nothing, and loops
 over nothing: it is the single-producer primitive an external supervisor
-drives, one invocation at a time. The envelope's "continue" and
-"next_interrupt_policy" fields say what to do next; it also names
-"trace_file" (the durable trace this invocation wrote), "friction_dir" and
-"scratch_dir". Every error envelope carries the same three keys beside
-"kind", and also "transient": the transient class name, or empty when the
-failure is not transient, so a supervisor can read what the step did and
-repair from it.
+drives, one invocation at a time. The printed envelope is short: its
+"continue" field says whether to step again, and it names "trace_file" (the
+durable trace this invocation wrote) and "envelope_path" (the full
+envelope, holding "friction_dir", "scratch_dir" and
+"next_interrupt_policy"). Every error envelope carries "kind", and also
+"transient": the transient class name, or empty when the failure is not
+transient, so a supervisor can read what the step did and repair from it.
+--full prints the full envelope on stdout instead; the record, exit code
+and run state are unchanged.
 
 An optional run-id positional addresses a run other than this worktree's
 own default ("self"); step refuses when no seed already exists at that

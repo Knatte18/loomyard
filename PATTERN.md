@@ -30,6 +30,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
+- `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
 - `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git owns local reads, `gitexec` owns remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.

@@ -79,8 +79,8 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 // It confirms the busy refusal reaches the envelope with its remedy text,
 // and that the refusal happened before the bootstrap and the entry observation.
 // seedAndCommitBootstrap would have written the loom seed, so its absence afterwards proves the early probe fired first.
-// The status file is seeded to match the step clean-handoff marker,
-// so an observation taken before the probe would consume that marker and set entryObservation.
+// The status file is seeded to match the handoff voucher,
+// so an observation taken before the probe would consume that voucher and write a crash-resume note.
 func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "run.lock")
@@ -92,20 +92,20 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	c := &loomCLI{
-		location: &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
-		cfg:      loomengine.Config{Selfreport: true},
+		location:    &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."},
+		frictionDir: filepath.Join(dir, "friction"),
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       lockPath,
 			StatusPath:     filepath.Join(dir, "status.json"),
 			StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		},
 	}
-	handoffPath := loomengine.LoomStepHandoff(c.location)
+	handoffPath := loomengine.LoomHandoffVoucher(c.location)
 	if err := os.MkdirAll(filepath.Dir(handoffPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(handoffPath), err)
 	}
-	recordStepHandoff(handoffPath, loomengine.LoomStepHandoffLock(c.location), 1, shedengine.StateRunning)
-	writeSelfreportStatus(t, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{
+	recordHandoffVoucher(handoffPath, loomengine.LoomHandoffVoucherLock(c.location), 1, shedengine.StateRunning)
+	writeStatusFixture(t, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{
 		CurrentProducer: loomshed.NameWebster,
 		State:           shedengine.StateRunning,
 		History:         make([]shedengine.HistoryEntry, 1),
@@ -134,9 +134,10 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 		t.Errorf("shedrun.ReadSeed after a busy refusal = found %v, %v; want no seed (the bootstrap must not have run)", found, err)
 	}
 	if _, err := os.Stat(handoffPath); err != nil {
-		t.Errorf("step clean-handoff marker %q = %v after a busy refusal; want it left in place", handoffPath, err)
+		t.Errorf("handoff voucher %q = %v after a busy refusal; want it left in place", handoffPath, err)
 	}
-	if c.entryObservation != (loomengine.EntryObservation{}) {
-		t.Errorf("entryObservation = %+v after a busy refusal; want zero", c.entryObservation)
+	notePath := filepath.Join(c.frictionDir, "loom-crash-resume.md")
+	if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+		t.Errorf("crash-resume note %q = %v after a busy refusal; want none written", notePath, err)
 	}
 }

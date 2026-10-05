@@ -58,7 +58,7 @@ func validateSessionID(id string) error {
 	return nil
 }
 
-// Prepare writes prompt.md and settings.json into runDir and returns the Launch command strings.
+// Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills leaves the pointer off the launch line and returns it as Launch.PromptLine, for the skills to load first.
 // It validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
@@ -130,6 +130,15 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write settings: %w", err)
 	}
 
+	// The env file path stays the native absolute path on every OS: Claude Code reads the file itself and runs its content in the Bash tool's shell.
+	envFilePath, err := filepath.Abs(filepath.Join(runDir, envFileName))
+	if err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("resolve env file path: %w", err)
+	}
+	if err := os.WriteFile(envFilePath, []byte(envFileContent), 0o644); err != nil {
+		return shuttleengine.Launch{}, fmt.Errorf("write env file: %w", err)
+	}
+
 	bin := claudeBinary(cfg)
 	notice := buildDenyNotice(spec.Interactive, cfg, spec.ForkSubagents, spec.AllowAgentTool)
 	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
@@ -140,8 +149,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		launchArg, promptLine = "", pointer
 	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, resume, skipPermissions, spec.ForkSubagents),
-		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, skipPermissions, spec.ForkSubagents),
+		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, resume, skipPermissions, spec.ForkSubagents),
+		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
 	}, nil
