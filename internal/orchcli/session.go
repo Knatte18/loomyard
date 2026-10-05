@@ -3,6 +3,8 @@
 package orchcli
 
 import (
+	"time"
+
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -53,6 +55,23 @@ func (s runnerSession) Send(guid, text string) error {
 func (s runnerSession) ClearSession(guid string) error {
 	logger.Debug("orch: clear session", "strandGUID", guid)
 	return s.runner.ClearSession(guid)
+}
+
+// LoadSkill delegates to Runner.LoadSkill, which types the skill's slash command into the pane through tmux.
+func (s runnerSession) LoadSkill(guid, skill string) error {
+	logger.Debug("orch: load skill", "strandGUID", guid, "skill", skill)
+	return s.runner.LoadSkill(guid, skill)
+}
+
+// SkillUnknown delegates to Runner.SkillUnknown, which captures the pane through tmux.
+func (s runnerSession) SkillUnknown(guid, skill string) (bool, error) {
+	logger.Debug("orch: skill unknown probe", "strandGUID", guid, "skill", skill)
+	return s.runner.SkillUnknown(guid, skill)
+}
+
+// CompactedSince delegates to Runner.CompactedSince.
+func (s runnerSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
+	return s.runner.CompactedSince(turnEnd, since)
 }
 
 // CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.

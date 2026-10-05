@@ -45,6 +45,12 @@ type Session interface {
 	ClearSession(guid string) error
 	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
 	CompactSession(guid, focus string) error
+	// LoadSkill types the provider's load command for skill into the session.
+	LoadSkill(guid, skill string) error
+	// SkillUnknown reports whether the session's pane shows skill as unknown to the provider.
+	SkillUnknown(guid, skill string) (bool, error)
+	// CompactedSince returns the time of the newest compaction boundary after since in the transcript turnEnd names.
+	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error)
 }
 
 // Clock supplies the current time, settable in tests.
@@ -58,7 +64,12 @@ type Watcher struct {
 	cfg         Config
 	paths       Paths
 	stencilsDir string
+	skills      []string // Skills the reload sequence types, in order, before the pointer.
 	clock       Clock
+
+	// compactedAt is the time of an auto-compaction boundary read at a turn end and not yet reloaded from; zero when none.
+	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
+	compactedAt time.Time
 
 	started bool   // Whether the cursor has been initialised from state.
 	strand  string // Strand the cursor belongs to.
@@ -93,8 +104,9 @@ type phaseEvents struct {
 }
 
 // NewWatcher builds a watcher over session.
-func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, clock Clock) *Watcher {
-	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, clock: clock}
+// skills is the orch skill list the reload sequence types after a clear, a compaction and an auto-compaction.
+func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, skills []string, clock Clock) *Watcher {
+	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, clock: clock}
 }
 
 // isTurnEnd reports whether ev ends a turn.
@@ -159,6 +171,7 @@ func (w *Watcher) tick() (done bool, err error) {
 	now := w.clock.Now()
 
 	readingChanged := false
+	var lastTurnEnd *shuttleengine.Event
 	for _, ev := range events {
 		if st.Phase == PhaseIdle && isTurnEnd(ev) {
 			reading, err := w.session.ContextTokens(ev)
@@ -167,10 +180,25 @@ func (w *Watcher) tick() (done bool, err error) {
 			}
 			storeReading(&st, reading, ev)
 			readingChanged = true
+			end := ev
+			lastTurnEnd = &end
+		}
+	}
+	var compactedAt time.Time
+	if lastTurnEnd != nil {
+		at, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
+		if err != nil {
+			return false, err
+		}
+		if found {
+			compactedAt = at
 		}
 	}
 	// No error point remains before the events are committed to memory.
 	w.cursor = next
+	if !compactedAt.IsZero() {
+		w.compactedAt = compactedAt
+	}
 	for i := range events {
 		ev := events[i]
 		w.newest, w.newestRead = &ev, now
@@ -229,7 +257,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 		w.cursor = st.LastInjectionOffset
 		return st, nil
 	case st.PhaseStrand != st.Strand:
-		st = ResetForFreshLaunch(st, st.Strand)
+		st = ResetForFreshLaunch(st, st.Strand, w.clock.Now())
 		w.cursor = 0
 	default:
 		st.PhaseInjected = false
@@ -245,6 +273,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
+	st.ReloadStep, st.ReloadTypedAt = 0, time.Time{}
 	st.Stuck = ""
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
@@ -345,6 +374,9 @@ func (w *Watcher) deliverNotice() error {
 }
 
 func (w *Watcher) tickIdle(st State, now time.Time) error {
+	if !w.compactedAt.IsZero() {
+		return w.startAutoReload(st, now)
+	}
 	req, requested, err := CycleRequested(w.paths)
 	if err != nil {
 		return err
@@ -569,32 +601,132 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 	if st.PhaseInjected {
 		st.CycleCount++
 	}
-	st, err = w.enter(st, PhaseResuming, now)
+	return w.startReload(st, now)
+}
+
+// startAutoReload reloads the skills and the role after an auto-compaction read at a turn end, once the idle probe passes.
+// The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
+func (w *Watcher) startAutoReload(st State, now time.Time) error {
+	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
 	}
-	if err := w.session.Send(st.Strand, st.PendingResume); err != nil {
+	if !probe.Idle {
+		return nil
+	}
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
+		return err
+	}
+	pointer, err := RenderReloadPrompt(w.stencilsDir, w.paths.RolePath)
+	if err != nil {
+		return err
+	}
+	st.CompactionBaseline = w.compactedAt
+	st.PendingResume = pointer
+	w.compactedAt = time.Time{}
+	return w.startReload(st, now)
+}
+
+// startReload enters the resuming phase at its first step and types it.
+// The caller must have seen the session idle on this tick and set st.PendingResume to the pointer line.
+func (w *Watcher) startReload(st State, now time.Time) error {
+	st.ReloadStep, st.ReloadTypedAt = 0, time.Time{}
+	st, err := w.enter(st, PhaseResuming, now)
+	if err != nil {
+		return err
+	}
+	w.newest = nil
+	return w.typeReloadStep(st, now)
+}
+
+// typeReloadStep types the current step, a skill load or the pointer: the caller must have seen the session idle on this tick.
+// The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
+// A re-typing after a restart keeps both, so the step's timeout never restarts.
+func (w *Watcher) typeReloadStep(st State, now time.Time) error {
+	if st.ReloadTypedAt.IsZero() {
+		st.ReloadTypedAt = now
+		st.PhaseEventsOffset = w.cursor
+		st.PhaseInjected = false
+		w.seen = phaseEvents{}
+		if err := w.save(st); err != nil {
+			return err
+		}
+	}
+	var err error
+	if st.ReloadStep < len(w.skills) {
+		err = w.session.LoadSkill(st.Strand, w.skills[st.ReloadStep])
+	} else {
+		err = w.session.Send(st.Strand, st.PendingResume)
+	}
+	if err != nil {
 		return err
 	}
 	return w.confirm(st)
 }
 
+// advanceReload persists the move to the next step, with its offset taken at the cursor, and goes on to type it when the idle probe passes.
+func (w *Watcher) advanceReload(st State, now time.Time) error {
+	st.ReloadStep++
+	st.ReloadTypedAt = time.Time{}
+	st.PhaseEventsOffset = w.cursor
+	st.PhaseInjected = false
+	w.seen = phaseEvents{}
+	if err := w.save(st); err != nil {
+		return err
+	}
+	return w.tickResuming(st, now)
+}
+
+// skipSkill logs the skipped skill and its cause, then advances.
+func (w *Watcher) skipSkill(st State, now time.Time, skill, cause string) error {
+	logger.Warn("orch: skill skipped", "skill", skill, "cause", cause, "strandGUID", st.Strand)
+	return w.advanceReload(st, now)
+}
+
+// tickResuming walks the reload sequence one step at a time: each skill in order, then the pointer.
+// A skill step is confirmed by a turn end read after it was typed, and skipped when the provider reports it unknown or its timeout, from its first typing, passes.
+// The pointer step ends the phase at its first turn end and times out the same way.
+// Nothing is typed unless the idle probe passed on the same tick, and a step typed before a restart is typed again until confirmed.
 func (w *Watcher) tickResuming(st State, now time.Time) error {
-	if w.seen.turnEnd {
-		reading, err := w.session.ContextTokens(w.seen.firstTurnEnd)
-		if err != nil {
-			return err
+	typed := !st.ReloadTypedAt.IsZero()
+	timedOut := typed && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout()
+	if st.ReloadStep < len(w.skills) {
+		skill := w.skills[st.ReloadStep]
+		if typed {
+			if w.seen.turnEnd {
+				return w.advanceReload(st, now)
+			}
+			unknown, err := w.session.SkillUnknown(st.Strand, skill)
+			if err != nil {
+				return err
+			}
+			if unknown {
+				return w.skipSkill(st, now, skill, "unknown to the provider")
+			}
+			if timedOut {
+				return w.skipSkill(st, now, skill, "load timed out")
+			}
+			if st.PhaseInjected {
+				return nil
+			}
 		}
-		storeReading(&st, reading, w.seen.firstTurnEnd)
-		return w.toIdle(st, "")
-	}
-	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
-		// The persisted reading predates /clear and says nothing about the cleared session.
-		st.LastContextTokens, st.LastContextKnown = 0, false
-		return w.toIdle(st, "resume timed out")
-	}
-	if st.PhaseInjected {
-		return nil
+	} else if typed {
+		if w.seen.turnEnd {
+			reading, err := w.session.ContextTokens(w.seen.firstTurnEnd)
+			if err != nil {
+				return err
+			}
+			storeReading(&st, reading, w.seen.firstTurnEnd)
+			return w.toIdle(st, "")
+		}
+		if timedOut {
+			// The persisted reading predates the reload and says nothing about the new context.
+			st.LastContextTokens, st.LastContextKnown = 0, false
+			return w.toIdle(st, "resume timed out")
+		}
+		if st.PhaseInjected {
+			return nil
+		}
 	}
 	probe, err := w.probeIdle(&st)
 	if err != nil {
@@ -603,10 +735,7 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 	if !probe.Idle {
 		return nil
 	}
-	if err := w.session.Send(st.Strand, st.PendingResume); err != nil {
-		return err
-	}
-	return w.confirm(st)
+	return w.typeReloadStep(st, now)
 }
 
 // startCompacting renders the focus first, so a stencil failure changes nothing, then persists compacting and types `/compact`.
@@ -625,6 +754,21 @@ func (w *Watcher) startCompacting(st State, now time.Time) error {
 		return err
 	}
 	return w.confirm(st)
+}
+
+// reloadAfterCompaction renders the role file and the resume pointer naming the cycle's note, then enters the reload sequence.
+// The caller must have seen the session idle on this tick.
+// A stencil failure returns to idle with the reason, as a clear cycle's does.
+func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath); err != nil {
+		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
+	}
+	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.LastHandoff)
+	if err != nil {
+		return w.toIdle(st, fmt.Sprintf("resume stencil %s failed to render: %v", resumeStencilName, err))
+	}
+	st.PendingResume = resume
+	return w.startReload(st, now)
 }
 
 // tickCompacting re-reads the context through State.ReadingTurnEnd every tick, since a compaction ends without a turn end.
@@ -662,7 +806,8 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 		if idle {
 			storeReading(&st, reading, *st.ReadingTurnEnd)
 			st.CycleCount++
-			return w.toIdle(st, "")
+			st.CompactionBaseline = reading.BoundaryAt
+			return w.reloadAfterCompaction(st, now)
 		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {

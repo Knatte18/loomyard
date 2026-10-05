@@ -142,9 +142,16 @@ func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
 
 func TestResetForFreshLaunch(t *testing.T) {
 	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
+	launched := time.Date(2026, 1, 2, 3, 6, 7, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {
-		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true}
-		got := ResetForFreshLaunch(in, "g2")
+		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: 2, ReloadTypedAt: deferred}
+		got := ResetForFreshLaunch(in, "g2", launched)
+		if !got.CompactionBaseline.Equal(launched) {
+			t.Errorf("CompactionBaseline = %v, want the launch time %v", got.CompactionBaseline, launched)
+		}
+		if got.ReloadStep != 0 || !got.ReloadTypedAt.IsZero() {
+			t.Errorf("reload step = %d at %v, want cleared", got.ReloadStep, got.ReloadTypedAt)
+		}
 		if got.LastAbortReason != "" {
 			t.Errorf("LastAbortReason = %q, want empty", got.LastAbortReason)
 		}
@@ -163,7 +170,7 @@ func TestResetForFreshLaunch(t *testing.T) {
 	})
 	t.Run("non-idle", func(t *testing.T) {
 		in := State{CycleTrigger: TriggerSoft, LastDeferral: deferred, Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6}
-		got := ResetForFreshLaunch(in, "g2")
+		got := ResetForFreshLaunch(in, "g2", launched)
 		if !strings.Contains(got.LastAbortReason, string(PhaseClearing)) {
 			t.Errorf("LastAbortReason = %q, want it to name clearing", got.LastAbortReason)
 		}

@@ -236,7 +236,7 @@ unless --no-attach is given.`,
 				if err != nil {
 					return fail(err)
 				}
-				if err := orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid)); err != nil {
+				if err := orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid, time.Now())); err != nil {
 					return fail(err)
 				}
 				if adoptFlag != "" {
@@ -293,5 +293,5 @@ func (c *orchCLI) adoptStrand(st orchengine.State, guid string) error {
 	if st.Strand == guid {
 		return nil
 	}
-	return orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid))
+	return orchengine.SaveState(c.paths, orchengine.ResetForFreshLaunch(st, guid, time.Now()))
 }

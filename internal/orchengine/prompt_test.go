@@ -85,6 +85,7 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 		{"start", func() (string, error) { return RenderStartPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath, "none is re-armed"}},
 		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
+		{"reload", func() (string, error) { return RenderReloadPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"handoff", func() (string, error) { return RenderHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath) }, []string{"/tmp/h/one.md", testNoteTemplatePath}},
 		{"soft", func() (string, error) {
 			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
@@ -128,6 +129,7 @@ func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
 		{startStencilName, func(dir string) (string, error) { return RenderStartPrompt(dir, testRolePath) }},
 		{adoptStencilName, func(dir string) (string, error) { return RenderAdoptPrompt(dir, testRolePath) }},
 		{resumeStencilName, func(dir string) (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }},
+		{reloadStencilName, func(dir string) (string, error) { return RenderReloadPrompt(dir, testRolePath) }},
 		{softHandoffStencilName, func(dir string) (string, error) {
 			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
 		}},

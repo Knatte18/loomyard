@@ -132,7 +132,7 @@
 //     Compact mode runs this same phase and, once the gate passes, starts compacting instead of clearing.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is typed, and the phase waits for the pane to show an idle input box.
-//   - resuming: the resume prompt is sent verbatim, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
+//   - resuming: the reload sequence, described under "The reload sequence" below; its pointer is the resume prompt, and the phase ends at the resumed session's first turn end, whose context reading becomes the new one.
 //   - idle: every return, completed or aborted, persists the events position read through.
 //
 // Nothing is ever typed into the pane, an instruction, a prompt or `/clear`, unless the idle probe passed on the same tick,
@@ -159,7 +159,9 @@
 //
 // A compaction ends without a turn end, so the compacting phase re-reads the context every tick through State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records.
 // The phase completes when the reading is a compaction boundary stamped at or after the phase was entered and the idle probe passes on that tick:
-// the boundary's tokens become the reading, `cycle_count` increments and the watcher returns to idle.
+// the boundary's tokens become the reading, `cycle_count` increments, State.CompactionBaseline moves to the boundary,
+// and the watcher renders the role file and the resume pointer naming the cycle's note and enters the reload sequence.
+// A stencil failure there returns to idle with the reason.
 // An earlier boundary never completes it.
 // Past the handoff timeout the phase returns to idle with the abort reason `compaction timed out`, re-reads the reading, and records the time in State.LastDeferral,
 // which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
@@ -172,6 +174,31 @@
 //
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,
 // so a watcher never overwrites the binding a concurrent `start` just recorded.
+//
+// # The reload sequence
+//
+// A clear, a compaction and an auto-compaction each lose the session's skills and role, so the resuming phase restores them: it types each orch skill in order, as its own turn, and then the one-line pointer.
+// `start` and `--adopt` load the same skills through the launch spec.
+// The step index, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+//
+//   - A skill step types its load only when the idle probe passed on the same tick.
+//     A turn end read after it was typed confirms it.
+//     It is skipped, with a log entry naming the skill and the cause, when the provider reports it unknown or when the handoff timeout, measured from its first typing, passes.
+//     Confirming and skipping both advance the persisted step, so a restarted watcher never types a confirmed or skipped skill again and never gives it a fresh timeout.
+//   - The pointer step types State.PendingResume under the same rule and ends the phase at its first turn end.
+//     Its timeout runs from its first typing and returns to idle with `resume timed out`.
+//   - A step typed before a restart and not confirmed is typed again once the idle probe passes; loading a skill twice costs one turn and changes nothing.
+//
+// The sequence has three entry points, each entered only on a tick whose idle probe passed:
+//
+//   - After `/clear`: the pointer names the note, as before.
+//   - After a compaction the watcher ran: the pointer names the cycle's note.
+//   - After an auto-compaction: in idle, a turn end read makes the watcher ask for a main-chain compaction boundary after State.CompactionBaseline.
+//     A boundary found enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
+//     A boundary not yet reloaded is held in memory only, and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//
+// State.CompactionBaseline is set to the launch time by a fresh launch, so a boundary an adopted session already carried never reloads,
+// and moves to each handled boundary, including a compaction the watcher ran, so no boundary reloads twice.
 //
 // # The .lyx/orch/ layout
 //

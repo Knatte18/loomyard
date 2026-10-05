@@ -181,8 +181,11 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	e.s.idle = true
 	e.tick()
 	st := e.state()
-	if st.Phase != PhaseIdle || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
 		t.Errorf("state = %+v", st)
+	}
+	if !st.CompactionBaseline.Equal(entered.Add(2 * time.Second)) {
+		t.Errorf("CompactionBaseline = %v, want the handled boundary", st.CompactionBaseline)
 	}
 	if st.LastAbortReason != "" || st.LastHandoff == "" {
 		t.Errorf("completion recorded an abort or lost the note: %+v", st)
@@ -190,12 +193,35 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	e.assertCompactCalls(1)
 }
 
+func TestCompact_CycleReloadsSkillsThenPointerNamingTheNote(t *testing.T) {
+	e := newCompactEnv(t)
+	e.withSkills()
+	e.reachCompacting()
+	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
+	e.tick() // boundary read and the pane idle: the first skill typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != 0 {
+		t.Fatalf("state = %+v", st)
+	}
+	e.endTurn("t1")
+	e.endTurn("t2")
+	e.endTurn("resumed")
+	e.assertReload("compact:", e.state().LastHandoff)
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Errorf("phase = %s, want idle", st.Phase)
+	}
+	e.assertCompactCalls(1)
+	e.tick()
+	if e.s.count("skill:") != len(reloadSkills) {
+		t.Errorf("the compaction's own boundary reloaded again: %v", e.s.calls)
+	}
+}
+
 func TestCompact_BoundaryAtEntryCompletes(t *testing.T) {
 	e := newCompactEnv(t)
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt, 150)
 	e.tick()
-	if st := e.state(); st.Phase != PhaseIdle || st.CycleCount != 1 {
+	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
 		t.Errorf("state = %+v", st)
 	}
 }
@@ -319,7 +345,7 @@ func TestCompact_RestartCompletesWithoutRetypingWhenBoundaryRead(t *testing.T) {
 	e.w = e.newWatcher()
 	e.tick()
 	e.assertCompactCalls(1)
-	if st := e.state(); st.Phase != PhaseIdle || st.CycleCount != 1 || st.LastContextTokens != 150 {
+	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 {
 		t.Errorf("state = %+v", st)
 	}
 }

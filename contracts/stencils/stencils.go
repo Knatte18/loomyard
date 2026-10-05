@@ -207,6 +207,11 @@ var OrchTemplateRole []byte
 //go:embed orch/orch-template-note.md
 var OrchTemplateNote []byte
 
+// OrchTemplateReload is orch's shipped-default one-line reload pointer typed after an auto-compaction.
+//
+//go:embed orch/orch-template-reload.md
+var OrchTemplateReload []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -323,6 +328,7 @@ var entries = []registryEntry{
 	{"orch-template-compact", &OrchTemplateCompact},
 	{"orch-template-role", &OrchTemplateRole},
 	{"orch-template-note", &OrchTemplateNote},
+	{"orch-template-reload", &OrchTemplateReload},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},

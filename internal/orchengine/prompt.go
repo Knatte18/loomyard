@@ -1,4 +1,4 @@
-// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact).
+// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact, orch-template-reload).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
 // The role and note stencils render to files the session reads; every other render is typed into the session or handed to shuttle as its launch pointer,
 // and shuttle's Send refuses multi-line text, so each of those must render to one line;
@@ -27,6 +27,7 @@ const (
 	adoptStencilName       = "orch-template-adopt"
 	softHandoffStencilName = "orch-template-handoff-soft"
 	compactStencilName     = "orch-template-compact"
+	reloadStencilName      = "orch-template-reload"
 )
 
 // RenderRoleFile renders the role stencil to path, creating its directory.
@@ -63,6 +64,11 @@ func RenderAdoptPrompt(stencilsDir, rolePath string) (string, error) {
 // RenderSoftHandoffInstruction renders the one-line soft-trigger note request, with handoffPath and noteTemplatePath filled in.
 func RenderSoftHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string) (string, error) {
 	return render(stencilsDir, softHandoffStencilName, map[string]string{"handoff_path": handoffPath, "note_template_path": noteTemplatePath}, true)
+}
+
+// RenderReloadPrompt renders the one-line reload pointer typed after an auto-compaction, with rolePath filled in.
+func RenderReloadPrompt(stencilsDir, rolePath string) (string, error) {
+	return render(stencilsDir, reloadStencilName, map[string]string{"role_path": rolePath}, true)
 }
 
 // RenderCompactFocus renders the one-line focus text typed after `/compact`.
