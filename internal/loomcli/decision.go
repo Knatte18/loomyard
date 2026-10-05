@@ -37,9 +37,10 @@ const (
 	decisionByParent   = "parent"
 	decisionByOperator = "operator"
 
-	decisionWayNoRecord = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run`
-	decisionWayWriter   = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
-	decisionWayFindings = `way forward: the record is restored; fix the named section and re-run the verb`
+	decisionWayNoRecord  = `way forward: the record exists once Discussion-Write has written it; "lyx loom status <slug>" shows whether the run has reached that row, and "lyx loom start" begins or resumes the run`
+	decisionWayWriter    = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
+	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
+	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
 )
 
 // decisionInput is the four flag values of one `decision add` call.
@@ -95,6 +96,8 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return refuse("the run has no decision record at %s; %s", deps.recordPath, decisionWayNoRecord)
+	case errors.Is(err, discussionparser.ErrNoDecisionsHeading):
+		return refuse("%s; %s", err, decisionWayNoHeading)
 	case err != nil:
 		return refuse("%s", err)
 	case len(findings) > 0:

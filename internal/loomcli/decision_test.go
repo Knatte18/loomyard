@@ -167,6 +167,13 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			want: []string{"discussion check flags the record", "sections: missing ## Scope", "way forward:", "the record is restored"},
 		},
 		{
+			name: "no Decisions heading",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.appendErr = fmt.Errorf("%s: %w", f.path, discussionparser.ErrNoDecisionsHeading)
+			},
+			want: []string{"## Decisions", "way forward:", "restore the \"## Decisions\" heading"},
+		},
+		{
 			name:  "status read failure",
 			setup: func(f *decisionFake, _ *decisionInput) { f.statusErr = errors.New("boom") },
 			want:  []string{"read the run status: boom"},

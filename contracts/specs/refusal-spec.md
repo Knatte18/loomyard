@@ -169,6 +169,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | decision: empty flag | `lyx loom decision add` gets an empty `--title`, `--decision` or `--rationale` | correctness halt | pass the named flag with the text to record |
 | decision: invalid `--by` | `lyx loom decision add` gets a `--by` other than `parent` or `operator` | correctness halt | pass `--by parent` or `--by operator` |
 | decision: check finding after the append | the discussion check flags the record after `lyx loom decision add` appended the entry | correctness halt | the record is restored; fix the named section and re-run the verb |
+| decision: no Decisions heading | the decision record has no `## Decisions` heading for `lyx loom decision add` to insert under | correctness halt | restore the `## Decisions` heading in the decision record, then re-run the verb |
 | decision: slug required from the prime | `lyx loom decision add` runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom decision add <slug>` |
 | decision: unknown slug | `lyx loom decision add` names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |

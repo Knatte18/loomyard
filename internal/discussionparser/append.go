@@ -15,6 +15,10 @@ import (
 // decisionsHeading is the H2 heading AppendDecision inserts under.
 const decisionsHeading = "## Decisions"
 
+// ErrNoDecisionsHeading reports a decision record with no `## Decisions` heading to insert under.
+// The caller can refuse with its own way forward.
+var ErrNoDecisionsHeading = errors.New("decision record has no \"## Decisions\" heading")
+
 // AddedDecision is one design call recorded after the Discussion: who made it, the heading title,
 // the decision, why, and the day it was made.
 type AddedDecision struct {
@@ -120,7 +124,7 @@ func decisionsInsertOffset(content string) (int, error) {
 		}
 	}
 	if head < 0 {
-		return 0, fmt.Errorf("decision record has no %q heading", decisionsHeading)
+		return 0, ErrNoDecisionsHeading
 	}
 
 	for end-1 > head && strings.TrimSpace(lines[end-1]) == "" {
