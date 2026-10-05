@@ -1,6 +1,8 @@
 // Package yamlengine reconciles, fills, checks and sets YAML configuration against a template while keeping the template's comments and key order.
 //
-// [Reconcile] merges a template with a user's existing file: the file's values win, template keys the file lacks are reported added, file keys the template lacks are reported removed,
+// [Reconcile] merges a template with a user's existing file: the file's values win,
+// template keys the file lacks are reported added,
+// file keys the template lacks are reported removed,
 // and the result is idempotent.
 // [FillMissing] builds on the existing file instead: it appends only the mapping keys the template holds and the file lacks, never replaces a file value, and refuses a shape mismatch.
 // [MissingKeys] reports the template leaf paths the file lacks, treating a template list as a default and not a minimum length.

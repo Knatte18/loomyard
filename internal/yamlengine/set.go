@@ -52,7 +52,8 @@ type SetResult struct {
 // mutated tree is marshalled into SetResult.Merged.
 //
 // Each openMaps entry is a dotted key path whose value is an open map:
-// any key P.<name> is known, existing's value at P is carried whole,
+// any key P.<name> is known,
+// existing's value at P is carried whole,
 // and the pair sets <name> to the scalar value, appending the key when absent.
 // A pair under an open map that holds a list is an error naming the path;
 // the list is never converted.
@@ -178,7 +179,8 @@ func splitOpenMapKey(key string, openMaps []string) (open, name string, ok bool)
 // setOpenMapEntry sets name to the scalar value in the open map at path open, appending the key when absent.
 // A null value becomes an empty mapping first;
 // a list or other shape is an error, never converted.
-// The mapping is given block style so an empty {} template value is written as a block.
+// The mapping is given block style,
+// so an empty {} template value is written as a block.
 func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
 	mapping := findValueNode(root, open)
 	if mapping == nil {
