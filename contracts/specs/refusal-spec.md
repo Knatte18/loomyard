@@ -162,6 +162,13 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | circling: decision already recorded | `lyx loom circling accept` or `continue` finds a decision already recorded for the escalated round | correctness halt | the decision for this round is recorded and stays; run `lyx loom start` in the task worktree to resume the run |
 | circling: slug required from the prime | a circling verb runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom circling accept <slug>` |
 | circling: unknown slug | a circling verb names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
+| decision: no decision record | `lyx loom decision add` finds no decision record in the target worktree | correctness halt | the record exists once Discussion-Write has written it; `lyx loom status <slug>` shows whether the run has reached that row, and `lyx loom start` begins or resumes the run |
+| decision: Discussion-Write running | `lyx loom decision add` finds the run's status naming `Discussion-Write` as current producer in state `running` | correctness halt | Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off |
+| decision: empty flag | `lyx loom decision add` gets an empty `--title`, `--decision` or `--rationale` | correctness halt | pass the named flag with the text to record |
+| decision: invalid `--by` | `lyx loom decision add` gets a `--by` other than `parent` or `operator` | correctness halt | pass `--by parent` or `--by operator` |
+| decision: check finding after the append | the discussion check flags the record after `lyx loom decision add` appended the entry | correctness halt | the record is restored; fix the named section and re-run the verb |
+| decision: slug required from the prime | `lyx loom decision add` runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom decision add <slug>` |
+| decision: unknown slug | `lyx loom decision add` names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
 | commit-records: not pushed | the commit landed locally but the push failed | transient | `lyx fabric push` pushes the landed commit, or re-run `lyx loom commit-records` |
 | commit-records: park marker failed | the park marker cannot be written | transient | transient, re-run `lyx loom commit-records --park <park>` |

@@ -285,6 +285,13 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 	return paths
 }
 
+// commitDiscussion commits the discussion artifacts of location's worktree through the fabric.
+// It is the body of the CommitDiscussion seam, shared with `lyx loom decision add`, which commits the record it appends to.
+func commitDiscussion(location *lyxcwd.Location) error {
+	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+	return err
+}
+
 // newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
 // The reviewer is the Parent hubgeom.ResolveParent returns, empty when the run has no parent;
 // a resolver error is a wiring error.
@@ -552,10 +559,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// sha, returning only the error -- and this idempotence now covers two callers rather than
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
-		CommitDiscussion: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
-		},
+		CommitDiscussion: func() error { return commitDiscussion(location) },
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
