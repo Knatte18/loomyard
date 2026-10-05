@@ -103,8 +103,7 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 //
 // Without the marker, a completed step leaves state running with a live history and a free run
 // lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
-// selfreport on then files a spurious crash-resume GitHub issue for a task in which nothing
-// crashed.
+// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
 //
 // Like its siblings, this test spawns zero real LLM subprocesses: it dispatches at most the
 // pure-Go precondition rows.

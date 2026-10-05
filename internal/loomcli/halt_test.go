@@ -31,7 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// haltFixture is a receiver with Tier 2 on, seeded stencils, the selfreport knob off and a shuttle answering done.
+// haltFixture is a receiver with Tier 2 on, seeded stencils and a shuttle answering done.
 type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
@@ -61,7 +61,7 @@ func newHaltFixture(t *testing.T) *haltFixture {
 	c := &loomCLI{
 		location:    loc,
 		frictionDir: frictionDir,
-		cfg:         loomengine.Config{Friction: "claude:sonnet[effort=high]", FrictionTimeoutMin: 1, Selfreport: false},
+		cfg:         loomengine.Config{Friction: "claude:sonnet[effort=high]", FrictionTimeoutMin: 1},
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       filepath.Join(root, "run.lock"),

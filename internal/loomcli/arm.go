@@ -308,11 +308,11 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		return err
 	}
 
-	// Observed here, next to the read VerifySeedOwnership just performed, and guarded on the
-	// knob directly: a disabled run must not pay for a lock probe and an extra status decode on
-	// every run. Carried on the receiver rather than returned, since PreRun returns no map of its
-	// own -- loomPostRun reads it back.
-	c.entryObservation = observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+	// Observed here, next to the read VerifySeedOwnership just performed, and guarded on Tier 2
+	// being on (a non-empty friction directory): a disabled run must not pay for a lock probe and
+	// an extra status decode on every run. Carried on the receiver rather than returned, since
+	// PreRun returns no map of its own -- loomPostRun reads it back.
+	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
 
 	// Ensure the reed substrate before the first producer call: the rows beneath run spawn
 	// agents into reed panes, so without a live session the run gets several producers deep and
@@ -366,7 +366,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 
 // observeStepEntry sets c.entryObservation exactly as loomPreRun does, for a step that is about to run its shed.
 func (c *loomCLI) observeStepEntry() {
-	c.entryObservation = observeEntry(c.cfg.Selfreport, c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
 }
 
 // loomPostRun implements the PostRun hook for loom's spec: it returns the envelope's "friction" key, on the hard-error arm too, which is why PostRun itself runs unconditionally.

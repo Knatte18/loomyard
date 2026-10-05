@@ -74,7 +74,6 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
-selfreport: true
 friction: %s
 friction_timeout_min: 30
 driver: ""
