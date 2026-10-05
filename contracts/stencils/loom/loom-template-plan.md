@@ -157,7 +157,8 @@ Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
 The plan-level `## verify:` section must cover every package any card targets, running each package's tests including its hermetic build-tagged tests (for example `-tags integration`), either by naming each package or by a pattern that covers them (`./...`).
-Opt-in tags that drive a live substrate, such as `smoke` tests that spawn a real agent, are compiled rather than run (for example `go vet -tags smoke <packages>`).
+The `llm` tag, which gates tests that spawn a real LLM, is compiled rather than run (for example `go vet -tags llm <packages>`).
+The `tmux` tag is a token-free tier that a plan's `## verify:` may run (for example `go test -tags tmux <packages>`).
 Plan-Review flags a targeted package the section leaves unrun.
 See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the tier definitions themselves — this file does not restate them.
 

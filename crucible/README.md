@@ -129,9 +129,9 @@ go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
 go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...
 
-# 2. Live serial smoke (real substrate, behind the `smoke` build tag)
-# For an LLM-driving module, replace -run Smoke with the ONE exact test name you mean to run.
-go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1
+# 2. Live serial smoke (real substrate: `-tags tmux` for a tmux/pty module, `-tags llm` for an LLM-driving one)
+# For an LLM-driving module, use -tags llm and replace -run Smoke with the ONE exact test name you mean to run.
+go test -tags tmux ./internal/<module>cli/... -run Smoke -v -count=1
 #    -> scan output for FAIL and for substrate-specific corruption markers
 #       (reed: "being used by another process" / "TempDir RemoveAll" / "did not start")
 
@@ -141,7 +141,7 @@ go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1
 #    the operator to confirm that count is acceptable — it is not a default step for those modules.
 #    A quiet serial pass is NOT proof; concurrency + CPU saturation is the amplifier
 #    that surfaces teardown races and leaked substrate state. Compile once, run N copies.
-go test -c -tags smoke -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
+go test -c -tags tmux -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
 for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -test.v \
     > "$SCRATCH/smoke_$i.txt" 2>&1; echo "run$i rc=$?" ) & done; wait
 grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "$SCRATCH"/smoke_*.txt \
@@ -196,7 +196,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
   "No stray state" is itself an invariant under test.
 - **Grow whatever scenario record you keep with the module.**
   If a maintained SANDBOX-suite file already exists for the module, extend it when a round surfaces a live behavior it doesn't cover (keep `sandbox_coverage_test.go` green).
-  A bug found live should leave behind a `//go:build smoke` regression test regardless of whether a suite file exists.
+  A bug found live should leave behind a live regression test (`//go:build tmux`, or `//go:build llm` when it spawns a real LLM) regardless of whether a suite file exists.
 
 ## Instantiating this for a new module
 
