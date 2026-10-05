@@ -21,7 +21,7 @@ import (
 )
 
 // CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes
-// "clone does everything" true: repo-wide fabric.yaml materialization, the weft:main anchor+config
+// "clone does everything" true: hub-wide config materialization, the weft:main anchor+config
 // commit and push, warp junction wiring, per-worktree config reconciliation, and a commit of the
 // resulting per-worktree module configs on the weft primary branch, with no push.
 //
@@ -49,12 +49,16 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	rec.Extend(res.Mutated())
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	fabricResult, err := configsync.ReconcileFabricAt(res.BoardDir, true)
+	// No warning is raised for a template-seeded module: no vocabulary can predate a fresh clone.
+	// The whole-repo commit below carries every file this call wrote.
+	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, true)
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	if fabricResult.Applied {
-		rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, fabricResult.Module), "")
+	for _, hubWideResult := range hubWideResults {
+		if hubWideResult.Applied {
+			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
+		}
 	}
 
 	b := fabricengine.NewBolt(res.BoardDir)

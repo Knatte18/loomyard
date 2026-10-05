@@ -3,6 +3,7 @@
 package configsync
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -99,7 +100,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 
 	// fabric is skipped in ReconcileAll's per-worktree loop: its config is a
-	// repo-wide fact materialized once via ReconcileFabricAt, not a
+	// repo-wide fact materialized once via ReconcileHubWideAt, not a
 	// per-worktree file, so no fabric result is ever reported here.
 	for i := range results {
 		if results[i].Module == "fabric" {
@@ -490,13 +491,150 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 	})
 }
 
-// TestReconcileFabricAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration
+// reconcileFabricResult runs ReconcileHubWideAt and returns the "fabric" result.
+func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, error) {
+	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, apply)
+	if err != nil {
+		return Result{}, err
+	}
+	result := findResult(results, "fabric")
+	if result == nil {
+		return Result{}, fmt.Errorf("ReconcileHubWideAt returned no fabric result: %+v", results)
+	}
+	return *result, nil
+}
+
+// TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins which input each hub-wide module's
+// reconcile starts from: a present hub file is never replaced, an absent board.yaml is seeded from the
+// prime's copy when it has one, and an absent fabric.yaml never reads the prime.
+func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
+	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
+	const hubBoard = "readme: README.md\ndesign_prefix: design-\ntypes:\n  bug: Hub bug\nlabels: {}\n"
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		module       string
+		hubFile      string
+		primeFile    string
+		legacyFirst  string
+		wantSeed     string
+		wantContains []string
+		wantAbsent   []string
+	}{
+		{
+			name:         "board absent with a prime copy is seeded from the prime",
+			module:       "board",
+			primeFile:    primeBoard,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"spike: A time-boxed investigation", "area-x: Area X", "design_prefix:"},
+			wantAbsent:   []string{"enhancement:"},
+		},
+		{
+			name:         "board absent and no prime copy starts from the template",
+			module:       "board",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"enhancement:"},
+		},
+		{
+			name:         "board present is never replaced by a differing prime copy",
+			module:       "board",
+			hubFile:      hubBoard,
+			primeFile:    primeBoard,
+			wantSeed:     SeedHub,
+			wantContains: []string{"bug: Hub bug"},
+			wantAbsent:   []string{"spike:", "area-x:"},
+		},
+		{
+			name:         "fabric absent ignores the prime copy",
+			module:       "fabric",
+			primeFile:    "branch_prefix: prime/\npathspec: \"\"\n",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"branch_prefix:"},
+			wantAbsent:   []string{"prime/"},
+		},
+		{
+			name:         "fabric absent with a legacy warp.yaml folds it in",
+			module:       "fabric",
+			legacyFirst:  "branch_prefix: legacy/\n",
+			wantSeed:     SeedLegacy,
+			wantContains: []string{"branch_prefix: legacy/"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			primeDir := t.TempDir()
+			writeModule := func(dir, module, content string) {
+				if content == "" {
+					return
+				}
+				if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(configengine.ConfigFile(dir, module), []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s.yaml: %v", module, err)
+				}
+			}
+			writeModule(boardDir, tt.module, tt.hubFile)
+			writeModule(primeDir, tt.module, tt.primeFile)
+			writeModule(boardDir, "warp", tt.legacyFirst)
+			hubPath := configengine.ConfigFile(boardDir, tt.module)
+
+			dry, err := ReconcileHubWideAt(boardDir, primeDir, false)
+			if err != nil {
+				t.Fatalf("ReconcileHubWideAt(false): %v", err)
+			}
+			dryResult := findResult(dry, tt.module)
+			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied {
+				t.Errorf("dry-run result = %+v; want Seed %q and Applied false", dryResult, tt.wantSeed)
+			}
+			if tt.hubFile == "" {
+				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
+					t.Errorf("hub file written on a dry run (stat err = %v)", err)
+				}
+			}
+			if tt.legacyFirst != "" {
+				if _, err := os.Stat(configengine.ConfigFile(boardDir, "warp")); err != nil {
+					t.Errorf("legacy warp.yaml removed on a dry run: %v", err)
+				}
+			}
+
+			applied, err := ReconcileHubWideAt(boardDir, primeDir, true)
+			if err != nil {
+				t.Fatalf("ReconcileHubWideAt(true): %v", err)
+			}
+			appliedResult := findResult(applied, tt.module)
+			if appliedResult == nil || appliedResult.Seed != tt.wantSeed {
+				t.Fatalf("applied result = %+v; want Seed %q", appliedResult, tt.wantSeed)
+			}
+			got, err := os.ReadFile(hubPath)
+			if err != nil {
+				t.Fatalf("read hub file: %v", err)
+			}
+			for _, want := range tt.wantContains {
+				if !contains(string(got), want) {
+					t.Errorf("hub file = %q; want it to contain %q", got, want)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if contains(string(got), absent) {
+					t.Errorf("hub file = %q; want it not to contain %q", got, absent)
+				}
+			}
+		})
+	}
+}
+
+// TestReconcileHubWideAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration
 // (F-D): a pre-cutover hub's warp.yaml/weft.yaml values must be folded into fabric.yaml's first
 // write instead of silently discarded in favor of the bare template default,
 // and the legacy files must be pruned afterward so the migration does not re-fire.
-// Routed through ReconcileFabricAt(boardDir, apply), the repo-wide counterpart now that
+// Routed through ReconcileHubWideAt(boardDir, "", apply), the hub-wide counterpart now that
 // ReconcileAll skips fabric entirely (see TestReconcileAll_ApplyCreatesFiles).
-func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
+func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
 		boardDir := t.TempDir()
 		configDir := configengine.ConfigDir(boardDir)
@@ -513,9 +651,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write weft.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if !fabricResult.Applied {
@@ -563,9 +701,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 1 || fabricResult.MigratedFrom[0] != "warp" {
@@ -601,9 +739,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, false)
+		fabricResult, err := reconcileFabricResult(boardDir, "", false)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(false): %v", err)
+			t.Fatalf("ReconcileHubWideAt(false): %v", err)
 		}
 
 		if fabricResult.Applied {
@@ -638,9 +776,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 0 {
@@ -671,9 +809,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write corrupt warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 0 {
