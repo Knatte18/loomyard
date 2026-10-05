@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -33,62 +31,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// haltFixture is a receiver with Tier 2 on, seeded stencils, the selfreport knob off and a shuttle answering done.
-// Its fileIssue is a recording fake, and the shuttle fake's DuringRun logs to the same event log, so a test can assert the order of a filing against the reflection.
+// haltFixture is a receiver with Tier 2 on, seeded stencils and a shuttle answering done.
 type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
-
-	mu     sync.Mutex
-	events []string
-	filed  []filedCall
-	// haltNote is the halt note's text as the latest reflection saw it.
-	haltNote string
-}
-
-// record appends one event to the log.
-func (f *haltFixture) record(event string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.events = append(f.events, event)
-}
-
-// filedTitles returns the titles the fake filer recorded, in order.
-func (f *haltFixture) filedTitles() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var titles []string
-	for _, call := range f.filed {
-		titles = append(titles, call.title)
-	}
-	return titles
-}
-
-// eventLog returns a copy of the event log.
-func (f *haltFixture) eventLog() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.events)
-}
-
-// requireFiledOnce fails unless exactly one issue was filed and its title contains want.
-func (f *haltFixture) requireFiledOnce(t *testing.T, want string) {
-	t.Helper()
-
-	titles := f.filedTitles()
-	if len(titles) != 1 || !strings.Contains(titles[0], want) {
-		t.Fatalf("filed titles = %q; want exactly one containing %q", titles, want)
-	}
-}
-
-// requireNothingFiled fails when the fake filer recorded anything.
-func (f *haltFixture) requireNothingFiled(t *testing.T) {
-	t.Helper()
-
-	if titles := f.filedTitles(); len(titles) != 0 {
-		t.Errorf("filed titles = %q; want none", titles)
-	}
 }
 
 func newHaltFixture(t *testing.T) *haltFixture {
@@ -103,8 +50,8 @@ func newHaltFixture(t *testing.T) *haltFixture {
 	}
 
 	loc := locationkit.Location(root, "pair", ".")
-	// The filed-title marker and the step clean-handoff marker keep their lock files in this directory too.
-	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomSelfreportFiledLock(loc)), filepath.Dir(loomengine.LoomStepHandoffLock(loc))} {
+	// The handoff voucher keeps its lock file in this directory too.
+	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomHandoffVoucherLock(loc))} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
 		}
@@ -114,7 +61,7 @@ func newHaltFixture(t *testing.T) *haltFixture {
 	c := &loomCLI{
 		location:    loc,
 		frictionDir: frictionDir,
-		cfg:         loomengine.Config{Friction: "claude:sonnet[effort=high]", FrictionTimeoutMin: 1, Selfreport: false},
+		cfg:         loomengine.Config{Friction: "claude:sonnet[effort=high]", FrictionTimeoutMin: 1},
 		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: stencilsDir}},
 		shedPaths: shedbuild.ShedPaths{
 			LockPath:       filepath.Join(root, "run.lock"),
@@ -123,57 +70,8 @@ func newHaltFixture(t *testing.T) *haltFixture {
 		},
 		reflectionShuttle: shuttle,
 	}
-	f := &haltFixture{c: c, shuttle: shuttle, frictionDir: frictionDir}
-	c.fileIssue = func(title string, body *string, labels []string) (string, int, error) {
-		f.record("file: " + title)
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.filed = append(f.filed, filedCall{title: title, labels: labels})
-		return "https://example.invalid/issues/1", 1, nil
-	}
-	// A reflection archives the notes it covers, so the halt note is read while the reflection runs.
-	shuttle.DuringRun = func() {
-		f.record("reflect")
-		matches, _ := filepath.Glob(filepath.Join(frictionDir, "loom-halt*.md"))
-		for _, path := range matches {
-			if b, err := os.ReadFile(path); err == nil {
-				f.mu.Lock()
-				f.haltNote = string(b)
-				f.mu.Unlock()
-			}
-		}
-	}
-	return f
+	return &haltFixture{c: c, shuttle: shuttle, frictionDir: frictionDir}
 }
-
-// tierOneOn turns the selfreport knob on, so Tier 1 anomaly filing runs.
-func (f *haltFixture) tierOneOn() {
-	f.c.cfg.Selfreport = true
-}
-
-// requireFiledBeforeReflection fails unless the event log is one filing followed by one reflection.
-func (f *haltFixture) requireFiledBeforeReflection(t *testing.T, title string) {
-	t.Helper()
-
-	events := f.eventLog()
-	if len(events) != 2 || !strings.HasPrefix(events[0], "file: ") || !strings.Contains(events[0], title) || events[1] != "reflect" {
-		t.Errorf("event log = %q; want the filing of %q, then the reflection", events, title)
-	}
-}
-
-// haltNoteText returns the halt note's text as the latest reflection saw it.
-func (f *haltFixture) haltNoteText(t *testing.T) string {
-	t.Helper()
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.haltNote == "" {
-		t.Fatal("no reflection saw a halt note")
-	}
-	return f.haltNote
-}
-
-const tierOneLine = "Tier 1 anomaly filing files the halt event itself; file only the lyx problems behind it."
 
 // seedStatus seeds the status file and sets its producer, state and error.
 func (f *haltFixture) seedStatus(t *testing.T, producer string, st shedengine.State, errText string) {
@@ -248,20 +146,85 @@ func TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects(t *testing.T) {
 	}
 }
 
-func TestWriteHaltNote_NamesProducerAndReason(t *testing.T) {
+func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	err := writeHaltNote(dir, haltNote{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "webster stuck on batch 3", HistoryLen: 4})
-	if err != nil {
-		t.Fatalf("writeHaltNote() = %v; want nil", err)
+	history := []shedengine.HistoryEntry{
+		{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"},
+		{Producer: loomshed.NameWebster, Outcome: shedengine.Stuck, At: "2026-01-01T00:00:01Z"},
 	}
+	historyRows := []string{
+		"- Preflight / " + string(shedengine.Done) + " / 2026-01-01T00:00:00Z",
+		"- " + loomshed.NameWebster + " / " + string(shedengine.Stuck) + " / 2026-01-01T00:00:01Z",
+	}
+	tests := []struct {
+		name     string
+		state    shedengine.State
+		reason   string
+		history  []shedengine.HistoryEntry
+		wantKind loomengine.AnomalyKind
+		want     []string
+	}{
+		{
+			name:     "BudgetPrefixedBlocked",
+			state:    shedengine.StateBlocked,
+			reason:   shedengine.ReasonBounceBudgetExhausted + " for Plan-Write",
+			history:  history,
+			wantKind: loomengine.AnomalyBudgetExhausted,
+			want:     historyRows,
+		},
+		{
+			name:     "OtherBlocked",
+			state:    shedengine.StateBlocked,
+			reason:   "webster stuck on batch 3",
+			history:  history,
+			wantKind: loomengine.AnomalyEscalation,
+			want:     historyRows,
+		},
+		{
+			name:     "Failed",
+			state:    shedengine.StateFailed,
+			reason:   "producer exploded",
+			history:  history,
+			wantKind: loomengine.AnomalyProducerFailure,
+			want:     historyRows,
+		},
+		{
+			name:     "NoHistory",
+			state:    shedengine.StateBlocked,
+			reason:   "stuck before any row finished",
+			wantKind: loomengine.AnomalyEscalation,
+			want:     []string{"no history entries", "history_entries: 0"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := readNote(t, filepath.Join(dir, "loom-halt.md"))
-	for _, want := range []string{loomshed.NameWebster, "webster stuck on batch 3", "blocked", "history_entries: 4"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("halt note %q does not contain %q", got, want)
-		}
+			dir := t.TempDir()
+			n := haltNote{Producer: loomshed.NameWebster, State: tt.state, Reason: tt.reason, History: tt.history, TraceFile: "/logs/trace.log"}
+			if err := writeHaltNote(dir, n); err != nil {
+				t.Fatalf("writeHaltNote() = %v; want nil", err)
+			}
+
+			notes, err := filepath.Glob(filepath.Join(dir, "*.md"))
+			if err != nil || len(notes) != 1 || filepath.Base(notes[0]) != "loom-halt.md" {
+				t.Fatalf("friction directory holds %v (glob error %v); want exactly loom-halt.md", notes, err)
+			}
+			got := readNote(t, notes[0])
+			want := append([]string{
+				"anomaly: " + string(tt.wantKind),
+				"producer: " + loomshed.NameWebster,
+				"state: " + string(tt.state),
+				tt.reason,
+				"trace_file: /logs/trace.log",
+			}, tt.want...)
+			for _, w := range want {
+				if !strings.Contains(got, w) {
+					t.Errorf("halt note %q does not contain %q", got, w)
+				}
+			}
+		})
 	}
 }
 
@@ -526,71 +489,9 @@ func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
 	}
 }
 
-// stuckProducer and failingProducer are the two producers whose halts Tier 1 files.
-var (
-	stuckProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return shedengine.Stuck, shedengine.OutputPointer{}, nil
-	})
-	failingProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return "", shedengine.OutputPointer{}, errors.New("producer exploded")
-	})
-	doneProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return shedengine.Done, shedengine.OutputPointer{}, nil
-	})
-)
-
-func TestStep_TierOne_StuckProducerFilesEscalationBeforeReflection(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	f.tierOneOn()
-
-	envelope, _ := f.stepEnvelopeOver(t, stuckProducer)
-
-	f.requireFiledOnce(t, "escalation-to-human")
-	if title := f.filedTitles()[0]; !strings.Contains(title, loomshed.NameWebster) {
-		t.Errorf("filed title = %q; want it to name %q", title, loomshed.NameWebster)
-	}
-	f.requireFiledBeforeReflection(t, "escalation-to-human")
-	if envelope["friction"] != frictionengine.StatusReflected {
-		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
-	}
-	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
-		t.Errorf("halt note %q does not carry the Tier 1 line", got)
-	}
-
-	f.stepOver(t, nil, []shedengine.ProducerDef{{Name: loomshed.NameWebster, Producer: stuckProducer}})
-	f.requireFiledOnce(t, "escalation-to-human")
-}
-
-func TestStep_TierOne_ProducerErrorFilesHardFailureBeforeReflection(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	f.tierOneOn()
-
-	f.stepEnvelopeOver(t, failingProducer)
-
-	f.requireFiledOnce(t, "producer-hard-failure")
-	f.requireFiledBeforeReflection(t, "producer-hard-failure")
-}
-
-func TestLoomAfterStep_TierOne_CrashResumeFilesAndWritesNoNote(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	f.tierOneOn()
-	f.seedStatus(t, "Discussion-Write", shedengine.StateRunning, "")
-	f.c.entryObservation = crashResumeEntry()
-	res := shedengine.StepResult{State: shedengine.StateRunning}
-
-	if got := f.c.loomAfterStep(context.Background(), res, nil); got != frictionengine.StatusSkipped {
-		t.Errorf("loomAfterStep() = %q; want %q", got, frictionengine.StatusSkipped)
-	}
-
-	f.requireFiledOnce(t, "crash-resume")
-	f.requireNoNotesNoSpawn(t)
-}
+var doneProducer = funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return shedengine.Done, shedengine.OutputPointer{}, nil
+})
 
 // handoffSteps runs two generic steps over a shed whose first row returns Done and leaves the run running, with the status seeded once and PreStep taking the entry observation as the real hook does.
 // beforeSecond runs between the two steps.
@@ -602,7 +503,7 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 		{Name: "Row-B", Producer: doneProducer},
 	}
 	preStep := func(context.Context) (string, error) {
-		f.c.observeStepEntry()
+		f.c.noteCrashResumeAtEntry("step")
 		return "", nil
 	}
 
@@ -612,98 +513,44 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 	f.stepOver(t, preStep, producers)
 }
 
-func TestStep_TierOne_HandoffMarkerSuppressesCrashResume(t *testing.T) {
-	t.Parallel()
-
-	t.Run("MarkerKept", func(t *testing.T) {
-		t.Parallel()
-
-		f := newHaltFixture(t)
-		f.tierOneOn()
-
-		f.handoffSteps(t, func() {})
-
-		f.requireNothingFiled(t)
-	})
-
-	t.Run("MarkerRemoved", func(t *testing.T) {
-		t.Parallel()
-
-		f := newHaltFixture(t)
-		f.tierOneOn()
-
-		f.handoffSteps(t, func() {
-			if err := os.Remove(loomengine.LoomStepHandoff(f.c.location)); err != nil {
-				t.Fatalf("Remove(step handoff marker) = %v; want nil", err)
-			}
-		})
-
-		f.requireFiledOnce(t, "crash-resume")
-	})
-}
-
-func TestLoomAfterStep_TierOne_SkipsFileNothing(t *testing.T) {
+func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		setup func(f *haltFixture) context.Context
-		err   error
+		name          string
+		removeVoucher bool
+		wantNote      bool
 	}{
-		{"Busy", func(f *haltFixture) context.Context { return context.Background() }, fmt.Errorf("%w: lock", shedengine.ErrShedBusy)},
-		{"KnobOff", func(f *haltFixture) context.Context { f.c.cfg.Selfreport = false; return context.Background() }, nil},
-		{"CancelledNoCrash", func(f *haltFixture) context.Context {
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			return ctx
-		}, nil},
+		{"MarkerKept", false, false},
+		{"MarkerRemoved", true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			f := newHaltFixture(t)
-			f.tierOneOn()
-			f.seedStatus(t, loomshed.NameWebster, shedengine.StateBlocked, "stuck")
-			ctx := tt.setup(f)
+			f.handoffSteps(t, func() {
+				if !tt.removeVoucher {
+					return
+				}
+				if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
+					t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+				}
+			})
 
-			f.c.loomAfterStep(ctx, shedengine.StepResult{State: shedengine.StatePaused}, tt.err)
-
-			f.requireNothingFiled(t)
+			notePath := filepath.Join(f.frictionDir, "loom-crash-resume.md")
+			if !tt.wantNote {
+				if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+					t.Errorf("crash-resume note %q = %v; want none written", notePath, err)
+				}
+				return
+			}
+			got := readNote(t, notePath)
+			for _, want := range []string{"slug: pair", "parent: main", "state: running", "current_producer: Row-B", "history_entries: 1", "verb: step", "trace_file:", "- Row-A / " + string(shedengine.Done) + " / "} {
+				if !strings.Contains(got, want) {
+					t.Errorf("crash-resume note %q does not contain %q", got, want)
+				}
+			}
 		})
-	}
-}
-
-func TestWriteHaltNote_TierOneLineFollowsTheKnob(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "stuck"}
-
-	f.c.loomAfterStep(context.Background(), res, nil)
-	if got := f.haltNoteText(t); strings.Contains(got, "Tier 1") {
-		t.Errorf("halt note with the knob off = %q; want no Tier 1 line", got)
-	}
-
-	f.tierOneOn()
-	f.c.loomAfterStep(context.Background(), res, nil)
-	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
-		t.Errorf("halt note with the knob on = %q; want the Tier 1 line", got)
-	}
-}
-
-func TestLoomPostRun_TierOne_BlockedFilesThroughTheSeam(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	f.tierOneOn()
-	f.seedStatus(t, loomshed.NameWebster, shedengine.StateBlocked, "stuck")
-	res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
-
-	f.c.loomPostRun(context.Background(), res, nil)
-
-	f.requireFiledOnce(t, "escalation-to-human")
-	if got := f.haltNoteText(t); !strings.Contains(got, tierOneLine) {
-		t.Errorf("halt note %q does not carry the Tier 1 line", got)
 	}
 }

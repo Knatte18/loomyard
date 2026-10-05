@@ -1,5 +1,5 @@
 // awaiting_test.go pins loom's handling of the planned hand-off halt: a run parked in state
-// awaiting stays coherent (resumable) and files no self-report anomaly. Untagged (Tier 1): pure.
+// awaiting stays coherent (resumable). Untagged (Tier 1): pure.
 
 package loomengine
 
@@ -19,15 +19,5 @@ func TestCheckCoherence_AwaitingStateAndHistoryPass(t *testing.T) {
 	got := checkCoherence(shed, validFreshProduct(), "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
 	if len(got) != 0 {
 		t.Errorf("checkCoherence() = %+v; want empty", got)
-	}
-}
-
-func TestDetectHaltAnomaly_AwaitingFilesNone(t *testing.T) {
-	final := validFreshShed()
-	final.State = shedengine.StateAwaiting
-	final.Error = "waiting for PR review"
-
-	if a, ok := detectHaltAnomaly(final, validFreshProduct()); ok {
-		t.Errorf("detectHaltAnomaly() = %+v, true; want no anomaly for an awaiting halt", a)
 	}
 }

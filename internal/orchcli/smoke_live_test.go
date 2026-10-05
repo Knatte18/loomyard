@@ -463,9 +463,8 @@ func killTreeProcs(dir string) {
 
 // TestSmokeOrch_Adopt proves a plain interactive run is adopted as the orch strand with its context, that the adopted session's name is addressable and parents a loom run, and that it cycles.
 func TestSmokeOrch_Adopt(t *testing.T) {
-	loomCfg := strings.Replace(loomengine.ConfigTemplate(), "selfreport: true", "selfreport: false", 1)
 	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), map[string]string{
-		"loom":    loomCfg,
+		"loom":    loomengine.ConfigTemplate(),
 		"webster": websterengine.ConfigTemplate(),
 	})
 	const slug = "orch-adopt-task"

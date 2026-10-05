@@ -104,6 +104,8 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 			sender := &fakeDriverSender{}
 			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
 			c.driverSender = sender
+			c.frictionDir = t.TempDir()
+			writeTestRunState(t, c, shedengine.StateRunning)
 			fake := &fakeMidMerge{state: tc.state}
 			c.midMerge = fake.probe
 			marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
@@ -138,6 +140,9 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 				}
 			}
 			assertNothingPutToWork(t, c, starter, sender)
+			if _, found := voucherOnDisk(t, c); found {
+				t.Error("a merge refusal wrote a handoff voucher")
+			}
 			if tc.staleMark && !markerExists(marker) {
 				t.Error("park marker removed by a refusal")
 			}

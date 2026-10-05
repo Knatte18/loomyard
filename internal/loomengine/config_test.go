@@ -100,9 +100,6 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.ReviewTimeoutMin != 240 {
 		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
 	}
-	if cfg.Selfreport != true {
-		t.Errorf("cfg.Selfreport = %v; want %v", cfg.Selfreport, true)
-	}
 	if cfg.Friction != "sonnet[medium]" {
 		t.Errorf("cfg.Friction = %q; want %q", cfg.Friction, "sonnet[medium]")
 	}
@@ -114,20 +111,26 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_SelfreportFalse verifies a hand-edited loom.yaml with selfreport: false round-trips
-// to Config.Selfreport == false, distinct from the template's own true default -- this, not an
-// omitted key, is how a fork or CI run disarms automatic filing, since configengine.Load's strict
-// loading does not fall back to the template for a key an existing on-disk file omits.
-func TestLoadConfig_SelfreportFalse(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "selfreport", "false")
-
-	cfg, err := LoadConfig(baseDir, "loom")
+// TestLoadConfig_RetiredSelfreportKeyIgnored verifies a loom.yaml that still carries the retired
+// selfreport key loads with a nil error and every other key unchanged.
+// The key is appended to the template text rather than set through writeLoomConfigWithKey, which
+// refuses a key the template no longer holds.
+func TestLoadConfig_RetiredSelfreportKeyIgnored(t *testing.T) {
+	cleanDir := t.TempDir()
+	seedLoomConfig(t, cleanDir, ConfigTemplate())
+	want, err := LoadConfig(cleanDir, "loom")
 	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", cleanDir, err)
 	}
-	if cfg.Selfreport != false {
-		t.Errorf("cfg.Selfreport = %v; want %v", cfg.Selfreport, false)
+
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, ConfigTemplate()+"selfreport: false\n")
+	got, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a loom.yaml carrying the retired selfreport key", baseDir, err)
+	}
+	if got != want {
+		t.Errorf("LoadConfig() = %+v; want %+v, the template's own config", got, want)
 	}
 }
 
@@ -221,7 +224,6 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
-selfreport: true
 friction: ""
 friction_timeout_min: 30
 driver: ""
@@ -249,7 +251,6 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
-selfreport: true
 friction: "opus[effort"
 friction_timeout_min: 30
 driver: ""
@@ -335,7 +336,6 @@ plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
-selfreport: true
 friction: opus[effort=high]
 friction_timeout_min: 30
 driver:

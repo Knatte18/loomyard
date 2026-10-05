@@ -21,7 +21,8 @@ The notes are freeform markdown.
 You will see these kinds:
 
 - Agent-written friction notes, one per agent invocation that chose to write one.
-- Go-written halt notes (`loom-halt*`), written when a run halted as `blocked` or `failed`.
+- Go-written halt notes (`loom-halt*`), written when a run halted as `blocked` or `failed`; each names its anomaly kind.
+- Go-written crash-resume notes (`loom-crash-resume*`), written when a `lyx loom run` or `lyx loom step` entry found a run that was last stopped without a clean handoff.
 - Go-written webster refusal notes (`webster-refusal-*`), written when a `lyx webster` verb refused.
 - The loom driver's repair and re-step records.
 
@@ -39,16 +40,17 @@ Read the notes as a whole, then:
 Do not drop a note because it looks vague, minor or already resolved;
 intake filters later.
 
-When a halt note says `Tier 1 anomaly filing files the halt event itself; file only the lyx problems behind it.`, do not file the halt event; file only the lyx problems behind it.
-A halt note without that line is grouped like any other note.
+For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lyx problem behind the event.
+A halt caused by the task's own code, or a review segment that did not converge, is dropped; a process signal such as a spent budget or an escalation is not a defect.
+A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lyx selfreport create`.
 
 ## Step 3 — File each issue
 
-For each issue, invoke `lyx selfreport create` yourself, following its own guidance for the fields it expects.
+For each issue, invoke `lyx selfreport create` yourself, following its own guidance for the fields it expects, including the label.
 This prompt does not restate that contract.
 File only through `lyx selfreport create`, never through `gh`.
 
-Each issue body ends with a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
+Each issue body states what happened, why it is abnormal and what to do, and then ends with a provenance line naming the task slug `{{.task_slug}}` and the file names of the notes the issue came from.
 
 Content rule, which is a hard rule: the repository these issues go to is public.
 An issue body describes the lyx problem and may quote lyx's own output, verb names and repo-relative lyx paths.

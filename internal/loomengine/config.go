@@ -55,16 +55,6 @@ const reworkDirName = "rework"
 // loomengine is this segment's sole declarer.
 const loomDirName = "loom"
 
-// loomSelfreportFiledFileName is the filename of the self-report filed-title marker within
-// loomDirName.
-// loomengine is this segment's sole declarer.
-const loomSelfreportFiledFileName = "selfreport-filed.json"
-
-// loomSelfreportFiledLockFileName is the filename of loomSelfreportFiledFileName's advisory lock
-// within loomDirName.
-// loomengine is this segment's sole declarer.
-const loomSelfreportFiledLockFileName = "selfreport-filed.json.lock"
-
 // reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the review segments' durable run root.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
@@ -146,51 +136,26 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
 }
 
-// LoomSelfreportFiled returns the path to the machine-local marker recording which anomaly titles
-// have already been filed as GitHub issues.
-// The marker also holds the anomalies whose filing failed and awaits a retry.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
-// It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks
-// constructors, not call sites.
-// Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one duplicate issue, which
-// is why the marker is deliberately machine-local rather than durable.
-func LoomSelfreportFiled(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, loomSelfreportFiledFileName)
+// LoomHandoffVoucher returns the path to the machine-local handoff voucher.
+// `lyx loom step` records it after every completed step, and `lyx loom start` records it right before it spawns a driver:
+// the persisted history length and state as that step or spawn left them.
+// It suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
+// A voucher whose spawn then fails its readiness check stays until the next start or completed step overwrites it, and suppresses at most one later matching observation;
+// a driver start spawned that then dies mid-run is not noted, and its evidence stays in the driver log and trace.
+// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
+// It exists because a completed step leaves the status file byte-identical to a mid-run driver death -- state running, run lock free, history non-empty --
+// so without this voucher the next run's entry observation reads as a crash-resume for a task in which nothing crashed.
+// A step killed mid-producer never writes it, so a genuine step-crash still reports.
+// Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume note, which is why it is machine-local rather than durable.
+func LoomHandoffVoucher(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json")
 }
 
-// LoomSelfreportFiledLock returns the path to the advisory lock file guarding concurrent access to
-// LoomSelfreportFiled(l).
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant, since the marker it guards is never
-// tracked.
-// It exists as an accessor rather than an inline path because cmd/lyx's transient guard walks
-// constructors, not call sites.
-func LoomSelfreportFiledLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, loomSelfreportFiledLockFileName)
-}
-
-// LoomStepHandoff returns the path to the machine-local clean-handoff marker `lyx loom step`
-// records after every completed step: the persisted history length and state as that step left
-// them.
-// It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
-// It exists because a completed step leaves the status file byte-identical to a mid-run driver
-// death -- state running, run lock free, history non-empty -- so without this marker the next
-// run's Tier-1 entry observation files a spurious crash-resume issue for a task in which nothing
-// crashed. A step killed mid-producer never writes it, so a genuine step-crash still reports.
-// Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one spurious issue, the
-// same trade LoomSelfreportFiled already accepts, which is why it is machine-local rather than
-// durable.
-func LoomStepHandoff(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json")
-}
-
-// LoomStepHandoffLock returns the path to the advisory lock file guarding concurrent access to
-// LoomStepHandoff(l).
-// It is AnchorPath-anchored under the ephemeral tree, exactly as the marker it guards.
-func LoomStepHandoffLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json.lock")
+// LoomHandoffVoucherLock returns the path to the advisory lock file guarding concurrent access to
+// LoomHandoffVoucher(l).
+// It is AnchorPath-anchored under the ephemeral tree, exactly as the voucher it guards.
+func LoomHandoffVoucherLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json.lock")
 }
 
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.
@@ -333,7 +298,6 @@ type Config struct {
 	Review                string `yaml:"review"`
 	Judge                 string `yaml:"judge"`
 	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
-	Selfreport            bool   `yaml:"selfreport"`
 	Friction              string `yaml:"friction"`
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 	Driver                string `yaml:"driver"`

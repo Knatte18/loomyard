@@ -47,10 +47,10 @@ type Hooks struct {
 	// envelope's "kind" field, and BuildShed is never called.
 	PreStep func(ctx context.Context) (kind string, err error)
 	// PostStep runs after a successful shed.Step and before the envelope is written -- never on an
-	// error path, since the marker it exists for records a clean handoff and a step that failed
-	// produced none. It exists so loom can keep calling recordStepHandoff at exactly that point: a
+	// error path, since the voucher it exists for records a clean handoff and a step that failed
+	// produced none. It exists so loom can keep calling recordHandoffVoucher at exactly that point: a
 	// completed step's persisted aftermath is byte-identical to a mid-run driver death, and that
-	// marker is the one thing letting the next run's entry observation tell the two apart -- so its
+	// voucher is the one thing letting the next run's entry observation tell the two apart -- so its
 	// call site can move neither above the Step call nor below the envelope. It is filled by loom
 	// and left nil by lifecycle.
 	PostStep func(res shedengine.StepResult)
