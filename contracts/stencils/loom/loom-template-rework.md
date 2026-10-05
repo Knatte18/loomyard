@@ -18,6 +18,7 @@ Before doing anything else, load two scribe skills, in this order:
 1. `scribe:prose`
 2. `scribe:testing`
 
+`scribe:testing` is loaded second because the test-coverage rule is a testing judgment rather than a prose judgment.
 Both loads are best-effort — if a skill is unavailable, continue without it rather than treating an unresolvable skill name as an error.
 
 {{.pattern_directive}}
