@@ -400,6 +400,35 @@ func isAncestor(worktree, sha, ref string) (bool, error) {
 	return gitrepo.New(worktree).IsAncestor(sha, ref)
 }
 
+// dirtyTrackedPaths returns the slash-separated worktree-relative paths of tracked files whose content differs from HEAD, staged or not, sorted.
+// Untracked files are not listed.
+// It wraps gitexec.Run directly for the same reason dirty does.
+func dirtyTrackedPaths(worktree string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"diff", "--name-only", "-z", "HEAD", "--"}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git diff --name-only HEAD in %s: %w", worktree, err)
+	}
+	var paths []string
+	for _, p := range strings.Split(stdout, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// octopusMergeBase returns the best common ancestor of shas, read-only.
+// It wraps gitexec.Run directly since gitrepo.Repo exposes no merge-base method.
+// An error includes the case where the commits share no common ancestor.
+func octopusMergeBase(worktree string, shas []string) (string, error) {
+	stdout, err := gitexec.Run(append([]string{"merge-base", "--octopus"}, shas...), worktree)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: git merge-base --octopus in %s: %w", worktree, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
 // gitExitCode returns the exit code of a git command gitexec.Run reports as rejected, and false for nil or an exec-level failure.
 func gitExitCode(err error) (int, bool) {
 	var gitErr *gitexec.GitError

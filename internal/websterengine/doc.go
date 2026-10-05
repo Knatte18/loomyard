@@ -406,6 +406,18 @@
 // and a bullet in summary.md's "Background shells waited out" section (AppendBackgroundShells).
 // A non-done outcome keeps its own error or stuck reason.
 //
+// # Planning a reset
+//
+// PlanReset decides, read-only, what a reset of the task branch may do, and refuses before fabric is ever called.
+// The target is `start` (ResetToStart) or `pre-fix` (ResetToPreFix); no raw SHA is accepted.
+// `start` is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
+// `pre-fix` is state.json's `PreFixHead`.
+// The refusals run in order: run lock held (transient), no state, a merge in progress, a checked-out branch that is not the task branch,
+// no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
+// Each refusal ends in wayForwardSteps' numbered list.
+// The plan carries the SHA and the own paths, and reads no force flag.
+//
 // # The verify-gate report and findings
 //
 // Every failed evaluation writes the verify-gate report (VerifyGateReportPath, `verify-gate.yaml` in the reports directory) and returns renderVerifyGateFindings of it as the findings Merriam reads.
