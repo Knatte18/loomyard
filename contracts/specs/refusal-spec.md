@@ -1,7 +1,7 @@
 # Refusal contract: every refusal and its way forward
 
 > **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed` and `lyx loom` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
-> It is the lookup the ly-drive driver and the operator use for an escalation, and it is plain markdown, not registered in `contracts/specs/specs.go`.
+> It is the lookup the loom driver and the operator use for an escalation, and it is plain markdown, not registered in `contracts/specs/specs.go`.
 
 ## What a way forward is
 

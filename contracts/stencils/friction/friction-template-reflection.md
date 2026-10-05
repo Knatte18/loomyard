@@ -23,7 +23,7 @@ You will see these kinds:
 - Agent-written friction notes, one per agent invocation that chose to write one.
 - Go-written halt notes (`loom-halt*`), written when a run halted as `blocked` or `failed`.
 - Go-written webster refusal notes (`webster-refusal-*`), written when a `lyx webster` verb refused.
-- The ly-drive driver's repair and re-step records.
+- The loom driver's repair and re-step records.
 
 Some sessions will have written very little — a near-empty directory is a normal outcome, not a failure of this pass.
 

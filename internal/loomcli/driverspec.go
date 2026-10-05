@@ -1,4 +1,4 @@
-// driverspec.go implements driverSpec, the pure composer building the shuttleengine.Spec the ly-drive
+// driverspec.go implements driverSpec, the pure composer building the shuttleengine.Spec the loom driver
 // session launches from. It lives beside bootstrap.go per the pure-decisions-live-in-bootstrap-go
 // Shared Decision.
 
@@ -16,7 +16,7 @@ const driverRole = "driver"
 // driverSkills is the skill list the driver loads before its launch prompt.
 var driverSkills = []string{"scribe:prose"}
 
-// driverSpec composes the shuttleengine.Spec the ly-drive session launches from, from an already-
+// driverSpec composes the shuttleengine.Spec the loom driver session launches from, from an already-
 // composed prompt, an already-composed report path, and the resolved driver-role settings.
 //
 // Every non-default field is pinned here with its own reason -- the standard this package holds.

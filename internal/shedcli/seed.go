@@ -19,7 +19,7 @@ import (
 )
 
 // resolveSeedDriver returns flagVal, defaulting an empty flagVal to shedrun.DriverLLM when the
-// recipe has a bootstrap verb to boot an ly-drive session and to shedrun.DriverGo when it does not,
+// recipe has a bootstrap verb to boot a loom driver session and to shedrun.DriverGo when it does not,
 // since an llm-driven run is how runs are meant to be driven but a recipe without a bootstrap verb
 // cannot honour it.
 func resolveSeedDriver(flagVal string, hasBootstrapVerb bool) string {
@@ -130,8 +130,8 @@ invoked when one does not.
 invocation arms through. --driver defaults to "llm" for a recipe that has
 a bootstrap verb and to "go" for one that does not; an explicit "llm" is
 refused for a recipe with no bootstrap verb, and "go" stays selectable for
-every recipe. An llm-driven run's driver session needs the ly-drive skill
-from loomyard's "ly" plugin installed. --param is repeatable and sets a seed
+every recipe. An llm-driven run's driver session launches from the driver
+stencil. --param is repeatable and sets a seed
 parameter as key=value.
 
 seed is idempotent against a byte-identical existing seed and refuses a

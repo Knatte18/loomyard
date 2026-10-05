@@ -19,7 +19,7 @@ import (
 // separators that would sort out of chronological order.
 const driverReportTimestampLayout = "20060102-150405"
 
-// driverReportPath composes the path to one ly-drive attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with "drive-report-<compact-timestamp>-<4-hex>.md".
+// driverReportPath composes the path to one loom driver attempt's drive report, under the run's durable drive-reports directory: shedrun.DriveReportsDir(l, runID) joined with "drive-report-<compact-timestamp>-<4-hex>.md".
 //
 // now and rand are injected seams rather than read directly, so this composer stays pure and a test
 // can drive it with no real clock and no real entropy source. Both halves of the suffix are

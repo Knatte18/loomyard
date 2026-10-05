@@ -53,7 +53,7 @@ const driverRecordsCommand = "lyx loom commit-records"
 
 // driverParkCommand is the command a parking driver runs after its stop report: it commits the run records and writes the park marker holding reportPath.
 // The marker is written by Go rather than by the agent, since a driver that skipped writing it left `lyx loom start` refusing to resume.
-// The prompt names it so the ly-drive skill can stay recipe-blind.
+// The prompt names it so the driver stencil can stay recipe-blind.
 func driverParkCommand(reportPath string) string {
 	return fmt.Sprintf("%s --park %q", driverRecordsCommand, reportPath)
 }

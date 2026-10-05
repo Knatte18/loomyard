@@ -105,7 +105,7 @@ func battenDriver(flagVal string) string {
 }
 
 // battenChildDriver is battenDriver's sibling for --child-driver, defaulting an empty flagVal to
-// shedrun.DriverLLM instead: the child is always a loom run, whose bootstrap verb boots an ly-drive
+// shedrun.DriverLLM instead: the child is always a loom run, whose bootstrap verb boots a loom driver
 // session, and an llm-driven run is how runs are meant to be driven.
 func battenChildDriver(flagVal string) string {
 	if flagVal == "" {
@@ -488,7 +488,7 @@ func (c *battenCLI) doneSlugRefusal() error {
 // status, refuse a done slug, resume silently over every other state, seed the status when absent.
 //
 // Without this hook, stepLocked's own read gate would hit an absent status and hard-error, which
-// shedverbs/step.go reports as kind: "producer" -- the one kind ly-drive retries, so a fresh slug's
+// shedverbs/step.go reports as kind: "producer" -- the one kind the loom driver retries, so a fresh slug's
 // first step would loop rather than seed.
 //
 // Its refusal-kind mapping stays inside the closed five: the run lock already held is

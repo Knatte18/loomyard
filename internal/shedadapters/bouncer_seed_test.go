@@ -358,8 +358,8 @@ func TestBouncer_ReBounce(t *testing.T) {
 //
 // Reproduced live in crucible round 1: `lyx loom step` SIGKILLed mid-Discussion-Bouncer seed with
 // exactly one agent alive, then re-invoked. It correctly did not double-spawn -- and left the
-// paid-for agent running behind it. That reproduction contradicted what the pre-rewrite ly-drive
-// skill told operators; the rewritten skill makes no such claim.
+// paid-for agent running behind it. That reproduction contradicted what the pre-rewrite driver
+// instructions told operators; the rewritten driver stencil makes no such claim.
 func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 

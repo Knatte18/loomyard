@@ -110,7 +110,7 @@ type loomCLI struct {
 	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
 	// PreRun returns no envelope map of its own.
 	entryObservation loomengine.EntryObservation
-	// driverStarter is the seam through which the llm arm starts the ly-drive session's shuttle run,
+	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run,
 	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is
 	// a concrete type.
@@ -394,7 +394,7 @@ awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start"
 awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
 sends the findings to PR-Rework. "commit-records" commits and
 pushes the run's records (status, reviews, friction notes, drive reports); the
-ly-drive end-of-session command runs it after the driver writes its stop report.
+loom driver's end-of-session command runs it after the driver writes its stop report.
 "review" is the subtree through which a run's parent answers Discussion-Write's
 parent-review gate: "review notify", "review delivered", "review approve" and
 "review reject <review-file>", each taking an optional task slug (required from

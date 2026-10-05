@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
-// LoomDriverStrandName is the ly-drive session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
+// LoomDriverStrandName is the loom driver session's own strand's stable identity, the role the hub addresses as "<slug>:driver".
 // It is pinned because reed's add has no upsert semantics and refuses an add whose explicit role another strand already holds.
 // Every add and every lookup must use this exact constant, or a re-entrant bootstrap misses the driver already running and its add is refused.
 // It lives here rather than in loomcli so batten can look the driver up without importing another CLI package.
@@ -32,7 +32,7 @@ func IsDriverStrand(name string) bool {
 	return agentname.Matches(name, LoomDriverStrandName) || name == LegacyLoomDriverStrandName
 }
 
-// DriverSettings is the driver role's resolved model settings, threaded onto the ly-drive session's
+// DriverSettings is the driver role's resolved model settings, threaded onto the loom driver session's
 // launch spec.
 type DriverSettings struct {
 	// Model is the resolved driver role's provider-side model string, empty when cfg.Driver is
