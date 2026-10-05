@@ -55,6 +55,38 @@ func TestParseLineAggregatesPerPackage(t *testing.T) {
 	}
 }
 
+func TestRedundancyTags(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name    string
+		full    bool
+		tags    string
+		want    string
+		wantErr string
+	}{
+		{name: "default is every tier but llm", want: "integration,tmux"},
+		{name: "full", full: true, want: "integration"},
+		{name: "explicit", tags: "tmux", want: "tmux"},
+		{name: "both", full: true, tags: "tmux", wantErr: "-full and -tags"},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := redundancyTags(row.full, row.tags)
+			if row.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), row.wantErr) {
+					t.Fatalf("err = %v, want it to contain %q", err, row.wantErr)
+				}
+				return
+			}
+			if err != nil || got != row.want {
+				t.Fatalf("redundancyTags = %q, %v; want %q", got, err, row.want)
+			}
+		})
+	}
+}
+
 func TestResolveTags(t *testing.T) {
 	t.Parallel()
 

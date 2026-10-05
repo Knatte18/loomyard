@@ -19,6 +19,18 @@
 // The header line shows the exact command run, tags included. Exit code mirrors
 // the underlying `go test`: 0 on success, 1 if any package failed to build or
 // any test failed.
+//
+// The -redundancy mode replaces the timing table with a coverage report:
+//
+//	go run ./cmd/testtiming -redundancy [-pkg ./internal/x] [-out report.md] [-tags t]
+//
+// -tags defaults to integration,tmux in this mode, every tier but llm.
+// For each package it runs every top-level test alone under one coverage
+// binary and writes, per package, the tests whose covered blocks other tests
+// already cover, the removable set among them, and the tests whose coverage
+// cannot be judged (skipped, covering nothing, or spawning a subprocess, which
+// the static scan in spawnscan.go decides).
+// It exits 1 after writing the report if any package reported an error.
 package main
 
 import (
@@ -66,11 +78,22 @@ func main() {
 	full := flag.Bool("full", false, "run the integration tier (same as -tags integration): real git, slow (~a minute)")
 	tagFlag := flag.String("tags", "", "build tags to run under, comma-separated (e.g. integration,tmux); excludes -full")
 	top := flag.Int("top", 15, "how many of the slowest top-level tests to list")
+	redundancy := flag.Bool("redundancy", false, "per-test coverage redundancy mode: write a markdown report instead of the timing table")
+	out := flag.String("out", defaultRedundancyOut, "with -redundancy: the markdown report to write")
+	pkg := flag.String("pkg", defaultRedundancyPkg, "with -redundancy: the packages to measure")
 	flag.Parse()
 
-	tags, err := resolveTags(*full, *tagFlag)
-	if err == nil {
-		err = run(tags, *top)
+	var err error
+	if *redundancy {
+		var tags string
+		if tags, err = redundancyTags(*full, *tagFlag); err == nil {
+			err = runRedundancy(tags, *pkg, *out)
+		}
+	} else {
+		var tags string
+		if tags, err = resolveTags(*full, *tagFlag); err == nil {
+			err = run(tags, *top)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
