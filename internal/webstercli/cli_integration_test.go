@@ -1,12 +1,9 @@
 //go:build integration
 
-// cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository,
-// proving the standalone pre-run leaves the target untouched and a wrongly entered hub refuses -- properties no untagged test in this package can observe, since they
-// require the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end
-// pre-run.
-// The test that boots a real reed session lives in cli_tmux_test.go. It follows the shape internal/reedcli/cli_integration_test.go already establishes for a
-// tagged CLI-level test; this package already carries a hermetic TestMain (testmain_test.go) and an
-// existing tagged file (verbs_test.go), so no new test-main wiring is needed here.
+// cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository, proving the standalone pre-run leaves the target untouched and a wrongly entered hub refuses -- properties no untagged test in this package can observe, since they require the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end pre-run.
+// The test that boots a real reed session lives in cli_tmux_test.go.
+// It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
+// this package already carries a hermetic TestMain (testmain_test.go) and an existing tagged file (verbs_test.go), so no new test-main wiring is needed here.
 
 package webstercli
 

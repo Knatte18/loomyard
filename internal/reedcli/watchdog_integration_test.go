@@ -77,17 +77,14 @@ func watchdogIntegrationEngine(t *testing.T, worktreeRoot string) *reedengine.En
 	return eng
 }
 
-// watchdogTestCycle is the discovery cycle the compressed timing runs at, and watchdogTestWait the
-// bound a test gives a discovery-dependent condition: many cycles, so a slow tmux round trip never
-// flakes it, while a condition that holds returns at the first poll.
+// watchdogTestCycle is the discovery cycle the compressed timing runs at, and watchdogTestWait the bound a test gives a discovery-dependent condition:
+// many cycles, so a slow tmux round trip never flakes it, while a condition that holds returns at the first poll.
 const (
 	watchdogTestCycle = 200 * time.Millisecond
 	watchdogTestWait  = 10 * time.Second
 )
 
-// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second while
-// IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the
-// consecutive-cycle rules and only waits less.
+// compressedWatchdogTiming returns a watchdogTiming whose discovery cycle is sub-second while IdleCycles and OrphanGoneCycles keep their production values, so a test still proves the consecutive-cycle rules and only waits less.
 func compressedWatchdogTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogTestCycle,
@@ -257,8 +254,7 @@ func TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock(t *testing.T) {
 		t.Fatalf("eng.Down(): %v", err)
 	}
 
-	// The daemon must exit on its own within watchdogHubIdleCycles of its own discovery cycle plus
-	// slack, and release its lock.
+	// The daemon must exit on its own within watchdogHubIdleCycles of its own discovery cycle plus slack, and release its lock.
 	slack := 10 * time.Second
 	select {
 	case err := <-done:

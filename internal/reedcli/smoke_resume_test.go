@@ -19,9 +19,7 @@ import (
 )
 
 // smokeClaudeModel is the model every real `claude` process this package spawns must run on.
-// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque
-// resumeCmd replay), never about model capability, so the cheapest model is always the right one —
-// and leaving it unpinned silently bills the operator's default model on every sweep.
+// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque resumeCmd replay), never about model capability, so the cheapest model is always the right one — and leaving it unpinned silently bills the operator's default model on every sweep.
 const smokeClaudeModel = "haiku"
 
 // claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory for cwd dir.

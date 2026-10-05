@@ -62,9 +62,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	}
 	e := New(cfg, geom)
 
-	// Always torn down, success or failure: a leaked scratch server on a
-	// per-test-tempdir-derived socket is harmless to a real hub server,
-	// but leaves a stray process behind if the test does not clean up.
+	// Always torn down, success or failure: a leaked scratch server on a per-test-tempdir-derived socket is harmless to a real hub server, but leaves a stray process behind if the test does not clean up.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	return e
 }

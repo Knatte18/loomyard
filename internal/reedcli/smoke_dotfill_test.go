@@ -473,8 +473,7 @@ func TestSmokeDotFillCrossClientControl(t *testing.T) {
 	}
 
 	// Both attaches complete before anything else.
-	// The toucher pane is about 8 rows, too short to render the second strand, so both attaches wait
-	// on the first strand's marker.
+	// The toucher pane is about 8 rows, too short to render the second strand, so both attaches wait on the first strand's marker.
 	h.attachIn(t, observedPane, "DOTFILL-MARKER-ALPHA")
 	h.attachIn(t, toucherPane, "DOTFILL-MARKER-ALPHA")
 

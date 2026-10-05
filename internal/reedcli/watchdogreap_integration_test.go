@@ -79,8 +79,7 @@ func newReapFixture(t *testing.T, pairNames ...string) reapFixture {
 // milliseconds while IdleCycles and OrphanGoneCycles stay at their production values — the cadence
 // compresses, never the confirmation count, so every case still proves the three-consecutive-cycle
 // rule rather than bypassing it.
-// ReapTimeout is compressed too, so a SIGHUP-resistant descendant is force-killed after one second
-// rather than after reedengine's production graceful wait.
+// ReapTimeout is compressed too, so a SIGHUP-resistant descendant is force-killed after one second rather than after reedengine's production graceful wait.
 func compressedReapTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   30 * time.Millisecond,
@@ -90,8 +89,7 @@ func compressedReapTiming() watchdogTiming {
 	}
 }
 
-// reapForceKillGrace mirrors reedengine's unexported forceKillExitGrace, the wait after a force-kill
-// before the reap gives up on a straggler.
+// reapForceKillGrace mirrors reedengine's unexported forceKillExitGrace, the wait after a force-kill before the reap gives up on a straggler.
 const reapForceKillGrace = 5 * time.Second
 
 // orphanWorktree removes worktreeRoot's directory from disk while its tmux session stays live on the
@@ -385,9 +383,8 @@ func TestWatchdogReap_DescendantClosureConfirmedExited(t *testing.T) {
 		return !reapSessionListed(t, fx.tmuxPath, socket, orphanSession)
 	})
 
-	// The graceful wait (timing.ReapTimeout) plus the force-kill grace (reapForceKillGrace)
-	// bound how long a resistant background descendant can survive the reap; wait generously beyond
-	// both.
+	// The graceful wait (timing.ReapTimeout) plus the force-kill grace (reapForceKillGrace) bound how long a resistant background descendant can survive the reap;
+	// wait generously beyond both.
 	goneWithin := timing.ReapTimeout + reapForceKillGrace + 5*time.Second
 	waitProcessGone(t, childPID, goneWithin)
 	waitProcessGone(t, grandchildPID, goneWithin)

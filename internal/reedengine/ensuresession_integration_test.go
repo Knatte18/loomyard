@@ -58,9 +58,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 	}
 	e := New(cfg, geom)
 
-	// Registered before the Down cleanup so it runs after it: the kill-server is the
-	// belt-and-suspenders guard against a leaked scratch server on a genuine test failure that
-	// never reached a clean teardown, and it removes the server's socket file.
+	// Registered before the Down cleanup so it runs after it: the kill-server is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached a clean teardown, and it removes the server's socket file.
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
 		// Best-effort, mirroring contract_integration_test.go's own Engine fixtures:
