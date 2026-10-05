@@ -140,7 +140,7 @@ func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
 			if got := sortedKeys(shortEnv); !slices.Equal(got, tt.shortKeys) {
 				t.Errorf("short stdout keys = %v; want %v", got, tt.shortKeys)
 			}
-			wantPath := filepath.Join(short.stepsDir,logger.TraceID()+".json")
+			wantPath := filepath.Join(short.stepsDir, logger.TraceID()+".json")
 			if shortEnv["envelope_path"] != wantPath {
 				t.Errorf("envelope_path = %v; want %q", shortEnv["envelope_path"], wantPath)
 			}
