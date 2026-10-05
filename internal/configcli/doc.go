@@ -8,7 +8,8 @@
 //
 // `--set key=value` (repeatable) writes values through `configengine.Set` with no editor and syncs once.
 // A key under one of the module's declared open maps (`configreg.Module.OpenMaps`) adds or rewrites one entry with a scalar value, as in `lyx config board --set labels.quarry="glyphs and the quarry index"`.
-// It refuses when the map holds a list, and removing an entry stays an editor edit.
+// It refuses when the map holds a list,
+// and removing an entry stays an editor edit.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
 //

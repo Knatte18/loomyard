@@ -149,7 +149,8 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
 func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int {
-	// Look up the module; its declared open maps let --set add or rewrite one entry.
+	// Look up the module;
+	// its declared open maps let --set add or rewrite one entry.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
@@ -187,7 +188,8 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 // specified).
 //
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
-// without opening an editor. The print path is evaluated before any edit logic.
+// without opening an editor.
+// The print path is evaluated before any edit logic.
 // The --set path is a fully non-interactive write: it never calls edit and is
 // mutually exclusive with --print. The baseDir is computed from the layout as
 // filepath.Join(WorktreeRoot, RelPath).
@@ -212,7 +214,8 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 		return setModule(baseDir, out, args[0], pairs, sync)
 	}
 
-	// Handle --print before any edit dispatch; the print path is read-only
+	// Handle --print before any edit dispatch;
+	// the print path is read-only
 	// and never opens the editor.
 	if printOnly {
 		if len(args) >= 1 {
@@ -221,7 +224,8 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 		return printAll(baseDir, out)
 	}
 
-	// Command lists modules for a bare invocation before dispatch runs, so a module is always present here.
+	// Command lists modules for a bare invocation before dispatch runs,
+	// so a module is always present here.
 	if len(args) < 1 {
 		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
 	}
