@@ -51,9 +51,7 @@ type SetResult struct {
 // Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
 // mutated tree is marshalled into SetResult.Merged.
 //
-// Each openMaps entry is a dotted key path whose value is an open map: any key P.<name> is known,
-// existing's value at P is carried whole, and the pair sets <name> to the scalar value, appending
-// the key when absent.
+// Each openMaps entry is a dotted key path whose value is an open map: any key P.<name> is known, existing's value at P is carried whole, and the pair sets <name> to the scalar value, appending the key when absent.
 // A pair under an open map that holds a list is an error naming the path; the list is never converted.
 // Known lists each open map as P.<name>.
 func SetValues(template, existing []byte, pairs []KV, openMaps ...string) (SetResult, error) {
@@ -174,8 +172,7 @@ func splitOpenMapKey(key string, openMaps []string) (open, name string, ok bool)
 	return "", "", false
 }
 
-// setOpenMapEntry sets name to the scalar value in the open map at path open, appending the key when
-// absent.
+// setOpenMapEntry sets name to the scalar value in the open map at path open, appending the key when absent.
 // A null value becomes an empty mapping first; a list or other shape is an error, never converted.
 // The mapping is given block style so an empty {} template value is written as a block.
 func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
@@ -200,6 +197,7 @@ func setOpenMapEntry(root *yaml.Node, open, name, value string) error {
 	return nil
 }
 
+// stringNode returns a !!str scalar node holding value.
 func stringNode(value string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 }

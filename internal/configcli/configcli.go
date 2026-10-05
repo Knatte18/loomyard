@@ -221,8 +221,7 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 		return printAll(baseDir, out)
 	}
 
-	// Command lists modules for a bare invocation before dispatch runs, so a
-	// module is always present here.
+	// Command lists modules for a bare invocation before dispatch runs, so a module is always present here.
 	if len(args) < 1 {
 		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
 	}
@@ -319,8 +318,8 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 // ValidArgs is set to the known config module names for shell completion only.
 // A reconcile subcommand is registered so that "lyx config reconcile" is routed there while "lyx
 // config <module>" continues to invoke the edit RunE.
-// The RunE decides before resolving any cwd: a bare invocation with neither --print nor --set prints
-// the help, and an argument that is not a module is refused as an unknown subcommand.
+// The RunE decides before resolving any cwd:
+// a bare invocation with neither --print nor --set prints the help, and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:       "config [module]",

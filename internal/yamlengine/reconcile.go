@@ -19,9 +19,8 @@ import (
 // removed.
 // Reconcile is idempotent.
 //
-// Each openMaps entry is a dotted key path whose value is an open map: when existing holds the key,
-// its value replaces the template's whole, whatever its kind, and nothing at or under the path is
-// reported added or removed.
+// Each openMaps entry is a dotted key path whose value is an open map.
+// When existing holds the key, its value replaces the template's whole, whatever its kind, and nothing at or under the path is reported added or removed.
 // When existing lacks the key, the template's value stays and added reports the path itself.
 func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, added, removed []string, err error) {
 	// Parse template into node tree
@@ -41,8 +40,8 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 		}
 	}
 
-	// A declared open map present in existing is carried whole before any leaf is collected, so
-	// both trees agree under it. One existing lacks is reported as the path itself, below.
+	// A declared open map present in existing is carried whole before any leaf is collected, so both trees agree under it.
+	// One existing lacks is reported as the path itself, below.
 	absentOpenMaps := carryOpenMaps(&templateNode, &existingNode, openMaps)
 
 	// Collect all leaf key-paths from the template
@@ -105,8 +104,7 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 // MissingKeys returns the leaf key-paths present in template but absent from existing.
 // A key present with an empty value counts as present.
 //
-// A template leaf at or under a declared openMaps path is satisfied by the presence of that key in
-// existing, whatever its value.
+// A template leaf at or under a declared openMaps path is satisfied by the presence of that key in existing, whatever its value.
 //
 // A template list is a DEFAULT, not a minimum length. collectLeafPaths models each sequence element
 // as its own indexed leaf path (`key[0]`, `key[1]`, ...), which is right for the reconcile merge but
@@ -219,10 +217,8 @@ func findValueNode(node *yaml.Node, path string) *yaml.Node {
 	return node
 }
 
-// carryOpenMaps replaces the template's value at each declared open-map path with existing's value
-// whole, whatever its kind.
-// It returns the sorted declared paths the template holds and existing lacks, which keep the
-// template's value.
+// carryOpenMaps replaces the template's value at each declared open-map path with existing's value whole, whatever its kind.
+// It returns the sorted declared paths the template holds and existing lacks, which keep the template's value.
 func carryOpenMaps(templateNode, existingNode *yaml.Node, openMaps []string) []string {
 	var absent []string
 	for _, p := range openMaps {

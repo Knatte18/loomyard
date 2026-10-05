@@ -26,8 +26,8 @@ type Module struct {
 	Name string
 	// Template is a function that returns the default YAML template for this module.
 	Template func() string
-	// OpenMaps names the template's keys whose entries belong to the repository,
-	// as dotted paths; configsync carries them whole through reconcile.
+	// OpenMaps names the template's keys whose entries belong to the repository, as dotted paths.
+	// configsync carries them whole through reconcile.
 	OpenMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
 	// operator (e.g. models.yaml aliases, burler.yaml lenses/fans).

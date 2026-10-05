@@ -31,8 +31,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
 		Short: "self-report a LoomYard bug or enhancement to lyx's own repo on GitHub",
-		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach
-		// GroupRunE instead of cobra's own unknown-command error.
+		// ArbitraryArgs lets a standalone RunCLI, where this group is the cobra root, reach GroupRunE instead of cobra's own unknown-command error.
 		Args: cobra.ArbitraryArgs,
 		RunE: clihelp.GroupRunE,
 	}

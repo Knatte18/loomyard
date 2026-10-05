@@ -41,8 +41,7 @@ type Label struct {
 	Description string `json:"description"`
 }
 
-// ConfigOpenMaps returns the board.yaml keys whose entries are the repository's own, which
-// configengine carries whole through reconcile and --set.
+// ConfigOpenMaps returns the board.yaml keys whose entries are the repository's own, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"types", "labels"}
 }
