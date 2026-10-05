@@ -81,9 +81,29 @@ const (
 // Message carries the agent's final message (EventStop, EventWaiting) or question text (EventAsk);
 // Raw is the exact JSON line.
 type Event struct {
-	Kind    EventKind // Discriminates which signal this Event carries.
-	Message string    // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
-	Raw     []byte    // Exact JSON line this Event was parsed from.
+	Kind        EventKind        // Discriminates which signal this Event carries.
+	Message     string           // Agent's final message (EventStop, EventWaiting) or question text (EventAsk); "" if event carried none.
+	Raw         []byte           // Exact JSON line this Event was parsed from.
+	Outstanding []BackgroundTask // Background tasks still running at the turn end; set only on an EventWaiting.
+}
+
+// BackgroundKind tells a forked subagent from a background shell.
+type BackgroundKind string
+
+// Kinds of background work a waiting turn end can leave outstanding.
+const (
+	// BackgroundFork is an Agent or Task subagent.
+	BackgroundFork BackgroundKind = "fork"
+	// BackgroundShell is a backgrounded Bash or a Monitor.
+	BackgroundShell BackgroundKind = "shell"
+)
+
+// BackgroundTask is one piece of background work a waiting turn end left outstanding, in a
+// provider-neutral shape.
+type BackgroundTask struct {
+	Kind  BackgroundKind // Fork or shell.
+	ID    string         // Provider's id for the task.
+	Label string         // The shell's command or the Monitor's description; empty for a fork.
 }
 
 // StartupState classifies a pane's captured content during startup, between launch and provider

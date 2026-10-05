@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -29,6 +30,11 @@ type gateFake struct {
 	verifyCalls    int
 	rejectionBases []string
 	sites          []verifytree.Site
+	// recorded holds the heads recordPreFix was called with, in order.
+	recorded []string
+	cleared  int
+	// recordErr is returned by recordPreFix.
+	recordErr error
 }
 
 func (f *gateFake) seams() verifyGateSeams {
@@ -65,6 +71,14 @@ func (f *gateFake) seams() verifyGateSeams {
 			return []string{"internal/b/b.go"}, nil
 		},
 		modulePath: func() string { return testModulePath },
+		recordPreFix: func(head string) error {
+			f.recorded = append(f.recorded, head)
+			return f.recordErr
+		},
+		clearPreFix: func() error {
+			f.cleared++
+			return nil
+		},
 	}
 }
 
@@ -218,6 +232,61 @@ func TestVerifyGate_DirtyFailureRecordsPreFixHead(t *testing.T) {
 	}
 }
 
+func TestVerifyGate_PreFixHeadPersistence(t *testing.T) {
+	f := &gateFake{
+		outcome: outcomeDone,
+		command: "go test ./...",
+		head:    "head0",
+		dirty:   []string{"loose.go"},
+		results: []verifytree.Result{passedResult()},
+	}
+	gate := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
+
+	for i := 0; i < 2; i++ {
+		if res, err := gate(); err != nil || res.Passed {
+			t.Fatalf("gate() on a dirty tree = %+v, %v; want a failure", res, err)
+		}
+	}
+	if want := []string{"head0"}; !reflect.DeepEqual(f.recorded, want) {
+		t.Errorf("recorded heads after two failures = %v; want %v once", f.recorded, want)
+	}
+
+	f.head = "head1"
+	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
+	if res, err := second(); err != nil || res.Passed {
+		t.Fatalf("second closure's gate() = %+v, %v; want a failure", res, err)
+	}
+	if want := []string{"head0", "head1"}; !reflect.DeepEqual(f.recorded, want) {
+		t.Errorf("recorded heads = %v; want the new closure to overwrite with %v", f.recorded, want)
+	}
+	if f.cleared != 0 {
+		t.Errorf("clearPreFix ran %d time(s) before any pass; want none", f.cleared)
+	}
+
+	f.dirty = nil
+	if res, err := second(); err != nil || !res.Passed {
+		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
+	}
+	if f.cleared != 1 {
+		t.Errorf("clearPreFix ran %d time(s) on a pass; want 1", f.cleared)
+	}
+}
+
+func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
+	f := &gateFake{
+		outcome:   outcomeDone,
+		command:   "go test ./...",
+		head:      "head0",
+		dirty:     []string{"loose.go"},
+		recordErr: errors.New("disk full"),
+	}
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+
+	if _, err := gate(); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("gate() error = %v; want the persist failure", err)
+	}
+}
+
 func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 	f := &gateFake{
 		outcome:   outcomeDone,
@@ -247,6 +316,42 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 	}
 	if f.verifyCalls != 0 {
 		t.Errorf("verify ran %d time(s) after a rejected fix commit; want none", f.verifyCalls)
+	}
+}
+
+func TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead(t *testing.T) {
+	f := &gateFake{
+		outcome:   outcomeDone,
+		command:   "go test ./...",
+		head:      "head0",
+		dirty:     []string{"loose.go"},
+		rejection: [2]string{"mergeabc", "it merged a commit that is not on the run's parent branch"},
+		results:   []verifytree.Result{passedResult()},
+	}
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+	if _, err := gate(); err != nil {
+		t.Fatalf("first gate() error = %v", err)
+	}
+	f.dirty = nil
+	res, err := gate()
+	if err != nil {
+		t.Fatalf("second gate() error = %v", err)
+	}
+	if strings.Contains(strings.ToLower(res.Findings), "move head") {
+		t.Errorf("findings = %q; want no instruction to move HEAD", res.Findings)
+	}
+}
+
+func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T) {
+	gate := &shuttleengine.GateOutcome{Reason: "Commit mergeabc is rejected.\nIt is not on the parent branch."}
+	for _, tc := range []struct{ reentry, want string }{
+		{"lyx webster run", "way forward: 1) lyx webster reset --to pre-fix; 2) lyx webster run"},
+		{"re-step the Webster row", "way forward: 1) lyx webster reset --to pre-fix; 2) re-step the Webster row"},
+	} {
+		got := verifyGateStuckReason(t.TempDir(), gate, tc.reentry)
+		if !strings.HasSuffix(got, tc.want) || strings.Contains(got, "\n") {
+			t.Errorf("verifyGateStuckReason(%q) = %q; want one line ending %q", tc.reentry, got, tc.want)
+		}
 	}
 }
 

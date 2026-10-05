@@ -169,7 +169,24 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 }
 
 func pendingAuditErr() error {
-	return fmt.Errorf("%w: 1 correctness finding(s) pending; suspect paths: internal/x.go; way forward: run \"lyx webster accept-audit\"", websterengine.ErrPendingAuditFindings)
+	return fmt.Errorf("%w: 1 correctness finding(s): 1) parent-write: wrote internal/x.go; way forward: 1) lyx webster accept-audit; 2) re-step the loom row", websterengine.ErrPendingAuditFindings)
+}
+
+// TestNewWebsterProducer_ReentryStepNamesTheRow proves the adapter hands the run its row's re-entry step, and keeps one a caller set.
+func TestNewWebsterProducer_ReentryStepNamesTheRow(t *testing.T) {
+	fake := &fakeWebsterRunner{err: pendingAuditErr()}
+	p := NewWebsterProducer("loom", fake.run, websterengine.RunDeps{})
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
+	if got := fake.gotDeps.ReentryStep; got != "re-step the loom row" {
+		t.Errorf("ReentryStep = %q; want the row's re-entry step", got)
+	}
+
+	fake = &fakeWebsterRunner{err: pendingAuditErr()}
+	p = NewWebsterProducer("loom", fake.run, websterengine.RunDeps{ReentryStep: "lyx webster run"})
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
+	if got := fake.gotDeps.ReentryStep; got != "lyx webster run" {
+		t.Errorf("ReentryStep = %q; want the caller's step kept", got)
+	}
 }
 
 func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
@@ -186,6 +203,9 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 		if !strings.Contains(ptr.Reason, want) {
 			t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
 		}
+	}
+	if ptr.Reason != pendingAuditErr().Error() {
+		t.Errorf("Reason = %q; want the refusal's own text, with no step appended", ptr.Reason)
 	}
 }
 

@@ -157,18 +157,20 @@ var auditedNegativeVerdictReturns = map[string]int{
 // shuttle-start-guarantees-readiness task's shuttle-blocking-start batch, keyed by enclosing
 // function.
 //
-// Ten sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
+// The sites: the seven rounds 4-6 left audited (wait.go's pollEventsTick, checkLivenessTick x2,
 // classifyDeadlineExpiry, finishedDespiteMechanismFailure; attach.go's dispositionCandidate and
 // leftoverThenAgeVerdict) plus soleFinishedCandidate, added by round opus5-high-r7's F1 for Attach's
 // three reed-state gates, plus awaitStartup x2 (a rename-and-move of the former AwaitStarted's own
 // two call sites — its retry-cap guard and its tick-cap answer — carried over unchanged by the
 // shuttle-blocking-start batch when the startup step moved from its own method into Start's own
-// blocking call).
+// blocking call),
+// plus expiredTurnEnd, whose OutcomeAsking answer for a waited-out background shell consults the files first.
 var auditedFileContractCallSites = map[string]int{
 	"awaitStartup":                    2,
 	"checkLivenessTick":               2,
 	"classifyDeadlineExpiry":          1,
 	"dispositionCandidate":            1,
+	"expiredTurnEnd":                  1,
 	"finishedDespiteMechanismFailure": 1,
 	"leftoverThenAgeVerdict":          1,
 	"pollEventsTick":                  1,

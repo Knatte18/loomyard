@@ -53,6 +53,9 @@ func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDe
 	if run == nil {
 		run = websterengine.Run
 	}
+	if deps.ReentryStep == "" {
+		deps.ReentryStep = fmt.Sprintf("re-step the %s row", name)
+	}
 	return &WebsterProducer{name: name, run: run, deps: deps}
 }
 
@@ -91,11 +94,11 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		}
 
 		if errors.Is(err, websterengine.ErrPendingAuditFindings) {
-			// A correctness halt only the operator can clear: the run blocks with the entry refusal's own text, which names the suspect paths and the accept-audit verb.
+			// A correctness halt only the operator can clear: the run blocks with the entry refusal's own text, whose way forward already ends in this row's re-entry step.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%s, then re-step the %s row", err.Error(), p.name)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: err.Error()}, nil
 		}
 
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {

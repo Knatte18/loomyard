@@ -25,6 +25,8 @@ type Config struct {
 
 	StartupTimeoutS int `yaml:"startup_timeout_s"` // Startup probe timeout; 0 fast-fails as died and zeroes orphan sweep's protection window.
 
+	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding background shell; LoadConfig refuses non-positive.
+
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
@@ -43,6 +45,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal shuttle config: %w", err)
+	}
+
+	if cfg.BackgroundShellWaitMin <= 0 {
+		return Config{}, fmt.Errorf("shuttle config: background_shell_wait_min must be positive, got %d", cfg.BackgroundShellWaitMin)
 	}
 
 	return cfg, nil

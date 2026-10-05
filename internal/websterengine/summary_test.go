@@ -191,6 +191,31 @@ func TestAppendAuditWarnings_MissingFileErrors(t *testing.T) {
 	}
 }
 
+// TestAppendBackgroundShells_EmptyIsNoOp asserts an empty list leaves the file byte-identical.
+func TestAppendBackgroundShells_EmptyIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendBackgroundShells(dir, nil); err != nil {
+		t.Fatalf("AppendBackgroundShells: %v", err)
+	}
+	if got := readSummaryFile(t, dir); got != "# S\n" {
+		t.Errorf("summary = %q, want untouched", got)
+	}
+}
+
+// TestAppendBackgroundShells_AppendsBulletsInOrder asserts the section follows the existing content with one bullet per label.
+func TestAppendBackgroundShells_AppendsBulletsInOrder(t *testing.T) {
+	dir := t.TempDir()
+	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
+	if err := websterengine.AppendBackgroundShells(dir, []string{"first", "second"}); err != nil {
+		t.Fatalf("AppendBackgroundShells: %v", err)
+	}
+	want := "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n- `first`\n- `second`\n"
+	if got := readSummaryFile(t, dir); got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+}
+
 // TestAppendIntegrationTriage_EmptyIsNoOp asserts empty lists leave the file untouched.
 func TestAppendIntegrationTriage_EmptyIsNoOp(t *testing.T) {
 	dir := t.TempDir()

@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // copyFixture copies the named testdata fixture file to dest, creating dest's
@@ -107,6 +110,63 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	}
 	if mutating.ReportReturned {
 		t.Error("mutating fork ReportReturned = true; want false (transcript ends with a tool_result, no final text message)")
+	}
+}
+
+// wantWriteEvents is what testdata/parent-writes-results.jsonl must yield: a succeeded Write, an Edit
+// whose result is an error, and a Write that never got a result.
+func wantWriteEvents() []shuttleengine.WriteEvent {
+	return []shuttleengine.WriteEvent{
+		{Path: "/work/a.txt", At: time.Date(2026, 1, 2, 10, 0, 1, 500_000_000, time.UTC), Succeeded: true},
+		{Path: "/work/b.txt", At: time.Date(2026, 1, 2, 10, 0, 6, 0, time.UTC), Succeeded: false},
+		{Path: "/work/c.txt", At: time.Date(2026, 1, 2, 10, 0, 10, 0, time.UTC), Succeeded: false},
+	}
+}
+
+func assertWriteEvents(t *testing.T, label string, got []shuttleengine.WriteEvent) {
+	t.Helper()
+	want := wantWriteEvents()
+	if len(got) != len(want) {
+		t.Fatalf("%s: len = %d; want %d (%v)", label, len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Path != want[i].Path || !got[i].At.Equal(want[i].At) || got[i].Succeeded != want[i].Succeeded {
+			t.Errorf("%s[%d] = %+v; want %+v", label, i, got[i], want[i])
+		}
+	}
+}
+
+// TestAuditForks_WriteEventsCarryTimeAndResult proves the parent and a fork transcript each yield
+// their write calls in order, resolved against the tool_result naming the call's id, while the
+// existing path lists keep their meaning.
+func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	workdir := "/home/op/write-events"
+	sessionID := "sess-writes"
+	projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
+	copyFixture(t, "parent-writes-results.jsonl", filepath.Join(projectDir, sessionID+".jsonl"))
+	copyFixture(t, "parent-writes-results.jsonl", filepath.Join(projectDir, sessionID, "subagents", "01-writer.jsonl"))
+
+	audit, err := New().AuditForks(sessionID, workdir)
+	if err != nil {
+		t.Fatalf("AuditForks() error: %v", err)
+	}
+
+	assertWriteEvents(t, "ParentWriteEvents", audit.ParentWriteEvents)
+	if len(audit.Forks) != 1 {
+		t.Fatalf("len(Forks) = %d; want 1", len(audit.Forks))
+	}
+	assertWriteEvents(t, "Forks[0].WriteEvents", audit.Forks[0].WriteEvents)
+
+	wantPaths := []string{"/work/a.txt", "/work/b.txt", "/work/c.txt"}
+	if audit.ParentWriteCalls != 3 || strings.Join(audit.ParentWrites, ",") != strings.Join(wantPaths, ",") {
+		t.Errorf("ParentWriteCalls/ParentWrites = %d/%v; want 3/%v", audit.ParentWriteCalls, audit.ParentWrites, wantPaths)
+	}
+	fork := audit.Forks[0]
+	if fork.WriteCalls != 3 || strings.Join(fork.WritePaths, ",") != strings.Join(wantPaths, ",") {
+		t.Errorf("fork WriteCalls/WritePaths = %d/%v; want 3/%v", fork.WriteCalls, fork.WritePaths, wantPaths)
 	}
 }
 
