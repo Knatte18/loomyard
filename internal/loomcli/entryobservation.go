@@ -84,7 +84,7 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 
 	probe, free, err := lock.TryAcquireWriteLock(runLockPath)
 	if err != nil {
-		logger.Warn("loomcli: could not probe the run lock for the self-report entry observation", "path", runLockPath, "cause", err)
+		logger.Warn("loomcli: could not probe the run lock for the entry observation", "path", runLockPath, "cause", err)
 		return loomengine.EntryObservation{}
 	}
 	runLockHeld := !free
@@ -94,7 +94,7 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 
 	shed, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
-		logger.Warn("loomcli: could not read the status file for the self-report entry observation", "path", statusPath, "cause", err)
+		logger.Warn("loomcli: could not read the status file for the entry observation", "path", statusPath, "cause", err)
 		return loomengine.EntryObservation{}
 	}
 	if !found {
@@ -104,7 +104,7 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 	var product loomengine.Status
 	if len(shed.Product) > 0 {
 		if uerr := json.Unmarshal(shed.Product, &product); uerr != nil {
-			logger.Warn("loomcli: could not decode the product for the self-report entry observation", "path", statusPath, "cause", uerr)
+			logger.Warn("loomcli: could not decode the product for the entry observation", "path", statusPath, "cause", uerr)
 			return loomengine.EntryObservation{}
 		}
 	}
