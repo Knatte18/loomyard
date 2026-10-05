@@ -160,6 +160,7 @@ var wordingClaims = []stencilClaims{
 			"you copy a line verbatim out of a quarry answer"),
 		wantNone("delta and name are pipeline-internal and are never named to the planner", "lyx quarry delta", "lyx quarry name"),
 		wantAll("the closing step runs validate-plan until it exits 0", "lyx loom validate-plan", "re-run it until it exits 0"),
+		wantAll("a scope addition after the Discussion is recorded with decision add, never written as an operator addition", "lyx loom decision add", "`--by`", "Never write such an addition into the plan as an operator addition"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
