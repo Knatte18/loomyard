@@ -267,7 +267,7 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 	}
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", escalationPath(cfg.RunDir, 2), "lyx loom start")
+	requireReasonContains(t, ptr.Reason, "round 2", "unreadable", "way forward:", escalationPath(cfg.RunDir, 2), "lyx loom start")
 	if ptr.ParentNotice != "" {
 		t.Errorf("ParentNotice = %q; want none", ptr.ParentNotice)
 	}

@@ -685,7 +685,7 @@ func (b *Bouncer) budgetReached(round int) bool {
 func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	recordedCause, notice, exists, err := readEscalation(b.cfg.RunDir, round)
 	if err != nil {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; fix or delete %s, then run `lyx loom start` to re-escalate the round", round, err, escalationPath(b.cfg.RunDir, round))}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete %s, then run `lyx loom start`, which re-escalates the round", round, err, escalationPath(b.cfg.RunDir, round))}, nil
 	}
 
 	briefPath := ""
