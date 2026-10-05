@@ -194,7 +194,7 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 // mutually exclusive with --print. The baseDir is computed from the layout as
 // filepath.Join(WorktreeRoot, RelPath).
 func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
-	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
+	baseDir := baseDirOf(l)
 
 	// Handle --set before any --print/edit dispatch:
 	// it is a fully non-interactive write path that never opens the editor,
@@ -232,6 +232,11 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	return editOne(baseDir, out, args[0], edit, sync)
 }
 
+// baseDirOf returns the enclosing _lyx parent: the worktree root joined with the relative path.
+func baseDirOf(l *lyxcwd.Location) string {
+	return filepath.Join(l.WorktreePath(), l.AnchorRel)
+}
+
 // buildConfigLong constructs the Long description for the config command,
 // embedding the live list of known modules from the registry so the help text
 // stays in sync without requiring manual updates when modules are added or removed.
@@ -240,8 +245,8 @@ func buildConfigLong() string {
 		"success. With no argument it lists the known modules and verbs; with a module\n" +
 		"name it edits that module directly; `lyx config menu` is the interactive\n" +
 		"picker, which lists the modules and edits the one you choose. The editor is\n" +
-		"resolved from $VISUAL or\n" +
-		"$EDITOR; with neither set it uses `code --wait` when code is on PATH, else\n" +
+		"resolved from $VISUAL or $EDITOR;\n" +
+		"with neither set it uses `code --wait` when code is on PATH, else\n" +
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
@@ -282,7 +287,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 	}
 
 	// Compute baseDir as the enclosing _lyx parent: the worktree root joined with the relative path.
-	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
+	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
 	results, err := configsync.ReconcileAll(baseDir, apply)
@@ -376,7 +381,8 @@ Pass --apply to write the reconciled files to disk atomically.`,
 	configCmd.AddCommand(reconcileCmd)
 
 	// The menu subcommand reads the choice from the command's input,
-	// which clihelp.WrapRunCtx does not carry, so its RunE is written by hand.
+	// which clihelp.WrapRunCtx does not carry,
+	// so its RunE is written by hand.
 	menuCmd := &cobra.Command{
 		Use:   "menu",
 		Short: "pick a module to edit interactively",
@@ -443,7 +449,7 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	return menu(filepath.Join(l.WorktreePath(), l.AnchorRel), in, out, configengine.DefaultEditor, realSync)
+	return menu(baseDirOf(l), in, out, configengine.DefaultEditor, realSync)
 }
 
 // resolveReal resolves the layout from the seam cwd and builds the real sync function.
