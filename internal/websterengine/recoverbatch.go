@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -299,15 +300,29 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		return prior, false, nil
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
-		bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
 		if err != nil {
 			return nil, false, err
 		}
-		reset := "reset the branch to the run's start commit with git"
-		if bases.Start != "" {
-			reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+		contracts, err := splitContractPaths(deps.Geom, writes, prior.Uncheckable)
+		if err != nil {
+			return nil, false, err
 		}
-		return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(prior.Uncheckable, ", "), reset)}
+		if len(contracts.Rest) > 0 {
+			bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
+			if err != nil {
+				return nil, false, err
+			}
+			reset := "reset the branch to the run's start commit with git"
+			if bases.Start != "" {
+				reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+			}
+			uncheckable := append(slices.Clone(contracts.Rest), contracts.Uncleared...)
+			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(uncheckable, ", "), reset)}
+		}
+		if len(contracts.Uncleared) > 0 {
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
+		}
 	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)

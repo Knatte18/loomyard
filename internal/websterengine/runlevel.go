@@ -451,7 +451,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	freshDrop, freshWarnings, err := freshPendingDrop(deps.Geom, st, opts)
+	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engine, deps.Geom, st, opts)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -514,7 +514,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	if len(st.PendingAuditFindings) > 0 {
-		return RunResult{}, pendingAuditFindingsError(st.PendingAuditFindings, deps.Geom)
+		return RunResult{}, pendingAuditFindingsError(deps.Engine, st, deps.Geom)
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -1012,7 +1012,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		for _, cf := range correctness {
 			pathless = pathless || cf.Violation.Path == ""
 		}
-		wayForward, err := pendingPathsWayForward(deps.Geom, paths, pathless, " and re-step the Webster row (lyx webster run)")
+		writes, err := contractWritesFor(deps.Engine, st, deps.Geom, paths)
+		if err != nil {
+			return nil, "", err
+		}
+		wayForward, err := pendingPathsWayForward(deps.Geom, writes, paths, pathless, " and re-step the Webster row (lyx webster run)")
 		if err != nil {
 			return nil, "", err
 		}
@@ -1048,9 +1052,10 @@ func hasPendingFinding(st *State, id string) bool {
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
 // pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
-// Its way forward is pendingPathsWayForward's.
+// Its way forward is pendingPathsWayForward's, judged over the write history engine's audit of st's sessions yields.
 // The error from sorting the paths is returned as is.
-func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) error {
+func pendingAuditFindingsError(engine shuttleengine.Engine, st *State, geom Geometry) error {
+	pending := st.PendingAuditFindings
 	details := make([]string, len(pending))
 	var paths []string
 	seen := map[string]bool{}
@@ -1071,7 +1076,11 @@ func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) err
 	for _, f := range pending {
 		pathless = pathless || len(f.Paths) == 0
 	}
-	wayForward, err := pendingPathsWayForward(geom, paths, pathless, "")
+	writes, err := contractWritesFor(engine, st, geom, paths)
+	if err != nil {
+		return err
+	}
+	wayForward, err := pendingPathsWayForward(geom, writes, paths, pathless, "")
 	if err != nil {
 		return err
 	}
@@ -1087,8 +1096,12 @@ func pendingAuditFindingsError(pending []PendingAuditFinding, geom Geometry) err
 // it gets planPathClause instead,
 // and the git clause covers only the other paths.
 // The error is a link-resolution or git probe failure.
-func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail string) (string, error) {
-	plan, rest, err := splitPlanPaths(geom, paths)
+func pendingPathsWayForward(geom Geometry, writes RunWrites, paths []string, pathless bool, tail string) (string, error) {
+	contracts, err := splitContractPaths(geom, writes, paths)
+	if err != nil {
+		return "", err
+	}
+	plan, rest, err := splitPlanPaths(geom, contracts.Rest)
 	if err != nil {
 		return "", err
 	}
@@ -1112,16 +1125,24 @@ func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail s
 		}
 		return fmt.Sprintf("reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"%s, since %s", tail, strings.Join(why, " and ")), nil
 	}
-	gitClause := "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
-	if len(plan) == 0 {
-		return gitClause, nil
+	var clauses []string
+	if len(contracts.Uncleared) > 0 {
+		clauses = append(clauses, fmt.Sprintf("delete %s with rm, since a fork wrote it after Master's last write, then run \"lyx webster accept-audit\"%s", strings.Join(contracts.Uncleared, ", "), tail))
 	}
-	planClause := fmt.Sprintf("for the plan file(s) %s, %s", strings.Join(plan, ", "), planPathClause("\"lyx webster accept-audit\""+tail))
-	if len(rest) == 0 {
-		return planClause, nil
+	if len(rest) > 0 {
+		if len(plan) == 0 {
+			clauses = append(clauses, "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\""+tail)
+		} else {
+			clauses = append(clauses, "restore the paths other than the plan files to the last batch head with git, then run \"lyx webster accept-audit\""+tail)
+		}
 	}
-	gitClause = "restore the paths other than the plan files to the last batch head with git, then run \"lyx webster accept-audit\"" + tail
-	return gitClause + "; " + planClause, nil
+	if len(plan) > 0 {
+		clauses = append(clauses, fmt.Sprintf("for the plan file(s) %s, %s", strings.Join(plan, ", "), planPathClause("\"lyx webster accept-audit\""+tail)))
+	}
+	if len(clauses) == 0 {
+		return "run \"lyx webster accept-audit\"" + tail, nil
+	}
+	return strings.Join(clauses, "; "), nil
 }
 
 // freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
@@ -1138,7 +1159,7 @@ func pendingPathsWayForward(geom Geometry, paths []string, pathless bool, tail s
 // its warning says so.
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
-func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
+func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
 	if !opts.Fresh || st == nil {
 		return false, nil, nil
 	}
@@ -1188,7 +1209,18 @@ func freshPendingDrop(geom Geometry, st *State, opts RunOptions) (drop bool, war
 			}
 		}
 	}
-	planPaths, paths, err := splitPlanPaths(geom, allPaths)
+	writes, err := contractWritesFor(engine, st, geom, allPaths)
+	if err != nil {
+		return false, nil, err
+	}
+	contracts, err := splitContractPaths(geom, writes, allPaths)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(contracts.Uncleared) > 0 {
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while %s", ErrPendingAuditFindings, contractDeleteClause(contracts.Uncleared, "lyx webster run --fresh"))
+	}
+	planPaths, paths, err := splitPlanPaths(geom, contracts.Rest)
 	if err != nil {
 		return false, nil, err
 	}

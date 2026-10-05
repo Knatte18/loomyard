@@ -127,7 +127,7 @@ func TestAcceptPendingAudit_RefusesPathlessFinding(t *testing.T) {
 	t.Parallel()
 	st := &State{PendingAuditFindings: []PendingAuditFinding{{ID: "s1/parent:named-spawn:1", Class: "named-spawn", Detail: "d"}}}
 
-	_, err := AcceptPendingAudit(st, Geometry{WorktreeRoot: t.TempDir(), PlanDir: t.TempDir(), ScratchDir: t.TempDir()}, nil)
+	_, _, err := AcceptPendingAudit(nil, st, Geometry{WorktreeRoot: t.TempDir(), PlanDir: t.TempDir(), ScratchDir: t.TempDir()}, nil)
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}

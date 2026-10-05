@@ -212,6 +212,14 @@
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
 // the last two clear only through `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
+// A Master write whose result failed is not evidence, and an acknowledgement never clears it.
+// Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
+// Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
+// A cleared contract path is resolved, so at run exit `lyx webster accept-audit` clears the finding directly;
+// an uncleared one refuses with `rm <path>` as the first step, then the verb to re-run.
+// Absence clears the finding only: accept-audit on an absent file adds a `next` step to its envelope, since the run still needs a Master that writes both files.
 // `run --fresh` drops pending findings, with one warning per finding, even on an unchanged plan, and refuses with ErrPendingAuditFindings, archiving nothing, while a pending suspect path outside the plan still differs from the run's start commit or HEAD is not the start commit.
 // It also refuses while a pending plan path differs from the plan the run recorded and `lyx webster restore-plan` can undo that (the recorded copy is stored, or the file was never recorded);
 // a differing plan path whose recorded copy is missing is dropped with the archived state,

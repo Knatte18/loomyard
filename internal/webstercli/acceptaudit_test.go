@@ -175,3 +175,47 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 		t.Errorf("PendingAuditFindings = %v; want none", loaded.PendingAuditFindings)
 	}
 }
+
+// TestAcceptAuditCmd_AbsentContractFilesCarryNext proves accepting a finding on absent contract files succeeds and the envelope's next field names the re-run that has Master write them again.
+func TestAcceptAuditCmd_AbsentContractFilesCarryNext(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.seedPendingFinding(t)
+	st, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v", st, err)
+	}
+	outcome := websterengine.OutcomePath(fx.CLI.geom.WebsterDir)
+	if err := os.Remove(outcome); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	st.PendingAuditFindings = []websterengine.PendingAuditFinding{{ID: "sess/fork-contract-write-1", Class: "fork-contract-write", Detail: "a fork wrote outcome.yaml", Paths: []string{outcome}}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
+		t.Fatalf("accept-audit = %d; want 0, output: %s", code, out.String())
+	}
+	for _, want := range []string{`"next"`, "re-run", "outcome.yaml and summary.md"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q; got %q", want, out.String())
+		}
+	}
+}
+
+// TestAcceptAuditCmd_NoNextWithoutAbsentContractFile proves the next field is absent when the accepted path is no contract file.
+func TestAcceptAuditCmd_NoNextWithoutAbsentContractFile(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.seedPendingFinding(t)
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
+		t.Fatalf("accept-audit = %d; want 0, output: %s", code, out.String())
+	}
+	if strings.Contains(out.String(), `"next"`) {
+		t.Errorf("output = %q; want no next field", out.String())
+	}
+}

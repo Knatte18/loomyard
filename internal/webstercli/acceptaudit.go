@@ -11,6 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// absentContractNext is the envelope's next step when accept-audit accepted on an absent contract file:
+// the run is still in flight, and only a Master that writes both files again ends it.
+const absentContractNext = "re-run `lyx webster run` (in a shed-driven run, re-step the Webster row); a fresh Master resumes from state.json and writes outcome.yaml and summary.md"
+
 // acceptAuditCmd builds the `accept-audit` subcommand.
 func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 	return &cobra.Command{
@@ -22,6 +26,10 @@ nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
 than a clean parent merge; move HEAD back to that head with git first.
 Restore the named paths with git first, then run it.
+A contract file (outcome.yaml or summary.md) clears when it is absent or when
+Master wrote it after the fork did; a file a fork wrote last refuses, naming
+rm as the way forward. When it accepts on an absent contract file the envelope
+also carries next, the step that has Master write both files again.
 It only edits state.json and never changes the task worktree.
 With nothing pending it succeeds and reports an empty accepted list, so a
 repeated call is harmless.
@@ -60,7 +68,7 @@ Example:
 				return nil
 			}
 
-			pending, err := websterengine.AcceptPendingAudit(st, c.geom, c.parentBranch)
+			pending, onAbsentContract, err := websterengine.AcceptPendingAudit(c.engine, st, c.geom, c.parentBranch)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -85,7 +93,11 @@ Example:
 					"paths":  f.Paths,
 				})
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"accepted": accepted}))
+			result := map[string]any{"accepted": accepted}
+			if onAbsentContract {
+				result["next"] = absentContractNext
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, result))
 			return nil
 		},
 	}

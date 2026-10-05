@@ -1131,11 +1131,11 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 		t.Errorf("Starter calls = %d after the refused Run; want %d", got, before)
 	}
 
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
+	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
 		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
 	}
 	gitkit.Git(t, fx.Worktree, "checkout", "--", "base.txt")
-	if _, err := websterengine.AcceptPendingAudit(st, fx.Deps.Geom, nil); err != nil {
+	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); err != nil {
 		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
@@ -2574,6 +2574,33 @@ func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
 	if got := fx.Starter.callCount(); got != 0 {
 		t.Errorf("Starter calls = %d; want 0", got)
 	}
+}
+
+// TestRun_FreshContractFileEvidence proves --fresh refuses a pending finding on a contract file no Master write cleared,
+// naming the delete route and --fresh as the re-run, and drops it once the file is absent.
+func TestRun_FreshContractFileEvidence(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	contract := websterengine.OutcomePath(fx.Deps.Geom.WebsterDir)
+	seedFreshPendingState(t, fx, contract)
+	if err := os.WriteFile(contract, []byte("outcome: done\n"), 0o644); err != nil {
+		t.Fatalf("write contract file: %v", err)
+	}
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
+		t.Fatalf("Run() error = %v; want ErrPendingAuditFindings", err)
+	}
+	requireWayForward(t, err, "rm "+contract, "lyx webster run --fresh")
+	if got := fx.Starter.callCount(); got != 0 {
+		t.Errorf("Starter calls = %d; want 0", got)
+	}
+
+	if err := os.Remove(contract); err != nil {
+		t.Fatalf("remove contract file: %v", err)
+	}
+	askingMaster(t, fx, "contract absent")
+	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
+	requireReachedMaster(t, fx, err)
 }
 
 // TestRun_FreshDropsFindingsOnceReset proves --fresh drops the pending finding once the branch is reset to the start commit, spawns Master, and names the dropped finding in the warnings.
