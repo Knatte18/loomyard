@@ -1,7 +1,7 @@
 //go:build tmux
 
-// cli_tmux_test.go holds the one cli_integration_test.go test that starts a tmux server: the standalone `run` pre-run
-// boots a real reed session before the plan-validation gate, so the test sits in the `tmux` tier.
+// cli_tmux_test.go holds the one cli_integration_test.go test that starts a tmux server:
+// the standalone `run` pre-run boots a real reed session before the plan-validation gate, so the test sits in the `tmux` tier.
 // It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
 // this package's hermetic TestMain (testmain_test.go) is untagged, so no new test-main wiring is needed here.
 
