@@ -1,6 +1,6 @@
 // Package configcli is the `lyx config` command: it edits or sets a module's configuration under `_lyx/config/` and syncs fabric on success.
 //
-// With a module name, `lyx config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then notepad or vi) through `configengine.Edit`.
+// With a module name, `lyx config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
 // With no module and neither `--print` nor `--set`, it prints its help, which names `reconcile` and every known module, and resolves no cwd.
 // An argument that is neither a subcommand nor a module is refused as an unknown subcommand.
 //

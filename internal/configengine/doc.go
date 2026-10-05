@@ -11,6 +11,7 @@
 //
 // [Set] writes dotted key=value pairs into a module's file, scaffolding it from the template when absent, with no editor and no validation loop.
 // [Edit] is the interactive counterpart.
+// Its default editor is `$VISUAL`, then `$EDITOR`, then `code --wait` when `code` is on PATH, then `notepad` on Windows, and elsewhere `nano` when it is on PATH, else `vi`.
 //
 // # Open maps
 //

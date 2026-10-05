@@ -239,7 +239,8 @@ func buildConfigLong() string {
 	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
 		"success. With no argument it lists the known modules and verbs; with a module\n" +
 		"name it edits that module directly. The editor is resolved from $VISUAL or\n" +
-		"$EDITOR; with neither set it falls back to notepad on Windows or vi elsewhere.\n\n" +
+		"$EDITOR; with neither set it uses `code --wait` when code is on PATH, else\n" +
+		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
 		"bypassing the editor entirely, e.g.\n" +

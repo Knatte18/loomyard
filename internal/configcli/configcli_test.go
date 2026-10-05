@@ -638,6 +638,9 @@ func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 	if !strings.Contains(longText, "EDITOR") || !strings.Contains(longText, "VISUAL") {
 		t.Errorf("config Long missing EDITOR/VISUAL fallback documentation; Long = %q", longText)
 	}
+	if !strings.Contains(longText, "code --wait") || !strings.Contains(longText, "nano") {
+		t.Errorf("config Long missing code --wait/nano fallback documentation; Long = %q", longText)
+	}
 	if !strings.Contains(longText, "--set") {
 		t.Errorf("config Long missing --set documentation; Long = %q", longText)
 	}
