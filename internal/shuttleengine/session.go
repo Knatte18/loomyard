@@ -44,17 +44,16 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 }
 
 // ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
-// known false means usage could not be read.
-func (r *Runner) ContextTokens(turnEnd Event) (int, bool, error) {
+// A reading with Known false means usage could not be read.
+func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 	if r.toldErr != nil {
-		return 0, false, r.toldErr
+		return ContextReading{}, r.toldErr
 	}
 	cycler, err := r.sessionCycler()
 	if err != nil {
-		return 0, false, err
+		return ContextReading{}, err
 	}
-	tokens, known := cycler.ContextTokens(turnEnd)
-	return tokens, known, nil
+	return cycler.ContextTokens(turnEnd), nil
 }
 
 // SessionIdle reports whether the live pane of the run identified by guid shows the provider idle.

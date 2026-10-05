@@ -18,7 +18,9 @@ type cyclerEngine struct {
 	captures []string
 }
 
-func (e *cyclerEngine) ContextTokens(Event) (int, bool) { return e.tokens, e.known }
+func (e *cyclerEngine) ContextTokens(Event) ContextReading {
+	return ContextReading{Tokens: e.tokens, Known: e.known}
+}
 func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)
 	return e.idle
@@ -69,7 +71,7 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
-	if _, _, err := runner.ContextTokens(Event{}); err == nil {
+	if _, err := runner.ContextTokens(Event{}); err == nil {
 		t.Error("ContextTokens on a plain engine = nil error")
 	}
 	if _, err := runner.SessionIdle("strand-1"); err == nil {
@@ -86,9 +88,9 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 func TestRunner_ContextTokens_Delegates(t *testing.T) {
 	engine := &cyclerEngine{tokens: 1234, known: true}
 	runner := newFixture(t, &fakeReed{}, engine, withStrand("strand-1")).Runner
-	tokens, known, err := runner.ContextTokens(Event{})
-	if err != nil || tokens != 1234 || !known {
-		t.Errorf("ContextTokens = %d, %v, %v; want 1234, true, nil", tokens, known, err)
+	reading, err := runner.ContextTokens(Event{})
+	if err != nil || reading.Tokens != 1234 || !reading.Known {
+		t.Errorf("ContextTokens = %+v, %v; want 1234 known, nil", reading, err)
 	}
 }
 

@@ -28,8 +28,8 @@ type Session interface {
 	StrandAlive(guid string) (bool, error)
 	// ReadEvents returns the events past offset and the offset read through.
 	ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error)
-	// ContextTokens returns the context usage as of turnEnd; known false means unreadable.
-	ContextTokens(turnEnd shuttleengine.Event) (int, bool, error)
+	// ContextTokens returns the context reading as of turnEnd; a reading with Known false means unreadable.
+	ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle reports whether the session shows an empty input box with no turn in progress.
 	SessionIdle(guid string) (bool, error)
 	// Send types text into the session as a new turn.
@@ -152,12 +152,12 @@ func (w *Watcher) tick() (done bool, err error) {
 	readingChanged := false
 	for _, ev := range events {
 		if st.Phase == PhaseIdle && isTurnEnd(ev) {
-			tokens, known, err := w.session.ContextTokens(ev)
+			reading, err := w.session.ContextTokens(ev)
 			if err != nil {
 				return false, err
 			}
-			st.LastContextTokens, st.LastContextKnown = tokens, known
-			if !known {
+			st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
+			if !reading.Known {
 				st.LastContextTokens = 0
 			}
 			readingChanged = true
@@ -459,12 +459,12 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 
 func (w *Watcher) tickResuming(st State, now time.Time) error {
 	if w.seen.turnEnd {
-		tokens, known, err := w.session.ContextTokens(w.seen.firstTurnEnd)
+		reading, err := w.session.ContextTokens(w.seen.firstTurnEnd)
 		if err != nil {
 			return err
 		}
-		st.LastContextTokens, st.LastContextKnown = tokens, known
-		if !known {
+		st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
+		if !reading.Known {
 			st.LastContextTokens = 0
 		}
 		return w.toIdle(st, "")

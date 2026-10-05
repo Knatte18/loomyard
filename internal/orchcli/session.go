@@ -33,7 +33,7 @@ func (s runnerSession) ReadEvents(guid string, offset int64) ([]shuttleengine.Ev
 }
 
 // ContextTokens delegates to Runner.ContextTokens.
-func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (int, bool, error) {
+func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	return s.runner.ContextTokens(turnEnd)
 }
 

@@ -47,10 +47,10 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 	return append([]shuttleengine.Event(nil), f.events[offset:]...), int64(len(f.events)), nil
 }
 
-func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (int, bool, error) {
+func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
-	return n, ok, nil
+	return shuttleengine.ContextReading{Tokens: n, Known: ok}, nil
 }
 
 func (f *fakeSession) SessionIdle(string) (bool, error) {
