@@ -32,24 +32,65 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 		layoutCirclingRun(t, dir, 1, "CONTINUE")
 		layoutCirclingRun(t, dir, 2, "CIRCLING")
 
-		round, err := RecordCirclingDecision(dir, d)
+		round, cause, err := RecordCirclingDecision(dir, d)
 		if err != nil {
 			t.Fatalf("RecordCirclingDecision(%q) error = %v; want nil", d, err)
 		}
-		if round != 2 {
-			t.Errorf("RecordCirclingDecision(%q) round = %d; want 2", d, round)
+		if round != 2 || cause != EscalationCircling {
+			t.Errorf("RecordCirclingDecision(%q) = (round %d, cause %q); want (2, circling)", d, round, cause)
 		}
-		got, settled, exists, err := readCirclingDecision(dir, 2)
-		if err != nil || !exists || settled || got != d {
-			t.Errorf("readCirclingDecision = (%q, settled %v, exists %v, %v); want (%q, false, true, nil)", got, settled, exists, err, d)
+		got, gotCause, settled, exists, err := readCirclingDecision(dir, 2)
+		if err != nil || !exists || settled || got != d || gotCause != EscalationCircling {
+			t.Errorf("readCirclingDecision = (%q, %q, settled %v, exists %v, %v); want (%q, circling, false, true, nil)", got, gotCause, settled, exists, err, d)
 		}
+	}
+}
+
+func TestRecordCirclingDecision_BudgetEscalationOverContinueVerdict(t *testing.T) {
+	for _, d := range []CirclingDecision{CirclingAccept, CirclingContinue} {
+		dir := t.TempDir()
+		layoutCirclingRun(t, dir, 1, "CONTINUE")
+		if err := writeEscalation(dir, 1, EscalationBudget, "brief\n", "notice"); err != nil {
+			t.Fatalf("writeEscalation error = %v; want nil", err)
+		}
+
+		round, cause, err := RecordCirclingDecision(dir, d)
+		if err != nil || round != 1 || cause != EscalationBudget {
+			t.Fatalf("RecordCirclingDecision(%q) = (%d, %q, %v); want (1, budget, nil)", d, round, cause, err)
+		}
+		got, gotCause, _, exists, err := readCirclingDecision(dir, 1)
+		if err != nil || !exists || got != d || gotCause != EscalationBudget {
+			t.Errorf("readCirclingDecision = (%q, %q, exists %v, %v); want (%q, budget, true, nil)", got, gotCause, exists, err, d)
+		}
+	}
+}
+
+func TestRecordCirclingDecision_CircledEscalationRecord(t *testing.T) {
+	dir := t.TempDir()
+	layoutCirclingRun(t, dir, 1, "CIRCLING")
+	if err := writeEscalation(dir, 1, EscalationCircling, "brief\n", "notice"); err != nil {
+		t.Fatalf("writeEscalation error = %v; want nil", err)
+	}
+	if _, cause, err := RecordCirclingDecision(dir, CirclingContinue); err != nil || cause != EscalationCircling {
+		t.Fatalf("RecordCirclingDecision = (%q, %v); want (circling, nil)", cause, err)
+	}
+}
+
+func TestReadCirclingDecision_LegacyFileReadsAsCircling(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte("---\nround: 1\ndecision: accept\nsettled: false\n---\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile = %v; want nil", err)
+	}
+	got, cause, _, exists, err := readCirclingDecision(dir, 1)
+	if err != nil || !exists || got != CirclingAccept || cause != EscalationCircling {
+		t.Errorf("readCirclingDecision = (%q, %q, exists %v, %v); want (accept, circling, true, nil)", got, cause, exists, err)
 	}
 }
 
 func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	layoutCirclingRun(t, dir, 1, "CIRCLING")
-	if _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
+	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
 		t.Fatalf("first RecordCirclingDecision error = %v; want nil", err)
 	}
 	before, err := os.ReadFile(circlingDecisionPath(dir, 1))
@@ -57,7 +98,7 @@ func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 		t.Fatalf("ReadFile = %v; want nil", err)
 	}
 
-	if _, err := RecordCirclingDecision(dir, CirclingContinue); !errors.Is(err, ErrCirclingDecided) {
+	if _, _, err := RecordCirclingDecision(dir, CirclingContinue); !errors.Is(err, ErrCirclingDecided) {
 		t.Errorf("second RecordCirclingDecision error = %v; want ErrCirclingDecided", err)
 	}
 	after, err := os.ReadFile(circlingDecisionPath(dir, 1))
@@ -69,7 +110,7 @@ func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 	}
 }
 
-func TestRecordCirclingDecision_NotCirclingWritesNothing(t *testing.T) {
+func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
 	tests := []struct {
 		name   string
 		layout func(t *testing.T, dir string)
@@ -87,8 +128,8 @@ func TestRecordCirclingDecision_NotCirclingWritesNothing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			tt.layout(t, dir)
-			if _, err := RecordCirclingDecision(dir, CirclingAccept); !errors.Is(err, ErrNotCircling) {
-				t.Errorf("RecordCirclingDecision error = %v; want ErrNotCircling", err)
+			if _, _, err := RecordCirclingDecision(dir, CirclingAccept); !errors.Is(err, ErrNotEscalated) {
+				t.Errorf("RecordCirclingDecision error = %v; want ErrNotEscalated", err)
 			}
 			for round := 1; round <= 2; round++ {
 				if _, err := os.Stat(circlingDecisionPath(dir, round)); !errors.Is(err, os.ErrNotExist) {
@@ -102,20 +143,23 @@ func TestRecordCirclingDecision_NotCirclingWritesNothing(t *testing.T) {
 func TestSettleCirclingAccept_SettlesPendingAccept(t *testing.T) {
 	dir := t.TempDir()
 	layoutCirclingRun(t, dir, 1, "CIRCLING")
-	if _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
+	if err := writeEscalation(dir, 1, EscalationBudget, "brief\n", "notice"); err != nil {
+		t.Fatalf("writeEscalation error = %v; want nil", err)
+	}
+	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
 		t.Fatalf("RecordCirclingDecision error = %v; want nil", err)
 	}
 	if err := settleCirclingAccept(dir, 1); err != nil {
 		t.Fatalf("settleCirclingAccept error = %v; want nil", err)
 	}
-	got, settled, exists, err := readCirclingDecision(dir, 1)
-	if err != nil || !exists || !settled || got != CirclingAccept {
-		t.Errorf("readCirclingDecision = (%q, settled %v, exists %v, %v); want (accept, true, true, nil)", got, settled, exists, err)
+	got, cause, settled, exists, err := readCirclingDecision(dir, 1)
+	if err != nil || !exists || !settled || got != CirclingAccept || cause != EscalationBudget {
+		t.Errorf("readCirclingDecision = (%q, %q, settled %v, exists %v, %v); want (accept, budget, true, true, nil)", got, cause, settled, exists, err)
 	}
 }
 
 func TestReadCirclingDecision_AbsentFile(t *testing.T) {
-	_, _, exists, err := readCirclingDecision(t.TempDir(), 1)
+	_, _, _, exists, err := readCirclingDecision(t.TempDir(), 1)
 	if err != nil || exists {
 		t.Errorf("readCirclingDecision(absent) = (exists %v, %v); want (false, nil)", exists, err)
 	}
@@ -128,6 +172,7 @@ func TestReadCirclingDecision_MalformedIsAnError(t *testing.T) {
 	}{
 		{"round disagrees with filename", "---\nround: 2\ndecision: accept\nsettled: false\n---\n"},
 		{"unknown decision", "---\nround: 1\ndecision: maybe\nsettled: false\n---\n"},
+		{"unknown cause", "---\nround: 1\ndecision: accept\ncause: weather\nsettled: false\n---\n"},
 		{"settled continue", "---\nround: 1\ndecision: continue\nsettled: true\n---\n"},
 		{"no frontmatter", "accept\n"},
 	}
@@ -137,7 +182,7 @@ func TestReadCirclingDecision_MalformedIsAnError(t *testing.T) {
 			if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(tt.content), 0o644); err != nil {
 				t.Fatalf("WriteFile = %v; want nil", err)
 			}
-			if _, _, exists, err := readCirclingDecision(dir, 1); err == nil || !exists {
+			if _, _, _, exists, err := readCirclingDecision(dir, 1); err == nil || !exists {
 				t.Errorf("readCirclingDecision = (exists %v, %v); want a present-file error", exists, err)
 			}
 		})

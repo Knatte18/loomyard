@@ -21,6 +21,7 @@ type circlingFake struct {
 	found     bool
 	statusErr error
 	round     int
+	cause     shedadapters.EscalationCause
 	recordErr error
 	records   []string
 }
@@ -29,12 +30,12 @@ func (f *circlingFake) deps() circlingDeps {
 	return circlingDeps{
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
 		bouncerSubdir: loomrecipe.BouncerRunSubdir,
-		record: func(subdir string, d shedadapters.CirclingDecision) (int, error) {
+		record: func(subdir string, d shedadapters.CirclingDecision) (int, shedadapters.EscalationCause, error) {
 			if f.recordErr != nil {
-				return 0, f.recordErr
+				return 0, "", f.recordErr
 			}
 			f.records = append(f.records, subdir+":"+string(d))
-			return f.round, nil
+			return f.round, f.cause, nil
 		},
 	}
 }
@@ -46,14 +47,14 @@ func awaitingAt(row string) shedengine.Status {
 func TestCirclingVerb_Records(t *testing.T) {
 	for _, d := range []shedadapters.CirclingDecision{shedadapters.CirclingAccept, shedadapters.CirclingContinue} {
 		t.Run(string(d), func(t *testing.T) {
-			f := &circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, round: 3}
+			f := &circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, round: 3, cause: shedadapters.EscalationBudget}
 			var out bytes.Buffer
 			if code := circlingVerb(&out, "task-a", f.deps(), d); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 			data := envelope.RequireOK(t, out.String()).Raw
-			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["resume"] != "lyx loom start" {
-				t.Fatalf("envelope = %v; want slug, decision, round 3 and the resume hint", data)
+			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["cause"] != "budget" || data["resume"] != "lyx loom start" {
+				t.Fatalf("envelope = %v; want slug, decision, round 3, cause budget and the resume hint", data)
 			}
 			if want := "plan:" + string(d); len(f.records) != 1 || f.records[0] != want {
 				t.Fatalf("records = %v; want [%s]", f.records, want)
@@ -71,7 +72,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"no status file", circlingFake{}, "no status file"},
 		{"running run", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, "not awaiting"},
 		{"awaiting at PR-Gate", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, "not a review segment's Bouncer row"},
-		{"latest verdict not CIRCLING", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotCircling}, "is not CIRCLING"},
+		{"latest round not escalated", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, "is not escalated"},
 		{"second decision", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, "already recorded"},
 	}
 	for _, tt := range tests {

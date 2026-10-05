@@ -391,7 +391,7 @@ func (b *Bouncer) settledGeneration(round int) bool {
 	case verdictConverged:
 		return true
 	case verdictCircling:
-		decision, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+		decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 		return err == nil && exists && settled && decision == CirclingAccept
 	}
 	return false
@@ -587,7 +587,7 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 // A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
 // A malformed decision file degrades with the read error as the Reason.
 func (b *Bouncer) settleCircling(ctx context.Context, round int, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	decision, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+	decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 	if err != nil {
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v", round, err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}

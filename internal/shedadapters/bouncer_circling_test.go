@@ -105,7 +105,7 @@ func TestBouncer_Circling_BudgetSentence(t *testing.T) {
 func TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam(t *testing.T) {
 	seams := &circlingSeams{}
 	b, cfg, shuttle := circlingBouncer(t, seams.install)
-	if _, err := RecordCirclingDecision(cfg.RunDir, CirclingContinue); err != nil {
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingContinue); err != nil {
 		t.Fatalf("RecordCirclingDecision(continue) = %v; want nil", err)
 	}
 
@@ -127,7 +127,7 @@ func TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam(t *testing.T
 func TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears(t *testing.T) {
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
 		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
 	}
 
@@ -138,7 +138,7 @@ func TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears(t *test
 	if got := strings.Join(seams.order, ","); got != "approve,commit" {
 		t.Errorf("seam order = %q; want approve,commit", got)
 	}
-	if _, settled, _, err := readCirclingDecision(cfg.RunDir, 1); err != nil || !settled {
+	if _, _, settled, _, err := readCirclingDecision(cfg.RunDir, 1); err != nil || !settled {
 		t.Errorf("readCirclingDecision settled = %v, err = %v; want settled true", settled, err)
 	}
 
@@ -154,14 +154,14 @@ func TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears(t *test
 func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(t *testing.T) {
 	seams := &circlingSeams{commitErr: errors.New("commit refused")}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
 		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
 	}
 
 	if _, _, err := b.Call(t.Context()); err == nil || !strings.Contains(err.Error(), "commit refused") {
 		t.Fatalf("Call() error = %v; want the commit failure", err)
 	}
-	if _, settled, _, err := readCirclingDecision(cfg.RunDir, 1); err != nil || !settled {
+	if _, _, settled, _, err := readCirclingDecision(cfg.RunDir, 1); err != nil || !settled {
 		t.Errorf("readCirclingDecision settled = %v, err = %v; want the accept already settled", settled, err)
 	}
 
@@ -177,7 +177,7 @@ func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(
 func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
 		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
 	}
 	if err := settleCirclingAccept(cfg.RunDir, 1); err != nil {

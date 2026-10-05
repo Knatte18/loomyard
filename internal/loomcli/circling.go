@@ -1,4 +1,4 @@
-// circling.go implements the `circling` loom subtree: the two verbs through which the operator resolves a review segment's circling halt.
+// circling.go implements the `circling` loom subtree: the two verbs through which the operator settles a review segment's escalation.
 // `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
 // Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lyx loom start` afterwards, like `lyx loom approve`.
 //
@@ -7,8 +7,8 @@
 //
 // The verbs check no caller identity, like `lyx loom review` and `lyx loom approve`:
 // any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
-// That is bounded by the refusal preconditions alone — one decision per circling round, and only while the run awaits at that Bouncer row — and by no agent stencil naming the verbs.
-// The decision file in the committed run directory records the decision for that round.
+// That is bounded by the refusal preconditions alone — the round carries an escalation the Bouncer wrote (a CIRCLING judgement or a spent review budget), one decision per round, and only while the run awaits at that Bouncer row — and by no agent stencil naming the verbs.
+// The decision file in the committed run directory records the decision and the escalation's cause for that round.
 
 package loomcli
 
@@ -34,9 +34,9 @@ import (
 
 const (
 	circlingGroup        = "circling"
-	circlingWayNoRun     = `way forward: "lyx loom start" in the task worktree begins the run; a circling halt exists only once a review segment's Bouncer has judged a round CIRCLING`
-	circlingWayNotAtHalt = `way forward: "lyx loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after a CIRCLING judgement`
-	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer judged CIRCLING, and a CONTINUE round needs no decision`
+	circlingWayNoRun     = `way forward: "lyx loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
+	circlingWayNotAtHalt = `way forward: "lyx loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
+	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a CIRCLING judgement or a spent review budget), and a plain CONTINUE round below the budget needs no decision`
 	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom start" in the task worktree to resume the run`
 )
 
@@ -46,11 +46,11 @@ type circlingDeps struct {
 	readStatus reviewStatusReader
 	// bouncerSubdir reports the run subdirectory of the named recipe row when that row is a Bouncer.
 	bouncerSubdir func(row string) (subdir string, isBouncer bool, err error)
-	// record writes decision for the latest round of the Bouncer run directory named by subdir and returns that round.
-	record func(subdir string, decision shedadapters.CirclingDecision) (round int, err error)
+	// record writes decision for the latest round of the Bouncer run directory named by subdir and returns that round and its escalation cause.
+	record func(subdir string, decision shedadapters.CirclingDecision) (round int, cause shedadapters.EscalationCause, err error)
 }
 
-// circlingVerb records decision for the run's circling round, or refuses with a way forward.
+// circlingVerb records decision for the run's escalated round, or refuses with a way forward.
 func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedadapters.CirclingDecision) int {
 	verb := string(decision)
 	refuse := func(format string, args ...any) int {
@@ -75,12 +75,12 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		return refuse("the run is awaiting at %s, which is not a review segment's Bouncer row; %s", st.CurrentProducer, circlingWayNotAtHalt)
 	}
 
-	round, err := deps.record(subdir, decision)
+	round, cause, err := deps.record(subdir, decision)
 	switch {
-	case errors.Is(err, shedadapters.ErrNotCircling):
-		return refuse("the latest judged round at %s is not CIRCLING; %s", st.CurrentProducer, circlingWayNot)
+	case errors.Is(err, shedadapters.ErrNotEscalated):
+		return refuse("the latest judged round at %s is not escalated; %s", st.CurrentProducer, circlingWayNot)
 	case errors.Is(err, shedadapters.ErrCirclingDecided):
-		return refuse("a decision is already recorded for the circling round at %s; %s", st.CurrentProducer, circlingWayDecided)
+		return refuse("a decision is already recorded for the escalated round at %s; %s", st.CurrentProducer, circlingWayDecided)
 	case err != nil:
 		return refuse("%s", err)
 	}
@@ -88,6 +88,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		"slug":     slug,
 		"decision": verb,
 		"round":    round,
+		"cause":    string(cause),
 		"resume":   "lyx loom start",
 	})
 }
@@ -135,7 +136,7 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 	s.deps = circlingDeps{
 		readStatus:    circlingStatusReader(statusPath, statusLock),
 		bouncerSubdir: loomrecipe.BouncerRunSubdir,
-		record: func(subdir string, decision shedadapters.CirclingDecision) (int, error) {
+		record: func(subdir string, decision shedadapters.CirclingDecision) (int, shedadapters.EscalationCause, error) {
 			return shedadapters.RecordCirclingDecision(filepath.Join(reviewsDir, subdir), decision)
 		},
 	}
@@ -164,15 +165,17 @@ func (c *loomCLI) circlingCmd() *cobra.Command {
 
 	group := &cobra.Command{
 		Use:   circlingGroup,
-		Short: "resolve a review segment's circling halt: accept or continue",
-		Long: `circling holds the verbs through which the operator answers a review segment
-that halted the run awaiting because its judge found the rounds circling.
+		Short: "settle a review segment's escalation: accept or continue",
+		Long: `circling holds the verbs through which the operator settles a review segment
+that escalated a round, either because its judge found the rounds circling or
+because the review budget was spent without convergence.
 
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. A verb records the
-decision for the circling round and nothing else: run "lyx loom start" in the
-task worktree afterwards to resume the run. The verbs check no caller
-identity; a second decision for the same round is refused.
+decision for the escalated round, with the escalation's cause, and nothing
+else: run "lyx loom start" in the task worktree afterwards to resume the run.
+The verbs check no caller identity; a second decision for the same round is
+refused.
 
 Example:
   lyx loom circling accept <slug>
@@ -197,17 +200,18 @@ Example:
 		}
 	}
 
-	accept := verb(shedadapters.CirclingAccept, "accept the circling review loop as it stands and let the run proceed", `accept records the operator's acceptance of the round the Bouncer judged
-CIRCLING. On resume the Bouncer settles the segment as approved and the run
-proceeds to the next row. It resumes nothing itself: run "lyx loom start" in
-the task worktree.
+	accept := verb(shedadapters.CirclingAccept, "accept the escalated review loop as it stands and let the run proceed", `accept records the operator's acceptance of the round the Bouncer escalated,
+whether it judged the rounds circling or spent the review budget. On resume
+the Bouncer settles the segment as approved and the run proceeds to the next
+row. It resumes nothing itself: run "lyx loom start" in the task worktree.
 
 Example:
   lyx loom circling accept <slug>`)
 
-	cont := verb(shedadapters.CirclingContinue, "run another review round after a circling halt", `continue records the operator's decision to keep reviewing after the Bouncer
-judged a round CIRCLING. On resume the Bouncer sends the segment back for
-another round, and a spent bounce budget still blocks it. It resumes nothing
+	cont := verb(shedadapters.CirclingContinue, "run another review round after an escalation", `continue records the operator's decision to keep reviewing after the Bouncer
+escalated a round, whether it judged the rounds circling or spent the review
+budget. On resume the Bouncer sends the segment back for another round; after
+a budget escalation that grants exactly one more round. It resumes nothing
 itself: run "lyx loom start" in the task worktree.
 
 Example:
