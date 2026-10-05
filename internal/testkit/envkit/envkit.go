@@ -144,7 +144,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		Rework: ReworkDeps(t, dir),
 
-		Slug:           "test-slug",
+		Slug:             "test-slug",
+		ReviewMaxBounces: 5,
+
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),
 		CreateWorktree: func(context.Context) error { return nil },
 		InnerRun: battenshed.InnerRunDeps{

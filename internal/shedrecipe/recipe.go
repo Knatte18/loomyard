@@ -81,6 +81,10 @@ type Env struct {
 	ReviewVersion string
 	ReviewTimeout time.Duration
 
+	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
+	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
+	ReviewMaxBounces int
+
 	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls back to when its own model/effort/version key is absent.
 	// BurlerRound rows keep reading the Review* fields above.
 	JudgeModel   string

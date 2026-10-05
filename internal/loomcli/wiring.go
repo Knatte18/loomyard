@@ -668,7 +668,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
+
+		ReviewMaxBounces: loomCfg.ReviewMaxBounces,
 
 		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,
@@ -729,7 +731,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.
 // The history is read on each call, never at wire time, because it grows during the run; an absent status file reports not-in-segment.
-func segmentBounces(statusPath, statusLockPath string) func(row string) (int, int, bool, error) {
+// reviewMaxBounces is the budget loomrecipe.New applies to the review rows, so the reported budget is the one Shed blocks on.
+func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) func(row string) (int, int, bool, error) {
 	return func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -739,7 +742,7 @@ func segmentBounces(statusPath, statusLockPath string) func(row string) (int, in
 		if err != nil || !found {
 			return 0, 0, false, nil
 		}
-		routing, err := loomrecipe.Routing()
+		routing, err := loomrecipe.Routing(reviewMaxBounces)
 		if err != nil {
 			return 0, 0, false, err
 		}

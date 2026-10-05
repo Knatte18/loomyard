@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"gopkg.in/yaml.v3"
 )
 
 // genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
@@ -166,7 +167,11 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 // so status reports the same bounce budget the engine enforces. It runs after wiring, which is what
 // fills c.shedPaths, and is the one place the routing can return an error; specFor only copies it.
 func (c *loomCLI) loadRouting() error {
-	routing, err := loomrecipe.Routing()
+	budget, err := c.reviewBudget()
+	if err != nil {
+		return err
+	}
+	routing, err := loomrecipe.Routing(budget)
 	if err != nil {
 		return err
 	}
@@ -175,6 +180,28 @@ func (c *loomCLI) loadRouting() error {
 	c.routing = routing
 
 	return nil
+}
+
+// reviewBudget returns the review bounce budget the routing projection reports.
+// The full wiring has already loaded loom.yaml into c.cfg; the lightweight wiring loads no config, so it reads loom.yaml here once more.
+// An unreadable loom.yaml degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
+func (c *loomCLI) reviewBudget() (int, error) {
+	if c.cfg.ReviewMaxBounces > 0 {
+		return c.cfg.ReviewMaxBounces, nil
+	}
+
+	cfg, err := loomengine.LoadConfig(c.location.AnchorPath(), "loom")
+	if err == nil {
+		return cfg.ReviewMaxBounces, nil
+	}
+	logger.Warn("loom: could not read loom.yaml for the review bounce budget; reporting the template default", "error", err)
+
+	var template loomengine.Config
+	if err := yaml.Unmarshal([]byte(loomengine.ConfigTemplate()), &template); err != nil {
+		return 0, err
+	}
+
+	return template.ReviewMaxBounces, nil
 }
 
 // specFor fills a Spec from c's already-wired fields, performing no resolution, no wire call, and
