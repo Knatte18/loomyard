@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -204,8 +205,8 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && len(preToolUse) != 1 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the Bash stdin rewrite entry", preToolUse)
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && len(preToolUse) != 0 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want none", preToolUse)
 			}
 		})
 	}
@@ -296,8 +297,9 @@ func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
 	})
 }
 
-// TestBuildSettings_BashStdinRewrite pins that every run mode carries the Bash rewrite entry, and that its command embeds the prefix.
-func TestBuildSettings_BashStdinRewrite(t *testing.T) {
+// TestBuildSettings_BashEntriesAreOnlyTheForkGuard pins that no run mode installs a Bash stdin rewrite:
+// the only Bash PreToolUse entry a document carries is the webster fork guard in a fork run, and a non-fork run carries none.
+func TestBuildSettings_BashEntriesAreOnlyTheForkGuard(t *testing.T) {
 	cases := []struct {
 		name        string
 		interactive bool
@@ -316,7 +318,7 @@ func TestBuildSettings_BashStdinRewrite(t *testing.T) {
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
-			var found []string
+			var bashCommands []string
 			for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
 				entry, _ := e.(map[string]any)
 				if entry["matcher"] != "Bash" {
@@ -325,15 +327,16 @@ func TestBuildSettings_BashStdinRewrite(t *testing.T) {
 				hooks, _ := entry["hooks"].([]any)
 				cmd, _ := hooks[0].(map[string]any)
 				command, _ := cmd["command"].(string)
-				if strings.Contains(command, bashStdinPrefix) {
-					found = append(found, command)
+				bashCommands = append(bashCommands, command)
+			}
+			if !tt.fork {
+				if len(bashCommands) != 0 {
+					t.Fatalf("Bash entries = %q; want none in a non-fork run (data: %s)", bashCommands, data)
 				}
+				return
 			}
-			if len(found) != 1 {
-				t.Fatalf("Bash entries embedding the prefix %q = %d; want exactly one (data: %s)", bashStdinPrefix, len(found), data)
-			}
-			if strings.Contains(found[0], "permissionDecision") {
-				t.Errorf("rewrite command = %q; want no permissionDecision", found[0])
+			if len(bashCommands) != 1 || !strings.Contains(bashCommands[0], steerWebsterForkDeny) {
+				t.Fatalf("Bash entries = %q; want exactly the webster fork guard (data: %s)", bashCommands, data)
 			}
 		})
 	}
@@ -605,6 +608,25 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	}
 	if strings.Contains(launch.ResumeCmd, "--continue") {
 		t.Errorf("Launch.ResumeCmd = %q; must never use --continue (ambiguous under concurrent runs)", launch.ResumeCmd)
+	}
+
+	envFilePath, err := filepath.Abs(filepath.Join(runDir, "bash-env.sh"))
+	if err != nil {
+		t.Fatalf("Abs: %v", err)
+	}
+	envBytes, err := os.ReadFile(envFilePath)
+	if err != nil {
+		t.Fatalf("read bash-env.sh: %v", err)
+	}
+	if string(envBytes) != envFileContent {
+		t.Errorf("bash-env.sh = %q; want %q", envBytes, envFileContent)
+	}
+	wantLead := shell.ForGOOS().WithEnv(envFileKey, envFilePath, "")
+	if !strings.HasPrefix(launch.Cmd, wantLead) {
+		t.Errorf("Launch.Cmd = %q; want it to lead with %q", launch.Cmd, wantLead)
+	}
+	if !strings.HasPrefix(launch.ResumeCmd, wantLead) {
+		t.Errorf("Launch.ResumeCmd = %q; want it to lead with %q", launch.ResumeCmd, wantLead)
 	}
 }
 

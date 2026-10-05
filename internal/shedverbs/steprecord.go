@@ -1,16 +1,14 @@
 // steprecord.go holds the record helpers behind `lyx shed step`'s own per-invocation record: an
-// in-flight file written before the producer call and the printed envelope written when the body
-// returns, both under Spec.StepsDir, plus the last_step summary status reads back from them.
+// in-flight file written before the producer call and the full envelope written before stdout is
+// printed, both under Spec.StepsDir, plus the last_step summary status reads back from them.
 //
-// A record write failure is logged and otherwise ignored, so keeping records can never change the
-// envelope on stdout or the exit code.
+// A record write failure is logged and reported to the caller, which then prints the full
+// envelope on stdout; keeping records can never change the exit code.
 
 package shedverbs
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,7 +52,6 @@ type stepRecorder struct {
 	dir     string
 	traceID string
 	build   BuildIdentity
-	buf     bytes.Buffer
 }
 
 // newStepRecorder returns a recorder for traceID under dir that records build as the step's build identity;
@@ -85,22 +82,18 @@ func (r *stepRecorder) begin() {
 	}
 }
 
-// tee returns a writer that passes every write through to out and keeps a copy for finish.
-func (r *stepRecorder) tee(out io.Writer) io.Writer {
+// write stores envelope in `<trace_id>.json` and reports the path written.
+// It reports false for a disabled recorder and for a failed write, the failure logged.
+func (r *stepRecorder) write(envelope []byte) (string, bool) {
 	if !r.enabled() {
-		return out
+		return "", false
 	}
-	return io.MultiWriter(out, &r.buf)
-}
-
-// finish writes the captured envelope line to `<trace_id>.json`.
-func (r *stepRecorder) finish() {
-	if !r.enabled() {
-		return
-	}
-	if err := os.WriteFile(filepath.Join(r.dir, r.traceID+envelopeSuffix), r.buf.Bytes(), 0o644); err != nil {
+	path := filepath.Join(r.dir, r.traceID+envelopeSuffix)
+	if err := os.WriteFile(path, envelope, 0o644); err != nil {
 		logger.Warn("shed: step record: write envelope record failed", "dir", r.dir, "error", err.Error())
+		return "", false
 	}
+	return path, true
 }
 
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is

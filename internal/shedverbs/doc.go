@@ -6,4 +6,9 @@
 // onto its own subtree) can safely import shedverbs, but shedverbs never imports back.
 // The one resolving import it admits is internal/logger, for boundary logging and the two
 // sink-location accessors, per the Shed Verb-Set Invariant.
+//
+// step prints a short envelope by default.
+// Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".
+// The --full flag, or a record that could not be written, makes step print the full envelope instead, byte-identical to the record.
+// The record, the exit code and the run's state are the same with or without --full.
 package shedverbs

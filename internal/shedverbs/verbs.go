@@ -13,13 +13,13 @@ import "github.com/spf13/cobra"
 // while resolved paths and hooks cannot (spec, filled in place by the arming module's own
 // PersistentPreRunE, after Verbs has already returned).
 //
-// A module needing more than the two flags the generic bodies read (status's --watch and
-// --interval) decorates the returned command itself before adding it to its own subtree --
+// A module needing more than the flags the generic bodies read (status's --watch and
+// --interval, step's --full) decorates the returned command itself before adding it to its own subtree --
 // loomcli registers --parent on the step command it got back, and lifecyclecli sets
 // Args: cobra.ExactArgs(1) on the commands it needs it on. Hooks reach the module's own values by
 // closure over its own receiver, never through a parameter this constructor exposes.
 //
-// Verbs registers no flag beyond status's --watch and --interval and goto's --to, and declares no
+// Verbs registers no flag beyond status's --watch and --interval, step's --full and goto's --to, and declares no
 // Args constraint of its own.
 //
 // This package exposes no Command()/RunCLI seam: it is not a CLI module and is not counted in the

@@ -139,6 +139,21 @@ func TestParity_LoomRun_NoStatusFile(t *testing.T) {
 	)
 }
 
+// readRecordedEnvelope decodes the full step envelope at the printed short envelope's envelope_path,
+// reporting a test failure when the path is empty or unreadable.
+func readRecordedEnvelope(t *testing.T, label string, printed map[string]any) map[string]any {
+	t.Helper()
+	path, _ := printed["envelope_path"].(string)
+	if path == "" {
+		t.Fatalf("%s: envelope_path is empty; envelope: %v", label, printed)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%s: read recorded envelope: %v", label, err)
+	}
+	return envelope.Decode(t, string(data)).Raw
+}
+
 // TestParity_LoomStep_RunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
 func TestParity_LoomStep_RunLockBusy(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -185,8 +200,9 @@ func TestParity_LoomStep_RunLockBusy(t *testing.T) {
 		if env.Raw["kind"] != "busy" {
 			t.Errorf("%s: kind = %v; want busy", label, env.Raw["kind"])
 		}
-		if want := shedrun.ScratchDir(location, shedrun.SelfRunID); env.Raw["scratch_dir"] != want {
-			t.Errorf("%s: scratch_dir = %v; want %q", label, env.Raw["scratch_dir"], want)
+		recorded := readRecordedEnvelope(t, label, env.Raw)
+		if want := shedrun.ScratchDir(location, shedrun.SelfRunID); recorded["scratch_dir"] != want {
+			t.Errorf("%s: recorded scratch_dir = %v; want %q", label, recorded["scratch_dir"], want)
 		}
 		traceFile, _ := env.Raw["trace_file"].(string)
 		if traceFile == "" {
@@ -256,11 +272,12 @@ func TestParity_BattenStep_RunLockBusy(t *testing.T) {
 		if env.Raw["kind"] != "busy" {
 			t.Errorf("%s: kind = %v; want busy", label, env.Raw["kind"])
 		}
-		if want := shedrun.ScratchDir(h.Location, slug); env.Raw["scratch_dir"] != want {
-			t.Errorf("%s: scratch_dir = %v; want %q", label, env.Raw["scratch_dir"], want)
+		recorded := readRecordedEnvelope(t, label, env.Raw)
+		if want := shedrun.ScratchDir(h.Location, slug); recorded["scratch_dir"] != want {
+			t.Errorf("%s: recorded scratch_dir = %v; want %q", label, recorded["scratch_dir"], want)
 		}
-		if got, _ := env.Raw["friction_dir"].(string); got != "" {
-			t.Errorf("%s: friction_dir = %q; want empty", label, got)
+		if got, _ := recorded["friction_dir"].(string); got != "" {
+			t.Errorf("%s: recorded friction_dir = %q; want empty", label, got)
 		}
 	}
 }

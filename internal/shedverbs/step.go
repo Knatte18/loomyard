@@ -5,7 +5,9 @@
 package shedverbs
 
 import (
+	"bytes"
 	"errors"
+	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -40,7 +42,7 @@ const (
 // silently.
 var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
 
-// StepEnvelope builds step's success envelope from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
+// StepEnvelope builds step's full success envelope, held by the step record and printed under --full or when no record is kept, from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
 // The returned map carries exactly the documented keys below;
 // the key set is closed -- a key outside them has no test and no documented meaning:
 //
@@ -121,6 +123,63 @@ func stepErrFields(kind, transient, friction string, loc StepLocations) map[stri
 	}
 }
 
+// shortStepEnvelope builds the short success envelope from the full one and the record's path.
+// The key set is closed at: run_id, producer, outcome, state, continue, reason, output, next, progress,
+// history_length, trace_file and envelope_path, plus friction and parent_notice only when non-empty.
+func shortStepEnvelope(full map[string]any, envelopePath string) map[string]any {
+	short := map[string]any{"envelope_path": envelopePath}
+	for _, key := range []string{"run_id", "producer", "outcome", "state", "continue", "reason", "output", "next", "progress", "history_length", "trace_file"} {
+		short[key] = full[key]
+	}
+	for _, key := range []string{"friction", "parent_notice"} {
+		if value, _ := full[key].(string); value != "" {
+			short[key] = value
+		}
+	}
+	return short
+}
+
+// shortStepErrFields builds the short error envelope's extra fields from the full ones and the record's path.
+// The key set is closed at: kind, transient, run_id, trace_file and envelope_path, plus friction only when non-empty.
+// The error message travels beside them as output.ErrFields' own "error" key.
+func shortStepErrFields(full map[string]any, envelopePath string) map[string]any {
+	short := map[string]any{"envelope_path": envelopePath}
+	for _, key := range []string{"kind", "transient", "run_id", "trace_file"} {
+		short[key] = full[key]
+	}
+	if friction, _ := full["friction"].(string); friction != "" {
+		short["friction"] = friction
+	}
+	return short
+}
+
+// emitStep renders the full envelope, hands its bytes to rec, and only then prints to out.
+// ok selects output.Ok or output.ErrFields (msg is the error message); fields are the full envelope's;
+// shorten builds the short envelope's fields from them and the record's path.
+// When the record was written and full is false, the short envelope is printed;
+// otherwise the full envelope bytes are, identical to the record.
+// It returns the full envelope's exit code in every case.
+func emitStep(out io.Writer, rec *stepRecorder, full, ok bool, msg string, fields map[string]any, shorten func(map[string]any, string) map[string]any) int {
+	var buf bytes.Buffer
+	var code int
+	if ok {
+		code = output.Ok(&buf, fields)
+	} else {
+		code = output.ErrFields(&buf, msg, fields)
+	}
+	path, recorded := rec.write(buf.Bytes())
+	if !recorded || full {
+		_, _ = out.Write(buf.Bytes())
+		return code
+	}
+	if ok {
+		output.Ok(out, shorten(fields, path))
+	} else {
+		output.ErrFields(out, msg, shorten(fields, path))
+	}
+	return code
+}
+
 // progressOf reports routing's progress at current, or nil when routing carries no producers.
 func progressOf(routing shedengine.Routing, current string) *shedengine.Progress {
 	if len(routing.Producers) == 0 {
@@ -134,7 +193,7 @@ func progressOf(routing shedengine.Routing, current string) *shedengine.Progress
 // supervisor drives. This body owns nothing above shed.Step -- any run-lock probe, bootstrap, or
 // status-strand work a module needs belongs entirely to its own PreStep hook.
 func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   texts.Step.Use,
 		Short: texts.Step.Short,
 		Long:  texts.Step.Long,
@@ -145,12 +204,12 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			logger.Info("shed: step", "status_file", spec.StatusPath)
 			ctx := cmd.Context()
 
-			// The in-flight record is written before anything can refuse, and the envelope the body
-			// prints, success or refusal, is teed into its own record when the body returns.
+			// The in-flight record is written before anything can refuse, and the full envelope,
+			// success or refusal, is written to its own record before stdout is printed.
 			rec := newStepRecorder(spec.StepsDir, logger.TraceID(), runningBuildIdentity())
 			rec.begin()
-			defer rec.finish()
-			out := rec.tee(cmd.OutOrStdout())
+			full, _ := cmd.Flags().GetBool("full")
+			out := cmd.OutOrStdout()
 
 			// locations is computed after the Warn so the trace file it names is the one holding it.
 			locations := func() StepLocations {
@@ -158,7 +217,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			}
 			refuse := func(kind, transient, friction, msg string) {
 				logger.Warn("shed: step refused", "kind", kind, "transient", transient, "error", msg)
-				clihelp.SetExit(ctx, output.ErrFields(out, msg, stepErrFields(kind, transient, friction, locations())))
+				clihelp.SetExit(ctx, emitStep(out, rec, full, false, msg, stepErrFields(kind, transient, friction, locations()), shortStepErrFields))
 			}
 
 			if spec.Hooks.PreStep != nil {
@@ -210,8 +269,10 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			if spec.Hooks.InterruptPolicyFor != nil {
 				nextPolicy = spec.Hooks.InterruptPolicyFor(res.Next)
 			}
-			clihelp.SetExit(ctx, output.Ok(out, StepEnvelope(res, nextPolicy, spec.StatusPath, friction, locations(), progressOf(spec.Routing, res.Next))))
+			clihelp.SetExit(ctx, emitStep(out, rec, full, true, "", StepEnvelope(res, nextPolicy, spec.StatusPath, friction, locations(), progressOf(spec.Routing, res.Next)), shortStepEnvelope))
 			return nil
 		},
 	}
+	cmd.Flags().Bool("full", false, "print the full envelope on stdout instead of the short one; the record, exit code and run state are unchanged")
+	return cmd
 }
