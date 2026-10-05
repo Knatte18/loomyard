@@ -685,7 +685,7 @@ func (b *Bouncer) budgetReached(round int) bool {
 func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	recordedCause, notice, exists, err := readEscalation(b.cfg.RunDir, round)
 	if err != nil {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete %s, then run `lyx loom start`, which re-escalates the round", round, err, escalationPath(b.cfg.RunDir, round))}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete the file the error names, then run `lyx loom start`, which re-escalates the round", round, err)}, nil
 	}
 
 	briefPath := ""
@@ -698,7 +698,7 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 			logger.Warn("shedadapters: bouncer escalation render failed; escalating with the plain Reason", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", rerr)
 		}
 		if err := writeEscalation(b.cfg.RunDir, round, cause, brief, renderedNotice); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w", b.cfg.Name, bouncerEngineLabel, err)
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w; way forward: make the named path writable, then run `lyx loom start`, which re-escalates the round", b.cfg.Name, bouncerEngineLabel, err)
 		}
 		notice = renderedNotice
 		if rerr == nil {

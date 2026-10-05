@@ -4,6 +4,7 @@ package shedadapters
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -257,6 +258,24 @@ func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testi
 	}
 	if _, err := os.Stat(parentNoticePath(cfg.RunDir, 2)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("Stat(parent notice) = %v; want it absent", err)
+	}
+}
+
+func TestBouncer_Escalation_FailedRecordWriteErrorsNamingTheWayForward(t *testing.T) {
+	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
+	noticePath := parentNoticePath(cfg.RunDir, 2)
+	if err := os.Mkdir(noticePath, 0o755); err != nil {
+		t.Fatalf("Mkdir(parent notice path) = %v; want nil", err)
+	}
+
+	_, _, err := b.Call(context.Background())
+	if err == nil {
+		t.Fatal("Call() error = nil; want the failed notice write")
+	}
+	for _, want := range []string{"write parent notice", noticePath, "way forward:", "lyx loom start"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Call() error %q lacks %q", err.Error(), want)
+		}
 	}
 }
 
