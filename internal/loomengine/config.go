@@ -136,26 +136,26 @@ func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
 }
 
-// LoomStepHandoff returns the path to the machine-local clean-handoff marker `lyx loom step`
+// LoomHandoffVoucher returns the path to the machine-local handoff voucher `lyx loom step`
 // records after every completed step: the persisted history length and state as that step left
 // them.
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
-// status file per the Durable-vs-Ephemeral State Invariant, since the marker is never tracked.
+// status file per the Durable-vs-Ephemeral State Invariant, since the voucher is never tracked.
 // It exists because a completed step leaves the status file byte-identical to a mid-run driver
-// death -- state running, run lock free, history non-empty -- so without this marker the next
+// death -- state running, run lock free, history non-empty -- so without this voucher the next
 // run's entry observation reads as a crash-resume for a task in which nothing crashed. A step
 // killed mid-producer never writes it, so a genuine step-crash still reports.
-// Losing the marker -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume
+// Losing the voucher -- a fresh clone, a fabric re-wire -- costs at most one spurious crash-resume
 // note, which is why it is machine-local rather than durable.
-func LoomStepHandoff(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json")
+func LoomHandoffVoucher(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json")
 }
 
-// LoomStepHandoffLock returns the path to the advisory lock file guarding concurrent access to
-// LoomStepHandoff(l).
-// It is AnchorPath-anchored under the ephemeral tree, exactly as the marker it guards.
-func LoomStepHandoffLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "step-handoff.json.lock")
+// LoomHandoffVoucherLock returns the path to the advisory lock file guarding concurrent access to
+// LoomHandoffVoucher(l).
+// It is AnchorPath-anchored under the ephemeral tree, exactly as the voucher it guards.
+func LoomHandoffVoucherLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "handoff-voucher.json.lock")
 }
 
 // LoomScratchDir returns the path to loom's ephemeral scratch directory for this worktree.

@@ -1,4 +1,4 @@
-// selfreport_test.go holds the status-file helpers the entry-observation and step-handoff tests share.
+// entryobservation_test.go holds the status-file helpers the entry-observation and handoff-voucher tests share.
 
 package loomcli
 
@@ -11,8 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// writeSelfreportStatus writes st to path/lockPath via the production WriteJSON primitive.
-func writeSelfreportStatus(t *testing.T, path, lockPath string, st shedengine.Status) {
+// writeStatusFixture writes st to path/lockPath via the production WriteJSON primitive.
+func writeStatusFixture(t *testing.T, path, lockPath string, st shedengine.Status) {
 	t.Helper()
 	if err := state.WriteJSON(path, lockPath, st); err != nil {
 		t.Fatalf("write status file: %v", err)

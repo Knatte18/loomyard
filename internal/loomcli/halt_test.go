@@ -50,8 +50,8 @@ func newHaltFixture(t *testing.T) *haltFixture {
 	}
 
 	loc := locationkit.Location(root, "pair", ".")
-	// The step clean-handoff marker keeps its lock file in this directory too.
-	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomStepHandoffLock(loc))} {
+	// The handoff voucher keeps its lock file in this directory too.
+	for _, dir := range []string{filepath.Dir(loomengine.LoomFrictionArchivePrefix(loc)), filepath.Dir(loomengine.LoomHandoffVoucherLock(loc))} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
 		}

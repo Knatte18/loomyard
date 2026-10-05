@@ -16,10 +16,10 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
 	runLockPath := filepath.Join(dir, "run.lock")
-	markerPath := filepath.Join(dir, "step-handoff.json")
-	markerLockPath := filepath.Join(dir, "step-handoff.json.lock")
+	voucherPath := filepath.Join(dir, "handoff-voucher.json")
+	voucherLockPath := filepath.Join(dir, "handoff-voucher.json.lock")
 
-	writeSelfreportStatus(t, statusPath, statusLockPath, shedengine.Status{
+	writeStatusFixture(t, statusPath, statusLockPath, shedengine.Status{
 		CurrentProducer: "Loom-Preflight",
 		State:           shedengine.StateBlocked,
 		History: []shedengine.HistoryEntry{
@@ -43,7 +43,7 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 		t.Fatalf("shedengine.Goto() error = %v", err)
 	}
 
-	entry := observeEntry(true, runLockPath, statusPath, statusLockPath, markerPath, markerLockPath)
+	entry := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
 	if !entry.Observed {
 		t.Fatalf("observeEntry: Observed = false; want true")
 	}
@@ -66,7 +66,7 @@ func TestGoto_AwaitingAtPRGateMovesBackToPublish(t *testing.T) {
 	statusLockPath := filepath.Join(dir, "status.json.lock")
 	runLockPath := filepath.Join(dir, "run.lock")
 
-	writeSelfreportStatus(t, statusPath, statusLockPath, shedengine.Status{
+	writeStatusFixture(t, statusPath, statusLockPath, shedengine.Status{
 		CurrentProducer: loomshed.NamePRGate,
 		State:           shedengine.StateAwaiting,
 		History: []shedengine.HistoryEntry{

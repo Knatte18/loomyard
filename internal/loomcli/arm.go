@@ -312,7 +312,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 	// being on (a non-empty friction directory): a disabled run must not pay for a lock probe and
 	// an extra status decode on every run. Carried on the receiver rather than returned, since
 	// PreRun returns no map of its own -- loomPostRun reads it back.
-	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
 
 	// Ensure the reed substrate before the first producer call: the rows beneath run spawn
 	// agents into reed panes, so without a live session the run gets several producers deep and
@@ -366,7 +366,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 
 // observeStepEntry sets c.entryObservation exactly as loomPreRun does, for a step that is about to run its shed.
 func (c *loomCLI) observeStepEntry() {
-	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location))
+	c.entryObservation = observeEntry(c.frictionDir != "", c.shedPaths.LockPath, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location))
 }
 
 // loomPostRun implements the PostRun hook for loom's spec: it returns the envelope's "friction" key, on the hard-error arm too, which is why PostRun itself runs unconditionally.
@@ -406,7 +406,7 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // removal needs the driver, which step must not read,
 // and an unconditional removal would strip the band from a halted go run an operator steps by hand.
 //
-// On success it takes the entry observation (observeStepEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the step clean-handoff marker and the previous step's completed aftermath matches it rather than reading as a crash.
+// On success it takes the entry observation (observeStepEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the handoff voucher and the previous step's completed aftermath matches it rather than reading as a crash.
 //
 // Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
 // No bootstrap sub-step makes a remote call today (the seed-and-commit stage commits without pushing),
@@ -463,19 +463,19 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 	// minutes-long LLM row.
 	_ = bootstrapLock.Release()
 
-	// Last, so a step this hook refuses, busy or at the bootstrap, neither observes nor consumes the clean-handoff marker.
+	// Last, so a step this hook refuses, busy or at the bootstrap, neither observes nor consumes the handoff voucher.
 	c.observeStepEntry()
 
 	return "", nil
 }
 
-// loomPostStep implements the PostStep hook for loom's spec: it records the clean-handoff marker
+// loomPostStep implements the PostStep hook for loom's spec: it records the handoff voucher
 // after a successful shed.Step and before the envelope is written -- a completed step's persisted
-// aftermath is byte-identical to a mid-run driver death, and this marker is the one thing letting
+// aftermath is byte-identical to a mid-run driver death, and this voucher is the one thing letting
 // the next run's entry observation tell the two apart, so its call site can move neither above the
 // Step call nor below the envelope.
 func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
-	recordStepHandoff(loomengine.LoomStepHandoff(c.location), loomengine.LoomStepHandoffLock(c.location), len(res.History), res.State)
+	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(res.History), res.State)
 }
 
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys
