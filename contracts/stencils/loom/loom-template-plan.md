@@ -18,7 +18,7 @@ Before doing anything else, load two scribe skills, in this order:
 2. `scribe:testing`
 
 `scribe:prose` comes first because it is the always-active writing discipline every other skill's output is judged against.
-`scribe:testing` is loaded second because the card-granularity rule and the test-coverage rule are testing judgments rather than prose judgments.
+`scribe:testing` is loaded second because the test-coverage rule is a testing judgment rather than a prose judgment.
 Both loads are best-effort — if a skill is unavailable, continue without it rather than treating an unresolvable skill name as an error.
 
 {{.pattern_directive}}
@@ -68,7 +68,7 @@ Each card is the smallest change that:
 1. **Builds on its own** — the project compiles (`go build ./...` or the repo's equivalent) immediately after the card's commit;
    never reference a symbol that no earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
-3. **Carries the coverage for the behavior it introduces** — the same card extends an existing test where one covers the surface, and adds a new test only for behavior no existing test covers (`PATTERN-test-economy`).
+3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it (`PATTERN-test-economy`).
    `verify:` commands are no substitute for test coverage;
    only pure refactors/renames may rely on existing tests instead.
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
