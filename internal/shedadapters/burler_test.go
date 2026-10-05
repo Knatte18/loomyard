@@ -495,6 +495,49 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 	}
 }
 
+func TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue(t *testing.T) {
+	tests := []struct {
+		name       string
+		decision   CirclingDecision
+		cause      EscalationCause
+		raw        string
+		wantExempt bool
+	}{
+		{name: "budget continue", decision: CirclingContinue, cause: EscalationBudget, wantExempt: true},
+		{name: "circling continue", decision: CirclingContinue, cause: EscalationCircling, wantExempt: false},
+		{name: "budget accept", decision: CirclingAccept, cause: EscalationBudget, wantExempt: false},
+		{name: "no decision", wantExempt: false},
+		{name: "malformed decision", raw: "not a decision file", wantExempt: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			writeJudgedRound(t, runDir, 1)
+			switch {
+			case tt.raw != "":
+				if err := os.WriteFile(circlingDecisionPath(runDir, 1), []byte(tt.raw), 0o644); err != nil {
+					t.Fatalf("WriteFile(decision): %v", err)
+				}
+			case tt.decision != "":
+				content, err := renderCirclingDecision(1, tt.decision, tt.cause, false)
+				if err != nil {
+					t.Fatalf("renderCirclingDecision: %v", err)
+				}
+				if err := os.WriteFile(circlingDecisionPath(runDir, 1), content, 0o644); err != nil {
+					t.Fatalf("WriteFile(decision): %v", err)
+				}
+			}
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking}}}
+			p := newBurlerProducer(t, runDir, runner)
+
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+			if ptr.BudgetExempt != tt.wantExempt {
+				t.Errorf("round 2 Stuck BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
+			}
+		})
+	}
+}
+
 func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 1)

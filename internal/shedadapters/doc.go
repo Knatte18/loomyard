@@ -42,6 +42,8 @@
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
 //     That Stuck is a routine hand-off to the segment's Bouncer via OnStuck, never a real stuck
 //     condition: a round producer has no independent notion of "finished," only the judge does.
+//     That Stuck is BudgetExempt when the previous round carries a recorded continue decision whose cause is budget,
+//     so the one more round a budget continue grants spends no budget; each further round needs its own decision.
 //     Every non-done shuttle outcome that survives the bounded retry -- OutcomeAsking, two
 //     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
