@@ -12,12 +12,15 @@
 // An absent argument keeps exact-key behaviour on every mapping.
 // For a declared path P:
 //
-//   - Reconcile carries the file's value at P whole, whatever its kind, so a legacy list survives, and reports nothing at or under P as added or removed.
+//   - Reconcile carries the file's value at P whole, whatever its kind,
+//     so a legacy list survives,
+//     and reports nothing at or under P as added or removed.
 //     When the file lacks P, the template's value stays and added reports P itself.
 //   - FillMissing skips a key at P that the file holds before any shape check, and appends a missing P whole.
 //   - MissingKeys counts a template leaf at or under P as satisfied by the presence of key P.
 //   - SetValues knows P.<name> for any name, sets it to the scalar value in the mapping at P, and appends the key when absent.
-//     A list at P is an error naming P; the list is never converted.
+//     A list at P is an error naming P;
+//     the list is never converted.
 //     Known lists each open map as P.<name>.
 //
 // Only declared paths change behaviour.

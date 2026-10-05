@@ -18,7 +18,8 @@ import (
 // A missing key is appended to its mapping after the file's own keys, in template order, as a deep copy of the template's nodes.
 // The reported path is the inserted key's own path, never its descendants.
 //
-// A key at a declared openMaps path that the file holds is skipped before any shape check, so a list at that path against a mapping template is no mismatch;
+// A key at a declared openMaps path that the file holds is skipped before any shape check,
+// so a list at that path against a mapping template is no mismatch;
 // a missing one is appended whole like any other key.
 //
 // Sequences are carried whole and never descended into, so a template key missing inside an element of a present list stays missing, for MissingKeys to report.

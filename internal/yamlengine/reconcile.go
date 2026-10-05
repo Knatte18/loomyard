@@ -41,7 +41,8 @@ func Reconcile(template, existing []byte, openMaps ...string) (merged []byte, ad
 		}
 	}
 
-	// A declared open map present in existing is carried whole before any leaf is collected, so both trees agree under it.
+	// A declared open map present in existing is carried whole before any leaf is collected,
+	// so both trees agree under it.
 	// One existing lacks is reported as the path itself, below.
 	absentOpenMaps := carryOpenMaps(&templateNode, &existingNode, openMaps)
 
