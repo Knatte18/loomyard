@@ -747,6 +747,43 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Reconcile_HubConfigPushFailureIsNonFatal removes the committed hub-wide configs and points
+// the board remote at an unreachable path, so the healing commit lands but its push fails; reconcile
+// must still exit 0 and report the failure under hub_config_detail, leaving the files healed on disk.
+func TestRunCLI_Reconcile_HubConfigPushFailureIsNonFatal(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	boardDir := h.BoardDir()
+
+	for _, module := range []string{"fabric", "board"} {
+		if err := os.Remove(configengine.ConfigFile(boardDir, module)); err != nil {
+			t.Fatalf("remove hub-wide %s config: %v", module, err)
+		}
+	}
+	gitkit.MustRun(t, boardDir, "git", "add", "-A")
+	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: drop hub-wide configs")
+	unreachable := filepath.ToSlash(filepath.Join(t.TempDir(), "does-not-exist.git"))
+	gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"reconcile"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed hub config push must be non-fatal)\noutput: %s", exitCode, out.String())
+	}
+
+	result := envelope.RequireOK(t, out.String())
+	detail, _ := result.Raw["hub_config_detail"].(string)
+	if !strings.Contains(detail, "hub-wide config committed but push failed") {
+		t.Errorf("hub_config_detail = %q; want it to report the committed-but-unpushed config", detail)
+	}
+	for _, module := range []string{"fabric", "board"} {
+		if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); err != nil {
+			t.Errorf("hub-wide %s config not healed: %v", module, err)
+		}
+	}
+}
+
 // TestRunCLI_ReadOnlyVerbsOmitMutationsKey asserts the four read-only verbs — list, pairs, status and
 // diff — never carry a "mutations" key in their envelope: nothing was mutated, so the which-verbs
 // scope decision is machine-held rather than a convention. All four are driven against one real,
