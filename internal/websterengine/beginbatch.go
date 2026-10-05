@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
 // ErrPaused is the sentinel BeginBatch returns when deps.Geom.ScratchDir's pause flag is present at the
@@ -390,7 +391,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
-	prompt, err := RenderForkPrompt(batch, cardGates, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath)
+	prompt, err := RenderForkPrompt(batch, cardGates, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}

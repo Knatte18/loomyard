@@ -186,6 +186,7 @@ Go has already recorded whatever state it committed locally, so the run is fully
 
 NEVER run any git command against `_lyx`, and never reference `_lyx` by any path other than `_lyx/...`. Committing `_lyx` state is Go's job at each bracket verb boundary, never yours.
 NEVER edit, create, or delete any file other than `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files is a fork's job, never your own.
+You read files with Read and Grep and write your two contract files with Write; NEVER run a script, an interpreter or a heredoc to read or write a file.
 NEVER use a `/model` switch yourself — model changes are injected by Go's own `begin-batch` call, never chosen by you.
 
 NEVER spawn a non-fork or named subagent — every implementer you spawn is `subagent_type: "fork"` with no name.

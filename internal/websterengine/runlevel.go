@@ -606,7 +606,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
 	// Merriam may write nothing but its two contract files.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
-	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, verifyFixNotePath)
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath)
 	if err != nil {
 		return RunResult{}, err
 	}
