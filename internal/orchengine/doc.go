@@ -75,7 +75,13 @@
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
 //
+// A hard or soft cycle also re-reads the context through the newest turn end once those gates pass, saves the new reading, and fires only if it still meets that trigger's threshold.
+// The transcript can change without a turn end, so the reading saved at the last turn end can be stale.
+// A re-read below the hard cap never turns a hard trigger into a soft firing on the same tick; the next tick re-evaluates from the saved reading.
+// A requested cycle is not re-read, so it can cycle a small session on the operator's say.
+//
 // A context reading that cannot be taken is unknown and never triggers a cycle by itself.
+// A fresh launch or adopt resets the reading to unknown until the new session's first turn end.
 // The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
 //
 // # The four-phase cycle

@@ -167,8 +167,11 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// LastHandoff, CycleCount, the context reading, CycleTrigger and LastDeferral survive.
+// The context reading is cleared, since it describes the previous session;
+// the new session's first turn end sets it again.
+// LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string) State {
+	s.LastContextTokens, s.LastContextKnown = 0, false
 	if s.Phase != "" && s.Phase != PhaseIdle {
 		s.LastAbortReason = fmt.Sprintf("fresh launch abandoned phase %s", s.Phase)
 	}

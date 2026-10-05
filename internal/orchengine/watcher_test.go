@@ -1148,3 +1148,63 @@ func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
 }
+
+// TestWatcher_StaleReadingIsRereadBeforeFiring replays the 2026-10-04 incident:
+// the transcript is compacted without a turn end, so the reading saved at the last turn end is stale.
+func TestWatcher_StaleReadingIsRereadBeforeFiring(t *testing.T) {
+	e := newSoftEnv(t)
+	e.cfg.ThresholdTokens, e.cfg.SoftThresholdTokens = 400000, 300000
+	e.w = e.newWatcher()
+	e.s.usage["a"] = 354815
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	if st := e.state(); st.LastContextTokens != 354815 {
+		t.Fatalf("saved reading = %d, want 354815", st.LastContextTokens)
+	}
+	e.s.usage["a"] = 13673
+	e.clock.advance(21 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 13673 || !st.LastContextKnown {
+		t.Errorf("state = %+v, want idle with the re-read 13673", st)
+	}
+}
+
+func TestWatcher_HardTriggerRereadBelowCapDoesNotFire(t *testing.T) {
+	e := newSoftEnv(t)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	// Below the hard cap but at the soft threshold: no soft firing on the same tick.
+	e.s.usage["a"] = 600
+	e.clock.advance(21 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 600 {
+		t.Errorf("state = %+v, want idle with reading 600", st)
+	}
+	// The next tick re-evaluates from the saved reading and fires soft.
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerSoft {
+		t.Errorf("state = %+v, want a soft handoff request on the next tick", st)
+	}
+}
+
+func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.usage["a"] = 10
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	asks := len(e.s.tokenAsks)
+	if err := RequestCycle(e.paths); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested {
+		t.Fatalf("state = %+v, want a requested handoff", st)
+	}
+	if len(e.s.tokenAsks) != asks {
+		t.Errorf("ContextTokens asked %d more times, want none", len(e.s.tokenAsks)-asks)
+	}
+}

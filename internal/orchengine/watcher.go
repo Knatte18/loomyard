@@ -156,10 +156,7 @@ func (w *Watcher) tick() (done bool, err error) {
 			if err != nil {
 				return false, err
 			}
-			st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
-			if !reading.Known {
-				st.LastContextTokens = 0
-			}
+			storeReading(&st, reading)
 			readingChanged = true
 		}
 	}
@@ -272,6 +269,14 @@ func (w *Watcher) markStuck(st State, reason string) error {
 	return w.save(st)
 }
 
+// storeReading records reading in st; an unknown reading is stored as zero tokens.
+func storeReading(st *State, reading shuttleengine.ContextReading) {
+	st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
+	if !reading.Known {
+		st.LastContextTokens = 0
+	}
+}
+
 func (w *Watcher) tickIdle(st State, now time.Time) error {
 	requested, err := CycleRequested(w.paths)
 	if err != nil {
@@ -308,6 +313,24 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	if !idle {
 		return nil
+	}
+	if trigger != TriggerRequested {
+		// The transcript can change without a turn end, so the saved reading may be stale: fire only on a fresh one.
+		reading, err := w.session.ContextTokens(*w.newest)
+		if err != nil {
+			return err
+		}
+		storeReading(&st, reading)
+		if err := w.save(st); err != nil {
+			return err
+		}
+		threshold := w.cfg.SoftThreshold()
+		if trigger == TriggerHard {
+			threshold = w.cfg.Threshold()
+		}
+		if !st.LastContextKnown || st.LastContextTokens < threshold {
+			return nil
+		}
 	}
 
 	path := NewHandoffPath(w.paths, now)
@@ -463,10 +486,7 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
-		if !reading.Known {
-			st.LastContextTokens = 0
-		}
+		storeReading(&st, reading)
 		return w.toIdle(st, "")
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
