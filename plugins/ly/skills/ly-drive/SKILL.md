@@ -52,6 +52,8 @@ A `done` stop whose envelope reports `friction: failed` is also reported to the 
 `blocked` and `paused` are handed back with the envelope's `reason` and are never repaired: a Go gate concluded a human is needed.
 `awaiting` is handed back the same way, as a planned hand-off with the envelope's `reason`: the run waits on a person by design, so the report words it as a hand-off and never as a failure,
 and nothing is repaired.
+An `awaiting` envelope that carries a non-empty `parent_notice` is relayed to the parent as `## Notifying the parent` describes.
+An `awaiting` envelope without one keeps the hand-off above.
 A run halted at the gate re-runs only the gate on resume,
 so a fix committed by hand outside the run is pushed by the operator before `approve`, or goes through `reject` instead.
 
@@ -220,7 +222,9 @@ Escalations also notify the parent session, as `## Notifying the parent` describ
 
 At every escalation, after writing the stop report, send the parent session one short SendMessage when `LYX_PARENT` is set and non-empty.
 Address it to the name `LYX_PARENT` holds, and name the run-id and the stop report's path and nothing more.
-When `LYX_PARENT` is unset or empty, or the send fails, the stop report alone is the escalation;
+At an `awaiting` stop whose envelope carries a non-empty `parent_notice`, send that notice verbatim instead of this generic line, and record the send in the stop report.
+The notice is the whole message: add nothing to it, and branch on the envelope field alone.
+When `LYX_PARENT` is unset or empty, or the send fails, the stop report alone is the escalation, with the envelope's `reason`;
 record a failed send as a line in the report rather than retrying it.
 A stop at `done` sends nothing, since nothing awaits a decision, except a `done` stop whose envelope reports `friction: failed`: it notifies the parent as an escalation does, naming the run-id and the stop report.
 

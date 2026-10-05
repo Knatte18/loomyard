@@ -30,6 +30,8 @@
 // An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
 // "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
 // resume re-calls the same producer, exactly as it does after a blocked halt.
+// An Awaiting outcome may also carry OutputPointer.ParentNotice, a one-line notice for the run's parent:
+// Shed persists it as the status file's optional parent_notice and returns it on StepResult, writes it on no other outcome, and clears it on the next write.
 // The persisted state vocabulary is running, paused, done, blocked, failed and awaiting.
 // A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position
 // (state: "done"), and a non-empty value jumps to the Name it names with no positional fallback of

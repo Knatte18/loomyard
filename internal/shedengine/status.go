@@ -84,7 +84,10 @@ type Status struct {
 	Error           string `json:"error"`
 	// Transient is the TransientClass of the failure that put the run in StateFailed, empty on every other write.
 	// A status file written before the field existed decodes as empty.
-	Transient      string         `json:"transient,omitempty"`
+	Transient string `json:"transient,omitempty"`
+	// ParentNotice is the one-line notice an awaiting producer handed for the run's parent, empty on every other write.
+	// A status file written before the field existed decodes as empty.
+	ParentNotice   string         `json:"parent_notice,omitempty"`
 	PauseRequested bool           `json:"pause_requested"`
 	Activity       Activity       `json:"activity"`
 	History        []HistoryEntry `json:"history"`

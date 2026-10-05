@@ -40,6 +40,7 @@ type bouncerFixtureSpec struct {
 	clock      func() time.Time
 	nestedRun  bool
 	bare       bool
+	escalation bool
 }
 
 type bouncerFixtureOpt func(*bouncerFixtureSpec)
@@ -89,6 +90,11 @@ func withNestedRunDir() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.nestedRun = true }
 }
 
+// withEscalationInputs sets the slug, worktree root and decision record path the escalation brief render needs, so an escalation renders its brief and notice.
+func withEscalationInputs() bouncerFixtureOpt {
+	return func(s *bouncerFixtureSpec) { s.escalation = true }
+}
+
 // withBareConfig leaves Model, Effort, Version and Now unset, writes the bare rubric body, and defaults the shuttle to an empty shedfake.Shuttle.
 func withBareConfig() bouncerFixtureOpt {
 	return func(s *bouncerFixtureSpec) { s.bare = true }
@@ -134,6 +140,13 @@ func newBouncerFixture(t *testing.T, opts ...bouncerFixtureOpt) *bouncerFixture 
 		RubricStencil: spec.rubricName,
 		SpecsDir:      spec.specsDir,
 		Shuttle:       spec.shuttle,
+
+		CirclingCheckpoint: 1,
+	}
+	if spec.escalation {
+		cfg.Slug = "my-task"
+		cfg.WorktreeRoot = filepath.Join(artifactDir, "worktree")
+		cfg.DecisionRecordPath = filepath.Join(artifactDir, "decision-record.md")
 	}
 	switch {
 	case spec.clock != nil:

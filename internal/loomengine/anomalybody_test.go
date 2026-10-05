@@ -5,26 +5,24 @@
 package loomengine
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// allKinds lists every AnomalyKind, used to iterate the "contains slug and parent" and
-// "no recurring-finding leakage" assertions across all five kinds.
+// allKinds lists every AnomalyKind, used to iterate the "contains slug and parent" assertion
+// across all four kinds.
 var allKinds = []AnomalyKind{
 	AnomalyCrashResume,
 	AnomalyEscalation,
 	AnomalyBudgetExhausted,
 	AnomalyProducerFailure,
-	AnomalyRecurringFinding,
 }
 
 // anomalyOfKind returns a fully-populated Anomaly of the given kind for body-rendering tests.
 func anomalyOfKind(kind AnomalyKind) Anomaly {
-	a := Anomaly{
+	return Anomaly{
 		Kind:            kind,
 		Title:           "loom anomaly: " + string(kind) + " — loom-contracts — Loom-Preflight#0",
 		Slug:            "loom-contracts",
@@ -36,13 +34,6 @@ func anomalyOfKind(kind AnomalyKind) Anomaly {
 			{Producer: "Discussion-Review", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"},
 		},
 	}
-	if kind == AnomalyRecurringFinding {
-		a.BouncerRow = "Discussion-Review"
-		a.LedgerKey = "finding-a"
-		a.LedgerRounds = []int{1, 2, 3}
-		a.LedgerStatus = "open"
-	}
-	return a
 }
 
 func TestRenderAnomalyBody_ContainsSlugAndParent(t *testing.T) {
@@ -78,41 +69,6 @@ func TestRenderAnomalyBody_HaltKindContainsStateProducerAndError(t *testing.T) {
 	}
 }
 
-func TestRenderAnomalyBody_RecurringFindingSection(t *testing.T) {
-	recurring := anomalyOfKind(AnomalyRecurringFinding)
-	body := RenderAnomalyBody(recurring)
-
-	if !strings.Contains(body, recurring.BouncerRow) {
-		t.Errorf("recurring-finding body missing Bouncer row: %s", body)
-	}
-	if !strings.Contains(body, recurring.LedgerKey) {
-		t.Errorf("recurring-finding body missing ledger key: %s", body)
-	}
-	for _, round := range recurring.LedgerRounds {
-		if !strings.Contains(body, strconv.Itoa(round)) {
-			t.Errorf("recurring-finding body missing round %d: %s", round, body)
-		}
-	}
-	if !strings.Contains(body, recurring.LedgerStatus) {
-		t.Errorf("recurring-finding body missing ledger status: %s", body)
-	}
-
-	for _, kind := range allKinds {
-		if kind == AnomalyRecurringFinding {
-			continue
-		}
-		t.Run("NoLeakage_"+string(kind), func(t *testing.T) {
-			body := RenderAnomalyBody(anomalyOfKind(kind))
-			if strings.Contains(body, recurring.BouncerRow) && strings.Contains(body, recurring.LedgerKey) {
-				t.Errorf("body for non-recurring kind %q unexpectedly carries recurring-finding fields: %s", kind, body)
-			}
-			if strings.Contains(body, "Recurring finding:") {
-				t.Errorf("body for non-recurring kind %q unexpectedly renders the recurring-finding heading: %s", kind, body)
-			}
-		})
-	}
-}
-
 func TestRenderAnomalyBody_HistoryRows(t *testing.T) {
 	a := anomalyOfKind(AnomalyEscalation)
 	a.History = []shedengine.HistoryEntry{
@@ -137,7 +93,7 @@ func TestRenderAnomalyBody_EmptyHistory(t *testing.T) {
 }
 
 func TestRenderAnomalyBody_Deterministic(t *testing.T) {
-	a := anomalyOfKind(AnomalyRecurringFinding)
+	a := anomalyOfKind(AnomalyEscalation)
 	first := RenderAnomalyBody(a)
 	second := RenderAnomalyBody(a)
 	if first != second {

@@ -52,6 +52,7 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 		"facts_path":      "/abs/round-1-facts.md",
 		"round":           "1",
 		"next_round":      "2",
+		"decision_rule":   decisionRuleMarker(1, 3),
 		"report_path":     "/abs/round-1-report.md",
 		"previous_ledger": "(none)",
 		"verdict_path":    "/abs/round-1-bouncer-verdict.md",
@@ -77,6 +78,81 @@ func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
 				assertExcludeLensesText(t, string(prompt), clusterExcludes)
 			})
 		}
+	}
+}
+
+// decisionRuleSection returns the part of a rendered judge prompt between its Decision rule and Output files headings.
+func decisionRuleSection(t *testing.T, prompt string) string {
+	t.Helper()
+
+	_, rest, ok := strings.Cut(prompt, "## Decision rule")
+	if !ok {
+		t.Fatal("judge prompt has no Decision rule heading")
+	}
+	section, _, ok := strings.Cut(rest, "## Output files")
+	if !ok {
+		t.Fatal("judge prompt has no Output files heading after the Decision rule")
+	}
+	return section
+}
+
+func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		round        int
+		checkpoint   int
+		wantCircling bool
+	}{
+		{"below the checkpoint", 1, 2, false},
+		{"at the checkpoint", 2, 2, true},
+		{"above the checkpoint", 5, 2, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decisionRuleMarker(tt.round, tt.checkpoint)
+			if has := strings.Contains(got, "CIRCLING"); has != tt.wantCircling {
+				t.Errorf("decisionRuleMarker(%d, %d) names CIRCLING = %v; want %v", tt.round, tt.checkpoint, has, tt.wantCircling)
+			}
+			for _, verdict := range []string{"`CONVERGED`", "`CONTINUE`"} {
+				if !strings.Contains(got, verdict) {
+					t.Errorf("decisionRuleMarker(%d, %d) lacks %s; want both non-circling verdicts always offered", tt.round, tt.checkpoint, verdict)
+				}
+			}
+			if tt.wantCircling && !strings.Contains(got, "never circling") {
+				t.Errorf("decisionRuleMarker(%d, %d) lacks the rising-count caveat", tt.round, tt.checkpoint)
+			}
+		})
+	}
+}
+
+func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		checkpoint   int
+		wantCircling bool
+	}{
+		{"below the checkpoint", 2, false},
+		{"at the checkpoint", 1, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			cfg := newBouncerFixture(t).Config
+			cfg.Shuttle = shuttle
+			cfg.CirclingCheckpoint = tt.checkpoint
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+			report := cfg.RunDir + "/" + cfg.ReportName(1)
+			if err := os.WriteFile(report, []byte("# Round 1 report\n\nA finding.\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", report, err)
+			}
+
+			shedfake.CallOK(t, b)
+			section := decisionRuleSection(t, shuttle.GotSpec.Prompt)
+			if has := strings.Contains(section, "CIRCLING"); has != tt.wantCircling {
+				t.Errorf("rendered decision rule names CIRCLING = %v; want %v\n%s", has, tt.wantCircling, section)
+			}
+		})
 	}
 }
 

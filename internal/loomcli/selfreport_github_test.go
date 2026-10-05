@@ -28,7 +28,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -88,28 +87,23 @@ func engineBoundaryFixture(t *testing.T) (*selfreportTestFixture, selfreportDeps
 // TestDetectAndFileAnomalies_EngineBoundary_RequestShapes asserts, with selfreportengine.CreateIssue
 // itself as the filing seam: one issue-create request per detected anomaly; each request's title
 // matches the deterministic shape for its kind; each request's body contains the slug, and for a
-// halt kind the halt reason, and for a recurring finding the ledger key and every element of its
-// rounds list; and each request's label list is exactly the engine's own default.
+// halt kind the halt reason; and each request's label list is exactly the engine's own default.
 func TestDetectAndFileAnomalies_EngineBoundary_RequestShapes(t *testing.T) {
 	var captured []githubRequestCapture
 	server := newGitHubIssueServer(t, http.StatusCreated, `{"html_url":"https://example.invalid/issues/1","number":1}`, &captured)
 	installGitHubClientForDrive(t, server.URL)
 
-	f, deps := engineBoundaryFixture(t)
-	deps = withLedgerSeams(deps, f, map[string]ledgerFixture{
-		"/run/round-3-bouncer-ledger.md": {round: 3, entries: []shedadapters.LedgerEntry{{Key: "finding-a", Rounds: []int{1, 2, 3}, Status: "open"}}},
-	})
+	_, deps := engineBoundaryFixture(t)
 	deps.Entry = crashResumeEntry()
 
 	st := haltStatus()
-	st.History = append(st.History, shedengine.HistoryEntry{Producer: "Discussion-Bouncer", Outcome: shedengine.Stuck, Output: "/run/round-3-bouncer-ledger.md", At: "t9"})
 	st.Product = productJSON(t, loomengine.Status{Slug: "a-task", Parent: "main"})
 	writeSelfreportStatus(t, deps.StatusPath, deps.StatusLockPath, st)
 
 	detectAndFileAnomalies(deps)
 
-	if len(captured) != 3 {
-		t.Fatalf("request count = %d; want 3 (crash-resume, producer-hard-failure, recurring-finding): %+v", len(captured), captured)
+	if len(captured) != 2 {
+		t.Fatalf("request count = %d; want 2 (crash-resume, producer-hard-failure): %+v", len(captured), captured)
 	}
 	for _, req := range captured {
 		if req.path != "/repos/Knatte18/loomyard/issues" {
@@ -133,15 +127,8 @@ func TestDetectAndFileAnomalies_EngineBoundary_RequestShapes(t *testing.T) {
 			t.Errorf("request labels = %v; want exactly the engine's default [\"bug\"]", labelsRaw)
 		}
 
-		switch {
-		case strings.Contains(title, "producer-hard-failure"):
-			if !strings.Contains(body, "boom") {
-				t.Errorf("producer-hard-failure body = %q; want it to carry the halt reason %q", body, "boom")
-			}
-		case strings.Contains(title, "recurring-finding"):
-			if !strings.Contains(body, "finding-a") || !strings.Contains(body, "[1 2 3]") {
-				t.Errorf("recurring-finding body = %q; want it to carry the ledger key and full rounds list", body)
-			}
+		if strings.Contains(title, "producer-hard-failure") && !strings.Contains(body, "boom") {
+			t.Errorf("producer-hard-failure body = %q; want it to carry the halt reason %q", body, "boom")
 		}
 	}
 }

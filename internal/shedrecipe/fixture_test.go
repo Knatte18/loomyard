@@ -81,6 +81,9 @@ func newTestEnv(t *testing.T) Env {
 		CommitPlan: func() error { return nil },
 		Slug:       "test-slug",
 		ScratchDir: mustMkdir("scratch"),
+
+		ReviewCirclingCheckpoint: 3,
+
 		CreateWorktree: func(context.Context) error {
 			return nil
 		},

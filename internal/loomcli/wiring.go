@@ -285,6 +285,13 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 	return paths
 }
 
+// commitDiscussion commits the discussion artifacts of location's worktree through the fabric.
+// It is the body of the CommitDiscussion seam, shared with `lyx loom decision add`, which commits the record it appends to.
+func commitDiscussion(location *lyxcwd.Location) error {
+	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+	return err
+}
+
 // newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
 // The reviewer is the Parent hubgeom.ResolveParent returns, empty when the run has no parent;
 // a resolver error is a wiring error.
@@ -552,10 +559,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// sha, returning only the error -- and this idempotence now covers two callers rather than
 		// one, since the Discussion-Bouncer row's approved settle reaches this same closure through
 		// the row's commit_seam: discussion config key.
-		CommitDiscussion: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
-		},
+		CommitDiscussion: func() error { return commitDiscussion(location) },
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
@@ -668,7 +672,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
-		SegmentBounces: segmentBounces(statusPath, statusLockPath),
+		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
+
+		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModel:   reviewSettings.Model,
 		ReviewEffort:  reviewSettings.Effort,
@@ -729,7 +736,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 // segmentBounces returns the Env.SegmentBounces seam over the status file at statusPath, locked by statusLockPath.
 // The history is read on each call, never at wire time, because it grows during the run; an absent status file reports not-in-segment.
-func segmentBounces(statusPath, statusLockPath string) func(row string) (int, int, bool, error) {
+// reviewMaxBounces is the budget loomrecipe.New applies to the review rows, so the reported budget is the one Shed blocks on.
+func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) func(row string) (int, int, bool, error) {
 	return func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 		// A run directory not yet created fails the lock open with not-exist; that is an absent status file too.
@@ -739,7 +747,7 @@ func segmentBounces(statusPath, statusLockPath string) func(row string) (int, in
 		if err != nil || !found {
 			return 0, 0, false, nil
 		}
-		routing, err := loomrecipe.Routing()
+		routing, err := loomrecipe.Routing(reviewMaxBounces)
 		if err != nil {
 			return 0, 0, false, err
 		}

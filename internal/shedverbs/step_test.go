@@ -48,6 +48,18 @@ func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
 	}
 }
 
+// TestStepEnvelope_ParentNoticeConditional asserts parent_notice is present only when the step result carries one.
+func TestStepEnvelope_ParentNoticeConditional(t *testing.T) {
+	with := StepEnvelope(shedengine.StepResult{State: shedengine.StateAwaiting, ParentNotice: "settle it"}, "", "", "", StepLocations{}, nil)
+	if got := with["parent_notice"]; got != "settle it" {
+		t.Errorf("parent_notice = %v; want %q", got, "settle it")
+	}
+	without := StepEnvelope(shedengine.StepResult{State: shedengine.StateAwaiting}, "", "", "", StepLocations{}, nil)
+	if _, ok := without["parent_notice"]; ok {
+		t.Errorf("parent_notice present without a notice: %v", without)
+	}
+}
+
 // TestStepEnvelope_ContinueDerivedFromState asserts continue is true only for StateRunning.
 func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
 	tests := []struct {

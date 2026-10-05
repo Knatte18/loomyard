@@ -37,18 +37,32 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 // from the template's key set (which configengine.Load is strict about).
 func writeLoomConfigWithKey(t *testing.T, baseDir, key, value string) {
 	t.Helper()
+	writeLoomConfigWithKeys(t, baseDir, map[string]string{key: value})
+}
+
+// writeLoomConfigWithKeys seeds baseDir's loom.yaml with the template's text and each key in values replaced by its value.
+func writeLoomConfigWithKeys(t *testing.T, baseDir string, values map[string]string) {
+	t.Helper()
 	var b strings.Builder
-	replaced := false
+	replaced := map[string]bool{}
 	for _, line := range strings.Split(ConfigTemplate(), "\n") {
-		if strings.HasPrefix(line, key+":") {
-			b.WriteString(key + ": " + value + "\n")
-			replaced = true
-			continue
+		matched := false
+		for key, value := range values {
+			if strings.HasPrefix(line, key+":") {
+				b.WriteString(key + ": " + value + "\n")
+				replaced[key] = true
+				matched = true
+				break
+			}
 		}
-		b.WriteString(line + "\n")
+		if !matched {
+			b.WriteString(line + "\n")
+		}
 	}
-	if !replaced {
-		t.Fatalf("key %q not present in ConfigTemplate(); the fixture would silently test nothing", key)
+	for key := range values {
+		if !replaced[key] {
+			t.Fatalf("key %q not present in ConfigTemplate(); the fixture would silently test nothing", key)
+		}
 	}
 	seedLoomConfig(t, baseDir, b.String())
 }
@@ -400,6 +414,85 @@ func TestLoadConfig_RejectsParentReviewWaitBelowOne(t *testing.T) {
 				t.Errorf("LoadConfig() error = %q; want it to name the way forward %q", err.Error(), "attempts: 0")
 			}
 		})
+	}
+}
+
+// TestLoadConfig_ReviewKeysDefaultWhenAbsent verifies a loom.yaml without the review checkpoint and budget keys loads their template defaults.
+func TestLoadConfig_ReviewKeysDefaultWhenAbsent(t *testing.T) {
+	baseDir := t.TempDir()
+	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+discussion_timeout_min: 480
+discussion_interactive: false
+plan: opus[effort=high]
+plan_timeout_min: 120
+review: opus[effort=high]
+review_timeout_min: 240
+`)
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.ReviewCirclingCheckpoint != 3 {
+		t.Errorf("cfg.ReviewCirclingCheckpoint = %d; want %d", cfg.ReviewCirclingCheckpoint, 3)
+	}
+	if cfg.ReviewMaxBounces != 5 {
+		t.Errorf("cfg.ReviewMaxBounces = %d; want %d", cfg.ReviewMaxBounces, 5)
+	}
+}
+
+// TestLoadConfig_ReviewKeysExplicit verifies explicit checkpoint and budget values load verbatim.
+func TestLoadConfig_ReviewKeysExplicit(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKeys(t, baseDir, map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7"})
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
+	}
+	if cfg.ReviewCirclingCheckpoint != 2 {
+		t.Errorf("cfg.ReviewCirclingCheckpoint = %d; want %d", cfg.ReviewCirclingCheckpoint, 2)
+	}
+	if cfg.ReviewMaxBounces != 7 {
+		t.Errorf("cfg.ReviewMaxBounces = %d; want %d", cfg.ReviewMaxBounces, 7)
+	}
+}
+
+// TestLoadConfig_RejectsReviewKeysBelowOne verifies 0 and negative values of either key are refused, naming that key.
+func TestLoadConfig_RejectsReviewKeysBelowOne(t *testing.T) {
+	for _, key := range []string{"review_circling_checkpoint", "review_max_bounces"} {
+		for _, value := range []string{"0", "-1"} {
+			t.Run(key+"="+value, func(t *testing.T) {
+				dir := t.TempDir()
+				writeLoomConfigWithKey(t, dir, key, value)
+
+				_, err := LoadConfig(dir, "loom")
+				if err == nil {
+					t.Fatalf("LoadConfig() error = nil; want a refusal for %s %s", key, value)
+				}
+				if !strings.Contains(err.Error(), key) {
+					t.Errorf("LoadConfig() error = %q; want it to name the key %q", err.Error(), key)
+				}
+				if !strings.Contains(err.Error(), "set it to a positive integer in loom.yaml") {
+					t.Errorf("LoadConfig() error = %q; want it to name the way forward", err.Error())
+				}
+			})
+		}
+	}
+}
+
+// TestLoadConfig_CheckpointAboveBudgetLoads verifies a checkpoint larger than the budget is accepted:
+// such a run never rules CIRCLING and reaches the budget escalation instead.
+func TestLoadConfig_CheckpointAboveBudgetLoads(t *testing.T) {
+	baseDir := t.TempDir()
+	writeLoomConfigWithKeys(t, baseDir, map[string]string{"review_circling_checkpoint": "9", "review_max_bounces": "2"})
+
+	cfg, err := LoadConfig(baseDir, "loom")
+	if err != nil {
+		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a checkpoint above the budget", baseDir, err)
+	}
+	if cfg.ReviewCirclingCheckpoint != 9 || cfg.ReviewMaxBounces != 2 {
+		t.Errorf("cfg = checkpoint %d, budget %d; want 9 and 2", cfg.ReviewCirclingCheckpoint, cfg.ReviewMaxBounces)
 	}
 }
 

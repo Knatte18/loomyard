@@ -160,6 +160,7 @@ var wordingClaims = []stencilClaims{
 			"you copy a line verbatim out of a quarry answer"),
 		wantNone("delta and name are pipeline-internal and are never named to the planner", "lyx quarry delta", "lyx quarry name"),
 		wantAll("the closing step runs validate-plan until it exits 0", "lyx loom validate-plan", "re-run it until it exits 0"),
+		wantAll("a scope addition after the Discussion is recorded with decision add, never written as an operator addition", "lyx loom decision add", "`--by`", "Never write such an addition into the plan as an operator addition"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
@@ -231,9 +232,8 @@ var wordingClaims = []stencilClaims{
 		{must: "Read the round facts at `{{.facts_path}}`", why: "the judge reads the facts file first"},
 		{must: "Read the latest review at `{{.report_path}}`", why: "the judge reads the latest review"},
 		{must: "Read the previous ledger at `{{.previous_ledger}}`", why: "the judge reads the previous ledger"},
-		{must: "gating counts flat or rising across the recent rounds", why: "the first no-progress signal for circling"},
-		{must: "gating findings on recurring or reopened keys", why: "the second no-progress signal for circling"},
-		{must: "A parse-error row for the latest round means `CONTINUE`", why: "a parse error is never convergence evidence"},
+		{must: "{{.decision_rule}}", why: "the decision rule is Go-held so CIRCLING is offered only from the checkpoint round on"},
+		{must: "legal only where the decision rule", why: "a CIRCLING verdict is legal only where the decision rule offers it"},
 		{must: "counts as a gating finding when the latest review's finding", why: "a recurring key takes its class from the latest review"},
 		{must: "Never relabel a BLOCKING finding downward", why: "the departure bound protects BLOCKING findings"},
 		{must: "Name the ID of every departed finding", why: "every departure is named in the rationale"},
@@ -241,6 +241,17 @@ var wordingClaims = []stencilClaims{
 		{must: "is no convergence signal", why: "the review's own top-level verdict does not converge the loop"},
 		{mustNot: "{{.artifacts}}", why: "the judge no longer reads the artifacts"},
 	}, focusEntryClaims()...)},
+	{"bouncer-template-escalation.md", BouncerTemplateEscalation, joinClaims(
+		wantAll("the brief tells the fork to record design calls and the decision and to resume the run",
+			"lyx loom decision add", "lyx loom circling accept", "lyx loom circling continue", "lyx loom start"),
+		wantAll("the brief names both causes", "`circling`", "`budget`"),
+		wantAll("the brief says accept passes the segment unconverged", "recorded as unconverged"),
+		wantAll("a fork that cannot settle the question records nothing and reports back", "record nothing", "The run stays `awaiting`"),
+	)},
+	{"bouncer-template-parent-notice.md", BouncerTemplateParentNotice, joinClaims(
+		wantAll("the notice points the parent at the brief", "{{.brief_path}}"),
+		wantNone("the notice interpolates no judge, review or ledger text", "{{.review_path}}", "{{.ledger_path}}", "{{.verdict_path}}"),
+	)},
 	{"webster-body-implementer.md", WebsterBodyImplementer, joinClaims(
 		[]claim{{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"}},
 		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:", "deviations:"),

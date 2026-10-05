@@ -59,6 +59,13 @@ func TestDriveSkill_NamesFrictionFailed(t *testing.T) {
 	}
 }
 
+// TestDriveSkill_NamesParentNotice pins the relay of an `awaiting` stop's `parent_notice` to the parent.
+func TestDriveSkill_NamesParentNotice(t *testing.T) {
+	if !strings.Contains(readDriveSkill(t), "`parent_notice`") {
+		t.Error("SKILL.md does not contain `parent_notice`")
+	}
+}
+
 // TestDriveSkill_NamesNoLoomRow pins the skill's own claim that it carries no phase knowledge: no row name in loomshed.InterruptPolicies appears as a whole word.
 func TestDriveSkill_NamesNoLoomRow(t *testing.T) {
 	body := readDriveSkill(t)

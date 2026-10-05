@@ -8,7 +8,7 @@ import "testing"
 
 // TestRouting_ProgressAtEveryRowMapsToAStep asserts every row of the real recipe maps to a step.
 func TestRouting_ProgressAtEveryRowMapsToAStep(t *testing.T) {
-	routing, err := Routing()
+	routing, err := Routing(5)
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}
@@ -25,7 +25,7 @@ func TestRouting_ProgressAtEveryRowMapsToAStep(t *testing.T) {
 // TestRouting_ProgressAtReviewSegmentsShareAStep asserts both rows of each review segment map to
 // the same step, and a Burler reports its segment's step name.
 func TestRouting_ProgressAtReviewSegmentsShareAStep(t *testing.T) {
-	routing, err := Routing()
+	routing, err := Routing(5)
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}
@@ -46,7 +46,7 @@ func TestRouting_ProgressAtReviewSegmentsShareAStep(t *testing.T) {
 
 // TestRouting_ProgressAtFrictionReflectIsLast asserts Friction-Reflect is the last main-line step.
 func TestRouting_ProgressAtFrictionReflectIsLast(t *testing.T) {
-	routing, err := Routing()
+	routing, err := Routing(5)
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}

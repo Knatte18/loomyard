@@ -40,6 +40,9 @@ type OutputPointer struct {
 	// error, and on an Awaiting verdict, persisting it as the awaiting halt's error; every other
 	// arm ignores it. The empty value means "none supplied".
 	Reason string
+	// ParentNotice is advisory text for the run's parent.
+	// Shed reads it only on an Awaiting verdict, persisting it on one line on the status file and returning it on the step result, and never routes on it.
+	ParentNotice string
 	// BudgetExempt marks a Stuck verdict as not counted against its row's bounce budget, for a producer whose Stuck is a wait with its own bound.
 	// Shed reads it only on a Stuck verdict and ignores it on every other outcome.
 	BudgetExempt bool

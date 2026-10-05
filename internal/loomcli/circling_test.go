@@ -3,6 +3,7 @@ package loomcli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,20 +22,27 @@ type circlingFake struct {
 	found     bool
 	statusErr error
 	round     int
+	cause     shedadapters.EscalationCause
 	recordErr error
+	// subdirErr, when set, makes the Bouncer lookup fail.
+	subdirErr error
 	records   []string
 }
 
 func (f *circlingFake) deps() circlingDeps {
+	bouncerSubdir := loomrecipe.BouncerRunSubdir
+	if f.subdirErr != nil {
+		bouncerSubdir = func(string) (string, bool, error) { return "", false, f.subdirErr }
+	}
 	return circlingDeps{
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
-		bouncerSubdir: loomrecipe.BouncerRunSubdir,
-		record: func(subdir string, d shedadapters.CirclingDecision) (int, error) {
+		bouncerSubdir: bouncerSubdir,
+		record: func(subdir string, d shedadapters.CirclingDecision) (int, shedadapters.EscalationCause, error) {
 			if f.recordErr != nil {
-				return 0, f.recordErr
+				return 0, "", f.recordErr
 			}
 			f.records = append(f.records, subdir+":"+string(d))
-			return f.round, nil
+			return f.round, f.cause, nil
 		},
 	}
 }
@@ -46,14 +54,14 @@ func awaitingAt(row string) shedengine.Status {
 func TestCirclingVerb_Records(t *testing.T) {
 	for _, d := range []shedadapters.CirclingDecision{shedadapters.CirclingAccept, shedadapters.CirclingContinue} {
 		t.Run(string(d), func(t *testing.T) {
-			f := &circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, round: 3}
+			f := &circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, round: 3, cause: shedadapters.EscalationBudget}
 			var out bytes.Buffer
 			if code := circlingVerb(&out, "task-a", f.deps(), d); code != 0 {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 			data := envelope.RequireOK(t, out.String()).Raw
-			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["resume"] != "lyx loom start" {
-				t.Fatalf("envelope = %v; want slug, decision, round 3 and the resume hint", data)
+			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["cause"] != "budget" || data["resume"] != "lyx loom start" {
+				t.Fatalf("envelope = %v; want slug, decision, round 3, cause budget and the resume hint", data)
 			}
 			if want := "plan:" + string(d); len(f.records) != 1 || f.records[0] != want {
 				t.Fatalf("records = %v; want [%s]", f.records, want)
@@ -69,9 +77,13 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		want string
 	}{
 		{"no status file", circlingFake{}, "no status file"},
+		{"status read failure", circlingFake{statusErr: errors.New("boom")}, "re-run the verb"},
+		{"bouncer lookup failure", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, subdirErr: errors.New("recipe broken")}, "rebuild or reinstall lyx"},
+		{"record I/O failure", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, recordErr: errors.New("write circling decision: disk full")}, "re-run the verb"},
 		{"running run", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, "not awaiting"},
 		{"awaiting at PR-Gate", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, "not a review segment's Bouncer row"},
-		{"latest verdict not CIRCLING", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotCircling}, "is not CIRCLING"},
+		{"latest round not escalated", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, "is not escalated"},
+		{"malformed escalation record", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, "fix or delete the named escalation file"},
 		{"second decision", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, "already recorded"},
 	}
 	for _, tt := range tests {
@@ -90,15 +102,6 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCirclingVerb_StatusReadFailure(t *testing.T) {
-	f := &circlingFake{statusErr: errors.New("boom")}
-	var out bytes.Buffer
-	if code := circlingVerb(&out, "task-a", f.deps(), shedadapters.CirclingContinue); code != 1 {
-		t.Fatalf("exit = %d; want 1", code)
-	}
-	envelope.RequireErr(t, out.String(), "boom")
 }
 
 func TestCirclingStatusReader(t *testing.T) {

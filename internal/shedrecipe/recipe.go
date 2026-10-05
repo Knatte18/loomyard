@@ -61,7 +61,7 @@ type Env struct {
 	// BurlerRound.
 	RunRoot string
 	// DecisionRecordPath is the told decision record path, read by the gate resolver's "discussion"
-	// gate.
+	// gate and by the Bouncer entry, which names it in the escalation brief.
 	DecisionRecordPath string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string
@@ -80,6 +80,14 @@ type Env struct {
 	ReviewEffort  string
 	ReviewVersion string
 	ReviewTimeout time.Duration
+
+	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
+	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
+	ReviewMaxBounces int
+
+	// ReviewCirclingCheckpoint is the run-wide first round a Bouncer's judge may rule CIRCLING in.
+	// The Bouncer entry requires it positive and passes it to shedadapters.BouncerConfig.CirclingCheckpoint.
+	ReviewCirclingCheckpoint int
 
 	// JudgeModel, JudgeEffort and JudgeVersion are the run-wide default every Bouncer row falls back to when its own model/effort/version key is absent.
 	// BurlerRound rows keep reading the Review* fields above.

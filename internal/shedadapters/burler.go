@@ -445,7 +445,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
 
 		case shuttleengine.OutcomeAsking:
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: shuttle run is asking: %s", p.name, burlerEngineLabel, round, attemptToken, result.LastAssistantMessage))
@@ -469,6 +469,22 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerEngineLabel, round)
+}
+
+// roundBudgetExempt reports whether the Stuck that hands completed round N back to the Bouncer is exempt from the bounce budget:
+// round N-1 carries a recorded continue decision whose cause is budget, which grants exactly this one more round.
+// The exemption is tied to that one decision file, so each further round needs its own decision.
+// A malformed decision file is warned about and grants no exemption.
+func (p *BurlerProducer) roundBudgetExempt(round int) bool {
+	if round < 2 {
+		return false
+	}
+	decision, cause, _, exists, err := readCirclingDecision(p.runDir, round-1)
+	if err != nil {
+		logger.Warn("shedadapters: unreadable circling decision; the round's Stuck stays counted against the budget", "producer", p.name, "engine", burlerEngineLabel, "round", round-1, "error", err)
+		return false
+	}
+	return exists && decision == CirclingContinue && cause == EscalationBudget
 }
 
 // probeLiveRound asks the attach seam whether a still-live round is already writing this round's own
@@ -534,7 +550,7 @@ func (p *BurlerProducer) probeLiveRound(
 		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true
 		}
-		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate)}, nil, true
+		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil, true
 
 	case shuttleengine.OutcomeAsking:
 		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run is asking: %s", p.name, burlerEngineLabel, round, result.LastAssistantMessage))

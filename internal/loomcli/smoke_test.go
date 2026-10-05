@@ -38,6 +38,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -295,6 +296,8 @@ func probeReedEngine(t *testing.T, loc *lyxcwd.Location) *reedengine.Engine {
 // on shuttle, burler, and webster, so it would over-match any such process sharing the worktree cwd;
 // the adjacent-pair requirement is what makes this specific to the loom driver. Linux only, mirroring
 // internal/reedcli's own /proc-native probes; returns nil on any other GOOS.
+// A process whose parent also matches is dropped: between fork and exec the driver's own child,
+// such as a git call, still carries the driver's argv and cwd, and is not a second driver.
 func findDriverPIDs(worktree string) []int {
 	if runtime.GOOS != "linux" {
 		return nil
@@ -303,7 +306,7 @@ func findDriverPIDs(worktree string) []int {
 	if err != nil {
 		return nil
 	}
-	var pids []int
+	parents := map[int]int{}
 	for _, e := range entries {
 		pid, err := strconv.Atoi(e.Name())
 		if err != nil {
@@ -320,12 +323,40 @@ func findDriverPIDs(worktree string) []int {
 		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
 		for i := 0; i+1 < len(argv); i++ {
 			if argv[i] == "loom" && argv[i+1] == "run" {
-				pids = append(pids, pid)
+				parents[pid] = parentPID(pid)
 				break
 			}
 		}
 	}
+	var pids []int
+	for pid, ppid := range parents {
+		if _, parentMatches := parents[ppid]; !parentMatches {
+			pids = append(pids, pid)
+		}
+	}
 	return pids
+}
+
+// parentPID returns pid's parent pid from /proc/<pid>/stat, or 0 when it cannot be read.
+// The comm field may hold spaces and parentheses, so the fields are counted from the last ')'.
+func parentPID(pid int) int {
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0
+	}
+	rest := string(raw)
+	if i := strings.LastIndex(rest, ")"); i >= 0 {
+		rest = rest[i+1:]
+	}
+	fields := strings.Fields(rest)
+	if len(fields) < 2 {
+		return 0
+	}
+	ppid, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0
+	}
+	return ppid
 }
 
 // waitRunLockFree polls until loc's run lock is observably free -- released by a driver that has run
@@ -495,8 +526,21 @@ func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 	}
 }
 
-// statusStrandCount returns how many of eng's tracked strands carry the given name.
+// statusStrandCount returns how many of eng's tracked strands agentname.Matches accepts for name,
+// the matcher production finds a strand by, since production records a strand under a full agent name.
 func statusStrandCount(t *testing.T, eng *reedengine.Engine, name string) int {
+	t.Helper()
+	return countStrands(t, eng, func(strandName string) bool { return agentname.Matches(strandName, name) })
+}
+
+// driverStrandCount returns how many of eng's tracked strands loomengine.IsDriverStrand accepts,
+// the matcher production finds the driver by, so a driver under the legacy literal counts too.
+func driverStrandCount(t *testing.T, eng *reedengine.Engine) int {
+	t.Helper()
+	return countStrands(t, eng, loomengine.IsDriverStrand)
+}
+
+func countStrands(t *testing.T, eng *reedengine.Engine, accept func(strandName string) bool) int {
 	t.Helper()
 	status, err := eng.Status()
 	if err != nil {
@@ -504,7 +548,7 @@ func statusStrandCount(t *testing.T, eng *reedengine.Engine, name string) int {
 	}
 	count := 0
 	for _, s := range status.Strands {
-		if s.Name == name {
+		if accept(s.Name) {
 			count++
 		}
 	}

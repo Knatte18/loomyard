@@ -1,8 +1,8 @@
 // anomaly.go implements the pure, in-memory, no-I/O, spawn-free detector that finds Tier-1
 // structural anomalies over told inputs: an entry-time observation, the run's final
-// shedengine.Status, the loom product it carried, and a caller-populated slice of ledger
-// observations. It performs no reads and derives no paths, so it is exhaustively table-tested in
-// Tier 1 (anomaly_test.go), exactly the shape coherence.go already established in this package.
+// shedengine.Status and the loom product it carried. It performs no reads and derives no paths, so
+// it is exhaustively table-tested in Tier 1 (anomaly_test.go), exactly the shape coherence.go
+// already established in this package.
 
 package loomengine
 
@@ -13,10 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// AnomalyKind identifies which of the five Tier-1 triggers detected an anomaly.
+// AnomalyKind identifies which of the four Tier-1 triggers detected an anomaly.
 type AnomalyKind string
 
-// The five exported anomaly kinds and their exact wire spellings, each the <kind> token embedded
+// The four exported anomaly kinds and their exact wire spellings, each the <kind> token embedded
 // verbatim in that anomaly's Title.
 const (
 	// AnomalyCrashResume is trigger 1: an entry observation showing a running state, a live
@@ -30,8 +30,6 @@ const (
 	AnomalyBudgetExhausted AnomalyKind = "bounce-budget-exhausted"
 	// AnomalyProducerFailure is trigger 4: a failed halt, an engine-level producer error.
 	AnomalyProducerFailure AnomalyKind = "producer-hard-failure"
-	// AnomalyRecurringFinding is trigger 5: a ledger entry still open after three or more rounds.
-	AnomalyRecurringFinding AnomalyKind = "recurring-finding"
 )
 
 // EntryObservation carries the whole entry-time observation as data, told by the caller before
@@ -55,21 +53,7 @@ type EntryObservation struct {
 	CleanStepHandoff bool
 }
 
-// LedgerObservation is one ledger entry plus the round its file claimed and the producer field of
-// the history entry that published that file's path. Producer is the Bouncer row name, read from
-// history data by the caller, never derived from a recipe row list here.
-type LedgerObservation struct {
-	Producer string
-	Round    int
-	Key      string
-	Rounds   []int
-	Status   string
-}
-
-// Anomaly carries everything the title and body need with no further lookup. The five
-// trigger-5-only fields (BouncerRow, LedgerKey, LedgerRounds, LedgerStatus) are zero for the other
-// four kinds. Round is the ledger file's own round, used by the caller's collapse step to keep the
-// most complete occurrence.
+// Anomaly carries everything the title and body need with no further lookup.
 type Anomaly struct {
 	Kind            AnomalyKind
 	Title           string
@@ -79,19 +63,7 @@ type Anomaly struct {
 	CurrentProducer string
 	Error           string
 	History         []shedengine.HistoryEntry
-	Round           int
-	BouncerRow      string
-	LedgerKey       string
-	LedgerRounds    []int
-	LedgerStatus    string
 }
-
-// recurringFindingThreshold is the minimum Rounds length an open ledger entry must carry to be
-// reported. It is three, not the five every review segment's own max_bounces carries, because the
-// Bouncer's own seed call permanently consumes one unit of that budget -- firing at three reports
-// the recurrence while the segment is still alive, rather than only after it has already degenerated
-// into the bounce-budget-exhausted trigger.
-const recurringFindingThreshold = 3
 
 // DetectCrashResume reports trigger 1 alone: whether entry describes a driver that died mid-run
 // rather than exiting cleanly. It is its own exported function, not merely an internal branch of
@@ -124,15 +96,15 @@ func DetectCrashResume(entry EntryObservation) (Anomaly, bool) {
 	}, true
 }
 
-// DetectAnomalies returns every anomaly detected across entry, final, product, and ledgers, in one
+// DetectAnomalies returns every anomaly detected across entry, final and product, in one
 // deterministic order: the crash-resume first when present, then the one halt-kind anomaly derived
-// from final when present, then the trigger-5 anomalies in the order their ledgers elements were
-// told. That order is pinned here because an unordered result cannot be table-asserted.
+// from final when present. That order is pinned here because an unordered result cannot be
+// table-asserted.
 // product is required because every title embeds the slug and shedengine.Status does not carry
 // one; Slug and Parent on each returned Anomaly come from product, except on the crash-resume,
 // which takes them from entry so the cancelled-context path stays read-free.
 // DetectAnomalies calls DetectCrashResume internally rather than reimplementing it.
-func DetectAnomalies(entry EntryObservation, final shedengine.Status, product Status, ledgers []LedgerObservation) []Anomaly {
+func DetectAnomalies(entry EntryObservation, final shedengine.Status, product Status) []Anomaly {
 	var anomalies []Anomaly
 
 	if crash, ok := DetectCrashResume(entry); ok {
@@ -141,12 +113,6 @@ func DetectAnomalies(entry EntryObservation, final shedengine.Status, product St
 
 	if halt, ok := detectHaltAnomaly(final, product); ok {
 		anomalies = append(anomalies, halt)
-	}
-
-	for _, ledger := range ledgers {
-		if finding, ok := detectRecurringFinding(ledger, product); ok {
-			anomalies = append(anomalies, finding)
-		}
 	}
 
 	return anomalies
@@ -185,27 +151,6 @@ func detectHaltAnomaly(final shedengine.Status, product Status) (Anomaly, bool) 
 	}, true
 }
 
-// detectRecurringFinding evaluates trigger 5 against one ledger observation: open with three or
-// more rounds is reported; resolved is never reported however long its rounds list; a short or
-// missing rounds list means no anomaly rather than corruption, because carry-forward is a claim
-// the judge made and not something the parser guarantees.
-func detectRecurringFinding(ledger LedgerObservation, product Status) (Anomaly, bool) {
-	if ledger.Status != "open" || len(ledger.Rounds) < recurringFindingThreshold {
-		return Anomaly{}, false
-	}
-	return Anomaly{
-		Kind:         AnomalyRecurringFinding,
-		Title:        renderRecurringFindingTitle(ledger, product),
-		Slug:         product.Slug,
-		Parent:       product.Parent,
-		Round:        ledger.Round,
-		BouncerRow:   ledger.Producer,
-		LedgerKey:    ledger.Key,
-		LedgerRounds: ledger.Rounds,
-		LedgerStatus: ledger.Status,
-	}, true
-}
-
 // countDoneEntries returns the number of entries in history whose Producer equals name and whose
 // Outcome is shedengine.Done -- that is, how many times this row had previously succeeded. A count
 // is required rather than a history length because a blocked run's history grows on every resume:
@@ -239,14 +184,4 @@ func renderHaltTitle(kind AnomalyKind, final shedengine.Status, product Status) 
 // from a crash at another.
 func renderCrashResumeTitle(entry EntryObservation) string {
 	return fmt.Sprintf("loom anomaly: %s — %s — %s@%d", AnomalyCrashResume, entry.Slug, entry.CurrentProducer, entry.HistoryLength)
-}
-
-// renderRecurringFindingTitle renders the recurring-finding title:
-// "loom anomaly: recurring-finding — <slug> — <bouncer-row> — <ledger-key>". The row name is
-// required because a ledger key is an LLM-authored short finding identity scoped to its own
-// segment's run directory, with nothing making it unique across the discussion, plan, and webster
-// segments -- two unrelated findings that happened to pick the same key would otherwise collapse
-// into one issue and permanently suppress the second.
-func renderRecurringFindingTitle(ledger LedgerObservation, product Status) string {
-	return fmt.Sprintf("loom anomaly: %s — %s — %s — %s", AnomalyRecurringFinding, product.Slug, ledger.Producer, ledger.Key)
 }

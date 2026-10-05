@@ -102,7 +102,7 @@ func TestRegistry_IncludesBouncerStencils(t *testing.T) {
 		nameSet[name] = true
 	}
 
-	for _, name := range []string{"bouncer-template-seed", "bouncer-template-judge"} {
+	for _, name := range []string{"bouncer-template-seed", "bouncer-template-judge", "bouncer-template-escalation", "bouncer-template-parent-notice"} {
 		if !nameSet[name] {
 			t.Errorf("Registry().Names() = %v; want it to contain %q", names, name)
 			continue
