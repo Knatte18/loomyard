@@ -60,12 +60,15 @@ func TestNaming_TaskWorktreeStrandNameTitleAndEnv(t *testing.T) {
 		t.Errorf("pane title = %q, want %q", got, want)
 	}
 
+	// Older tmux (3.4 included) has no allow-set-title option; spawn only warns then, so the check applies only where the option exists.
 	out, err := e.tmux.output("show-options", "-p", "-v", "-t", strand.PaneID, "allow-set-title")
-	if err != nil {
+	switch {
+	case err != nil && strings.Contains(err.Error(), "invalid option"):
+		t.Logf("tmux has no allow-set-title option, skipping its check: %v", err)
+	case err != nil:
 		t.Fatalf("show-options: %v", err)
-	}
-	if got := strings.TrimSpace(out); got != "off" {
-		t.Errorf("allow-set-title = %q, want off", got)
+	case strings.TrimSpace(out) != "off":
+		t.Errorf("allow-set-title = %q, want off", strings.TrimSpace(out))
 	}
 
 	waitUntil(t, 10*time.Second, "strand command never wrote its env probe", func() bool {
