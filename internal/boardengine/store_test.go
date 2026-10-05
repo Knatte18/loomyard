@@ -1392,7 +1392,8 @@ func TestMergeTasksIssueCarry(t *testing.T) {
 		if _, err := s.UpsertTask(map[string]any{"slug": "c", "title": "C", "issues": []int{1}}); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
-		// The payload does not name issues, so the existing entry's own list leads.
+		// The payload does not name issues,
+		// so the existing entry's own list leads.
 		got, err := s.MergeTasks([]string{"a", "b"}, map[string]any{"slug": "c"}, nil)
 		if err != nil {
 			t.Fatalf("merge: %v", err)

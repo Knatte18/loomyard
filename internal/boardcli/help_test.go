@@ -145,7 +145,8 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 }
 
 // TestHelpStatesSlugLimit asserts every slug-taking verb's --help states the limit formatted from
-// boardengine.MaxSlugLength, so the sentence cannot drift from validation.
+// boardengine.MaxSlugLength,
+// so the sentence cannot drift from validation.
 func TestHelpStatesSlugLimit(t *testing.T) {
 	want := fmt.Sprintf("A slug is at most %d characters.", boardengine.MaxSlugLength)
 	verbs := [][]string{
