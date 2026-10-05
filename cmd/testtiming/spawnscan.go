@@ -50,8 +50,7 @@ var builtinNames = map[string]bool{
 	"uint32": true, "uint64": true, "uintptr": true, "any": true, "comparable": true,
 }
 
-// loadPkgSource parses every .go file in dir regardless of build constraints,
-// so a helper declared in a platform-specific file is still found.
+// loadPkgSource parses every .go file in dir regardless of build constraints, so a helper declared in a platform-specific file is still found.
 // Test files are skipped unless withTests is set.
 func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 	entries, err := os.ReadDir(dir)
@@ -140,8 +139,7 @@ type spawnScanner struct {
 	kits    map[string]map[string]bool
 }
 
-// scanSpawns returns the spawn verdict of every Test, Example and Fuzz
-// function declared in pkgDir's _test.go files.
+// scanSpawns returns the spawn verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
 func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)
 	if err != nil {
@@ -166,8 +164,7 @@ func isTestEntry(name string) bool {
 	return strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Example") || strings.HasPrefix(name, "Fuzz")
 }
 
-// analyze follows fn's body, merging the verdicts of the same-package
-// functions it calls.
+// analyze follows fn's body, merging the verdicts of the same-package functions it calls.
 // A call cycle contributes its partial verdict once, then stops.
 func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]*spawnVerdict) spawnVerdict {
 	if v, ok := memo[fn]; ok {
@@ -245,9 +242,7 @@ func unwrapCallee(e ast.Expr) ast.Expr {
 	}
 }
 
-// collectLocals returns the names a function declares for itself (parameters,
-// results, receiver, := and var declarations, range variables) and the types
-// it declares locally.
+// collectLocals returns the names a function declares for itself (parameters, results, receiver, := and var declarations, range variables) and the types it declares locally.
 // A call to a local name is a call of a function value.
 func collectLocals(decl *ast.FuncDecl) (locals, types map[string]bool) {
 	locals, types = map[string]bool{}, map[string]bool{}
@@ -323,8 +318,7 @@ func (s *spawnScanner) spawnRef(importPath, name string) bool {
 	return false
 }
 
-// kitSpawns returns, per exported function of a testkit, whether the same
-// scan marks it as spawning or unresolvable.
+// kitSpawns returns, per exported function of a testkit, whether the same scan marks it as spawning or unresolvable.
 func (s *spawnScanner) kitSpawns(importPath, kit string) map[string]bool {
 	if funcs, ok := s.kits[importPath]; ok {
 		return funcs

@@ -53,8 +53,8 @@ type reedCLI struct {
 	strands     strandOps
 	spawnRemove func(guid string, recursive bool) error
 
-	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test
-	// can shorten how long it waits on the daemon; production never sets it.
+	// watchdogTiming, when non-nil, replaces watchdogDefaultTiming() in watchdogCmd's loop so a test can shorten how long it waits on the daemon.
+	// Production never sets it.
 	watchdogTiming *watchdogTiming
 }
 

@@ -77,8 +77,8 @@ const watchdogOrphanGoneCycles = 3
 // already uses for its own watchTiming/watchDefaultTiming pair, so the repo carries one idiom for
 // loop-timing injection rather than two.
 //
-// ReapTimeout bounds the reap's graceful wait before it force-kills; zero selects reedengine's own
-// 15s reap budget, which is what production runs.
+// ReapTimeout bounds the reap's graceful wait before it force-kills.
+// Zero selects reedengine's own 15s reap budget, which is what production runs.
 type watchdogTiming struct {
 	DiscoveryCycle   time.Duration
 	IdleCycles       int
@@ -86,8 +86,8 @@ type watchdogTiming struct {
 	ReapTimeout      time.Duration
 }
 
-// watchdogDefaultTiming returns the daemon's production timings, sourced from the package's fixed
-// watchdog* constants and nothing else; ReapTimeout stays zero, selecting reedengine's reap budget.
+// watchdogDefaultTiming returns the daemon's production timings, sourced from the package's fixed watchdog* constants and nothing else.
+// ReapTimeout stays zero, selecting reedengine's reap budget.
 func watchdogDefaultTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
@@ -353,10 +353,9 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // through the existing path.
 //
 // The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this
-// loop: reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s)
-// per straggler, so an inline reap would stall one tick for ~20s — breaking the confirmation rule's
-// quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done()
-// unread for the whole stall.
+// loop: reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s) per straggler,
+// so an inline reap would stall one tick for ~20s —
+// breaking the confirmation rule's quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done() unread for the whole stall.
 //
 // Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
 // without cancelling a departed entry's goroutine, a worktree whose session goes away while
