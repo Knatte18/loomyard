@@ -33,6 +33,9 @@
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
 // Every failure degrades to an unknown reading.
 //
+// The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
+// An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+//
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.
