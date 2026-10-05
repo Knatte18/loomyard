@@ -41,9 +41,13 @@ Do not flag any of the following as a finding:
 ## Also flag
 
 - **Granularity.**
-  One card per independently reviewable/testable unit, not one card per literal symbol.
+  One card per independently reviewable unit, not one card per literal symbol.
   A private supporting type, or a constructor inseparable from its type, belongs in the other symbol's card;
-  an independently testable symbol gets its own card even when one card is its only consumer.
+  a symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card is its only consumer, and a helper serving one surface is bundled into that surface's card.
+- **Test economy.**
+  A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; `PATTERN-test-economy` holds the rule.
+  The finding names the existing test that covers the behavior, or, for a per-symbol test, the public-surface test that covers the symbol;
+  a vague "seems redundant" is not a finding.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
 - **`Custom` is a last resort.**

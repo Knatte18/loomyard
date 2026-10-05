@@ -110,7 +110,10 @@ var wordingClaims = []stencilClaims{
 		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
 	}, attackSurfaceClaims...)},
 	{"loom-rubric-plan-review.md", LoomRubricPlanReview, append([]claim{
-		{must: "independently reviewable/testable unit", why: "granularity is one card per independently reviewable/testable unit"},
+		{must: "independently reviewable unit", why: "granularity is one card per independently reviewable unit"},
+		{must: "part of a module's public surface", why: "granularity gives a public-surface symbol its own card"},
+		{mustNot: "reviewable/testable", why: "granularity no longer turns on testability"},
+		{must: "`PATTERN-test-economy`", why: "a redundant planned test is a finding, grounded by the rule"},
 		{must: "blast-radius conclusion", why: "ImpactSummary carries a real blast-radius conclusion"},
 		{must: "_lyx/discussion/decision-record.md", why: "fidelity is judged against the decision record at its anchor-relative path"},
 		{must: "writer/reviewer symmetry note", why: "the rubric names the writer/reviewer symmetry"},
@@ -131,6 +134,7 @@ var wordingClaims = []stencilClaims{
 	{"loom-rubric-webster-review.md", LoomRubricWebsterReview, []claim{
 		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
 		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
+		{must: "`PATTERN-test-economy`", why: "a redundant or uncovered test is a finding, grounded by the rule"},
 		{must: "git merge-base", why: "the review range is derived via git merge-base"},
 		{must: "could not be determined", why: "an undeterminable review range raises a BLOCKING finding"},
 		{must: "carries a `class`", why: "the rework branch finds the live round by class"},
