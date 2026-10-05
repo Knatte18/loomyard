@@ -193,8 +193,8 @@ func TestEditOneSyncFails(t *testing.T) {
 	}
 }
 
-// TestBareConfigListsModulesAndVerbs verifies that bare `lyx config` from a non-git directory
-// exits 0, prints help rather than an envelope, and names reconcile and every module.
+// TestBareConfigListsModulesAndVerbs verifies that bare `lyx config` from a non-git directory exits 0,
+// prints help rather than an envelope, and names reconcile and every module.
 func TestBareConfigListsModulesAndVerbs(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLIIn(t.TempDir(), &out, nil)
@@ -216,8 +216,8 @@ func TestBareConfigListsModulesAndVerbs(t *testing.T) {
 	}
 }
 
-// TestUnknownConfigArgumentRefuses verifies that `lyx config bogus` from a non-git directory
-// exits 1 with an unknown-subcommand envelope naming the argument and the way forward.
+// TestUnknownConfigArgumentRefuses verifies that `lyx config bogus` from a non-git directory exits 1
+// with an unknown-subcommand envelope naming the argument and the way forward.
 func TestUnknownConfigArgumentRefuses(t *testing.T) {
 	var out bytes.Buffer
 	code := RunCLIIn(t.TempDir(), &out, []string{"bogus"})
@@ -237,8 +237,8 @@ func TestUnknownConfigArgumentRefuses(t *testing.T) {
 	}
 }
 
-// TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a
-// config subcommand, since a subcommand name always routes as a subcommand.
+// TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand,
+// since a subcommand name always routes as a subcommand.
 func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	subs := map[string]bool{}
 	for _, c := range Command().Commands() {
@@ -479,8 +479,8 @@ func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "unknown config key")
 }
 
-// TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped
-// board.yaml writes the entry under that map and syncs once.
+// TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped board.yaml
+// writes the entry under that map and syncs once.
 func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
@@ -505,8 +505,8 @@ func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
 	}
 }
 
-// TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list
-// refuses, writes nothing and never syncs.
+// TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list refuses,
+// writes nothing and never syncs.
 func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
 	baseDir := t.TempDir()
 	seeded := "types:\n  bug: a defect\nlabels:\n  - old\n"
@@ -532,8 +532,8 @@ func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
 	}
 }
 
-// TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module
-// with open maps still refuses and never syncs.
+// TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module with open maps
+// still refuses and never syncs.
 func TestDispatchSet_UndeclaredNonexistentKeyStillRefuses(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
