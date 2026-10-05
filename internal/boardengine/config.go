@@ -8,9 +8,11 @@
 package boardengine
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"slices"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
@@ -96,13 +98,20 @@ func (v Vocabulary) Known(label string) bool {
 	return v.IsType(label) || slices.Contains(v.Labels, label)
 }
 
-// LoadConfig loads and unmarshals the board module configuration.
+// LoadConfig loads and unmarshals the board module configuration from baseDir, the hub's board dir.
+// An absent `_lyx/` under baseDir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
 func LoadConfig(baseDir, module string) (Config, error) {
+	configFile := configengine.ConfigFile(baseDir, module)
+	notInitialized := fmt.Errorf("board config %s not initialized; run \"lyx fabric reconcile\"", configFile)
+	if _, err := os.Stat(configFile); errors.Is(err, fs.ErrNotExist) {
+		return Config{}, notInitialized
+	}
+
 	// Load and resolve the config file using the template.
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
+		if errors.Is(err, configengine.ErrNotInitialized) {
+			return Config{}, notInitialized
 		}
 		return Config{}, err
 	}

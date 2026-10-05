@@ -1,7 +1,8 @@
 // configreg.go — module registry for configuration management.
 //
-// Provides a neutral registry of available config modules (board, fabric) and their templates, used
-// by the config CLI command and callers such as fabric clone.
+// Provides a neutral registry of available config modules and their templates,
+// used by the config CLI command and callers such as fabric clone.
+// Its second role is marking which modules are hub-wide, so every caller branches on the registry rather than on a module name.
 
 package configreg
 
@@ -36,6 +37,10 @@ type Module struct {
 	// prunes keys, unlike the default reconcile behavior applied to every
 	// other module.
 	SeedOnly bool
+	// HubWide marks a module that describes a hub-level fact.
+	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
+	// and is never read or written in a worktree's _lyx/config/.
+	HubWide bool
 }
 
 // Modules returns the ordered list of all available config modules, each with its name and template
@@ -46,9 +51,9 @@ type Module struct {
 func Modules() []Module {
 	return []Module{
 		{Name: "batcher", Template: batcher.ConfigTemplate},
-		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps()},
+		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
-		{Name: "fabric", Template: fabricengine.ConfigTemplate},
+		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},
 		{Name: "landing", Template: landingshed.ConfigTemplate},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},

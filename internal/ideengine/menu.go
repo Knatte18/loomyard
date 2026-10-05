@@ -25,12 +25,13 @@ import (
 // Returns an error on board config load or health check failure,
 // or nil on success.
 func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
-	cfg, err := boardengine.LoadConfig(l.AnchorPath(), "board")
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	cfg, err := boardengine.LoadConfig(boardDir, "board")
 	if err != nil {
 		return fmt.Errorf("load board config: %w", err)
 	}
 
-	cfg.Path = fabricengine.BoardDir(l.HubPath)
+	cfg.Path = boardDir
 
 	b := boardengine.New(cfg)
 
