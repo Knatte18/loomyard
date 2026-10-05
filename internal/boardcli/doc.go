@@ -6,10 +6,13 @@
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
 // A `PersistentPreRunE` resolves configuration once: it loads `_lyx/config/board.yaml` through `boardengine.LoadConfig` and derives the board data dir from the worktree layout.
-// The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both, so the config is path-only.
+// The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
+// so the config is path-only.
 //
-// Payloads are JSON objects with unknown keys rejected, and every verb prints JSON through `internal/output`, one object per line, errors included.
-// `list` and `find` take `--text` to print the compact one-line-per-entry listing instead; errors stay JSON.
+// Payloads are JSON objects with unknown keys rejected,
+// and every verb prints JSON through `internal/output`, one object per line, errors included.
+// `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
+// errors stay JSON.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.
@@ -19,9 +22,13 @@
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
-// `get` takes `--body` to write the entry's body alone, verbatim, with no envelope; an empty body writes nothing, and an absent target is an error.
+// `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
+// an empty body writes nothing,
+// and an absent target is an error.
 // Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
 //
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
-// Each list is in `board.yaml` file order, an empty list is `[]`, and a list-shaped `board.yaml` prints its names with empty descriptions.
+// Each list is in `board.yaml` file order,
+// an empty list is `[]`,
+// and a list-shaped `board.yaml` prints its names with empty descriptions.
 package boardcli

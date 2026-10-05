@@ -33,7 +33,8 @@ func Command() *cobra.Command {
 	// b is populated by PersistentPreRunE and closed over by each subcommand RunE.
 	var b *boardengine.Board
 	board := func() *boardengine.Board { return b }
-	// config is the Config PersistentPreRunE loaded; the labels verb reads its Types and Labels.
+	// config is the Config PersistentPreRunE loaded;
+	// the labels verb reads its Types and Labels.
 	var config boardengine.Config
 
 	cmd := &cobra.Command{
@@ -266,7 +267,8 @@ func labelEntries(labels []boardengine.Label) []boardengine.Label {
 }
 
 // slugLimitNote is the help paragraph every slug-taking verb ends its Long with.
-// It formats the limit from boardengine.MaxSlugLength, so help and validation cannot drift.
+// It formats the limit from boardengine.MaxSlugLength,
+// so help and validation cannot drift.
 func slugLimitNote() string {
 	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
 }
