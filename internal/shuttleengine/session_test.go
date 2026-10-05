@@ -181,6 +181,7 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 }
 
 func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
+	t.Parallel()
 	refused := []struct {
 		name string
 		guid string

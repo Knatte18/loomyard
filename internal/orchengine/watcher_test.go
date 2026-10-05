@@ -906,6 +906,7 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 }
 
 func TestWatcher_SkillSkipCauses(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		unknown  map[string]bool
@@ -926,6 +927,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := newWatchEnv(t)
 			e.withSkills()
 			e.s.skillUnknown = tt.unknown

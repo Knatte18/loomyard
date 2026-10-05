@@ -971,6 +971,7 @@ func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 }
 
 func TestStartup_SkillSkipCauses(t *testing.T) {
+	t.Parallel()
 	const (
 		atLeastTimeout = "atLeastTimeout"
 		zero           = "zero"
@@ -1001,6 +1002,7 @@ func TestStartup_SkillSkipCauses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, reed, elapsed, err := skillStartFixture(t, tt.spec, tt.endsTurn, tt.unknown)
 			if err != nil {
 				t.Fatalf("Start() error = %v", err)
