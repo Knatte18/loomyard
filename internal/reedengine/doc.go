@@ -397,8 +397,7 @@
 //     ensureServerGoneLocked removes it once no tmux process remains on the socket, on both the graceful and the force-reap path,
 //     and Down and every engine-bound teardown reach it through that one method.
 //     EndSessionByName has no engine, so after it kills the server of the last session it retries the removal for a bounded wait while the server stops answering.
-//     The path is resolved as tmux does (`$TMUX_TMPDIR`, else `/tmp`, then `tmux-<uid>/<key>`)
-//     and removed only when it is a socket, nothing answers a connection on it and a second Lstat reports the same file.
+//     The path is resolved as tmux does (`$TMUX_TMPDIR`, else `/tmp`, then `tmux-<uid>/<key>`) and removed only when it is a socket, nothing answers a connection on it and a second Lstat reports the same file.
 //     The bound: only the file for the key just killed, only inside that teardown, never a glob or sweep of the directory.
 //     A server restarting on the same key between the check and the removal is the accepted residual race.
 //     A removal failure is logged at Debug and never fails the teardown.

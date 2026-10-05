@@ -73,8 +73,7 @@ func redundancyTags(full bool, tags string) (string, error) {
 	return resolved, nil
 }
 
-// parseProfile returns the covered blocks of a coverage profile:
-// the lines with a non-zero count, keyed by file, position range and statement count.
+// parseProfile returns the covered blocks of a coverage profile: the lines with a non-zero count, keyed by file, position range and statement count.
 func parseProfile(r io.Reader) (map[string]struct{}, error) {
 	blocks := map[string]struct{}{}
 	sc := bufio.NewScanner(r)

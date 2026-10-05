@@ -352,10 +352,9 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // with sessions — a hub going genuinely quiet afterwards is observed by the following cycles
 // through the existing path.
 //
-// The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this
-// loop: reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s) per straggler,
-// so an inline reap would stall one tick for ~20s —
-// breaking the confirmation rule's quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done() unread for the whole stall.
+// The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this loop:
+// reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s) per straggler,
+// so an inline reap would stall one tick for ~20s — breaking the confirmation rule's quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done() unread for the whole stall.
 //
 // Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
 // without cancelling a departed entry's goroutine, a worktree whose session goes away while

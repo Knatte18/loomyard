@@ -11,8 +11,7 @@
 //
 // Passing both -full and -tags is refused.
 //
-// It shells out to `go test ./... -json -count=1` (adding `-tags <tags>` when tags are given),
-// parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
+// It shells out to `go test ./... -json -count=1` (adding `-tags <tags>` when tags are given), parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
 // Each package row carries its top-level test count (TESTS) and serial time (SERIAL), the sum of those tests' elapsed seconds; subtests count in neither.
 // The header line shows the exact command run, tags included.
 // Exit code mirrors the underlying `go test`: 0 on success, 1 if any package failed to build or any test failed.
@@ -22,9 +21,7 @@
 //	go run ./cmd/testtiming -redundancy [-pkg ./internal/x] [-out report.md] [-tags t]
 //
 // -tags defaults to integration,tmux in this mode, every tier but llm.
-// For each package it runs every top-level test alone under one coverage binary and writes, per package,
-// the tests whose covered blocks other tests already cover, the removable set among them,
-// and the tests whose coverage cannot be judged (skipped, covering nothing, or spawning a subprocess, which the static scan in spawnscan.go decides).
+// For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or spawning a subprocess, which the static scan in spawnscan.go decides).
 // It exits 1 after writing the report if any package reported an error.
 package main
 
