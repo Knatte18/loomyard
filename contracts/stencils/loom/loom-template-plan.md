@@ -68,7 +68,8 @@ Each card is the smallest change that:
 1. **Builds on its own** — the project compiles (`go build ./...` or the repo's equivalent) immediately after the card's commit;
    never reference a symbol that no earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
-3. **Carries the coverage for the behavior it introduces** — the same card extends an existing test where one covers the surface, and adds a new test only for behavior no existing test covers (`PATTERN-test-economy`). `verify:` commands are no substitute for test coverage;
+3. **Carries the coverage for the behavior it introduces** — the same card extends an existing test where one covers the surface, and adds a new test only for behavior no existing test covers (`PATTERN-test-economy`).
+   `verify:` commands are no substitute for test coverage;
    only pure refactors/renames may rely on existing tests instead.
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
    A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
