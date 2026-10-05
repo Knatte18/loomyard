@@ -41,7 +41,7 @@ const (
 	decisionWayWriter    = `way forward: Discussion-Write owns the record while it runs; message the Discussion-Write session with the decision instead, or re-run once the row has handed off`
 	decisionWayNoHeading = `way forward: restore the "## Decisions" heading in the decision record, then re-run the verb`
 	decisionWayRetry     = `way forward: re-run "lyx loom decision add"; nothing is appended`
-	decisionWayFindings  =`way forward: the record is restored; fix the named section and re-run the verb`
+	decisionWayFindings  = `way forward: the record is restored; fix the named section and re-run the verb`
 )
 
 // decisionInput is the four flag values of one `decision add` call.

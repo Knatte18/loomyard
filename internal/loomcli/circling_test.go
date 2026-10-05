@@ -75,7 +75,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"awaiting at PR-Gate", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, "not a review segment's Bouncer row"},
 		{"latest round not escalated", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, "is not escalated"},
 		{"malformed escalation record", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, "fix or delete the named escalation file"},
-		{"second decision",circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, "already recorded"},
+		{"second decision", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, "already recorded"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
