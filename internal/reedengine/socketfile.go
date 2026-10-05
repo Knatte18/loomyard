@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"time"
 )
 
 // socketDirFromEnv is the per-user directory tmux puts its `-L` sockets in, resolved as tmux does:
@@ -17,6 +18,24 @@ func socketDirFromEnv() string {
 		base = "/tmp"
 	}
 	return filepath.Join(base, "tmux-"+strconv.Itoa(os.Getuid()))
+}
+
+// socketGoneWait bounds how long removeSocketFileOnceGone waits for a server that was sent `kill-server` to stop answering.
+const socketGoneWait = 2 * time.Second
+
+// removeSocketFileOnceGone removes the socket file of the `-L` key key under dir after a `kill-server` that was not confirmed by a process scan.
+// `kill-server` is asynchronous, so it retries removeStaleSocket until the file is gone or wait has passed.
+// A file still there after wait stays, with no error.
+func removeSocketFileOnceGone(dir, key string, wait time.Duration) error {
+	path := filepath.Join(dir, key)
+	for deadline := time.Now().Add(wait); ; time.Sleep(processExitPoll) {
+		if err := removeStaleSocket(dir, key); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(path); os.IsNotExist(err) || time.Now().After(deadline) {
+			return nil
+		}
+	}
 }
 
 // removeStaleSocket removes the socket file of the `-L` key key under dir, once the server that owned it is gone.

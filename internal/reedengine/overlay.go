@@ -214,7 +214,7 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeo
 //
 // It takes no lock and writes no state, because both lived under the gone worktree and nothing is left to guard;
 // it reads no geometry beyond the two strings it is told.
-// It reaches only the exact-match session it is named, on the socket it is given, and kills that socket's server only when no session remains on it.
+// It reaches only the exact-match session it is named, on the socket it is given, and kills that socket's server only when no session remains on it, removing that server's socket file.
 // It must never be pointed at a session whose worktree is still present; Engine.Down is the right call there.
 //
 // It reports whether a session existed and was reaped;
@@ -235,12 +235,15 @@ func endSessionByNameVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) 
 
 	killErr := reapSessionVia(cmd, shellPath, socketKey, sessionName, 0)
 
-	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy sibling session remains,
-	// and kill-server takes the socket with the server.
+	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy sibling session remains.
+	// kill-server leaves the socket file behind, so it is removed once the server stops answering.
 	if out, err := cmd.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 		logger.Info("reed: tearing down tmux server after ending session by name", "socket", socketKey, "session", sessionName)
 		if err := cmd.run("kill-server"); err != nil {
 			logger.Debug("reed: best-effort kill-server failed", "socket", socketKey, "err", err)
+		}
+		if err := removeSocketFileOnceGone(socketDirFromEnv(), socketKey, socketGoneWait); err != nil {
+			logger.Debug("reed: could not remove the torn-down server's socket file", "socket", socketKey, "err", err)
 		}
 	}
 	return true, killErr
