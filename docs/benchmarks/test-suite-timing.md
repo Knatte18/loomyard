@@ -116,3 +116,60 @@ The 2026-08-13 row's near-zero payoff is a property of this machine, not of `t.P
 
 The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lyx`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of a since-retired module's 45 tests summed to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).
 Both were parallel-contention artifacts, which is the standing hazard when reading per-package numbers.
+
+## test-suite-measure: before and after the speed fixes
+
+A before-state and an after-speed state on the same pre-retag test set (no tagged test file added, removed or retagged between them), so the two are comparable.
+This section is a measurement report: it records one run and is not meant to stay true.
+
+### Before state (2026-10-05)
+
+```yaml
+machine: AMD Ryzen AI 7 445 w/ Radeon 840M, 12 threads
+os: Linux 7.0.0-31-generic (Ubuntu), bare metal
+go: go1.26.0 linux/amd64
+revision: fca2f0607
+load_average_before: 3.08 1.75 1.57
+load_average_after: 9.01 8.14 4.47
+tier_1_top_level_tests: 4264
+integration_top_level_tests: 5593
+tier_1_wall: 9.02 s
+integration_wall: 57.05 s
+```
+
+Method: `go build ./...` first, then four runs each of `go run ./cmd/testtiming` and `go run ./cmd/testtiming -full -top 20`, the first of each discarded as cold, and the median wall time of the remaining three per tier.
+Tier 1 runs were 9.06, 9.01 and 9.02 s.
+Integration runs were 69.37, 57.03 and 57.05 s, so the median ignores one outlier.
+The load average before is the machine idle apart from the editor and other sessions' idle tmux panes, taken right after `go build ./...`;
+the load average after is the tail of this run's own test load.
+No other loom run or test suite ran during the measurement, and card 9 holds the same condition.
+Test counts sum the `TESTS` column of the final run of each tier and cover top-level tests only.
+
+The integration run's twenty slowest top-level tests (run 4):
+
+| Test | Package | Elapsed |
+|---|---|---|
+| `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock` | `internal/reedcli` | 17.41 s |
+| `TestWatchdogReap_DescendantClosureConfirmedExited` | `internal/reedcli` | 15.86 s |
+| `TestRun_Cancellation` | `internal/verifyrun` | 10.31 s |
+| `TestEnforcement_FabricVocabulary` | `internal/lyxcwd` | 9.09 s |
+| `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree` | `internal/reedcli` | 5.53 s |
+| `TestVerify_CancelledRunLeavesNoRecord` | `internal/verifytree` | 5.02 s |
+| `TestCrossCompileLinux` | `cmd/lyx` | 2.81 s |
+| `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | `internal/loomcli` | 2.78 s |
+| `TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone` | `internal/battencli` | 2.72 s |
+| `TestBuildInto_UnwritableDirReturnsError` | `internal/testkit/lyxbin` | 2.39 s |
+| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lyx` | 2.35 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.32 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 2.28 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 2.27 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 2.20 s |
+| `TestVerbCases_CleanState` | `internal/fabricengine` | 2.10 s |
+| `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | `internal/reedengine` | 2.07 s |
+| `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 1.76 s |
+| `TestNaming_TaskWorktreeRolesParentResumeAndRemove` | `internal/reedcli` | 1.40 s |
+| `TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval` | `internal/battencli` | 1.39 s |
+
+### After speed
+
+Recorded by card 9 under this heading.
