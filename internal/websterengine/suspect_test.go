@@ -324,7 +324,7 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{"ignored.log", "run --fresh", fx.start} {
+	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}

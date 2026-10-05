@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -179,24 +180,24 @@ func TestPendingPathsWayForward_ContractPaths(t *testing.T) {
 	geom := evidenceGeom(t)
 	path := writeContractFile(t, geom)
 
-	cleared, err := pendingPathsWayForward(geom, RunWrites{Master: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "")
+	st := contractState(path)
+
+	cleared, _, err := pendingPathsWayForward(geom, st, RunWrites{Master: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "lyx webster run")
 	if err != nil {
 		t.Fatalf("cleared: %v", err)
 	}
-	if !strings.Contains(cleared, "lyx webster accept-audit") || strings.Contains(cleared, "--fresh") {
-		t.Errorf("cleared way forward = %q; want the accept-audit route and no --fresh", cleared)
+	if want := []string{"lyx webster accept-audit", "lyx webster run"}; !slices.Equal(cleared, want) {
+		t.Errorf("cleared steps = %q; want %q", cleared, want)
 	}
 
-	uncleared, err := pendingPathsWayForward(geom, RunWrites{Forks: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "")
+	uncleared, notes, err := pendingPathsWayForward(geom, st, RunWrites{Forks: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "lyx webster run")
 	if err != nil {
 		t.Fatalf("uncleared: %v", err)
 	}
-	for _, want := range []string{"delete " + path, "rm", "lyx webster accept-audit"} {
-		if !strings.Contains(uncleared, want) {
-			t.Errorf("uncleared way forward = %q; want it to contain %q", uncleared, want)
-		}
+	if want := []string{"rm " + path, "lyx webster accept-audit", "lyx webster run"}; !slices.Equal(uncleared, want) {
+		t.Errorf("uncleared steps = %q; want %q", uncleared, want)
 	}
-	if strings.Contains(uncleared, "--fresh") {
-		t.Errorf("uncleared way forward = %q; want the delete route, not --fresh", uncleared)
+	if !strings.Contains(notes[path], "after Master's last write") {
+		t.Errorf("uncleared note = %q; want it to say a fork wrote last", notes[path])
 	}
 }

@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -309,16 +308,21 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			return nil, false, err
 		}
 		if len(contracts.Rest) > 0 {
-			bases, err := runEvidenceBases(deps.Geom.WorktreeRoot, deps.State)
-			if err != nil {
-				return nil, false, err
+			var what []string
+			for _, entry := range contracts.Rest {
+				reason, _, err := uncheckableReason(deps.Geom, deps.State, entry)
+				if err != nil {
+					return nil, false, err
+				}
+				if reason == "" {
+					reason = reasonNoPath
+				}
+				what = append(what, fmt.Sprintf("%s (%s)", entry, reason))
 			}
-			reset := "reset the branch to the run's start commit with git"
-			if bases.Start != "" {
-				reset = fmt.Sprintf("reset the branch to the run's start commit %s with git", bases.Start)
+			for _, p := range contracts.Uncleared {
+				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
 			}
-			uncheckable := append(slices.Clone(contracts.Rest), contracts.Uncleared...)
-			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; way forward: %s and run \"lyx webster run --fresh\"", batchNumber, strings.Join(uncheckable, ", "), reset)}
+			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), resetToStartSteps(stepRunFresh))}
 		}
 		if len(contracts.Uncleared) > 0 {
 			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))

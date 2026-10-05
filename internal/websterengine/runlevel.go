@@ -153,6 +153,19 @@ type RunDeps struct {
 	// ParentBranch names the branch the run merges its parent in from, for the fix commit check's clean-parent-merge rule.
 	// It is nil in standalone mode, so no merge commit is accepted there.
 	ParentBranch ParentBranchFunc
+
+	// ReentryStep is the plain step that re-enters the run after accept-audit, closing every pending-findings and run-exit way forward.
+	// Empty means `lyx webster run`; the shed adapter sets "re-step the <row> row".
+	// The reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+	ReentryStep string
+}
+
+// reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
+func (d RunDeps) reentryStep() string {
+	if d.ReentryStep == "" {
+		return "lyx webster run"
+	}
+	return d.ReentryStep
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.
@@ -514,7 +527,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 
 	if len(st.PendingAuditFindings) > 0 {
-		return RunResult{}, pendingAuditFindingsError(deps.Engine, st, deps.Geom)
+		return RunResult{}, pendingAuditFindingsError(deps.Engine, st, deps.Geom, deps.reentryStep())
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -908,7 +921,7 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 //
 // Findings are then dispositioned like record-batch's: every identity the ledger already holds is dropped, because the whole-session parent audit repeats every finding an earlier record-batch warned on or failed a batch for.
 // A policy finding nobody dispositioned is recorded as a run-level warning (saved to state.json before the lease is released) and its text is returned in warnings.
-// A correctness finding nobody dispositioned yields stuckReason, which names each suspect path and the way forward pendingPathsWayForward builds;
+// A correctness finding nobody dispositioned yields stuckReason, which names each finding once with the reason an uncheckable path cannot be checked, and the numbered way forward pendingFindingsText builds;
 // it is recorded in State.PendingAuditFindings, not dispositioned, and blocks run entry until AcceptPendingAudit clears it.
 // The outcome file stays on disk for diagnosis (Run never removes it).
 func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, result shuttleengine.Result) (warnings []string, stuckReason string, err error) {
@@ -984,19 +997,13 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	}
 
 	if len(correctness) > 0 {
-		details := make([]string, len(correctness))
-		var paths []string
-		seen := map[string]bool{}
+		items := make([]findingItem, len(correctness))
 		for i, cf := range correctness {
-			details[i] = cf.Violation.Detail
 			pending := PendingAuditFinding{ID: cf.ID, Class: string(cf.Violation.Class), Detail: cf.Violation.Detail}
 			if p := cf.Violation.Path; p != "" {
 				pending.Paths = []string{p}
-				if !seen[p] {
-					seen[p] = true
-					paths = append(paths, p)
-				}
 			}
+			items[i] = findingItem{Class: pending.Class, Detail: pending.Detail, Paths: pending.Paths}
 			if !hasPendingFinding(st, cf.ID) {
 				st.PendingAuditFindings = append(st.PendingAuditFindings, pending)
 			}
@@ -1004,23 +1011,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return nil, "", err
 		}
-		pathList := "none named"
-		if len(paths) > 0 {
-			pathList = strings.Join(paths, ", ")
-		}
-		pathless := false
-		for _, cf := range correctness {
-			pathless = pathless || cf.Violation.Path == ""
-		}
-		writes, err := contractWritesFor(deps.Engine, st, deps.Geom, paths)
+		clause, wayForward, err := pendingFindingsText(deps.Engine, st, deps.Geom, items, deps.reentryStep())
 		if err != nil {
 			return nil, "", err
 		}
-		wayForward, err := pendingPathsWayForward(deps.Geom, writes, paths, pathless, " and re-step the Webster row (lyx webster run)")
-		if err != nil {
-			return nil, "", err
-		}
-		stuckReason = fmt.Sprintf("run-exit audit found %d correctness finding(s): %s; suspect paths: %s; way forward: %s", len(correctness), strings.Join(details, "; "), pathList, wayForward)
+		stuckReason = fmt.Sprintf("run-exit audit found %s; %s", clause, wayForward)
 	}
 
 	return warnings, stuckReason, nil
@@ -1051,98 +1046,108 @@ func hasPendingFinding(st *State, id string) bool {
 // ErrPendingAuditFindings is the sentinel Run returns while run-exit correctness findings are pending.
 var ErrPendingAuditFindings = errors.New("webster: correctness findings from an earlier run exit are pending")
 
-// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending details and suspect paths.
-// Its way forward is pendingPathsWayForward's, judged over the write history engine's audit of st's sessions yields.
-// The error from sorting the paths is returned as is.
-func pendingAuditFindingsError(engine shuttleengine.Engine, st *State, geom Geometry) error {
-	pending := st.PendingAuditFindings
-	details := make([]string, len(pending))
+// pendingAuditFindingsError wraps ErrPendingAuditFindings with the pending findings clause and the way forward pendingFindingsText builds.
+// The way forward is judged over the write history engine's audit of st's sessions yields, and ends in reentry on the accept-audit route.
+func pendingAuditFindingsError(engine shuttleengine.Engine, st *State, geom Geometry, reentry string) error {
+	items := make([]findingItem, len(st.PendingAuditFindings))
+	for i, f := range st.PendingAuditFindings {
+		items[i] = findingItem{Class: f.Class, Detail: f.Detail, Paths: f.Paths}
+	}
+	clause, wayForward, err := pendingFindingsText(engine, st, geom, items, reentry)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: %s; %s", ErrPendingAuditFindings, clause, wayForward)
+}
+
+// pendingFindingsText renders the findings clause and the way forward for items, the text a run-exit stuck reason and the pending-findings refusal share.
+// The write history is loaded only when a path is a contract file.
+// The error is a link-resolution, audit or git probe failure.
+func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, items []findingItem, reentry string) (clause, wayForward string, err error) {
 	var paths []string
-	seen := map[string]bool{}
-	for i, f := range pending {
-		details[i] = f.Detail
-		for _, p := range f.Paths {
-			if !seen[p] {
-				seen[p] = true
+	pathless := false
+	for _, it := range items {
+		pathless = pathless || len(it.Paths) == 0
+		for _, p := range it.Paths {
+			if !slices.Contains(paths, p) {
 				paths = append(paths, p)
 			}
 		}
 	}
-	pathList := "none named"
-	if len(paths) > 0 {
-		pathList = strings.Join(paths, ", ")
-	}
-	pathless := false
-	for _, f := range pending {
-		pathless = pathless || len(f.Paths) == 0
-	}
 	writes, err := contractWritesFor(engine, st, geom, paths)
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	wayForward, err := pendingPathsWayForward(geom, writes, paths, pathless, "")
+	steps, notes, err := pendingPathsWayForward(geom, st, writes, paths, pathless, reentry)
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	return fmt.Errorf("%w: %d correctness finding(s) from an earlier run exit are pending: %s; suspect paths: %s; way forward: %s", ErrPendingAuditFindings, len(pending), strings.Join(details, "; "), pathList, wayForward)
+	return findingsClause(items, notes), wayForwardSteps(steps...), nil
 }
 
-// pendingPathsWayForward is the way-forward text for pending findings naming paths, followed by tail.
-// A finding with no path, or a path outside the plan directory that is not in the task worktree's tracked tree (see trackedRel), clears only through run --fresh,
-// so that route is then the whole way forward:
+// pendingPathsWayForward returns the ordered steps that clear pending findings naming paths, and each path's note for the findings clause.
+// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through run --fresh,
+// so the steps are then the reset route, `lyx webster run --fresh` being the re-entry:
 // accept-audit refuses every finding while any one of them cannot be checked.
-// Otherwise the text ends in "lyx webster accept-audit".
-// A plan path never gets the git clause, which cannot restore it:
-// it gets planPathClause instead,
-// and the git clause covers only the other paths.
+// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork wrote last),
+// then accept-audit, then reentry.
 // The error is a link-resolution or git probe failure.
-func pendingPathsWayForward(geom Geometry, writes RunWrites, paths []string, pathless bool, tail string) (string, error) {
+func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
+	notes = map[string]string{}
 	contracts, err := splitContractPaths(geom, writes, paths)
 	if err != nil {
-		return "", err
+		return nil, nil, err
+	}
+	for _, p := range contracts.Cleared {
+		notes[p] = noteClearedContract
+	}
+	for _, p := range contracts.Uncleared {
+		notes[p] = noteForkWroteLast
 	}
 	plan, rest, err := splitPlanPaths(geom, contracts.Rest)
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
-	var unchecked []string
-	for _, p := range rest {
-		_, ok, err := trackedRel(geom.WorktreeRoot, p)
+	unchecked := pathless
+	for _, p := range slices.Concat(plan, rest) {
+		reason, uncheckable, err := uncheckableReason(geom, st, p)
 		if err != nil {
-			return "", err
+			return nil, nil, err
 		}
-		if !ok {
-			unchecked = append(unchecked, p)
+		if uncheckable {
+			notes[p] = "cannot be checked: " + reason
+			unchecked = true
 		}
 	}
-	if pathless || len(unchecked) > 0 {
-		var why []string
-		if len(unchecked) > 0 {
-			why = append(why, "nothing the run recorded can check "+strings.Join(unchecked, ", "))
-		}
-		if pathless {
-			why = append(why, "a finding names no path")
-		}
-		return fmt.Sprintf("reset the branch to the run's start commit with git and run \"lyx webster run --fresh\"%s, since %s", tail, strings.Join(why, " and ")), nil
+	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	if err != nil {
+		return nil, nil, err
 	}
-	var clauses []string
-	if len(contracts.Uncleared) > 0 {
-		clauses = append(clauses, fmt.Sprintf("delete %s with rm, since a fork wrote it after Master's last write, then run \"lyx webster accept-audit\"%s", strings.Join(contracts.Uncleared, ", "), tail))
+	if len(rest) > 0 && bases.Last == "" && !unchecked {
+		for _, p := range rest {
+			notes[p] = "cannot be checked: " + reasonNoBatchHead
+		}
+		unchecked = true
+	}
+	if unchecked {
+		return []string{stepResetToStart, stepRunFresh}, notes, nil
 	}
 	if len(rest) > 0 {
-		if len(plan) == 0 {
-			clauses = append(clauses, "restore the named paths to the last batch head with git, then run \"lyx webster accept-audit\""+tail)
-		} else {
-			clauses = append(clauses, "restore the paths other than the plan files to the last batch head with git, then run \"lyx webster accept-audit\""+tail)
+		differing, _, err := checkSuspectPaths(geom, st, bases.Last, rest)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(differing) > 0 {
+			steps = append(steps, restoreStep(bases.Last, differing))
 		}
 	}
 	if len(plan) > 0 {
-		clauses = append(clauses, fmt.Sprintf("for the plan file(s) %s, %s", strings.Join(plan, ", "), planPathClause("\"lyx webster accept-audit\""+tail)))
+		steps = append(steps, stepRestorePlan)
 	}
-	if len(clauses) == 0 {
-		return "run \"lyx webster accept-audit\"" + tail, nil
+	if len(contracts.Uncleared) > 0 {
+		steps = append(steps, "rm "+strings.Join(contracts.Uncleared, " "))
 	}
-	return strings.Join(clauses, "; "), nil
+	return append(steps, stepAcceptAudit, reentry), notes, nil
 }
 
 // freshPendingDrop decides whether opts.Fresh discards st's pending audit findings, and returns one warning per dropped finding.
@@ -1229,10 +1234,10 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 		return false, nil, err
 	}
 	if len(differing) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, base, strings.Join(differing, ", "), base)
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; %s", ErrPendingAuditFindings, base, strings.Join(differing, ", "), resetToStartSteps(stepRunFresh))
 	}
 	if head != base {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; way forward: reset the branch to %s with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, head, base, base)
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRunFresh))
 	}
 	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
 	if err != nil {
@@ -1295,8 +1300,7 @@ func headBeforeEveryStart(worktree, head string, starts []string) error {
 			return err
 		}
 		if !ok {
-			list := strings.Join(starts, " ")
-			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; way forward: reset the branch to a commit every recorded start descends from (git merge-base --octopus %s) with git, then re-run \"lyx webster run --fresh\"", ErrPendingAuditFindings, strings.Join(starts, ", "), head, list)
+			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; %s", ErrPendingAuditFindings, strings.Join(starts, ", "), head, resetToStartSteps(stepRunFresh))
 		}
 	}
 	return nil

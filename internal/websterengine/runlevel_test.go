@@ -2754,7 +2754,10 @@ func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
 		t.Fatalf("Run() with HEAD past a start error = %v; want ErrPendingAuditFindings", err)
 	}
-	requireWayForward(t, err, "git merge-base --octopus", "run --fresh")
+	requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+	if strings.Contains(err.Error(), "merge-base --octopus") {
+		t.Errorf("Run() error = %q; want the reset verb, not a git merge-base command", err)
+	}
 	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
 		t.Errorf("state.json was archived: %v", statErr)
 	}
@@ -2808,7 +2811,7 @@ func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
 	if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
 		t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
 	}
-	requireWayForward(t, err, "git", "run --fresh")
+	requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
 	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")); statErr != nil {
 		t.Errorf("state.json was archived: %v", statErr)
 	}

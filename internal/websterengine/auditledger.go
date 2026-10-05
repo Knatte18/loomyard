@@ -165,21 +165,24 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 		parts = append(parts, fmt.Sprintf("plan file(s) differ from the plan the run recorded: %s; way forward: %s", strings.Join(planDiffering, ", "), planPathClause("\"lyx webster accept-audit\"")))
 	}
 	if len(gitDiffering) > 0 {
-		parts = append(parts, fmt.Sprintf("differs from the last batch head: %s; way forward: restore each with \"git checkout %s -- <path>\" (delete a path the head does not hold), then re-run \"lyx webster accept-audit\"", strings.Join(gitDiffering, ", "), head))
+		parts = append(parts, fmt.Sprintf("differs from the last batch head; %s", wayForwardSteps(restoreStep(head, gitDiffering), stepAcceptAudit)))
 	}
 	if len(unverifiable) > 0 || pathless {
 		var what []string
-		if len(unverifiable) > 0 {
-			what = append(what, "cannot be checked: "+strings.Join(unverifiable, ", "))
+		for _, p := range unverifiable {
+			reason, _, err := uncheckableReason(geom, st, p)
+			if err != nil {
+				return nil, false, err
+			}
+			if reason == "" {
+				reason = reasonNoBatchHead
+			}
+			what = append(what, fmt.Sprintf("%s cannot be checked: %s", p, reason))
 		}
 		if pathless {
-			what = append(what, "a finding names no path")
+			what = append(what, reasonNoPath)
 		}
-		start := bases.Start
-		if start != "" {
-			start = " " + start
-		}
-		parts = append(parts, fmt.Sprintf("%s; way forward: reset the branch to the run's start commit%s with git and run \"lyx webster run --fresh\"", strings.Join(what, "; "), start))
+		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRunFresh)))
 	}
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
