@@ -241,6 +241,17 @@ var wordingClaims = []stencilClaims{
 		{must: "is no convergence signal", why: "the review's own top-level verdict does not converge the loop"},
 		{mustNot: "{{.artifacts}}", why: "the judge no longer reads the artifacts"},
 	}, focusEntryClaims()...)},
+	{"bouncer-template-escalation.md", BouncerTemplateEscalation, joinClaims(
+		wantAll("the brief tells the fork to record design calls and the decision and to resume the run",
+			"lyx loom decision add", "lyx loom circling accept", "lyx loom circling continue", "lyx loom start"),
+		wantAll("the brief names both causes", "`circling`", "`budget`"),
+		wantAll("the brief says accept passes the segment unconverged", "recorded as unconverged"),
+		wantAll("a fork that cannot settle the question records nothing and reports back", "record nothing", "The run stays `awaiting`"),
+	)},
+	{"bouncer-template-parent-notice.md", BouncerTemplateParentNotice, joinClaims(
+		wantAll("the notice points the parent at the brief", "{{.brief_path}}"),
+		wantNone("the notice interpolates no judge, review or ledger text", "{{.review_path}}", "{{.ledger_path}}", "{{.verdict_path}}"),
+	)},
 	{"webster-body-implementer.md", WebsterBodyImplementer, joinClaims(
 		[]claim{{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"}},
 		wantAll("the report carries the minimal fork-return contract's keys", "status:", "head_sha:", "deviations:"),
