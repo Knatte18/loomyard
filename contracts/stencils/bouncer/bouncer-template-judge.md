@@ -100,6 +100,8 @@ ledger:
   - key: short-stable-finding-identity
     rounds: [1, 3]
     status: open
+    class: design
+    severity: MEDIUM
   - key: another-finding-identity
     rounds: [2]
     status: resolved
@@ -111,6 +113,9 @@ Frontmatter rules, all strict:
 - `round` is a positive integer, here {{.round}}.
 - `ledger` is a list of entries, each with a non-empty `key`, a non-empty `rounds` list of positive
   integers, and a `status` of exactly `open` or `resolved`.
+- Every `status: open` entry also carries `class` and `severity`, copied from the latest review's finding that you map to that key (after any relabel you name in the rationale).
+  A `status: resolved` entry may omit them.
+  `class` is one of `design`, `scope`, `decision`, `consistency`; `severity` is one of `BLOCKING`, `MEDIUM`, `LOW`, `NIT`.
 - REQUIRED — lossless carry-forward rule: every entry present in the previous ledger reappears in
   this ledger, as either `status: open` (still applies) or `status: resolved` (no longer applies),
   never silently dropped.

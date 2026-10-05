@@ -11,8 +11,10 @@ package shedadapters
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -169,10 +171,13 @@ func readJudgment(runDir string, round int, parse func([]byte) (bouncerVerdict, 
 
 // ledgerEntry is one finding-identity record in a ledger file: a Key the judge uses to recognize
 // recurring findings, the Rounds it was seen in, and its Status.
+// Class and Severity label the finding the judge mapped to the key; both are empty on an unlabelled entry, which reads as non-gating.
 type ledgerEntry struct {
-	Key    string
-	Rounds []int
-	Status string
+	Key      string
+	Rounds   []int
+	Status   string
+	Class    burlerengine.Class
+	Severity burlerengine.Severity
 }
 
 // ledgerFile is a parsed bouncer ledger file: the Round it pertains to, its Entries, and its prose
@@ -192,15 +197,18 @@ type ledgerHeader struct {
 // ledgerEntryYAML mirrors one ledger entry's YAML shape before validation promotes it into a
 // ledgerEntry.
 type ledgerEntryYAML struct {
-	Key    string `yaml:"key"`
-	Rounds []int  `yaml:"rounds"`
-	Status string `yaml:"status"`
+	Key      string `yaml:"key"`
+	Rounds   []int  `yaml:"rounds"`
+	Status   string `yaml:"status"`
+	Class    string `yaml:"class"`
+	Severity string `yaml:"severity"`
 }
 
 // parseLedger parses a bouncer ledger file into a ledgerFile.
 // Fails loud: the frontmatter must be present, closed, and valid YAML; round must be a positive
 // int; the (legally empty) ledger list's entries must each have a non-empty key, a non-empty
 // rounds list of positive ints, and a status of exactly "open" or "resolved".
+// An entry's optional class and severity, when present, must be burlerengine vocabulary.
 // parseLedger compares nothing against any previous ledger — carry-forward is stated in the judge
 // prompt and is deliberately not enforced here.
 func parseLedger(content []byte) (ledgerFile, error) {
@@ -237,7 +245,19 @@ func parseLedger(content []byte) (ledgerFile, error) {
 		default:
 			return ledgerFile{}, fmt.Errorf("bouncer: ledger file entry %q has status %q; want exactly \"open\" or \"resolved\"", raw.Key, raw.Status)
 		}
-		entries = append(entries, ledgerEntry{Key: raw.Key, Rounds: raw.Rounds, Status: raw.Status})
+		if raw.Class != "" && !slices.Contains(classOrder, burlerengine.Class(raw.Class)) {
+			return ledgerFile{}, fmt.Errorf("bouncer: ledger file entry %q has class %q; want one of %v", raw.Key, raw.Class, classOrder)
+		}
+		if raw.Severity != "" && !slices.Contains(severityOrder, burlerengine.Severity(raw.Severity)) {
+			return ledgerFile{}, fmt.Errorf("bouncer: ledger file entry %q has severity %q; want one of %v", raw.Key, raw.Severity, severityOrder)
+		}
+		entries = append(entries, ledgerEntry{
+			Key:      raw.Key,
+			Rounds:   raw.Rounds,
+			Status:   raw.Status,
+			Class:    burlerengine.Class(raw.Class),
+			Severity: burlerengine.Severity(raw.Severity),
+		})
 	}
 
 	return ledgerFile{
