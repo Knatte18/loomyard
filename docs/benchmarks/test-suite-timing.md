@@ -216,3 +216,43 @@ The integration run's twenty slowest top-level tests (run 4):
 | `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 2.19 s |
 | `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | `internal/reedengine` | 2.11 s |
 | `TestWatchdogReap_LoopStaysLiveDuringReap` | `internal/reedcli` | 1.90 s |
+
+### Post-retag (2026-10-05)
+
+```yaml
+machine: AMD Ryzen AI 7 445 w/ Radeon 840M, 12 threads
+os: Linux 7.0.0-31-generic (Ubuntu), bare metal
+go: go1.26.0 linux/amd64
+revision: 04d9b57c0
+load_average_before: 3.56 2.70 3.03
+tier_1_top_level_tests: 4274
+integration_top_level_tests: 5533
+tmux_top_level_tests: 4319
+tier_1_wall: 8.38 s
+integration_wall: 34.00 s
+tmux_wall: 231.56 s
+```
+
+Same method as the before-state: `go build ./...` first, then four runs each of `go run ./cmd/testtiming`, `-tags integration` and `-tags tmux`, the first of each discarded as cold, and the median wall time of the other three.
+Tier 1 runs were 8.20, 8.38 and 8.27 s.
+Integration runs were 35.16, 33.02 and 34.00 s.
+Tmux runs were 231.56, 230.05 and 238.12 s.
+Test counts sum the `TESTS` column of the final run of each tier and cover top-level tests only.
+The load average before is the machine idle apart from other sessions, taken before the first run; it rose to 10 by the end.
+
+The integration tier's test set changed at the retag: tmux-starting files moved to the `tmux` tier and `smoke` was retired, so these numbers do not compare with the before and after-speed ones.
+The `tmux` tier now carries the cost the integration tier shed, so its wall time is the long pole.
+Every `-tags tmux` run failed on `internal/reedcli`'s `TestSmokeDotFillCrossClientControl`, which tmux 3.6 refuses with "no space for new pane" on this machine; it is counted in the wall time and was not caused by the retag.
+Tier 1 gained tests since the before-state through the new untagged guards and unit tests.
+
+The per-test redundancy of this tree is in [test-redundancy.md](test-redundancy.md).
+
+The `-tags tmux` run's five slowest top-level tests (run 4):
+
+| Test | Package | Elapsed |
+|---|---|---|
+| `TestSmokeRepaintCandidateMeasurement` | `internal/reedcli` | 57.69 s |
+| `TestSmokeDotFillCrossClientControl` | `internal/reedcli` | 43.02 s (FAIL) |
+| `TestSmokeDotFillFloorIsCleanOnASettledAttach` | `internal/reedcli` | 24.82 s |
+| `TestSmokeDotFillResizeTreatment` | `internal/reedcli` | 22.97 s |
+| `TestSmokeDotFillResizeControl` | `internal/reedcli` | 22.68 s |

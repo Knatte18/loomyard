@@ -337,14 +337,12 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 			continue
 		}
 		report := pkgReport{pkg: shortPkg(importPath), tests: timing.tests, wall: timing.elapsed, serial: timing.serial}
-		if timing.action == "fail" {
-			report.err = "the package's own go test run failed"
-		} else {
-			fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
-			report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp)
-			if err != nil {
-				report.err = err.Error()
-			}
+		// A package whose own run failed is still measured: each failing test is
+		// listed under "no coverage" as failed.
+		fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
+		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp)
+		if err != nil {
+			report.err = err.Error()
 		}
 		if report.err != "" {
 			failed++
@@ -409,6 +407,7 @@ var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-
 
 // runAlone runs one top-level test under the coverage binary and reads its
 // elapsed time, outcome and covered blocks.
+// A failing run is returned as such, never as an error.
 func runAlone(bin, dir, tmp, name string) (testRun, error) {
 	prof := filepath.Join(tmp, "cover.out")
 	os.Remove(prof)
@@ -429,7 +428,9 @@ func runAlone(bin, dir, tmp, name string) (testRun, error) {
 		}
 	}
 	if run.action == "fail" {
-		return testRun{}, fmt.Errorf("test %s did not pass when run alone", name)
+		// A test that reads the process's own arguments fails under the
+		// binary's -test.* flags, so it is listed under "no coverage".
+		return run, nil
 	}
 	f, err := os.Open(prof)
 	if err != nil {
