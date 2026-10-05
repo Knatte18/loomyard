@@ -16,8 +16,10 @@
 package fabricengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,6 +163,61 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 	if status := gitStatusPorcelain(t, repoPath); status == "" {
 		t.Errorf("git status --porcelain = %q; want non-empty (the untracked file must remain uncommitted)", status)
 	}
+}
+
+// TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns, leaving
+// other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
+func TestBolt_CommitWritten(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBoltBareRemote(t, container)
+	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
+	b := NewBolt(repoPath)
+
+	if err := os.WriteFile(filepath.Join(repoPath, "seed.md"), []byte("seed"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if _, _, err := b.Commit("bolt seed", SyncOptions{}); err != nil {
+		t.Fatalf("Commit() (seed) error = %v; want nil", err)
+	}
+
+	t.Run("commits only the written paths", func(t *testing.T) {
+		if err := os.WriteFile(filepath.Join(repoPath, "other.md"), []byte("other"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		sha, committed, err := b.CommitWritten("bolt written", func() ([]string, error) {
+			return []string{"written.md"}, os.WriteFile(filepath.Join(repoPath, "written.md"), []byte("written"), 0o644)
+		}, SyncOptions{})
+		if err != nil {
+			t.Fatalf("CommitWritten() error = %v; want nil", err)
+		}
+		if !committed || sha == "" {
+			t.Fatalf("CommitWritten() = (%q, %v); want a new commit", sha, committed)
+		}
+
+		status := gitStatusPorcelain(t, repoPath)
+		if !strings.Contains(status, "other.md") || strings.Contains(status, "written.md") {
+			t.Errorf("git status --porcelain = %q; want other.md still dirty and written.md committed", status)
+		}
+	})
+
+	t.Run("write error leaves HEAD unchanged", func(t *testing.T) {
+		headBefore := gitkit.RevParse(t, repoPath, "HEAD")
+		writeErr := errors.New("refused write")
+
+		sha, committed, err := b.CommitWritten("bolt refused", func() ([]string, error) {
+			return []string{"other.md"}, writeErr
+		}, SyncOptions{})
+		if err != writeErr {
+			t.Errorf("CommitWritten() error = %v; want the write error unwrapped", err)
+		}
+		if committed || sha != "" {
+			t.Errorf("CommitWritten() = (%q, %v); want no commit", sha, committed)
+		}
+		if got := gitkit.RevParse(t, repoPath, "HEAD"); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
+		}
+	})
 }
 
 // TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst asserts that Sync acquires its absorbing lock
