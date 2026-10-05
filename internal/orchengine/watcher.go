@@ -199,7 +199,10 @@ func (w *Watcher) tick() (done bool, err error) {
 
 	switch st.Phase {
 	case PhaseIdle:
-		return false, w.tickIdle(st, now)
+		if err := w.tickIdle(st, now); err != nil {
+			return false, err
+		}
+		return false, w.deliverNotice()
 	case PhaseHandoffRequested:
 		return false, w.tickHandoff(st, now)
 	case PhaseClearing:
@@ -307,6 +310,35 @@ func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shutt
 	if !reading.Known {
 		st.LastContextTokens = 0
 	}
+}
+
+// deliverNotice types the oldest queued notice into the session as a turn, then removes its file.
+// It runs after tickIdle and delivers only when the persisted phase is still idle, so a tick that started a cycle delivers nothing,
+// and only when the idle probe passes, so a notice is never typed over a draft or a running turn.
+// Delivery is at least once: a watcher that dies between typing and removing types the notice again after restart.
+func (w *Watcher) deliverNotice() error {
+	notices, err := ListNotices(w.paths)
+	if err != nil || len(notices) == 0 {
+		return err
+	}
+	st, err := LoadState(w.paths)
+	if err != nil {
+		return err
+	}
+	if st.Phase != PhaseIdle {
+		return nil
+	}
+	probe, err := w.probeIdle(&st)
+	if err != nil {
+		return err
+	}
+	if !probe.Idle {
+		return nil
+	}
+	if err := w.session.Send(st.Strand, notices[0].Line); err != nil {
+		return err
+	}
+	return RemoveNotice(notices[0])
 }
 
 func (w *Watcher) tickIdle(st State, now time.Time) error {

@@ -141,11 +141,34 @@ func newWatchEnv(t *testing.T) *watchEnv {
 		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100, CycleMode: CycleClear},
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
+	e.paths.NoticesDir = filepath.Join(e.paths.Dir, "notices")
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
 		t.Fatal(err)
 	}
 	e.w = e.newWatcher()
 	return e
+}
+
+// queue queues line as a notice, failing the test when it is not queued.
+func (e *watchEnv) queue(line string) {
+	e.t.Helper()
+	e.clock.advance(time.Millisecond)
+	if queued, err := QueueNotice(e.paths, line, e.clock.now); err != nil || !queued {
+		e.t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
+	}
+}
+
+func (e *watchEnv) noticeLines() []string {
+	e.t.Helper()
+	ns, err := ListNotices(e.paths)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var lines []string
+	for _, n := range ns {
+		lines = append(lines, n.Line)
+	}
+	return lines
 }
 
 func (e *watchEnv) newWatcher() *Watcher {
@@ -1262,5 +1285,77 @@ func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
 	}
 	if len(e.s.tokenAsks) != asks {
 		t.Errorf("ContextTokens asked %d more times, want none", len(e.s.tokenAsks)-asks)
+	}
+}
+
+func TestWatcher_NoticesDeliveredOldestFirstOnePerTick(t *testing.T) {
+	e := newWatchEnv(t)
+	e.queue("first")
+	e.queue("second")
+
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:first" {
+		t.Fatalf("calls after tick 1 = %q, want send:first", got)
+	}
+	if got := e.noticeLines(); len(got) != 1 || got[0] != "second" {
+		t.Errorf("queue after tick 1 = %v, want [second]", got)
+	}
+
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:first|send:second" {
+		t.Fatalf("calls after tick 2 = %q", got)
+	}
+	if got := e.noticeLines(); len(got) != 0 {
+		t.Errorf("queue after tick 2 = %v, want empty", got)
+	}
+}
+
+func TestWatcher_NoticeWaitsOnANonIdleProbe(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.idle = false
+	e.queue("hold")
+	e.tick()
+	e.assertNoCalls()
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
+	}
+
+	e.s.idle = true
+	e.tick()
+	if got := strings.Join(e.s.calls, "|"); got != "send:hold" {
+		t.Errorf("calls = %q, want send:hold", got)
+	}
+}
+
+func TestWatcher_NoticeWaitsOutANonIdlePhase(t *testing.T) {
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.s.calls = nil
+	e.queue("later")
+	e.tick()
+	if n := e.s.count("send:later"); n != 0 {
+		t.Fatalf("notice typed during a cycle: %v", e.s.calls)
+	}
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
+	}
+}
+
+func TestWatcher_TickThatStartsACycleDeliversNoNotice(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.queue("not now")
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want handoff-requested", st.Phase)
+	}
+	if n := e.s.count("send:not now"); n != 0 {
+		t.Errorf("notice typed on the cycle's own tick: %v", e.s.calls)
+	}
+	if got := e.noticeLines(); len(got) != 1 {
+		t.Errorf("queue = %v, want the notice kept", got)
 	}
 }

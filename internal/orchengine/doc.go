@@ -163,8 +163,25 @@
 //   - cycle-request: the marker `cycle` writes and the watcher consumes.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
+//   - notices/: one file per queued notice, removed on delivery.
 //   - session-*.never: one sentinel per launch, an output file nothing ever writes.
 //     A shuttle Spec needs an output file to validate, and the watcher, not shuttle's Wait, owns the session's lifetime.
+//
+// # Notices
+//
+// Another module tells the orchestrator about a change through `QueueNotice`, never by typing into its pane:
+// only the orch watcher types into the orch session (PATTERN-orch-pane-single-writer), so the orchestrator keeps no watcher of its own.
+//
+//   - A notice is one line, written as one file under `notices/` whose name sorts by arrival (UTC time to the nanosecond, then a random suffix), so concurrent writers never share a file.
+//     A line containing a newline or beginning with `/` is refused, since it would be typed as several lines or read as a command.
+//   - With no strand recorded in the orch state, the notice is logged and not queued.
+//   - The queue holds at most 50 notices: after a write the oldest beyond the cap are removed and logged.
+//     Concurrent appenders can overshoot the cap transiently by at most one notice each.
+//   - In phase idle, when `tickIdle` has not started a cycle on the tick and the idle probe passes on that tick, the watcher types the oldest notice as a turn and then removes its file.
+//     It delivers one notice per tick, and a non-idle probe, a running cycle or a watcher that is down leaves the queue untouched.
+//   - Delivery is at least once: a watcher that dies between typing and removing types the notice again after a restart.
+//   - A notice can be delayed by a busy session, a too-short pane or a cycle, but is never typed over a draft or a running turn.
+//   - `Watcher.Run` drops the queue at start when the orch state records no strand.
 //
 // # Migrating from an operator's own terminal session
 //
