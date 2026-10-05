@@ -3,14 +3,20 @@
 // hidden in one combined number.
 //
 // It is the runnable companion to docs/benchmarks/test-suite-timing.md and
-// produces the two tiers documented there:
+// produces the tiers documented there:
 //
-//	go run ./cmd/testtiming          # Tier 1 — offline, fast (no git subprocesses)
-//	go run ./cmd/testtiming -full    # Tier 2 — integration, slow (real git; ~a minute)
+//	go run ./cmd/testtiming                        # Tier 1 — offline, fast (no git subprocesses)
+//	go run ./cmd/testtiming -full                  # Tier 2 — integration, slow (real git; ~a minute)
+//	go run ./cmd/testtiming -tags integration,tmux # any tag set; -full means -tags integration
 //
-// It shells out to `go test ./... -json -count=1` (adding `-tags integration`
-// in full mode), parses the JSON event stream, and prints per-package times,
-// the measured wall-clock, and the slowest top-level tests. Exit code mirrors
+// Passing both -full and -tags is refused.
+//
+// It shells out to `go test ./... -json -count=1` (adding `-tags <tags>`
+// when tags are given), parses the JSON event stream, and prints per-package
+// times, the measured wall-clock, and the slowest top-level tests.
+// Each package row carries its top-level test count (TESTS) and serial time
+// (SERIAL), the sum of those tests' elapsed seconds; subtests count in neither.
+// The header line shows the exact command run, tags included. Exit code mirrors
 // the underlying `go test`: 0 on success, 1 if any package failed to build or
 // any test failed.
 package main
@@ -42,8 +48,10 @@ type testEvent struct {
 type pkgResult struct {
 	pkg     string
 	elapsed float64
-	action  string // terminal action: "pass" | "fail" | "skip"
-	noTests bool   // package had no test files (absent from this tier)
+	action  string  // terminal action: "pass" | "fail" | "skip"
+	noTests bool    // package had no test files (absent from this tier)
+	tests   int     // top-level tests that reached a terminal action
+	serial  float64 // sum of those tests' elapsed seconds
 }
 
 // testResult is one top-level test's timing (subtests are excluded).
@@ -55,21 +63,44 @@ type testResult struct {
 }
 
 func main() {
-	full := flag.Bool("full", false, "run the integration tier (-tags integration): real git, slow (~a minute)")
+	full := flag.Bool("full", false, "run the integration tier (same as -tags integration): real git, slow (~a minute)")
+	tagFlag := flag.String("tags", "", "build tags to run under, comma-separated (e.g. integration,tmux); excludes -full")
 	top := flag.Int("top", 15, "how many of the slowest top-level tests to list")
 	flag.Parse()
 
-	if err := run(*full, *top); err != nil {
+	tags, err := resolveTags(*full, *tagFlag)
+	if err == nil {
+		err = run(tags, *top)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "testtiming:", err)
 		os.Exit(1)
 	}
 }
 
-func run(full bool, top int) error {
-	args := []string{"test", "./...", "-json", "-count=1"}
-	if full {
-		args = []string{"test", "-tags", "integration", "./...", "-json", "-count=1"}
+// resolveTags turns the -full and -tags flags into the build-tag string,
+// empty for the untagged tier.
+func resolveTags(full bool, tags string) (string, error) {
+	if full && tags != "" {
+		return "", errors.New("-full and -tags are mutually exclusive: -full means -tags integration")
 	}
+	if full {
+		return "integration", nil
+	}
+	return tags, nil
+}
+
+func run(tags string, top int) error {
+	args := []string{"test"}
+	cmdline := "go test"
+	tier := "Tier 1 (offline)"
+	if tags != "" {
+		args = append(args, "-tags", tags)
+		cmdline += " -tags " + tags
+		tier = "Tags: " + tags
+	}
+	args = append(args, "./...", "-json", "-count=1")
+	cmdline += " ./... -count=1"
 
 	cmd := exec.Command("go", args...)
 	stdout, err := cmd.StdoutPipe()
@@ -78,14 +109,8 @@ func run(full bool, top int) error {
 	}
 	cmd.Stderr = os.Stderr
 
-	tier := "Tier 1 (offline)"
-	cmdline := "go test ./... -count=1"
-	if full {
-		tier = "Tier 2 (integration)"
-		cmdline = "go test -tags integration ./... -count=1"
-	}
 	fmt.Printf("Running %s  —  %s\n", tier, cmdline)
-	if full {
+	if tags != "" {
 		fmt.Println("(real local git; this can take ~a minute)")
 	}
 	fmt.Println()
@@ -163,6 +188,8 @@ func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 	if strings.Contains(ev.Test, "/") {
 		return
 	}
+	p.tests++
+	p.serial += ev.Elapsed
 	*tests = append(*tests, testResult{pkg: ev.Package, test: ev.Test, elapsed: ev.Elapsed, action: ev.Action})
 }
 
@@ -193,8 +220,8 @@ func printReport(tier, cmdline string, wall time.Duration, pkgs map[string]*pkgR
 		}
 	}
 
-	fmt.Println("PACKAGE                                   ELAPSED")
-	fmt.Println("----------------------------------------  --------")
+	fmt.Println("PACKAGE                                   ELAPSED   TESTS    SERIAL")
+	fmt.Println("----------------------------------------  --------  -----  --------")
 	for _, p := range ordered {
 		elapsed := fmt.Sprintf("%.2fs", p.elapsed)
 		if p.noTests {
@@ -204,7 +231,7 @@ func printReport(tier, cmdline string, wall time.Duration, pkgs map[string]*pkgR
 		if p.action == "fail" {
 			mark = "  FAIL"
 		}
-		fmt.Printf("%-40s  %8s%s\n", shortPkg(p.pkg), elapsed, mark)
+		fmt.Printf("%-40s  %8s  %5d  %7.2fs%s\n", shortPkg(p.pkg), elapsed, p.tests, p.serial, mark)
 	}
 
 	fmt.Println()
