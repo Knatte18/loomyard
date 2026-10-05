@@ -65,3 +65,28 @@ func TestTemplate_NotFound(t *testing.T) {
 		t.Error("Template(\"nope\") = _, true; want _, false")
 	}
 }
+
+func TestLookup_BoardDeclaresOpenMaps(t *testing.T) {
+	m, ok := Lookup("board")
+	if !ok {
+		t.Fatal("Lookup(\"board\") = _, false; want _, true")
+	}
+	if m.Template == nil {
+		t.Error("Lookup(\"board\").Template is nil; want the board template")
+	}
+	want := []string{"types", "labels"}
+	if len(m.OpenMaps) != len(want) {
+		t.Fatalf("Lookup(\"board\").OpenMaps = %v; want %v", m.OpenMaps, want)
+	}
+	for i := range want {
+		if m.OpenMaps[i] != want[i] {
+			t.Errorf("Lookup(\"board\").OpenMaps = %v; want %v", m.OpenMaps, want)
+		}
+	}
+}
+
+func TestLookup_NotFound(t *testing.T) {
+	if _, ok := Lookup("bogus"); ok {
+		t.Error("Lookup(\"bogus\") = _, true; want _, false")
+	}
+}

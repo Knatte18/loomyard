@@ -26,6 +26,9 @@ type Module struct {
 	Name string
 	// Template is a function that returns the default YAML template for this module.
 	Template func() string
+	// OpenMaps names the template's keys whose entries belong to the repository,
+	// as dotted paths; configsync carries them whole through reconcile.
+	OpenMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the
 	// operator (e.g. models.yaml aliases, burler.yaml lenses/fans).
 	// configsync materializes a seed-only module's template when its file
@@ -43,7 +46,7 @@ type Module struct {
 func Modules() []Module {
 	return []Module{
 		{Name: "batcher", Template: batcher.ConfigTemplate},
-		{Name: "board", Template: boardengine.ConfigTemplate},
+		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps()},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "landing", Template: landingshed.ConfigTemplate},
@@ -66,6 +69,17 @@ func Template(name string) (func() string, bool) {
 		}
 	}
 	return nil, false
+}
+
+// Lookup returns the registered module for the name, with its template and open maps.
+// It returns (Module{}, false) if the module name is unknown.
+func Lookup(name string) (Module, bool) {
+	for _, m := range Modules() {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return Module{}, false
 }
 
 // Names returns the ordered list of all available config module names.

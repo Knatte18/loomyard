@@ -707,3 +707,54 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+// TestReconcileAll_BoardOpenMapsCarriedWhole pins that a repository's own `types` and `labels`
+// entries, map- or list-shaped, are neither reported nor removed by reconcile, and that apply
+// leaves them as written.
+func TestReconcileAll_BoardOpenMapsCarriedWhole(t *testing.T) {
+	cases := map[string]string{
+		"maps":        "types:\n  chore: housekeeping\nlabels:\n  infra: build and deploy\n",
+		"list labels": "types:\n  chore: housekeeping\nlabels:\n  - infra\n  - docs\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			path := configengine.ConfigFile(tmpDir, "board")
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatalf("write board.yaml: %v", err)
+			}
+
+			results, err := ReconcileAll(tmpDir, true)
+			if err != nil {
+				t.Fatalf("ReconcileAll: %v", err)
+			}
+			r := findResult(results, "board")
+			if r == nil {
+				t.Fatal("no result for board")
+			}
+			for _, k := range append(append([]string{}, r.Added...), r.Removed...) {
+				if len(k) >= 5 && (k[:5] == "types" || k[:5] == "label") {
+					t.Errorf("reconcile reported open-map key %q; want none (added=%v removed=%v)", k, r.Added, r.Removed)
+				}
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read board.yaml: %v", err)
+			}
+			for _, want := range []string{"chore", "infra"} {
+				if !contains(string(got), want) {
+					t.Errorf("board.yaml lost %q after apply:\n%s", want, got)
+				}
+			}
+			for _, gone := range []string{"bug", "enhancement"} {
+				if contains(string(got), gone) {
+					t.Errorf("board.yaml gained template entry %q after apply:\n%s", gone, got)
+				}
+			}
+		})
+	}
+}

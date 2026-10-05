@@ -119,7 +119,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 			continue
 		}
 
-		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing)
+		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
 		if err != nil {
 			return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
 		}
