@@ -36,14 +36,14 @@ exactly how an earlier reproduction attempt lost the finding.
    An unseeded `start` records the llm driver on its own, so the explicit seed only pins the
    driver against a changed default.
    Confirm the llm arm ran: `lyx reed status` must list a strand named
-   `driverStrandDisplayName`'s value (the ly-drive driver).
+   `driverStrandDisplayName`'s value (the loom driver).
    There must be no detached go runner: the driver log named by `LoomDriverLog` is absent or
    empty for this run.
 5. Pre-fix expectation (baseline, optional, from a `main` build): `start` returns success, and
    `tmux capture-pane -p -t <driver pane>` shows the trust dialog ("Yes, I trust this folder")
    indefinitely.
 6. Post-fix expectation: `start` returns only after dismissal, the driver pane shows the
-   ly-drive session working, and
+   loom driver session working, and
    `jq --arg p "<abs worktree path>" '.projects[$p].hasTrustDialogAccepted' ~/.claude.json`
    prints `true`.
    That checks the acceptance field itself, not the entry's presence — Claude Code creates an

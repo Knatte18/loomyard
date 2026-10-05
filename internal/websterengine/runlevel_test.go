@@ -717,6 +717,9 @@ func TestRun_MasterSpecCarriesWebsterStrandRole(t *testing.T) {
 	if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
 		t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)
 	}
+	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
+		t.Errorf("Spec.Skills = %v; want %v", spec.Skills, want)
+	}
 }
 
 // expiredShellRun drives fx's Run to a done outcome whose Master result lists labels as expired shells.

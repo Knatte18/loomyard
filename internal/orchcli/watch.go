@@ -48,7 +48,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, realClock{})
+			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, realClock{})
 			runErr := watcher.Run(ctx, time.Sleep)
 
 			if errors.Is(runErr, orchengine.ErrWatcherRunning) {

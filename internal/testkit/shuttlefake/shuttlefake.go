@@ -10,6 +10,7 @@ package shuttlefake
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -45,11 +46,16 @@ type Engine struct {
 	TrustDismissSequenceFn  func(capture string) []shuttleengine.PaneInput
 	ComposeSendFn           func(text string) []shuttleengine.PaneInput
 	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
+	SkillLoadSequenceFn     func(skill string) []shuttleengine.PaneInput
+	SkillUnknownFn          func(capture, skill string) bool
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
 	AuditForksIncrementalFn func(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error)
 }
 
-var _ shuttleengine.Engine = (*Engine)(nil)
+var (
+	_ shuttleengine.Engine      = (*Engine)(nil)
+	_ shuttleengine.SkillLoader = (*Engine)(nil)
+)
 
 // Prepare records the call and answers PrepareFn, else PrepareErr, else PrepareLaunch, else a canned launch.
 func (e *Engine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
@@ -111,6 +117,27 @@ func (e *Engine) ComposeSend(text string) []shuttleengine.PaneInput {
 		return e.ComposeSendFn(text)
 	}
 	return nil
+}
+
+// SkillLoadSequence answers SkillLoadSequenceFn, else no inputs.
+func (e *Engine) SkillLoadSequence(skill string) []shuttleengine.PaneInput {
+	if e.SkillLoadSequenceFn != nil {
+		return e.SkillLoadSequenceFn(skill)
+	}
+	return nil
+}
+
+// SkillUnknown answers SkillUnknownFn, else false.
+func (e *Engine) SkillUnknown(capture, skill string) bool {
+	if e.SkillUnknownFn != nil {
+		return e.SkillUnknownFn(capture, skill)
+	}
+	return false
+}
+
+// DefaultSkillLoadTimeout answers a bound of one second.
+func (e *Engine) DefaultSkillLoadTimeout() time.Duration {
+	return time.Second
 }
 
 // ModelSwitchSequence answers ModelSwitchSequenceFn, else no inputs.

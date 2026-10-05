@@ -147,7 +147,7 @@ func TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus(t *testing.T
 // and leaked an internal "no such file or directory" path instead of their own remedy. Neither verb's
 // unit tests could see it: they build both paths under a t.TempDir() that already exists.
 //
-// The ly-drive skill's first move is a status read taken as its baseline, and on a brand-new task
+// The loom driver's first move is a status read taken as its baseline, and on a brand-new task
 // that read must reach the verb's own remedy rather than a lock-directory error.
 func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
 	exe := sharedLyxBinary(t)

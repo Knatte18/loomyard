@@ -22,7 +22,7 @@ type driverHandle interface {
 	RunDir() string
 }
 
-// driverStarter starts the ly-drive session's shuttle run.
+// driverStarter starts the loom driver session's shuttle run.
 type driverStarter interface {
 	// StartDriver returns only once the run's provider is past its startup gates -- shuttle's own
 	// Start blocks through them before returning a handle at all. A provider that never became ready

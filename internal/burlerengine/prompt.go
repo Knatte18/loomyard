@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -42,18 +43,24 @@ type instructionFile struct {
 // means Tier 2 is off or the read failed, and renders as nothing.
 // stencilsDir is the absolute stencils directory composePrompt reads all
 // four round prompts from via stencilstore.Read.
-func composePrompt(stencilsDir string, p *Profile, patternDirective, frictionDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
+// parentName is the told parent agent name the orchestrator's parent directive renders from; an empty one renders the no-parent variant.
+func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective, frictionDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
 	roundOrchestratorTemplate, err := stencilstore.Read(stencilsDir, "burler-template-round-orchestrator")
 	if err != nil {
 		return "", nil, err
 	}
-	orchestratorValues := map[string]string{
-		"instruction_1_path": inst1Path,
-		"instruction_2_path": inst2Path,
-		"instruction_3_path": inst3Path,
-		"review_path":        p.ReviewPath,
+	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
-	orchestrator, err := stencil.Fill(roundOrchestratorTemplate, orchestratorValues)
+	orchestratorValues := map[string]string{
+		"instruction_1_path":       inst1Path,
+		"instruction_2_path":       inst2Path,
+		"instruction_3_path":       inst3Path,
+		"review_path":              p.ReviewPath,
+		parentdirective.MarkerName: parentDirective,
+	}
+	orchestrator, err := stencil.FillOptional(roundOrchestratorTemplate, orchestratorValues, []string{parentdirective.MarkerName})
 	if err != nil {
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}

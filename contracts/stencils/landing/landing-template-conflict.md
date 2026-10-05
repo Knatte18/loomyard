@@ -2,10 +2,13 @@
      embedded default in the top-level stencils package (stencils/stencils.go), seeded to
      <hub>/_board/_lyx/stencils/landing/, and read from there at call time by mergeresolve's own spec
      builder via internal/stencil, then handed to shuttle as the resolving agent's whole prompt.
-     Every marker below is a top-level {{.X}} substitution; stencil.Fill requires both non-empty and
+     Every marker below is a top-level {{.X}} substitution; stencil.Fill requires every marker
+     non-empty, parent_directive included (rendered by internal/parentdirective), and
      there are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Conflict resolution — resolve each listed path in place
+
+{{.parent_directive}}
 
 You are resolving merge conflicts left behind in a single repository's working tree.
 There is exactly one repository here — do not assume, infer, or mention a second one anywhere in your work.

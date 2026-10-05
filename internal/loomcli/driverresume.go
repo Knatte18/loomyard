@@ -1,4 +1,4 @@
-// driverresume.go implements the resume branch of `lyx loom start`: typing the one resume line into a parked ly-drive driver's pane instead of spawning a fresh driver.
+// driverresume.go implements the resume branch of `lyx loom start`: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
 
 package loomcli
 

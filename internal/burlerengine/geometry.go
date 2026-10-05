@@ -24,4 +24,7 @@ type Geometry struct {
 	// which is not the repo root for a subpath-anchored hub.
 	// An empty RepoRoot yields no PATTERN directive.
 	RepoRoot string
+	// ParentName is the told parent agent name the round prompt renders its parent directive from.
+	// An empty name renders the directive's no-parent variant.
+	ParentName string
 }

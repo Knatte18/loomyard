@@ -13,11 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the markers
 // buildReflectionSpec fills.
-const reflectionStencilFixture = "# Reflection\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nTask: {{.task_slug}}\n\nNotes:\n{{.note_list}}\n"
+const reflectionStencilFixture = "# Reflection\n\n{{.parent_directive}}\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nTask: {{.task_slug}}\n\nNotes:\n{{.note_list}}\n"
 
 // fakeClock is the Clock seam a test injects to assert an exact archive directory name rather than a
 // pattern, and to advance time mid-run.
@@ -105,9 +106,7 @@ func newTestDeps(t *testing.T, shuttle Shuttle, clock Clock) Deps {
 	if err := os.MkdirAll(frictionDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(frictionDir): %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(stencilsDir, "friction"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(stencilsDir/friction): %v", err)
-	}
+	stencilkit.SeedInto(t, stencilsDir)
 	if err := os.WriteFile(filepath.Join(stencilsDir, "friction", "friction-template-reflection.md"), []byte(reflectionStencilFixture), 0o644); err != nil {
 		t.Fatalf("WriteFile(reflection stencil): %v", err)
 	}
@@ -212,6 +211,38 @@ func TestReflect_OnlyStaleReport_Skipped(t *testing.T) {
 
 // TestReflect_OneNote_SpawnsAndArchives covers the full happy path: exactly one spawn, the composed
 // Spec's shape, the prompt naming the friction directory, and the archive-and-recreate.
+func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
+	tests := []struct {
+		name       string
+		parentName string
+		want       string
+	}{
+		{"with parent", "ab:cd:webster", "ab:cd:webster"},
+		{"no parent", "", "No parent is recorded"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deps := newTestDeps(t, doneShuttle(), fixedClock())
+			deps.ParentName = tt.parentName
+
+			spec, err := buildReflectionSpec(deps, []string{"note-1.md"}, "/x/report.md")
+			if err != nil {
+				t.Fatalf("buildReflectionSpec error = %v; want nil", err)
+			}
+			if !strings.Contains(spec.Prompt, tt.want) {
+				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
+			}
+			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
+				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)
+			}
+			if got := strings.Join(spec.Skills, ","); got != "scribe:prose" {
+				t.Errorf("Skills = %q; want scribe:prose", got)
+			}
+		})
+	}
+}
+
 func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())

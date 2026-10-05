@@ -52,6 +52,17 @@ func ResolveParent(l *lyxcwd.Location) (Parent, error) {
 	return decideParent(shortname, origin, originFound, parentIsPrime)
 }
 
+// parentNameOrEmpty is ResolveParent's name for the geometry tellers: an unresolvable parent logs a warning naming consumer and yields no parent,
+// since the parent is an optional escalation channel.
+func parentNameOrEmpty(l *lyxcwd.Location, consumer string) string {
+	resolved, err := ResolveParent(l)
+	if err != nil {
+		logger.Warn("hubgeom: parent unresolvable; "+consumer+" get no parent", "worktree", l.WorktreeName, "error", err)
+		return ""
+	}
+	return resolved.Name
+}
+
 // parentWorktreeIsPrime reports whether the worktree at root is the prime.
 // A root with no .git entry is a parent pair since removed, which is not the prime:
 // the prime exists while any pair does.

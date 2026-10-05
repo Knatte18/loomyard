@@ -1,6 +1,7 @@
 package orchengine
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +20,8 @@ func testPaths(t *testing.T) Paths {
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
+		RolePath:         filepath.Join(dir, "role.md"),
+		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
 	}
 }
 
@@ -52,6 +55,8 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 		WatcherExit:         "bye",
 		CycleTrigger:        TriggerSoft,
 		LastDeferral:        time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC),
+		CycleMode:           CycleCompact,
+		CycleRequestedAt:    time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC),
 	}
 	if err := SaveState(p, want); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -66,7 +71,10 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 	if !got.LastDeferral.Equal(want.LastDeferral) {
 		t.Errorf("LastDeferral = %v, want %v", got.LastDeferral, want.LastDeferral)
 	}
-	got.PhaseEnteredAt, got.LastDeferral = want.PhaseEnteredAt, want.LastDeferral
+	if !got.CycleRequestedAt.Equal(want.CycleRequestedAt) {
+		t.Errorf("CycleRequestedAt = %v, want %v", got.CycleRequestedAt, want.CycleRequestedAt)
+	}
+	got.PhaseEnteredAt, got.LastDeferral, got.CycleRequestedAt = want.PhaseEnteredAt, want.LastDeferral, want.CycleRequestedAt
 	if got != want {
 		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
@@ -77,20 +85,43 @@ func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	if err := ClearCycleRequest(p); err != nil {
 		t.Fatalf("clear absent: %v", err)
 	}
-	if ok, err := CycleRequested(p); err != nil || ok {
+	if _, ok, err := CycleRequested(p); err != nil || ok {
 		t.Fatalf("CycleRequested before = %v, %v", ok, err)
 	}
-	if err := RequestCycle(p); err != nil {
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := RequestCycle(p, CycleCompact, at); err != nil {
 		t.Fatalf("RequestCycle: %v", err)
 	}
-	if ok, err := CycleRequested(p); err != nil || !ok {
+	req, ok, err := CycleRequested(p)
+	if err != nil || !ok {
 		t.Fatalf("CycleRequested after = %v, %v", ok, err)
+	}
+	if req.Mode != CycleCompact || !req.RequestedAt.Equal(at) {
+		t.Errorf("request = %+v, want mode %q at %v", req, CycleCompact, at)
 	}
 	if err := ClearCycleRequest(p); err != nil {
 		t.Fatalf("ClearCycleRequest: %v", err)
 	}
-	if ok, _ := CycleRequested(p); ok {
+	if _, ok, _ := CycleRequested(p); ok {
 		t.Error("request still present after clear")
+	}
+}
+
+func TestCycleRequested_UnparseableMarkerIsPendingWithZeroRequest(t *testing.T) {
+	for name, content := range map[string]string{"legacy": "cycle\n", "garbage": "{", "unknown mode": `{"mode":"nap","requested_at":"2026-01-02T03:04:05Z"}`} {
+		t.Run(name, func(t *testing.T) {
+			p := testPaths(t)
+			if err := os.MkdirAll(p.Dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p.CycleRequestPath, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			req, ok, err := CycleRequested(p)
+			if err != nil || !ok || req != (CycleRequest{}) {
+				t.Errorf("CycleRequested = %+v, %v, %v; want a pending zero request", req, ok, err)
+			}
+		})
 	}
 }
 
@@ -111,9 +142,16 @@ func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
 
 func TestResetForFreshLaunch(t *testing.T) {
 	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
+	launched := time.Date(2026, 1, 2, 3, 6, 7, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {
-		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true}
-		got := ResetForFreshLaunch(in, "g2")
+		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: 2, ReloadTypedAt: deferred}
+		got := ResetForFreshLaunch(in, "g2", launched)
+		if !got.CompactionBaseline.Equal(launched) {
+			t.Errorf("CompactionBaseline = %v, want the launch time %v", got.CompactionBaseline, launched)
+		}
+		if got.ReloadStep != 0 || !got.ReloadTypedAt.IsZero() {
+			t.Errorf("reload step = %d at %v, want cleared", got.ReloadStep, got.ReloadTypedAt)
+		}
 		if got.LastAbortReason != "" {
 			t.Errorf("LastAbortReason = %q, want empty", got.LastAbortReason)
 		}
@@ -132,7 +170,7 @@ func TestResetForFreshLaunch(t *testing.T) {
 	})
 	t.Run("non-idle", func(t *testing.T) {
 		in := State{CycleTrigger: TriggerSoft, LastDeferral: deferred, Phase: PhaseClearing, PhaseInjected: true, PendingHandoff: "p", PendingResume: "r", WatcherExit: "x", LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6}
-		got := ResetForFreshLaunch(in, "g2")
+		got := ResetForFreshLaunch(in, "g2", launched)
 		if !strings.Contains(got.LastAbortReason, string(PhaseClearing)) {
 			t.Errorf("LastAbortReason = %q, want it to name clearing", got.LastAbortReason)
 		}

@@ -35,7 +35,7 @@ func statusStrandAddSpec(cmd string) reedengine.AddSpec {
 	}
 }
 
-// driverStrandDisplayName is the ly-drive session's own strand's stable identity.
+// driverStrandDisplayName is the loom driver session's own strand's stable identity.
 // The value is declared once, as loomengine.LoomDriverStrandName, which carries the reason it must never vary.
 const driverStrandDisplayName = loomengine.LoomDriverStrandName
 
@@ -45,7 +45,7 @@ const driverStrandDisplayName = loomengine.LoomDriverStrandName
 // The conjunction is required on BOTH paths, not one signal per path, because each signal is blind
 // to exactly the driver kind the other sees. An operator may run `lyx loom run` by hand against an
 // `llm`-seeded run: that spawns no driver strand at all, so a bootstrap consulting the strand table
-// alone would find none and launch a Claude driver alongside the live Go one. And a live ly-drive
+// alone would find none and launch a Claude driver alongside the live Go one. And a live loom driver
 // session between two `lyx shed step` invocations holds no run lock -- it takes the lock only inside
 // each step and releases it between them -- so a bootstrap consulting the lock alone would spawn a
 // second driver into a worktree that already has one.
@@ -241,7 +241,7 @@ func findDriverStrand(strands []reedengine.StrandStatus) (reedengine.StrandStatu
 	return reedengine.StrandStatus{}, false
 }
 
-// removeStatusStrands removes every strand named statusStrandDisplayName, for the llm arm, where the ly-drive strand is the driving surface and the status band is not wanted.
+// removeStatusStrands removes every strand named statusStrandDisplayName, for the llm arm, where the loom driver strand is the driving surface and the status band is not wanted.
 // It removes every match rather than the first, because an older build may have left a duplicate.
 // Removal is never recursive: reed refuses a non-recursive removal of a strand with children and removes nothing,
 // so a status strand with anything parented beneath it stays up instead of cascading through strands this call never meant to touch.
@@ -306,7 +306,7 @@ func resolveStatusStrandAction(strands []reedengine.StrandStatus, sidecar *statu
 	}
 }
 
-// driverStrandAction is what the bootstrap must do about the ly-drive session's own strand.
+// driverStrandAction is what the bootstrap must do about the loom driver session's own strand.
 type driverStrandAction int
 
 const (

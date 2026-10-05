@@ -24,6 +24,7 @@ var frictionengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/friction",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/modelspec",
+	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",

@@ -409,6 +409,12 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 			if spec.Role != "discussion" {
 				t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")
 			}
+			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(spec.Skills, want) {
+				t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+			}
+			if !strings.Contains(spec.Prompt, "## Your parent") {
+				t.Error("spec.Prompt carries no parent directive; want one")
+			}
 			wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
 			if spec.Timeout != wantTimeout {
 				t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
@@ -514,6 +520,12 @@ func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 	if spec.Role != "plan" {
 		t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
+	}
+	if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(spec.Skills, want) {
+		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+	}
+	if !strings.Contains(spec.Prompt, "## Your parent") {
+		t.Error("spec.Prompt carries no parent directive; want one")
 	}
 	wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
 	if spec.Timeout != wantTimeout {

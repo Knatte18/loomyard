@@ -31,13 +31,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // finalizeConflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two
 // markers mergeresolve's own spec builder fills, mirroring mergeresolve_test.go's own fixture --
 // this package's own conflict-resolution session never spawns a real model, so the stencil's prose
 // content is irrelevant to this test, only its two placeholders.
-const finalizeConflictStencilFixture = "# Conflict\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
+const finalizeConflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
 // seedConflictStencil writes finalizeConflictStencilFixture at the layout mergeresolve's spec
 // builder reads (stencilstore.Path's own baseDir/landing/<name>.md shape) and returns the baseDir a
@@ -45,10 +46,8 @@ const finalizeConflictStencilFixture = "# Conflict\n\nPaths:\n{{.conflicted_path
 func seedConflictStencil(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	stencilkit.SeedInto(t, root)
 	dir := filepath.Join(root, "landing")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(stencils dir): %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "landing-template-conflict.md"), []byte(finalizeConflictStencilFixture), 0o644); err != nil {
 		t.Fatalf("WriteFile(conflict stencil): %v", err)
 	}

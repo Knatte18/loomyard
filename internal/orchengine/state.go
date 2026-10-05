@@ -6,6 +6,7 @@
 package orchengine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -27,6 +28,9 @@ type Paths struct {
 	HandoffsDir      string // One timestamped handoff file per cycle.
 	NoticesDir       string // One file per queued notice, delivered by the watcher.
 	WatchLogPath     string // Detached watcher's stdout and stderr.
+
+	RolePath         string // Role file rendered from the role stencil before every delivery.
+	NoteTemplatePath string // Note template file rendered before every note request.
 }
 
 // Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.
@@ -76,6 +80,17 @@ type State struct {
 
 	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
 	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
+
+	CycleMode        string    `json:"cycle_mode"`         // Mode of the current or last cycle: CycleClear or CycleCompact.
+	CycleRequestedAt time.Time `json:"cycle_requested_at"` // When the request that started the cycle was made; zero for an automatic trigger.
+
+	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
+	// only a boundary after it triggers a reload.
+	CompactionBaseline time.Time `json:"compaction_baseline"`
+	// ReloadStep is the resuming phase's current step: an index into the skill list, or the skill count for the pointer step.
+	ReloadStep int `json:"reload_step"`
+	// ReloadTypedAt is when the current step was first typed; zero while it has not been.
+	ReloadTypedAt time.Time `json:"reload_typed_at"`
 }
 
 // LoadState reads the persisted state, returning a zero State in phase idle when the file is absent.
@@ -134,27 +149,42 @@ func updateState(p Paths, mutate func(State) State) error {
 	return nil
 }
 
-// RequestCycle writes the cycle request file.
-func RequestCycle(p Paths) error {
+// CycleRequest is the recorded content of the cycle request marker.
+type CycleRequest struct {
+	Mode        string    `json:"mode"`         // CycleClear or CycleCompact.
+	RequestedAt time.Time `json:"requested_at"` // When the request was made.
+}
+
+// RequestCycle writes the cycle request marker recording mode and the request time at.
+func RequestCycle(p Paths, mode string, at time.Time) error {
+	data, err := json.Marshal(CycleRequest{Mode: mode, RequestedAt: at})
+	if err != nil {
+		return fmt.Errorf("orch: encode cycle request: %w", err)
+	}
 	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
 		return fmt.Errorf("orch: create request dir: %w", err)
 	}
-	if err := os.WriteFile(p.CycleRequestPath, []byte("cycle\n"), 0o644); err != nil {
+	if err := os.WriteFile(p.CycleRequestPath, append(data, '\n'), 0o644); err != nil {
 		return fmt.Errorf("orch: write cycle request: %w", err)
 	}
 	return nil
 }
 
-// CycleRequested reports whether a cycle request is pending.
-func CycleRequested(p Paths) (bool, error) {
-	_, err := os.Stat(p.CycleRequestPath)
-	if err == nil {
-		return true, nil
-	}
+// CycleRequested returns the pending cycle request and whether one is pending.
+// A marker that does not parse, or names no known mode, is pending with a zero request, so its age is unbounded and the watcher treats it as stale.
+func CycleRequested(p Paths) (CycleRequest, bool, error) {
+	data, err := os.ReadFile(p.CycleRequestPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return CycleRequest{}, false, nil
 	}
-	return false, fmt.Errorf("orch: stat cycle request: %w", err)
+	if err != nil {
+		return CycleRequest{}, false, fmt.Errorf("orch: read cycle request: %w", err)
+	}
+	var req CycleRequest
+	if err := json.Unmarshal(data, &req); err != nil || (req.Mode != CycleClear && req.Mode != CycleCompact) {
+		return CycleRequest{}, true, nil
+	}
+	return req, true, nil
 }
 
 // ClearCycleRequest removes the cycle request; an absent request is not an error.
@@ -175,8 +205,11 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // the offsets are zeroed because a new run has a new events file.
 // The context reading and the turn end it was taken through are cleared, since they describe the previous session;
 // the new session's first turn end sets them again.
+// CompactionBaseline becomes launchedAt, so a compaction boundary the session already carried never triggers a reload.
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
-func ResetForFreshLaunch(s State, strand string) State {
+func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
+	s.CompactionBaseline = launchedAt
+	s.ReloadStep, s.ReloadTypedAt = 0, time.Time{}
 	s.LastContextTokens, s.LastContextKnown = 0, false
 	s.ReadingTurnEnd = nil
 	if s.Phase != "" && s.Phase != PhaseIdle {

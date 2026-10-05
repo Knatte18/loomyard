@@ -97,6 +97,34 @@ func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool
 	return shuttle
 }
 
+func TestBouncer_JudgeCall_SkillAndParentDirective(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		parentName string
+		wantPrompt string
+	}{
+		{"WithParent", "hub:parent", "`hub:parent`"},
+		{"NoParent", "", "No parent is recorded"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+			fx := newBouncerFixture(t, withShuttle(shuttle))
+			fx.Config.ParentName = tt.parentName
+			b, cfg := fx.Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+			shedfake.CallOK(t, b)
+
+			if !strings.Contains(shuttle.GotSpec.Prompt, tt.wantPrompt) {
+				t.Errorf("judge prompt does not contain %q", tt.wantPrompt)
+			}
+			if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
+				t.Errorf("judge spec.Skills = %v; want [scribe:prose]", got)
+			}
+		})
+	}
+}
+
 // TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir asserts the judge call's composed prompt --
 // where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
 // the told specs directory and carries no literal "{{.specs_dir}}" marker. A rubric-bytes-only

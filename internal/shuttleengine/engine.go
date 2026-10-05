@@ -45,6 +45,9 @@ type Launch struct {
 	Cmd       string
 	ResumeCmd string
 	SessionID string
+	// PromptLine, when set, means the engine left the prompt pointer off Cmd:
+	// shuttle delivers this text as a turn once the spec's skills are loaded.
+	PromptLine string
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.
@@ -175,6 +178,18 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
+// SkillLoader is an optional capability beside Engine: the provider's way of loading a named skill into a live session as a submitted turn.
+// Runner.start requires it of an Engine whenever a spec names skills, and the orch watcher's per-tick reload uses it through Runner.LoadSkill and Runner.SkillUnknown.
+// It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never load a skill.
+type SkillLoader interface {
+	// SkillLoadSequence returns the key choreography that loads skill as a submitted turn.
+	SkillLoadSequence(skill string) []PaneInput
+	// SkillUnknown reports whether capture shows the provider reporting skill unknown.
+	SkillUnknown(capture, skill string) bool
+	// DefaultSkillLoadTimeout is the engine-owned bound on one skill's load.
+	DefaultSkillLoadTimeout() time.Duration
+}
+
 // ContextReading is a provider-neutral reading of how much context a live session holds.
 // A reading with Known false could not be read, and a caller must never treat it as over any threshold.
 type ContextReading struct {
@@ -203,6 +218,9 @@ type IdleProbe struct {
 type SessionCycler interface {
 	// ContextTokens returns the provider's context reading as of the turn end turnEnd records.
 	ContextTokens(turnEnd Event) ContextReading
+	// CompactedSince returns the timestamp of the newest main-chain compaction boundary after since in the transcript turnEnd names.
+	// found is false when there is none or the transcript cannot be read.
+	CompactedSince(turnEnd Event, since time.Time) (at time.Time, found bool)
 	// IdleSession reports whether capture shows the provider idle: its input box present and empty, and no turn in progress.
 	IdleSession(capture string) bool
 	// PaneTooShort reports whether capture shows a pane too short to draw the provider's input box, which makes a not-idle answer from IdleSession unreliable.

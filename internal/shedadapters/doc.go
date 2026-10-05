@@ -62,6 +62,10 @@
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.
+//     Roles: the judge and the seed spawn each load the `scribe:prose` skill (bouncerJudgeSkills, bouncerSeedSkills),
+//     and both prompts carry the parent directive that parentdirective.Directive renders from BouncerConfig.ParentName, in its non-interactive form;
+//     an empty ParentName renders the no-parent variant.
+//     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
 //     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of two causes.
 //     Cause budget holds whenever the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies, even over a CIRCLING verdict;
 //     cause circling holds for a guarded CIRCLING below the budget.

@@ -197,6 +197,21 @@ var OrchTemplateHandoffSoft []byte
 //go:embed orch/orch-template-compact.md
 var OrchTemplateCompact []byte
 
+// OrchTemplateRole is orch's shipped-default role stencil: the whole procedure, rendered to a file the session reads.
+//
+//go:embed orch/orch-template-role.md
+var OrchTemplateRole []byte
+
+// OrchTemplateNote is orch's shipped-default orch note template, rendered to a file the session fills in.
+//
+//go:embed orch/orch-template-note.md
+var OrchTemplateNote []byte
+
+// OrchTemplateReload is orch's shipped-default one-line reload pointer typed after an auto-compaction.
+//
+//go:embed orch/orch-template-reload.md
+var OrchTemplateReload []byte
+
 // PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
 //
 //go:embed pattern/pattern-directive-implementer.md
@@ -247,6 +262,26 @@ var FrictionDirectiveInterview []byte
 //go:embed friction/friction-template-reflection.md
 var FrictionTemplateReflection []byte
 
+// ShedTemplateDriver is the shed driver's shipped-default launch prompt: the whole procedure of the session that drives one seeded run.
+//
+//go:embed shed/shed-template-driver.md
+var ShedTemplateDriver []byte
+
+// ParentDirectiveParent is the shared parent directive's shipped-default variant for a run with a recorded parent.
+//
+//go:embed parent/parent-directive-parent.md
+var ParentDirectiveParent []byte
+
+// ParentDirectiveOperatorBan is the shipped-default operator-ban line the parent variant carries for a non-interactive role.
+//
+//go:embed parent/parent-directive-operator-ban.md
+var ParentDirectiveOperatorBan []byte
+
+// ParentDirectiveNone is the shared parent directive's shipped-default no-parent variant.
+//
+//go:embed parent/parent-directive-none.md
+var ParentDirectiveNone []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -291,6 +326,9 @@ var entries = []registryEntry{
 	{"orch-template-adopt", &OrchTemplateAdopt},
 	{"orch-template-handoff-soft", &OrchTemplateHandoffSoft},
 	{"orch-template-compact", &OrchTemplateCompact},
+	{"orch-template-role", &OrchTemplateRole},
+	{"orch-template-note", &OrchTemplateNote},
+	{"orch-template-reload", &OrchTemplateReload},
 	{"pattern-directive-implementer", &PatternDirectiveImplementer},
 	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
 	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
@@ -301,6 +339,50 @@ var entries = []registryEntry{
 	{"friction-directive-orchestrator", &FrictionDirectiveOrchestrator},
 	{"friction-directive-interview", &FrictionDirectiveInterview},
 	{"friction-template-reflection", &FrictionTemplateReflection},
+	{"shed-template-driver", &ShedTemplateDriver},
+	{"parent-directive-parent", &ParentDirectiveParent},
+	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
+	{"parent-directive-none", &ParentDirectiveNone},
+}
+
+// roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
+// Each carries the parent directive marker, which parentdirective_test.go enforces.
+var roleOpeningStencils = map[string][]string{
+	"driver":            {"shed-template-driver"},
+	"discussion":        {"loom-template-discussion"},
+	"plan":              {"loom-template-plan"},
+	"rework":            {"loom-template-rework"},
+	"webster-master":    {"webster-template-master"},
+	"webster-recovery":  {"webster-prefix-recovery"},
+	"burler":            {"burler-template-round-orchestrator"},
+	"conflict":          {"landing-template-conflict"},
+	"bouncer-judge":     {"bouncer-template-judge"},
+	"bouncer-seed":      {"bouncer-template-seed"},
+	"treadle-targeting": {"treadle-template-targeting"},
+	"treadle-judge":     {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
+	"treadle-triage":    {"treadle-template-triage"},
+	"friction":          {"friction-template-reflection"},
+	"describe":          {"landing-template-describe"},
+}
+
+// askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.
+var askOperatorPhrases = []string{
+	"ask the operator",
+	"ask the user",
+	"ask the human",
+	"ask your operator",
+	"check with the operator",
+	"confirm with the operator",
+}
+
+// askOperatorBounds are the words that make an ask-the-operator sentence a prohibition rather than an instruction.
+var askOperatorBounds = []string{
+	"do not",
+	"don't",
+	"never",
+	"must not",
+	"may not",
+	"before",
 }
 
 // registry implements stencilstore.Registry over entries.
