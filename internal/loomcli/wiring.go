@@ -596,6 +596,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			}
 			return landingshed.DescribeSpec(landingshed.DescribeInputs{
 				StencilsDir:         websterGeom.StencilsDir,
+				ParentName:          c.parentName,
 				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
 				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),
 				PriorRunRecordPaths: priorRecords,

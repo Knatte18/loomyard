@@ -38,8 +38,10 @@ func landingDeps(
 	registry modelspec.Registry,
 	runner *shuttleengine.Runner,
 	cfg landingshed.Config,
+	parentName string,
 ) landingshed.Deps {
 	return landingshed.Deps{
+		ParentName:      parentName,
 		WorktreeRoot:    l.WorktreePath(),
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,

@@ -48,6 +48,9 @@ type Deps struct {
 	ArchivePrefix string
 	// StencilsDir is the absolute directory the reflection prompt is read from. Told by the caller.
 	StencilsDir string
+	// ParentName is the name of the session the reflection agent escalates to, rendered into its parent directive.
+	// Told by the caller; empty renders the no-parent variant.
+	ParentName string
 	// FrictionSpec is the model-spec string (see internal/modelspec) selecting the reflection agent's
 	// model. Told by the caller.
 	FrictionSpec string

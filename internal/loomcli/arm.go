@@ -353,6 +353,7 @@ func (c *loomCLI) loomPreRun(ctx context.Context) error {
 		c.registry,
 		c.runner,
 		c.landingCfg,
+		c.parentName,
 	)
 
 	// Ensure the friction directory before the run starts, and never clear it here: run requires
