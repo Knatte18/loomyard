@@ -34,13 +34,20 @@ const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 // stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
 // characters collapsed to a single space; an empty result falls back to ReasonNoOnStuckTarget.
 func stuckReason(reason string) string {
-	reason = strings.TrimSpace(reason)
+	reason = oneLine(reason)
 	if reason == "" {
 		return ReasonNoOnStuckTarget
 	}
+	return reason
+}
+
+// oneLine trims text and collapses every run of line-break characters to a single space; an empty result stays empty.
+// stuckReason and the parent notice share this rule.
+func oneLine(text string) string {
+	text = strings.TrimSpace(text)
 	var b strings.Builder
 	inBreak := false
-	for _, r := range reason {
+	for _, r := range text {
 		if r == '\r' || r == '\n' {
 			if !inBreak {
 				b.WriteByte(' ')
@@ -89,6 +96,8 @@ type StepResult struct {
 	State State
 	// Reason is populated only alongside StateBlocked and StateAwaiting.
 	Reason string
+	// ParentNotice is the producer's one-line notice for the run's parent, populated only alongside StateAwaiting.
+	ParentNotice string
 	// History is the full persisted history as it stands when this step returns, not only the
 	// entry (if any) this step appended.
 	History []HistoryEntry
@@ -299,7 +308,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			callErr = MarkTransient(s.Transient(callErr), callErr)
 		}
 		nextHistory := appendHistory()
-		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, "", TransientOf(callErr)); persistErr != nil {
+		if persistErr := s.persistTransient(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false, "", TransientOf(callErr), ""); persistErr != nil {
 			return StepResult{}, errors.Join(callErr, persistErr)
 		}
 		return StepResult{}, callErr
@@ -342,10 +351,11 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		// re-calls the same producer through step 3b's resume write.
 		nextHistory := appendHistory()
 		reason := stuckReason(output.Reason)
-		if err := s.persist(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, ""); err != nil {
+		notice := oneLine(output.ParentNotice)
+		if err := s.persistTransient(st.CurrentProducer, StateAwaiting, reason, nextHistory, false, "", "", notice); err != nil {
 			return StepResult{}, err
 		}
-		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, History: nextHistory}, nil
+		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: st.CurrentProducer, State: StateAwaiting, Reason: reason, ParentNotice: notice, History: nextHistory}, nil
 
 	case outcome == Done:
 		nextHistory := appendHistory()
@@ -634,9 +644,9 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // error is empty by construction on that transition, since it is a Stuck verdict rather than a hard error,
 // and the history it leaves behind (appended or folded) is committed whole by the next transition that does change producer or state.
 //
-// persist writes an empty transient class; the producer-error arm alone calls persistTransient.
+// persist writes an empty transient class and an empty parent notice; the producer-error arm and the awaiting arm alone call persistTransient.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
-	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, routedTo, "")
+	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, routedTo, "", "")
 }
 
 // recordedVerdict reports whether a write carrying next recorded a verdict against the file's current history:
@@ -652,9 +662,9 @@ func recordedVerdict(cur, next []HistoryEntry) bool {
 	return next[len(next)-1].Repeats != cur[len(cur)-1].Repeats
 }
 
-// persistTransient is persist with the transient class the write records.
-// Every write sets Transient, so a later step never carries a stale class.
-func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string, transient TransientClass) error {
+// persistTransient is persist with the transient class and the parent notice the write records.
+// Every write sets Transient and ParentNotice, so a later step never carries a stale class or notice.
+func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string, transient TransientClass, parentNotice string) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
@@ -665,6 +675,7 @@ func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nex
 		cur.State = nextState
 		cur.Error = nextError
 		cur.Transient = string(transient)
+		cur.ParentNotice = parentNotice
 		cur.History = nextHistory
 		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
 		if !recorded {

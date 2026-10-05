@@ -61,11 +61,12 @@ var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, K
 //   - trace_id: loc.TraceID
 //   - run_id: loc.RunID
 //   - progress: progress
+//   - parent_notice: res.ParentNotice, present only when it is non-empty (an awaiting halt that carries one)
 //
 // "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
 // never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
 func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction string, loc StepLocations, progress *shedengine.Progress) map[string]any {
-	return map[string]any{
+	env := map[string]any{
 		"producer":              res.Producer,
 		"outcome":               string(res.Outcome),
 		"output":                res.Output,
@@ -84,6 +85,10 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction st
 		"run_id":                loc.RunID,
 		"progress":              progress,
 	}
+	if res.ParentNotice != "" {
+		env["parent_notice"] = res.ParentNotice
+	}
+	return env
 }
 
 // StepLocations carries the keys every step envelope, success or error, reports: trace_file
