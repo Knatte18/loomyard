@@ -9,14 +9,19 @@ This is the one place that knows the `_lyx/` layout and enforces strict validati
 <cwd>/                  ← where `lyx init` was run (the current working directory)
 ├── _lyx/               git-TRACKED config Hub
 │   ├── config/         git-TRACKED config files (only source of live values)
-│   │   ├── board.yaml      (must match board module template)
-│   │   ├── worktree.yaml   (must match worktree module template)
-│   │   └── fabric.yaml     (must match fabric module template)
+│   │   ├── loom.yaml       (must match loom module template)
+│   │   └── worktree.yaml   (must match worktree module template)
 │   ├── discussion.md    lyx task discussion (artifact)
 │   ├── plan.md         lyx task plan (artifact)
 │   └── reviews/        lyx code reviews (artifact directory)
 ├── .env                git-IGNORED — local env values (KEY=value)
+
+<hub>/_board/_lyx/config/
+├── board.yaml          hub-wide: one per hub (must match board module template)
+└── fabric.yaml         hub-wide: one per hub (must match fabric module template)
 ```
+
+`configreg` marks `board` and `fabric` hub-wide (`Module.HubWide`), so their config files live once under the hub's board dir and not in each worktree's `_lyx/config/`.
 
 `_lyx/` presence is what makes a directory "initialised" for `Load`;
 if it is absent, `Load` errors (see `FindBaseDir`'s error messages below).
@@ -33,7 +38,7 @@ Both read the on-disk config file, validate it against a template, and resolve e
 **Flow (the strict path, shared by both entry points whenever a config file is present):**
 
 1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`).
+2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/loom.yaml`).
    If absent, `Load` returns an error instructing the user to run `lyx config reconcile`;
    `LoadOrTemplate` instead takes the degrading path below.
 3. Fill the file's missing template keys in memory via `yamlengine.FillMissing(template, fileBytes)`.
@@ -129,7 +134,11 @@ Returns `filepath.Join(baseDir, LyxDirName, "config")` — the directory where m
 
 ### `ConfigFile(baseDir, module string) string`
 
-Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lyx/config/board.yaml`).
+Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lyx/config/loom.yaml`).
+
+### `StagingFile(baseDir, module string) string`
+
+Returns `filepath.Join(baseDir, DotLyxDirName, "config", module+".yaml")` — the ephemeral `.lyx` counterpart of `ConfigFile` at the mirrored subpath, where an interactive edit works on a copy that is never tracked.
 
 ### `ConfigFileRel(module string) string`
 
@@ -218,3 +227,14 @@ This is the non-interactive counterpart to `Edit` used by the `lyx config <modul
 and a nil error.
 This list is nil/empty when no such orphaned key was present.
 On any error return, the returned `[]string` is always nil.
+
+### `Edit(baseDir, module, template string, edit EditorFunc) error`
+
+Checks `FindBaseDir(baseDir)`, then runs `EditPath` on `ConfigFile(baseDir, module)`.
+
+### `EditPath(path, template string, edit EditorFunc) error`
+
+The interactive edit of a config file at a told path, with no `_lyx/` check.
+It scaffolds `path` from `template` when absent, creating its parent directory, then runs the editor and loops on a YAML parse error.
+An unchanged unparseable save returns `ErrAborted`, and every abort removes a file `EditPath` itself scaffolded.
+Validation is syntactic only.

@@ -880,6 +880,23 @@ func TestConfigFile(t *testing.T) {
 	}
 }
 
+// TestStagingFile verifies that StagingFile lies under the base's .lyx dir and differs from
+// ConfigFile only in that segment.
+func TestStagingFile(t *testing.T) {
+	t.Parallel()
+
+	base := "/home/user/project"
+	got := configengine.StagingFile(base, "board")
+	want := filepath.Join(base, lyxdirs.DotLyxDirName, "config", "board.yaml")
+
+	if got != want {
+		t.Errorf("StagingFile(%q, %q) = %q; want %q", base, "board", got, want)
+	}
+	if got == configengine.ConfigFile(base, "board") {
+		t.Errorf("StagingFile equals ConfigFile %q; want the .lyx counterpart", got)
+	}
+}
+
 // TestConfigFileRel verifies that ConfigFileRel joins LyxDirName, "config", and the module's
 // ".yaml" filename into an anchor-relative path, that the result is never absolute, and that it
 // stays in lockstep with ConfigFile so the two accessors can never drift apart.
