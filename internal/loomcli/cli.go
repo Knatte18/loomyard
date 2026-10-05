@@ -65,6 +65,10 @@ type loomCLI struct {
 	// re-reading loom.yaml a second time. Left at its zero value by wireLightweight, whose verbs are
 	// all read-only and load no module config.
 	frictionDir string
+	// parentName is the name of the session that spawned this worktree's run, taken in wire from the reed geometry's origin record;
+	// empty when the worktree has no resolvable parent.
+	// Every role loom wires renders its parent directive from it.
+	parentName string
 	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -19,7 +20,8 @@ import (
 // and renders as nothing.
 // frictionDirective is the caller-resolved Tier 2 note directive for this run --
 // an empty string means Tier 2 is off or the read failed, and renders as nothing.
-func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective string, autonomous bool) ([]byte, error) {
+// parentDirective is the caller-rendered parent directive and renders as nothing when empty.
+func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patternDirective, frictionDirective, parentDirective string, autonomous bool) ([]byte, error) {
 	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
 	if err != nil {
 		return nil, err
@@ -28,15 +30,16 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patter
 	friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)
 
 	values := map[string]string{
-		"slug":                 slug,
-		"decision_record_path": decisionRecordPath,
-		"support_log_path":     supportLogPath,
-		"mode_rules":           modeRules(autonomous),
-		"pattern_directive":    patternDirective,
-		friction.MarkerName:    frictionDirective,
+		"slug":                     slug,
+		"decision_record_path":     decisionRecordPath,
+		"support_log_path":         supportLogPath,
+		"mode_rules":               modeRules(autonomous),
+		"pattern_directive":        patternDirective,
+		friction.MarkerName:        frictionDirective,
+		parentdirective.MarkerName: parentDirective,
 	}
 
-	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
 	}
