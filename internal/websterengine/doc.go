@@ -390,6 +390,9 @@
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
+// The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
+// a passing evaluation clears it, and `run --fresh` archives state.json with it.
+// A persist failure is returned as the gate's error.
 //
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
 //

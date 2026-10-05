@@ -29,6 +29,24 @@ func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
 	return filepath.Join(base, "_lyx", "webster"), filepath.Join(base, ".lyx", "webster")
 }
 
+// TestState_PreFixHeadRoundTrip pins that the verify gate's persisted pre-fix head survives a save/load.
+func TestState_PreFixHeadRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	websterDir, scratchDir := scratchSibling(t)
+	if err := websterengine.SaveState(websterDir, scratchDir, &websterengine.State{RunGUID: "run-1", PreFixHead: "cafef00d"}); err != nil {
+		t.Fatalf("SaveState error = %v; want nil", err)
+	}
+
+	got, err := websterengine.LoadState(websterDir, scratchDir)
+	if err != nil || got == nil {
+		t.Fatalf("LoadState() = %v, %v; want the saved state", got, err)
+	}
+	if got.PreFixHead != "cafef00d" {
+		t.Errorf("PreFixHead = %q after round-trip; want %q", got.PreFixHead, "cafef00d")
+	}
+}
+
 func TestState_RoundTrip(t *testing.T) {
 	t.Parallel()
 

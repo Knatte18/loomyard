@@ -29,6 +29,11 @@ type gateFake struct {
 	verifyCalls    int
 	rejectionBases []string
 	sites          []verifytree.Site
+	// recorded holds the heads recordPreFix was called with, in order.
+	recorded []string
+	cleared  int
+	// recordErr is returned by recordPreFix.
+	recordErr error
 }
 
 func (f *gateFake) seams() verifyGateSeams {
@@ -65,6 +70,14 @@ func (f *gateFake) seams() verifyGateSeams {
 			return []string{"internal/b/b.go"}, nil
 		},
 		modulePath: func() string { return testModulePath },
+		recordPreFix: func(head string) error {
+			f.recorded = append(f.recorded, head)
+			return f.recordErr
+		},
+		clearPreFix: func() error {
+			f.cleared++
+			return nil
+		},
 	}
 }
 
@@ -215,6 +228,61 @@ func TestVerifyGate_DirtyFailureRecordsPreFixHead(t *testing.T) {
 	}
 	if want := []string{"head0"}; !reflect.DeepEqual(f.rejectionBases, want) {
 		t.Errorf("commit check bases = %v; want the recorded pre-fix head %v", f.rejectionBases, want)
+	}
+}
+
+func TestVerifyGate_PreFixHeadPersistence(t *testing.T) {
+	f := &gateFake{
+		outcome: outcomeDone,
+		command: "go test ./...",
+		head:    "head0",
+		dirty:   []string{"loose.go"},
+		results: []verifytree.Result{passedResult()},
+	}
+	gate := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
+
+	for i := 0; i < 2; i++ {
+		if res, err := gate(); err != nil || res.Passed {
+			t.Fatalf("gate() on a dirty tree = %+v, %v; want a failure", res, err)
+		}
+	}
+	if want := []string{"head0"}; !reflect.DeepEqual(f.recorded, want) {
+		t.Errorf("recorded heads after two failures = %v; want %v once", f.recorded, want)
+	}
+
+	f.head = "head1"
+	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
+	if res, err := second(); err != nil || res.Passed {
+		t.Fatalf("second closure's gate() = %+v, %v; want a failure", res, err)
+	}
+	if want := []string{"head0", "head1"}; !reflect.DeepEqual(f.recorded, want) {
+		t.Errorf("recorded heads = %v; want the new closure to overwrite with %v", f.recorded, want)
+	}
+	if f.cleared != 0 {
+		t.Errorf("clearPreFix ran %d time(s) before any pass; want none", f.cleared)
+	}
+
+	f.dirty = nil
+	if res, err := second(); err != nil || !res.Passed {
+		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
+	}
+	if f.cleared != 1 {
+		t.Errorf("clearPreFix ran %d time(s) on a pass; want 1", f.cleared)
+	}
+}
+
+func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
+	f := &gateFake{
+		outcome:   outcomeDone,
+		command:   "go test ./...",
+		head:      "head0",
+		dirty:     []string{"loose.go"},
+		recordErr: errors.New("disk full"),
+	}
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+
+	if _, err := gate(); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("gate() error = %v; want the persist failure", err)
 	}
 }
 

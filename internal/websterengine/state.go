@@ -167,6 +167,9 @@ type State struct {
 	// Run entry refuses while any is pending;
 	// AcceptPendingAudit clears them.
 	PendingAuditFindings []PendingAuditFinding `json:"pendingAuditFindings,omitempty"`
+	// PreFixHead is the HEAD the latest verify-gate run started its fixes from.
+	// The gate records it at its first failed evaluation and clears it on a pass, so a later verb can reset to it.
+	PreFixHead string `json:"preFixHead,omitempty"`
 }
 
 // PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.
