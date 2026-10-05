@@ -57,11 +57,10 @@ func TestE2ESyncIntegration(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
-	// Create a fake editor that writes valid YAML. Unlike a single-field
-	// branch_prefix.yaml, fabric's Config carries both branch_prefix and pathspec
-	// in one file, so both keys must be present for
-	// strict schema validation to pass.
-	validYAML := "branch_prefix: test-prefix\npathspec: _lyx\n"
+	// Create a fake editor that writes valid YAML.
+	// loom is per-worktree, so this exercises the fabric-sync path;
+	// a hub-wide module commits in _board instead (see TestConfigHubWideCommitsInBoard).
+	validYAML := "discussion_timeout_min: 60\n"
 	fakeEdit := func(path string) error {
 		return os.WriteFile(path, []byte(validYAML), 0o644)
 	}
@@ -76,16 +75,16 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(codeLayout, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
+	code := dispatch(codeLayout, &out, []string{"loom"}, fakeEdit, injectedSync, nil, false, nil)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/fabric.yaml is tracked/committed in the fabric worktree.
+	// Assert _lyx/config/loom.yaml is tracked/committed in the fabric worktree.
 	fabricWorktreePath := fabricengine.WeftWorktreePath(h.Location, slug)
-	configRelPath := configengine.ConfigFile(".", "fabric")
+	configRelPath := configengine.ConfigFile(".", "loom")
 	configPath := filepath.Join(fabricWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
@@ -98,7 +97,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Verify the content matches what we wrote.
 	if string(configContent) != validYAML {
-		t.Errorf("fabric config content mismatch; got %q, want %q", string(configContent), validYAML)
+		t.Errorf("loom config content mismatch; got %q, want %q", string(configContent), validYAML)
 	}
 
 	// Verify it's tracked in git (git ls-files should list it).
@@ -129,7 +128,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Errorf("dispatch output missing success message; got %q", outStr)
 	}
 
-	// Assert the output is a JSON envelope with ok:true and module:"fabric",
+	// Assert the output is a JSON envelope with ok:true and module:"loom",
 	// the same shape Card 7/8 introduced, exercised here end-to-end through
 	// the real dispatch/fabriccli.RunCLI("commit") path rather than a fake sync.
 	var env map[string]any
@@ -139,8 +138,77 @@ func TestE2ESyncIntegration(t *testing.T) {
 	if ok, _ := env["ok"].(bool); !ok {
 		t.Errorf("dispatch output envelope ok = %v; want true; got %q", env["ok"], outStr)
 	}
-	if module, _ := env["module"].(string); module != "fabric" {
-		t.Errorf("dispatch output envelope module = %q; want \"fabric\"; got %q", module, outStr)
+	if module, _ := env["module"].(string); module != "loom" {
+		t.Errorf("dispatch output envelope module = %q; want \"loom\"; got %q", module, outStr)
+	}
+}
+
+// TestConfigHubWideCommitsInBoard runs `lyx config <hub-wide module> --set` from a pair over a real hub
+// and verifies the hub file changed and was committed in _board, with no per-worktree copy written.
+func TestConfigHubWideCommitsInBoard(t *testing.T) {
+	const slug = "config-hubwide-test"
+
+	h := hubforge.NewHub(t, ".")
+	if _, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Topology.Add(%q): %v", slug, err)
+	}
+	pairPath := fabricengine.WorktreePath(h.Location, slug)
+	pairRecordsPath := fabricengine.WeftWorktreePath(h.Location, slug)
+	boardDir := fabricengine.BoardDir(h.Location.HubPath)
+
+	// NOTE: no t.Parallel(): t.Setenv panics under it.
+	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("WEFT_SKIP_PUSH", "")
+
+	rows := []struct {
+		module string
+		set    string
+		want   string
+	}{
+		{module: "board", set: "labels.x=desc", want: "x: desc"},
+		{module: "fabric", set: "branch_prefix=x", want: "branch_prefix: x"},
+	}
+	for _, row := range rows {
+		t.Run(row.module, func(t *testing.T) {
+			var out bytes.Buffer
+			if code := RunCLIIn(pairPath, &out, []string{row.module, "--set", row.set}); code != 0 {
+				t.Fatalf("lyx config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
+			}
+
+			hubFile := configengine.ConfigFile(boardDir, row.module)
+			data, err := os.ReadFile(hubFile)
+			if err != nil {
+				t.Fatalf("read hub %s.yaml: %v", row.module, err)
+			}
+			if !strings.Contains(string(data), row.want) {
+				t.Errorf("hub %s.yaml lacks %q; got %q", row.module, row.want, data)
+			}
+
+			status := exec.Command("git", "status", "--porcelain")
+			status.Dir = boardDir
+			statusOut, err := status.Output()
+			if err != nil {
+				t.Fatalf("git status in _board: %v", err)
+			}
+			if strings.TrimSpace(string(statusOut)) != "" {
+				t.Errorf("_board is dirty after the edit: %q", statusOut)
+			}
+
+			show := exec.Command("git", "show", "--name-only", "--pretty=format:", "HEAD")
+			show.Dir = boardDir
+			showOut, err := show.Output()
+			if err != nil {
+				t.Fatalf("git show in _board: %v", err)
+			}
+			wantRel := strings.ReplaceAll(configengine.ConfigFileRel(row.module), "\\", "/")
+			if strings.TrimSpace(string(showOut)) != wantRel {
+				t.Errorf("HEAD in _board touches %q; want only %q", showOut, wantRel)
+			}
+
+			if _, err := os.Stat(configengine.ConfigFile(pairRecordsPath, row.module)); !os.IsNotExist(err) {
+				t.Errorf("a per-worktree %s.yaml exists; stat err = %v", row.module, err)
+			}
+		})
 	}
 }
 
@@ -172,7 +240,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	// explicit *lyxcwd.Location (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
-	setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"discussion_timeout_min=60"})
+	setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
 	if setCode != 0 {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}

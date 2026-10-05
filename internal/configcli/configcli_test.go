@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -50,6 +51,49 @@ func (t *fakeSyncTracker) syncFunc() syncFunc {
 	}
 }
 
+// fakeHubCommit is a fake hubCommitFunc that runs the write closure, records the call
+// and returns the write error, or err when the write succeeded.
+type fakeHubCommit struct {
+	calls int
+	err   error
+}
+
+func (f *fakeHubCommit) commitFunc() hubCommitFunc {
+	return func(module string, write func() error) error {
+		f.calls++
+		if err := write(); err != nil {
+			return err
+		}
+		return f.err
+	}
+}
+
+// worktreeDirs returns config dirs for per-worktree modules only: the board dir is left empty.
+func worktreeDirs(baseDir string) configDirs {
+	return configDirs{worktree: baseDir}
+}
+
+// hubFixture is a layout whose worktree and board dir are separate directories under one hub.
+type hubFixture struct {
+	layout   *lyxcwd.Location
+	worktree string
+	board    string
+}
+
+// newHubFixture returns a hub fixture with an initialized (empty) config dir at the worktree and at the board dir.
+func newHubFixture(t *testing.T) hubFixture {
+	t.Helper()
+	hub := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "wt", AnchorRel: "."}
+	fx := hubFixture{layout: layout, worktree: baseDirOf(layout), board: fabricengine.BoardDir(hub)}
+	for _, dir := range []string{fx.worktree, fx.board} {
+		if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
+			t.Fatalf("failed to create config dir: %v", err)
+		}
+	}
+	return fx
+}
+
 // TestEditOneSuccess tests the success path: valid YAML, sync succeeds (exit 0).
 func TestEditOneSuccess(t *testing.T) {
 	baseDir := t.TempDir()
@@ -60,14 +104,14 @@ func TestEditOneSuccess(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
+		t.Fatalf("failed to write loom.yaml: %v", err)
 	}
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "fabric", fakeEditor("branch_prefix: test\n", nil), tracker.syncFunc())
+	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("discussion_timeout_min: 1\n", nil), tracker.syncFunc(), nil)
 
 	if code != 0 {
 		t.Errorf("editOne() = %d; want 0", code)
@@ -79,7 +123,7 @@ func TestEditOneSuccess(t *testing.T) {
 	if !strings.Contains(output, "edited and synced") {
 		t.Errorf("editOne output missing success message; got %q", output)
 	}
-	assertJSONOkContains(t, output, map[string]any{"module": "fabric"})
+	assertJSONOkContains(t, output, map[string]any{"module": "loom"})
 }
 
 // TestEditOneUnknownModule tests unknown module handling.
@@ -92,14 +136,14 @@ func TestEditOneUnknownModule(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
+		t.Fatalf("failed to write loom.yaml: %v", err)
 	}
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "unknown", fakeEditor("test\n", nil), tracker.syncFunc())
+	code := editOne(worktreeDirs(baseDir), &out, "unknown", fakeEditor("test\n", nil), tracker.syncFunc(), nil)
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -136,14 +180,14 @@ func TestEditOneAbort(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
+		t.Fatalf("failed to write loom.yaml: %v", err)
 	}
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "fabric", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
+	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc(), nil)
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -167,9 +211,9 @@ func TestEditOneSyncFails(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
+		t.Fatalf("failed to write loom.yaml: %v", err)
 	}
 
 	var out bytes.Buffer
@@ -179,7 +223,7 @@ func TestEditOneSyncFails(t *testing.T) {
 		fmt.Fprint(w, "sync error: something went wrong")
 		return 1
 	}
-	code := editOne(baseDir, &out, "fabric", fakeEditor("pathspec: _lyx\n", nil), syncWithOutput)
+	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("discussion_timeout_min: 1\n", nil), syncWithOutput, nil)
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -253,29 +297,29 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	}
 }
 
-// runMenuWith runs menu over a seeded temp baseDir with the given input,
-// returning the exit code, the output and the sync tracker.
+// runMenuWith runs menu over a hub fixture with the given input,
+// seeding each named module at the dir the registry says holds it,
+// and returning the exit code, the output and the sync tracker.
 func runMenuWith(t *testing.T, input string, seed ...string) (int, string, *fakeSyncTracker) {
 	t.Helper()
-	baseDir := t.TempDir()
-	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
+	fx := newHubFixture(t)
+	dirs := dirsOf(fx.layout)
 	for _, name := range seed {
-		if err := os.WriteFile(configengine.ConfigFile(baseDir, name), []byte("# "+name+"\n"), 0o644); err != nil {
+		mod, _ := configreg.Lookup(name)
+		if err := os.WriteFile(configengine.ConfigFile(dirs.baseFor(mod), name), []byte("# "+name+"\n"), 0o644); err != nil {
 			t.Fatalf("failed to write %s.yaml: %v", name, err)
 		}
 	}
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(baseDir, strings.NewReader(input), &out, fakeEditor("test: value\n", nil), tracker.syncFunc())
+	code := menu(dirs, strings.NewReader(input), &out, fakeEditor("test: value\n", nil), tracker.syncFunc(), nil)
 	return code, out.String(), tracker
 }
 
 // TestMenuSelection tests menu with a valid selection.
 func TestMenuSelection(t *testing.T) {
-	code, output, tracker := runMenuWith(t, "1\nq\n", "board")
+	code, output, tracker := runMenuWith(t, "1\nq\n", "batcher")
 
 	if code != 0 {
 		t.Errorf("menu() = %d; want 0", code)
@@ -292,7 +336,7 @@ func TestMenuSelection(t *testing.T) {
 func TestMenuQuit(t *testing.T) {
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(t.TempDir(), strings.NewReader("q\n"), &out, makeNeverCalledEditor(t), tracker.syncFunc())
+	code := menu(worktreeDirs(t.TempDir()), strings.NewReader("q\n"), &out, makeNeverCalledEditor(t), tracker.syncFunc(), nil)
 
 	if code != 0 {
 		t.Errorf("menu() = %d; want 0", code)
@@ -308,7 +352,7 @@ func TestMenuInvalidSelection(t *testing.T) {
 	for _, input := range []string{"abc\n", "999\n"} {
 		var out bytes.Buffer
 		tracker := &fakeSyncTracker{exitCode: 0}
-		code := menu(t.TempDir(), strings.NewReader(input), &out, makeNeverCalledEditor(t), tracker.syncFunc())
+		code := menu(worktreeDirs(t.TempDir()), strings.NewReader(input), &out, makeNeverCalledEditor(t), tracker.syncFunc(), nil)
 
 		if code != 1 {
 			t.Errorf("menu(%q) = %d; want 1", input, code)
@@ -322,15 +366,15 @@ func TestMenuInvalidSelection(t *testing.T) {
 	}
 }
 
-// TestMenuStatus tests that menu marks seeded modules (configured) and unseeded ones (default).
+// TestMenuStatus tests that menu marks seeded modules (configured) and unseeded ones (default),
+// looking for a hub-wide module at the board dir and for any other at the worktree.
 func TestMenuStatus(t *testing.T) {
-	_, output, _ := runMenuWith(t, "q\n", "board")
+	_, output, _ := runMenuWith(t, "q\n", "board", "loom")
 
-	if !strings.Contains(output, "board (configured)") {
-		t.Errorf("menu output missing 'board (configured)'; got %q", output)
-	}
-	if !strings.Contains(output, "fabric (default)") {
-		t.Errorf("menu output missing 'fabric (default)'; got %q", output)
+	for _, want := range []string{"board (configured)", "loom (configured)", "fabric (default)", "reed (default)"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("menu output missing %q; got %q", want, output)
+		}
 	}
 }
 
@@ -434,18 +478,18 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 // exit 0 and never invokes the editor.
 func TestPrintModule_Seeded(t *testing.T) {
 	baseDir := t.TempDir()
-	const fabricYAML = "branch_prefix: feature/\n"
-	seedModuleConfig(t, baseDir, "fabric", fabricYAML)
+	const loomYAML = "discussion_timeout_min: 60\n"
+	seedModuleConfig(t, baseDir, "loom", loomYAML)
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), nil, nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
 	}
-	if got := out.String(); got != fabricYAML {
-		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, fabricYAML)
+	if got := out.String(); got != loomYAML {
+		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, loomYAML)
 	}
 }
 
@@ -453,14 +497,14 @@ func TestPrintModule_Seeded(t *testing.T) {
 // on-disk file returns an ok:false JSON envelope at exit 1.
 func TestPrintModule_KnownButUnseeded(t *testing.T) {
 	baseDir := t.TempDir()
-	// Create the config directory but not the fabric.yaml file.
+	// Create the config directory but not the loom.yaml file.
 	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), nil, nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
@@ -473,13 +517,13 @@ func TestPrintModule_KnownButUnseeded(t *testing.T) {
 // (not configured) for absent ones, all at exit 0.
 func TestPrintAggregate_PartialSeed(t *testing.T) {
 	baseDir := t.TempDir()
-	const boardYAML = "path: board\nreadme: Home.md\n"
-	seedModuleConfig(t, baseDir, "board", boardYAML)
-	// fabric is intentionally not seeded.
+	const loomYAML = "discussion_timeout_min: 60\n"
+	seedModuleConfig(t, baseDir, "loom", loomYAML)
+	// reed is intentionally not seeded.
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), nil, nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, aggregate) = %d; want 0; output: %q", code, out.String())
@@ -492,11 +536,11 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 			t.Errorf("aggregate output missing header for %q; output:\n%s", name, got)
 		}
 	}
-	// board is seeded; its YAML content must appear.
-	if !strings.Contains(got, "path: board") {
-		t.Errorf("aggregate output missing seeded board YAML; output:\n%s", got)
+	// loom is seeded; its YAML content must appear.
+	if !strings.Contains(got, "discussion_timeout_min: 60") {
+		t.Errorf("aggregate output missing seeded loom YAML; output:\n%s", got)
 	}
-	// The other nine modules are absent; their sections must each say # (not configured).
+	// The other modules are absent; their sections must each say # (not configured).
 	if count := strings.Count(got, "# (not configured)"); count < 2 {
 		t.Errorf("expected ≥2 '# (not configured)' lines; got %d; output:\n%s", count, got)
 	}
@@ -508,7 +552,7 @@ func TestPrintUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unknown) = %d; want 1", code)
@@ -542,13 +586,13 @@ func countingEditor(calls *int) configengine.EditorFunc {
 // injected EditorFunc.
 func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set) = %d; want 0; output: %q", code, out.String())
@@ -556,20 +600,20 @@ func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	if editorCalls != 0 {
 		t.Errorf("dispatch(--set) invoked the editor %d times; want 0", editorCalls)
 	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
+	assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
 }
 
 // TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to --set returns an
 // error and the injected sync function is never invoked.
 func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
+	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, false, []string{"bogus_key=x"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set unknown key) = %d; want 1", code)
@@ -581,23 +625,22 @@ func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 }
 
 // TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped board.yaml
-// writes the entry under that map and syncs once.
+// writes the entry under that map at the board dir and commits once.
 func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+	fx := newHubFixture(t)
+	seedModuleConfig(t, fx.board, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
 
-	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+	commit := &fakeHubCommit{}
+	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"labels.x=desc"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set labels.x) = %d; want 0; output: %q", code, out.String())
 	}
-	if !tracker.called {
-		t.Error("sync should run after a successful --set")
+	if commit.calls != 1 {
+		t.Errorf("hub commit ran %d times after a successful --set; want 1", commit.calls)
 	}
-	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	data, err := os.ReadFile(configengine.ConfigFile(fx.board, "board"))
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)
 	}
@@ -607,24 +650,20 @@ func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
 }
 
 // TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list refuses,
-// writes nothing and never syncs.
+// writes nothing to the board dir file.
 func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
-	baseDir := t.TempDir()
+	fx := newHubFixture(t)
 	seeded := "types:\n  bug: a defect\nlabels:\n  - old\n"
-	seedModuleConfig(t, baseDir, "board", seeded)
+	seedModuleConfig(t, fx.board, "board", seeded)
 
-	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"labels.x=desc"})
+	commit := &fakeHubCommit{}
+	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"labels.x=desc"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set into list-shaped labels) = %d; want 1", code)
 	}
-	if tracker.called {
-		t.Error("sync should not be called when --set refuses")
-	}
-	data, err := os.ReadFile(configengine.ConfigFile(baseDir, "board"))
+	data, err := os.ReadFile(configengine.ConfigFile(fx.board, "board"))
 	if err != nil {
 		t.Fatalf("read board.yaml: %v", err)
 	}
@@ -634,21 +673,17 @@ func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
 }
 
 // TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module with open maps
-// still refuses and never syncs.
+// still refuses.
 func TestDispatchSet_UndeclaredNonexistentKeyStillRefuses(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
+	fx := newHubFixture(t)
+	seedModuleConfig(t, fx.board, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
 
-	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"board"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"bogus_key=x"})
+	commit := &fakeHubCommit{}
+	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"bogus_key=x"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set undeclared key) = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called for an undeclared key")
 	}
 	assertJSONErrContains(t, out.String(), "unknown config key")
 }
@@ -661,7 +696,7 @@ func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, true, []string{"discussion_timeout_min=60"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--print, --set) = %d; want 1", code)
@@ -682,7 +717,7 @@ func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set, no module) = %d; want 1", code)
@@ -694,7 +729,7 @@ func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 // all land in a single sync invocation.
 func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
@@ -703,7 +738,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 		syncCalls++
 		return 0
 	}
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), sync, nil, false, []string{"discussion_timeout_min=60"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set multiple) = %d; want 0; output: %q", code, out.String())
@@ -711,7 +746,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	if syncCalls != 1 {
 		t.Errorf("dispatch(--set multiple) called sync %d times; want 1", syncCalls)
 	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
+	assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
 }
 
 // TestDispatchSet_MalformedValue verifies that a malformed --set value with no '=' returns the
@@ -721,7 +756,7 @@ func TestDispatchSet_MalformedValue(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"no-equals-sign"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set malformed) = %d; want 1", code)
@@ -753,12 +788,12 @@ func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 // and reports it via the JSON envelope's "preserved" field.
 func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\nlegacy_key: keepme\n")
+	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\nlegacy_key: keepme\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, orphan key) = %d; want 0; output: %q", code, out.String())
@@ -781,12 +816,12 @@ func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 // orphan keys emits a JSON envelope with no "preserved" field at all, rather than an empty one.
 func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, clean file) = %d; want 0; output: %q", code, out.String())
@@ -798,5 +833,174 @@ func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 	}
 	if _, ok := env["preserved"]; ok {
 		t.Errorf("JSON envelope has a \"preserved\" field on a clean write; got %v", env)
+	}
+}
+
+// TestDispatchHubWideBoard drives the hub-wide module board through dispatch with the worktree
+// and the board dir as separate directories: every row reads or writes the board dir file,
+// never a worktree copy, and commits through the hub-commit seam, never through sync.
+func TestDispatchHubWideBoard(t *testing.T) {
+	const seeded = "readme: Home.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const edited = "readme: Edited.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const rival = "readme: Rival.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const invalid = "readme: [a]\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const unresolved = "readme: ${env:LYX_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+
+	rows := []struct {
+		name string
+		// seed is the board dir file's starting bytes; empty means seeded.
+		seed        string
+		printOnly   bool
+		setFlags    []string
+		editor      func(fx hubFixture) configengine.EditorFunc
+		commitErr   error
+		wantCode    int
+		wantCommits int
+		// check runs after the common assertions, with the board dir file's bytes and the output.
+		check func(t *testing.T, fx hubFixture, hubFile, out string)
+	}{
+		{
+			name:        "set writes the board dir file and commits it",
+			setFlags:    []string{"labels.x=desc"},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if !strings.Contains(hubFile, "x: desc") || !strings.Contains(hubFile, "old: kept") {
+					t.Errorf("hub file lacks the new and the existing label; got %q", hubFile)
+				}
+				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in _board"})
+			},
+		},
+		{
+			name:      "print reads the board dir file",
+			printOnly: true,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if out != seeded {
+					t.Errorf("print output = %q; want %q", out, seeded)
+				}
+			},
+		},
+		{
+			// The file already holds an env marker that cannot resolve, which the set leaves alone;
+			// the strict load refuses the result of the set, and the file is put back.
+			name:        "set the strict load rejects restores the file",
+			seed:        unresolved,
+			setFlags:    []string{"labels.x=desc"},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != unresolved {
+					t.Errorf("hub file changed on a refused set; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "unchanged")
+			},
+		},
+		{
+			name:        "commit error leaves the edit on disk and says so",
+			setFlags:    []string{"labels.x=desc"},
+			commitErr:   errors.New("push refused"),
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if !strings.Contains(hubFile, "x: desc") {
+					t.Errorf("hub file lost the edit after a commit error; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, configengine.ConfigFile(fx.board, "board"))
+				assertJSONErrContains(t, out, "uncommitted")
+			},
+		},
+		{
+			name: "editor edit writes the staged bytes to the board dir file",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return fakeEditor(edited, nil)
+			},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != edited {
+					t.Errorf("hub file = %q; want the staged bytes %q", hubFile, edited)
+				}
+				if _, err := os.Stat(configengine.StagingFile(fx.worktree, "board")); !os.IsNotExist(err) {
+					t.Errorf("staging file remains after a committed edit; stat err = %v", err)
+				}
+			},
+		},
+		{
+			name: "editor edit the strict load rejects leaves the file unchanged and no staging copy",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return fakeEditor(invalid, nil)
+			},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a rejected edit; got %q", hubFile)
+				}
+				if _, err := os.Stat(configengine.StagingFile(fx.worktree, "board")); !os.IsNotExist(err) {
+					t.Errorf("staging file remains after a rejected edit; stat err = %v", err)
+				}
+				assertJSONErrContains(t, out, "unchanged")
+			},
+		},
+		{
+			name: "hub file changed while the editor was open is refused and the staging copy kept",
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return func(path string) error {
+					if err := os.WriteFile(configengine.ConfigFile(fx.board, "board"), []byte(rival), 0o644); err != nil {
+						return err
+					}
+					return os.WriteFile(path, []byte(edited), 0o644)
+				}
+			},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != rival {
+					t.Errorf("hub file = %q; want the other writer's bytes %q", hubFile, rival)
+				}
+				staged, err := os.ReadFile(configengine.StagingFile(fx.worktree, "board"))
+				if err != nil || string(staged) != edited {
+					t.Errorf("staging file = %q, %v; want the kept edit %q", staged, err, edited)
+				}
+				assertJSONErrContains(t, out, "changed while the editor was open")
+				assertJSONErrContains(t, out, configengine.StagingFile(fx.worktree, "board"))
+			},
+		},
+	}
+
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			fx := newHubFixture(t)
+			seed := seeded
+			if row.seed != "" {
+				seed = row.seed
+			}
+			seedModuleConfig(t, fx.board, "board", seed)
+			edit := makeNeverCalledEditor(t)
+			if row.editor != nil {
+				edit = row.editor(fx)
+			}
+			commit := &fakeHubCommit{err: row.commitErr}
+			sync := &fakeSyncTracker{}
+			var out bytes.Buffer
+
+			code := dispatch(fx.layout, &out, []string{"board"}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags)
+
+			if code != row.wantCode {
+				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
+			}
+			if commit.calls != row.wantCommits {
+				t.Errorf("hub commit ran %d times; want %d", commit.calls, row.wantCommits)
+			}
+			if sync.called {
+				t.Error("fabric sync ran for a hub-wide module")
+			}
+			if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "board")); !os.IsNotExist(err) {
+				t.Errorf("a worktree board.yaml exists; stat err = %v", err)
+			}
+			hubFile, err := os.ReadFile(configengine.ConfigFile(fx.board, "board"))
+			if err != nil {
+				t.Fatalf("read hub board.yaml: %v", err)
+			}
+			row.check(t, fx, string(hubFile), out.String())
+		})
 	}
 }
