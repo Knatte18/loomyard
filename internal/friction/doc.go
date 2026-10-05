@@ -8,11 +8,10 @@
 //
 // # Why the leaf exists
 //
-// Tier 1 (see internal/loomengine's anomaly.go) files a GitHub issue only when an agent
-// explicitly decides to, at the end of a session it otherwise judges successful. Tier 2 exists for
-// the run that never reaches that reflective moment at all — an unsupervised agent that gets stuck,
-// times out, or dies mid-task leaves no self-report behind, because self-report is itself a
-// deliberate, closing act the agent never performed. Tier 2 asks every code-touching or
+// An agent that files an issue only when it explicitly decides to, at the end of a session it
+// otherwise judges successful, misses the run that never reaches that reflective moment at all —
+// an unsupervised agent that gets stuck, times out, or dies mid-task leaves no self-report behind,
+// because self-report is itself a deliberate, closing act the agent never performed. Tier 2 asks every code-touching or
 // orchestrating agent, throughout the run rather than only at its end, to jot a short freeform note
 // whenever something felt like friction, so a later reflection pass — internal/frictionengine, one
 // batch downstream of this package — has raw material to work from even when the agent that hit the
@@ -31,7 +30,9 @@
 //
 // # Go-authored notes
 //
-// Besides the agent-written notes the directive asks for, internal/loomcli and webster code write Go-authored halt and refusal notes through NotePath, which keeps this package free of feature imports.
+// Besides the agent-written notes the directive asks for, internal/loomcli and webster code write Go-authored notes through NotePath, which keeps this package free of feature imports.
+// The notes are the loom halt note, which names its anomaly kind and recent history, the loom crash-resume note written at a run or step entry, and the webster refusal note.
+// The reflection decides from them whether a lyx problem is worth an issue.
 //
 // # Why four roles
 //
