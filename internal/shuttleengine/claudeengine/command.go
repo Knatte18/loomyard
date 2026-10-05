@@ -104,6 +104,19 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // It must ride the pane command because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
+// envFileKey is the variable Claude Code reads to find a file whose content it runs in the Bash tool's shell before each command.
+// It rides the pane line for the same reason forkSubagentEnvKey does.
+const envFileKey = "CLAUDE_ENV_FILE"
+
+// envFileName is the file Prepare writes beside settings.json for envFileKey to name.
+const envFileName = "bash-env.sh"
+
+// envFileContent makes /dev/null the default stdin of the Bash tool's shell, so an interpreter left reading the tool's open stdin ends at once instead of hanging the session.
+// The file runs one `exec </dev/null` and nothing else.
+// It changes only the default stdin of the tool's own shell: a heredoc, pipe or redirect attached to a command still supplies that command's stdin,
+// a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
+const envFileContent = "exec </dev/null\n"
+
 // buildLaunchCmd composes the pane-shell line that starts a claude session.
 // A fresh session is named with --session-id;
 // when resume is true the line takes over the existing session sessionID names with --resume instead,
@@ -118,7 +131,8 @@ const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 // so the pane shell expands the variable from the export reed's launch script makes.
 // It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice string, resume, skipPermissions, forkSubagents bool) string {
+// It then wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice, envFilePath string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -144,7 +158,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
-	return cmd
+	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
 // buildResumeCmd composes the pane-shell line that reattaches an existing claude session by id.
@@ -161,7 +175,8 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // It carries --name as a reference to LYX_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice string, skipPermissions, forkSubagents bool) string {
+// It carries the envFileKey assignment naming envFilePath, leading the line, so a resumed session keeps the default stdin of its Bash tool.
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice, envFilePath string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -179,5 +194,5 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
-	return cmd
+	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
