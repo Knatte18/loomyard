@@ -20,12 +20,13 @@ Enforced by `internal/shedcli/table_test.go`.
 ## Step envelope
 
 - The `step` refusal-kind vocabulary stays closed at its five values.
-- The step envelope's key set is closed by doc comment and test.
-  It carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope.
+- The full step envelope's key set is closed by doc comment and test, and is the one the step record holds.
+  Stdout prints a short envelope by default, whose two closed key sets (success and error) are stated in `internal/shedverbs`; `--full`, or a record that could not be written, prints the full envelope instead.
+  The full envelope carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope.
   The success envelope and every error envelope also carry `friction` (the `AfterStep` hook's status, or empty).
   Every error envelope also carries `transient` (the transient class name, or empty; it is a key, not a sixth kind).
   `run`'s error envelope carries a module's `PostRun` extras, and the status envelope carries `trace_dir` on every envelope.
-- Enforced by `internal/shedverbs/step_test.go`.
+- Enforced by `internal/shedverbs/step_test.go` for the full envelope and `internal/shedverbs/steprecord_test.go` for the short ones.
 
 ## goto
 

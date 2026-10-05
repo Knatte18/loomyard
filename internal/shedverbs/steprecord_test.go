@@ -1,6 +1,6 @@
 // steprecord_test.go covers the step body's own per-invocation record and status's last_step: the
-// in-flight file exists while a producer runs, the envelope file equals the printed line after
-// return, and last_step tracks the newest record.
+// in-flight file exists while a producer runs, the full envelope is recorded before the short one
+// is printed, and last_step tracks the newest record.
 
 package shedverbs
 
@@ -11,6 +11,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"sort"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -58,36 +61,107 @@ func TestStepCmd_InflightRecordExistsWhileProducerRuns(t *testing.T) {
 	}
 }
 
-// TestStepCmd_EnvelopeRecordEqualsPrintedLine asserts the envelope file holds exactly the line
-// step printed, for a success and for a refusal.
-func TestStepCmd_EnvelopeRecordEqualsPrintedLine(t *testing.T) {
+// sortedKeys returns m's keys in sorted order.
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord runs a success and a refusal without and with
+// --full, each against its own steps dir.
+// Without --full stdout carries the short key set and the record path; with --full stdout equals the
+// record; the record and exit code are the same either way, and status's last_step names the same record.
+func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
 	tests := []struct {
-		name     string
-		wantCode int
-		producer func() shedengine.ProducerDef
+		name      string
+		wantCode  int
+		producer  func() shedengine.ProducerDef
+		shortKeys []string
+		fullKeys  []string
 	}{
-		{"Success", 0, func() shedengine.ProducerDef { return stubRow("Only") }},
-		{"Refusal", 1, func() shedengine.ProducerDef { return erroringRow("Only", errors.New("boom")) }},
+		{
+			"Success", 0,
+			func() shedengine.ProducerDef { return stubRow("Only") },
+			[]string{"continue", "envelope_path", "history_length", "next", "ok", "outcome", "output", "producer", "progress", "reason", "run_id", "state", "trace_file"},
+			[]string{"continue", "friction", "friction_dir", "history_length", "next", "next_interrupt_policy", "ok", "outcome", "output", "producer", "progress", "reason", "run_id", "scratch_dir", "state", "status_file", "trace_file", "trace_id"},
+		},
+		{
+			"Refusal", 1,
+			func() shedengine.ProducerDef { return erroringRow("Only", errors.New("boom")) },
+			[]string{"envelope_path", "error", "kind", "ok", "run_id", "trace_file", "transient"},
+			[]string{"error", "friction", "friction_dir", "kind", "ok", "run_id", "scratch_dir", "trace_file", "trace_id", "transient"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			paths := newTestPaths(t)
-			seedStatus(t, paths, "Only")
-			stepsDir := filepath.Join(t.TempDir(), "steps")
-			spec := &Spec{StepsDir: stepsDir, BuildShed: func() (*shedengine.Shed, error) {
-				return newFakeShed(paths, []shedengine.ProducerDef{tt.producer()}), nil
-			}}
+			type run struct {
+				stdout   []byte
+				code     int
+				stepsDir string
+			}
+			step := func(args []string) run {
+				paths := newTestPaths(t)
+				seedStatus(t, paths, "Only")
+				stepsDir := filepath.Join(t.TempDir(), "steps")
+				spec := &Spec{StepsDir: stepsDir, BuildShed: func() (*shedengine.Shed, error) {
+					return newFakeShed(paths, []shedengine.ProducerDef{tt.producer()}), nil
+				}}
+				var buf bytes.Buffer
+				code := clihelp.Execute(stepCmd(stepTexts(), spec), &buf, args)
+				return run{buf.Bytes(), code, stepsDir}
+			}
+			decode := func(data []byte) map[string]any {
+				t.Helper()
+				var env map[string]any
+				if err := json.Unmarshal(data, &env); err != nil {
+					t.Fatalf("decode %q: %v", data, err)
+				}
+				return env
+			}
+			record := func(r run) []byte {
+				t.Helper()
+				data, err := os.ReadFile(filepath.Join(r.stepsDir, logger.TraceID()+".json"))
+				if err != nil {
+					t.Fatalf("read envelope record: %v", err)
+				}
+				return data
+			}
 
-			var buf bytes.Buffer
-			if code := clihelp.Execute(stepCmd(stepTexts(), spec), &buf, nil); code != tt.wantCode {
-				t.Fatalf("exit code = %d; want %d", code, tt.wantCode)
+			short, full := step(nil), step([]string{"--full"})
+			if short.code != tt.wantCode || full.code != tt.wantCode {
+				t.Fatalf("exit codes = %d without --full, %d with; want %d for both", short.code, full.code, tt.wantCode)
 			}
-			got, err := os.ReadFile(filepath.Join(stepsDir, logger.TraceID()+".json"))
-			if err != nil {
-				t.Fatalf("read envelope record: %v", err)
+
+			shortEnv := decode(short.stdout)
+			if got := sortedKeys(shortEnv); !slices.Equal(got, tt.shortKeys) {
+				t.Errorf("short stdout keys = %v; want %v", got, tt.shortKeys)
 			}
-			if !bytes.Equal(got, buf.Bytes()) {
-				t.Errorf("envelope record = %q; want the printed %q", got, buf.Bytes())
+			wantPath := filepath.Join(short.stepsDir,logger.TraceID()+".json")
+			if shortEnv["envelope_path"] != wantPath {
+				t.Errorf("envelope_path = %v; want %q", shortEnv["envelope_path"], wantPath)
+			}
+
+			shortRecord := decode(record(short))
+			if got := sortedKeys(shortRecord); !slices.Equal(got, tt.fullKeys) {
+				t.Errorf("record keys = %v; want %v", got, tt.fullKeys)
+			}
+			if !bytes.Equal(full.stdout, record(full)) {
+				t.Errorf("--full stdout = %q; want the record %q", full.stdout, record(full))
+			}
+			if !reflect.DeepEqual(decode(record(full)), shortRecord) {
+				t.Errorf("record under --full = %v; want the record without it %v", decode(record(full)), shortRecord)
+			}
+
+			statusSpec := seededStatusSpec(t, Hooks{})
+			statusSpec.StepsDir = short.stepsDir
+			statusEnv, _ := execEnvelope(t, statusCmd(statusTexts(), statusSpec), nil)
+			lastStep, _ := statusEnv["last_step"].(map[string]any)
+			if lastStep["envelope_path"] != shortEnv["envelope_path"] {
+				t.Errorf("last_step.envelope_path = %v; want the short envelope's %v", lastStep["envelope_path"], shortEnv["envelope_path"])
 			}
 		})
 	}
@@ -100,9 +174,11 @@ func TestStepCmd_NoStepsDirKeepsNoRecords(t *testing.T) {
 	spec := &Spec{BuildShed: func() (*shedengine.Shed, error) {
 		return newFakeShed(paths, []shedengine.ProducerDef{stubRow("Only")}), nil
 	}}
-	if _, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil); code != 0 {
+	env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+	if code != 0 {
 		t.Fatalf("exit code = %d; want 0", code)
 	}
+	assertFullEnvelopeOnStdout(t, env)
 	entries, err := os.ReadDir(filepath.Dir(paths.StatusPath))
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +205,21 @@ func TestStepCmd_RecordWriteFailureLeavesEnvelopeUnchanged(t *testing.T) {
 	env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
 	if code != 0 || env["ok"] != true {
 		t.Fatalf("code = %d, envelope = %v; want a normal success", code, env)
+	}
+	assertFullEnvelopeOnStdout(t, env)
+}
+
+// assertFullEnvelopeOnStdout checks env is the full envelope: it carries the keys the short one
+// drops and none naming a record.
+func assertFullEnvelopeOnStdout(t *testing.T, env map[string]any) {
+	t.Helper()
+	for _, key := range []string{"status_file", "scratch_dir", "trace_id"} {
+		if _, present := env[key]; !present {
+			t.Errorf("stdout envelope lacks %q; want the full envelope when no record is kept: %v", key, env)
+		}
+	}
+	if _, present := env["envelope_path"]; present {
+		t.Errorf("stdout envelope names envelope_path with no record kept: %v", env)
 	}
 }
 
