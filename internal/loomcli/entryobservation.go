@@ -1,12 +1,16 @@
-// entryobservation.go implements loom's entry observation -- the told-input read of the run lock and status file that lets a crash-resume be recognised -- and the handoff voucher that keeps an operator's step-to-driver handoff from reading as one.
+// entryobservation.go implements loom's entry observation -- the told-input read of the run lock and status file that lets a crash-resume be recognised -- the friction note a recognised one leaves, and the handoff voucher that keeps an operator's step-to-driver handoff from reading as one.
 // Both are functions of told paths, kept here rather than inline in drive's cobra closure so every branch is reachable with no tmux, no git, and no real run.
 
 package loomcli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -104,14 +108,52 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 		}
 	}
 
-	return loomengine.EntryObservation{
-		Observed:         true,
-		RunLockHeld:      runLockHeld,
-		State:            shed.State,
-		CurrentProducer:  shed.CurrentProducer,
-		HistoryLength:    len(shed.History),
-		Slug:             product.Slug,
-		Parent:           product.Parent,
-		CleanStepHandoff: consumeHandoffVoucher(handoffVoucherPath, handoffVoucherLockPath, len(shed.History), shed.State),
+	recent := shed.History
+	if len(recent) > recentHistoryRows {
+		recent = recent[len(recent)-recentHistoryRows:]
 	}
+
+	return loomengine.EntryObservation{
+		Observed:        true,
+		RunLockHeld:     runLockHeld,
+		State:           shed.State,
+		CurrentProducer: shed.CurrentProducer,
+		HistoryLength:   len(shed.History),
+		Slug:            product.Slug,
+		Parent:          product.Parent,
+		Vouched:         consumeHandoffVoucher(handoffVoucherPath, handoffVoucherLockPath, len(shed.History), shed.State),
+		RecentHistory:   recent,
+	}
+}
+
+// recentHistoryRows caps how many trailing history rows an entry observation carries.
+const recentHistoryRows = 5
+
+// writeCrashResumeNote records a detected crash-resume as a friction note named `loom-crash-resume`, for the named verb (`run` or `step`) and the trace file of this invocation.
+// It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
+func writeCrashResumeNote(frictionDir string, entry loomengine.EntryObservation, verb, traceFile string) error {
+	if frictionDir == "" {
+		return nil
+	}
+	friction.EnsureDir(frictionDir)
+	path := friction.NotePath(frictionDir, "loom-crash-resume")
+	if path == "" {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString("loom resumed after a suspected driver crash at " + entry.CurrentProducer + "\n\n")
+	b.WriteString("slug: " + entry.Slug + "\n")
+	b.WriteString("parent: " + entry.Parent + "\n")
+	b.WriteString("state: " + string(entry.State) + "\n")
+	b.WriteString("current_producer: " + entry.CurrentProducer + "\n")
+	b.WriteString("history_entries: " + strconv.Itoa(entry.HistoryLength) + "\n")
+	b.WriteString("verb: " + verb + "\n")
+	b.WriteString("trace_file: " + traceFile + "\n")
+	writeHistoryRows(&b, entry.RecentHistory)
+
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return fmt.Errorf("loom: write crash-resume note %s: %w", path, err)
+	}
+	return nil
 }

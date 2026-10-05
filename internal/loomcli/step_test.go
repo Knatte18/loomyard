@@ -80,7 +80,7 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 // and that the refusal happened before the bootstrap and the entry observation.
 // seedAndCommitBootstrap would have written the loom seed, so its absence afterwards proves the early probe fired first.
 // The status file is seeded to match the handoff voucher,
-// so an observation taken before the probe would consume that voucher and set entryObservation.
+// so an observation taken before the probe would consume that voucher and write a crash-resume note.
 func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "run.lock")
@@ -136,7 +136,8 @@ func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
 	if _, err := os.Stat(handoffPath); err != nil {
 		t.Errorf("handoff voucher %q = %v after a busy refusal; want it left in place", handoffPath, err)
 	}
-	if c.entryObservation != (loomengine.EntryObservation{}) {
-		t.Errorf("entryObservation = %+v after a busy refusal; want zero", c.entryObservation)
+	notePath := filepath.Join(c.frictionDir, "loom-crash-resume.md")
+	if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+		t.Errorf("crash-resume note %q = %v after a busy refusal; want none written", notePath, err)
 	}
 }

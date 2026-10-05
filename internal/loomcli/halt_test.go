@@ -146,20 +146,85 @@ func TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects(t *testing.T) {
 	}
 }
 
-func TestWriteHaltNote_NamesProducerAndReason(t *testing.T) {
+func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	err := writeHaltNote(dir, haltNote{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "webster stuck on batch 3", HistoryLen: 4})
-	if err != nil {
-		t.Fatalf("writeHaltNote() = %v; want nil", err)
+	history := []shedengine.HistoryEntry{
+		{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"},
+		{Producer: loomshed.NameWebster, Outcome: shedengine.Stuck, At: "2026-01-01T00:00:01Z"},
 	}
+	historyRows := []string{
+		"- Preflight / " + string(shedengine.Done) + " / 2026-01-01T00:00:00Z",
+		"- " + loomshed.NameWebster + " / " + string(shedengine.Stuck) + " / 2026-01-01T00:00:01Z",
+	}
+	tests := []struct {
+		name     string
+		state    shedengine.State
+		reason   string
+		history  []shedengine.HistoryEntry
+		wantKind loomengine.AnomalyKind
+		want     []string
+	}{
+		{
+			name:     "BudgetPrefixedBlocked",
+			state:    shedengine.StateBlocked,
+			reason:   shedengine.ReasonBounceBudgetExhausted + " for Plan-Write",
+			history:  history,
+			wantKind: loomengine.AnomalyBudgetExhausted,
+			want:     historyRows,
+		},
+		{
+			name:     "OtherBlocked",
+			state:    shedengine.StateBlocked,
+			reason:   "webster stuck on batch 3",
+			history:  history,
+			wantKind: loomengine.AnomalyEscalation,
+			want:     historyRows,
+		},
+		{
+			name:     "Failed",
+			state:    shedengine.StateFailed,
+			reason:   "producer exploded",
+			history:  history,
+			wantKind: loomengine.AnomalyProducerFailure,
+			want:     historyRows,
+		},
+		{
+			name:     "NoHistory",
+			state:    shedengine.StateBlocked,
+			reason:   "stuck before any row finished",
+			wantKind: loomengine.AnomalyEscalation,
+			want:     []string{"no history entries", "history_entries: 0"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := readNote(t, filepath.Join(dir, "loom-halt.md"))
-	for _, want := range []string{loomshed.NameWebster, "webster stuck on batch 3", "blocked", "history_entries: 4"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("halt note %q does not contain %q", got, want)
-		}
+			dir := t.TempDir()
+			n := haltNote{Producer: loomshed.NameWebster, State: tt.state, Reason: tt.reason, History: tt.history, TraceFile: "/logs/trace.log"}
+			if err := writeHaltNote(dir, n); err != nil {
+				t.Fatalf("writeHaltNote() = %v; want nil", err)
+			}
+
+			notes, err := filepath.Glob(filepath.Join(dir, "*.md"))
+			if err != nil || len(notes) != 1 || filepath.Base(notes[0]) != "loom-halt.md" {
+				t.Fatalf("friction directory holds %v (glob error %v); want exactly loom-halt.md", notes, err)
+			}
+			got := readNote(t, notes[0])
+			want := append([]string{
+				"anomaly: " + string(tt.wantKind),
+				"producer: " + loomshed.NameWebster,
+				"state: " + string(tt.state),
+				tt.reason,
+				"trace_file: /logs/trace.log",
+			}, tt.want...)
+			for _, w := range want {
+				if !strings.Contains(got, w) {
+					t.Errorf("halt note %q does not contain %q", got, w)
+				}
+			}
+		})
 	}
 }
 
@@ -438,7 +503,7 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 		{Name: "Row-B", Producer: doneProducer},
 	}
 	preStep := func(context.Context) (string, error) {
-		f.c.observeStepEntry()
+		f.c.noteCrashResumeAtEntry("step")
 		return "", nil
 	}
 
@@ -446,4 +511,46 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 	f.stepOver(t, preStep, producers)
 	beforeSecond()
 	f.stepOver(t, preStep, producers)
+}
+
+func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		removeVoucher bool
+		wantNote      bool
+	}{
+		{"MarkerKept", false, false},
+		{"MarkerRemoved", true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newHaltFixture(t)
+			f.handoffSteps(t, func() {
+				if !tt.removeVoucher {
+					return
+				}
+				if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
+					t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+				}
+			})
+
+			notePath := filepath.Join(f.frictionDir, "loom-crash-resume.md")
+			if !tt.wantNote {
+				if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+					t.Errorf("crash-resume note %q = %v; want none written", notePath, err)
+				}
+				return
+			}
+			got := readNote(t, notePath)
+			for _, want := range []string{"slug: pair", "parent: main", "state: running", "current_producer: Row-B", "history_entries: 1", "verb: step", "trace_file:", "- Row-A / " + string(shedengine.Done) + " / "} {
+				if !strings.Contains(got, want) {
+					t.Errorf("crash-resume note %q does not contain %q", got, want)
+				}
+			}
+		})
+	}
 }

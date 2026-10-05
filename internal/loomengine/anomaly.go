@@ -41,28 +41,31 @@ type EntryObservation struct {
 	HistoryLength   int
 	Slug            string
 	Parent          string
-	// CleanStepHandoff is true when the observation matches the clean-handoff marker the last
-	// completed `lyx loom step` recorded (same history length, same state) -- a task an operator is
-	// handing from the supervised step loop to a driver, byte-identical on disk to a mid-run driver
-	// death and excluded from trigger 1 for that reason. The caller consumes the marker and reports
-	// the match here; this package performs no read of its own.
-	CleanStepHandoff bool
+	// Vouched is true when the observation matches the handoff voucher a completed `lyx loom step`
+	// or `lyx loom start` recorded (same history length, same state) -- a task an operator is
+	// handing from the supervised step loop to a driver, or resuming deliberately, byte-identical on
+	// disk to a mid-run driver death and excluded from trigger 1 for that reason. The caller
+	// consumes the voucher and reports the match here; this package performs no read of its own.
+	Vouched bool
+	// RecentHistory is the last history rows (at most five) observed at entry, carried into the
+	// crash-resume note so the reflection sees what the dead driver had just done.
+	RecentHistory []shedengine.HistoryEntry
 }
 
 // DetectCrashResume reports trigger 1: whether entry describes a driver that died mid-run
 // rather than exiting cleanly.
 // It reports true when, and only when, entry.Observed is true, entry.RunLockHeld is false,
 // entry.State is shedengine.StateRunning, entry.HistoryLength is greater than zero, and
-// entry.CleanStepHandoff is false. A held run lock means a live driver, never a crash. An empty
+// entry.Vouched is false. A held run lock means a live driver, never a crash. An empty
 // history is a fresh seed at Preflight, byte-identical on disk to a crash at Preflight, so it is
 // deliberately not reported -- the alternative would report a crash-resume for every ordinary first
-// drive of every task. A clean step handoff is that exclusion's sibling one row further along: a
+// drive of every task. A vouched entry is that exclusion's sibling one row further along: a
 // completed `lyx loom step` also leaves state running with a live history and no lock held, so
-// without its marker every operator handing a supervised task to a driver would read as a
+// without its voucher every operator handing a supervised task to a driver would read as a
 // crash-resume. A paused, blocked, failed, or awaiting entry state is an ordinary human resume,
 // not a crash.
 func DetectCrashResume(entry EntryObservation) bool {
-	return entry.Observed && !entry.RunLockHeld && entry.State == shedengine.StateRunning && entry.HistoryLength > 0 && !entry.CleanStepHandoff
+	return entry.Observed && !entry.RunLockHeld && entry.State == shedengine.StateRunning && entry.HistoryLength > 0 && !entry.Vouched
 }
 
 // ClassifyHalt evaluates the three halt-kind triggers (escalation, budget-exhausted,

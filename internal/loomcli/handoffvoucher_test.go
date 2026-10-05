@@ -1,6 +1,6 @@
 // handoffvoucher_test.go is the untagged suite for the handoff voucher (crucible round 2,
 // R2-F1): recordHandoffVoucher and consumeHandoffVoucher directly, and observeEntry's consumption of
-// the voucher into EntryObservation.CleanStepHandoff. Everything runs against t.TempDir() paths via
+// the voucher into EntryObservation.Vouched. Everything runs against t.TempDir() paths via
 // the production state primitives -- no tmux, no git, no real run.
 
 package loomcli
@@ -86,7 +86,7 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 }
 
 // TestObserveEntry_ConsumesHandoffVoucherIntoObservation asserts the wiring: a voucher matching the
-// persisted status yields CleanStepHandoff true, and -- the one-shot property -- a second identical
+// persisted status yields Vouched true, and -- the one-shot property -- a second identical
 // observation yields false, because the first consumed the voucher.
 func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 	dir := t.TempDir()
@@ -111,12 +111,12 @@ func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 	if !first.Observed {
 		t.Fatalf("observeEntry first call: Observed = false; want true")
 	}
-	if !first.CleanStepHandoff {
-		t.Errorf("observeEntry first call: CleanStepHandoff = false; want true -- a matching voucher must suppress the crash signature")
+	if !first.Vouched {
+		t.Errorf("observeEntry first call: Vouched = false; want true -- a matching voucher must suppress the crash signature")
 	}
 
 	second := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
-	if second.CleanStepHandoff {
-		t.Errorf("observeEntry second call: CleanStepHandoff = true; want false -- the voucher is one-shot and the first call consumed it")
+	if second.Vouched {
+		t.Errorf("observeEntry second call: Vouched = true; want false -- the voucher is one-shot and the first call consumed it")
 	}
 }

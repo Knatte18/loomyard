@@ -105,9 +105,6 @@ type loomCLI struct {
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
-	// entryObservation carries loomPreRun's entry observation forward to loomPostRun, since
-	// PreRun returns no envelope map of its own.
-	entryObservation loomengine.EntryObservation
 	// driverStarter is the seam through which the llm arm starts the loom driver session's shuttle run,
 	// wrapping the same *shuttleengine.Runner c.runner already carries. The seam exists because the
 	// Test Tier Purity Invariant bars a real spawn from an untagged file and *shuttleengine.Runner is

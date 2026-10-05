@@ -15,20 +15,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // haltNote describes one `blocked` or `failed` halt.
 type haltNote struct {
-	Producer   string
-	State      shedengine.State
-	Reason     string
-	HistoryLen int
-	TraceFile  string
+	Producer  string
+	State     shedengine.State
+	Reason    string
+	History   []shedengine.HistoryEntry
+	TraceFile string
 }
 
-// writeHaltNote records n as a friction note named `loom-halt`.
+// writeHistoryRows appends the history section of a friction note: one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
+func writeHistoryRows(b *strings.Builder, history []shedengine.HistoryEntry) {
+	b.WriteString("\nhistory:\n")
+	if len(history) == 0 {
+		b.WriteString("no history entries\n")
+		return
+	}
+	for _, h := range history {
+		b.WriteString("- " + h.Producer + " / " + string(h.Outcome) + " / " + h.At + "\n")
+	}
+}
+
+// writeHaltNote records n as a friction note named `loom-halt`, carrying the anomaly kind the halt classifies as and the history behind it.
 // It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
 func writeHaltNote(frictionDir string, n haltNote) error {
 	if frictionDir == "" {
@@ -45,8 +58,12 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 	b.WriteString("```\n" + n.Reason + "\n```\n\n")
 	b.WriteString("producer: " + n.Producer + "\n")
 	b.WriteString("state: " + string(n.State) + "\n")
-	b.WriteString("history_entries: " + strconv.Itoa(n.HistoryLen) + "\n")
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok {
+		b.WriteString("anomaly: " + string(kind) + "\n")
+	}
+	b.WriteString("history_entries: " + strconv.Itoa(len(n.History)) + "\n")
 	b.WriteString("trace_file: " + n.TraceFile + "\n")
+	writeHistoryRows(&b, n.History)
 
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("loom: write halt note %s: %w", path, err)
@@ -83,11 +100,11 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 		return haltNote{}, false
 	}
 	return haltNote{
-		Producer:   st.CurrentProducer,
-		State:      shedengine.StateFailed,
-		Reason:     st.Error,
-		HistoryLen: len(st.History),
-		TraceFile:  logger.TraceFile(),
+		Producer:  st.CurrentProducer,
+		State:     shedengine.StateFailed,
+		Reason:    st.Error,
+		History:   st.History,
+		TraceFile: logger.TraceFile(),
 	}, true
 }
 
@@ -105,11 +122,11 @@ func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, 
 	switch res.State {
 	case shedengine.StateBlocked:
 		return c.reflectHalt(haltNote{
-			Producer:   res.Producer,
-			State:      shedengine.StateBlocked,
-			Reason:     res.Reason,
-			HistoryLen: len(res.History),
-			TraceFile:  logger.TraceFile(),
+			Producer:  res.Producer,
+			State:     shedengine.StateBlocked,
+			Reason:    res.Reason,
+			History:   res.History,
+			TraceFile: logger.TraceFile(),
 		})
 	case shedengine.StateDone:
 		if c.rowFrictionStatus != "" {

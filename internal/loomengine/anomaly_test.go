@@ -88,15 +88,15 @@ func TestDetectCrashResume(t *testing.T) {
 		},
 		{
 			// A completed `lyx loom step` leaves exactly the crash signature -- state running, no
-			// lock held, live history -- so the clean-handoff flag is the one thing separating an
+			// lock held, live history -- so the voucher is the one thing separating an
 			// operator's step-to-driver handoff from a mid-run driver death.
-			name: "RunningWithHistory_CleanStepHandoff_None",
+			name: "RunningWithHistory_Vouched_None",
 			entry: EntryObservation{
-				Observed:         true,
-				RunLockHeld:      false,
-				State:            shedengine.StateRunning,
-				HistoryLength:    3,
-				CleanStepHandoff: true,
+				Observed:      true,
+				RunLockHeld:   false,
+				State:         shedengine.StateRunning,
+				HistoryLength: 3,
+				Vouched:       true,
 			},
 			want: false,
 		},
