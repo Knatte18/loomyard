@@ -170,6 +170,49 @@ The integration run's twenty slowest top-level tests (run 4):
 | `TestNaming_TaskWorktreeRolesParentResumeAndRemove` | `internal/reedcli` | 1.40 s |
 | `TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval` | `internal/battencli` | 1.39 s |
 
-### After speed
+### After speed (2026-10-05)
 
-Recorded by card 9 under this heading.
+```yaml
+machine: AMD Ryzen AI 7 445 w/ Radeon 840M, 12 threads
+os: Linux 7.0.0-31-generic (Ubuntu), bare metal
+go: go1.26.0 linux/amd64
+revision: 41ee008f7
+load_average_before: 5.08 4.82 4.06
+load_average_after: 22.31 12.01 6.88
+tier_1_top_level_tests: 4264
+integration_top_level_tests: 5593
+tier_1_wall: 5.97 s
+integration_wall: 30.41 s
+```
+
+Same method as the before-state, on the tree after cards 3–8 and before any retag.
+Tier 1 runs were 5.88, 5.97 and 6.01 s.
+Integration runs were 30.41, 30.00 and 35.98 s.
+The test counts equal the before-state's, so the two states cover the same set.
+The load average before is higher than the before-state's, since other sessions were running on the machine; it works against the after-state numbers, which still came out lower.
+Tier 1 also fell, to 5.97 s from 9.02 s; the cause was not isolated, and Tier 1 wall time moves with machine load.
+
+The integration run's twenty slowest top-level tests (run 4):
+
+| Test | Package | Elapsed |
+|---|---|---|
+| `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock` | `internal/reedcli` | 3.02 s |
+| `TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone` | `internal/battencli` | 2.97 s |
+| `TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses` | `internal/fabricengine` | 2.93 s |
+| `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps` | `cmd/lyx` | 2.91 s |
+| `TestMidMerge_ForeignState_EverySideAndShape` | `internal/fabricengine` | 2.88 s |
+| `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | `internal/loomcli` | 2.83 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.79 s |
+| `TestCrossCompileLinux` | `cmd/lyx` | 2.79 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 2.78 s |
+| `TestWatchdogReap_DescendantClosureConfirmedExited` | `internal/reedcli` | 2.68 s |
+| `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree` | `internal/reedcli` | 2.43 s |
+| `TestMerge_NoUpstreamSidePassesVacuously` | `internal/fabricengine` | 2.42 s |
+| `TestVerbCases_CleanState` | `internal/fabricengine` | 2.42 s |
+| `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 2.37 s |
+| `TestMerge_MessagePrecedence` | `internal/fabricengine` | 2.37 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 2.34 s |
+| `TestMerge_DirtyTargetHalts` | `internal/fabricengine` | 2.23 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 2.19 s |
+| `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | `internal/reedengine` | 2.11 s |
+| `TestWatchdogReap_LoopStaysLiveDuringReap` | `internal/reedcli` | 1.90 s |
