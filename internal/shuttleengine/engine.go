@@ -218,6 +218,9 @@ type IdleProbe struct {
 type SessionCycler interface {
 	// ContextTokens returns the provider's context reading as of the turn end turnEnd records.
 	ContextTokens(turnEnd Event) ContextReading
+	// CompactedSince returns the timestamp of the newest main-chain compaction boundary after since in the transcript turnEnd names.
+	// found is false when there is none or the transcript cannot be read.
+	CompactedSince(turnEnd Event, since time.Time) (at time.Time, found bool)
 	// IdleSession reports whether capture shows the provider idle: its input box present and empty, and no turn in progress.
 	IdleSession(capture string) bool
 	// PaneTooShort reports whether capture shows a pane too short to draw the provider's input box, which makes a not-idle answer from IdleSession unreliable.

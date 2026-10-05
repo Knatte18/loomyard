@@ -6,6 +6,7 @@ package shuttleengine
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -14,7 +15,7 @@ import (
 func (r *Runner) sessionCycler() (SessionCycler, error) {
 	cycler, ok := r.engine.(SessionCycler)
 	if !ok {
-		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, IdleSession, ClearSessionSequence, CompactSessionSequence), so it cannot cycle a session")
+		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, CompactedSince, IdleSession, ClearSessionSequence, CompactSessionSequence), so it cannot cycle a session")
 	}
 	return cycler, nil
 }
@@ -105,6 +106,20 @@ func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 		return ContextReading{}, err
 	}
 	return cycler.ContextTokens(turnEnd), nil
+}
+
+// CompactedSince returns the timestamp of the newest compaction boundary after since in the transcript turnEnd names, via the engine's SessionCycler.
+// found is false when there is none or the transcript could not be read.
+func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (time.Time, bool, error) {
+	if r.toldErr != nil {
+		return time.Time{}, false, r.toldErr
+	}
+	cycler, err := r.sessionCycler()
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	at, found := cycler.CompactedSince(turnEnd, since)
+	return at, found, nil
 }
 
 // SessionIdle probes the live pane of the run identified by guid for the provider idle.

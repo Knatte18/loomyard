@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
@@ -19,10 +20,17 @@ type cyclerEngine struct {
 	clear    []PaneInput
 	captures []string
 	foci     []string
+
+	compactedAt time.Time
+	sinceAsks   []time.Time
 }
 
 func (e *cyclerEngine) ContextTokens(Event) ContextReading {
 	return ContextReading{Tokens: e.tokens, Known: e.known}
+}
+func (e *cyclerEngine) CompactedSince(_ Event, since time.Time) (time.Time, bool) {
+	e.sinceAsks = append(e.sinceAsks, since)
+	return e.compactedAt, !e.compactedAt.IsZero()
 }
 func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)
@@ -82,6 +90,9 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	if _, err := runner.ContextTokens(Event{}); err == nil {
 		t.Error("ContextTokens on a plain engine = nil error")
 	}
+	if _, _, err := runner.CompactedSince(Event{}, time.Time{}); err == nil || !strings.Contains(err.Error(), "SessionCycler") {
+		t.Errorf("CompactedSince on a plain engine = %v, want an error naming SessionCycler", err)
+	}
 	if _, err := runner.SessionIdle("strand-1"); err == nil {
 		t.Error("SessionIdle on a plain engine = nil error")
 	}
@@ -103,6 +114,20 @@ func TestRunner_ContextTokens_Delegates(t *testing.T) {
 	reading, err := runner.ContextTokens(Event{})
 	if err != nil || reading.Tokens != 1234 || !reading.Known {
 		t.Errorf("ContextTokens = %+v, %v; want 1234 known, nil", reading, err)
+	}
+}
+
+func TestRunner_CompactedSince_Delegates(t *testing.T) {
+	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	since := at.Add(-time.Minute)
+	engine := &cyclerEngine{compactedAt: at}
+	runner := newFixture(t, &fakeReed{}, engine, withStrand("strand-1")).Runner
+	got, found, err := runner.CompactedSince(Event{}, since)
+	if err != nil || !found || !got.Equal(at) {
+		t.Errorf("CompactedSince = %v, %v, %v; want %v, true, nil", got, found, err, at)
+	}
+	if len(engine.sinceAsks) != 1 || !engine.sinceAsks[0].Equal(since) {
+		t.Errorf("engine asked %v, want one ask at %v", engine.sinceAsks, since)
 	}
 }
 
