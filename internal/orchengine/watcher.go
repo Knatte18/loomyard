@@ -1,9 +1,13 @@
-// watcher.go — the watcher's decision core: one poll of the idle check and the persisted four-phase cycle (idle, handoff-requested, clearing, resuming).
+// watcher.go — the watcher's decision core: one poll of the idle check and the persisted cycle, which Config.Mode picks between two machines.
+// Clear mode runs four phases (idle, handoff-requested, clearing, resuming);
+// compact mode runs two (idle, compacting), types `/compact` with a focus text and writes no handoff.
+// Both share the idle trigger selection, its gates and its re-read of the context.
 //
 // Every provider and reed interaction goes through the Session seam, so the whole state machine runs against a fake in untagged unit tests.
 // The watcher saves State before every side effect, and a restarted watcher resumes from it:
-// a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and then it is sent again.
-// Nothing is typed into the pane, text or `/clear`, unless the idle probe passed on the same tick.
+// a non-idle phase's injection is treated as unconfirmed until a turn end proves it landed or a passing idle probe shows it did not, and then it is sent again;
+// in compacting, a compaction boundary read from the transcript proves it instead of a turn end.
+// Nothing is typed into the pane, text, `/clear` or `/compact`, unless the idle probe passed on the same tick.
 
 package orchengine
 
@@ -36,6 +40,8 @@ type Session interface {
 	Send(guid, text string) error
 	// ClearSession types the provider's clear command into the session.
 	ClearSession(guid string) error
+	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
+	CompactSession(guid, focus string) error
 }
 
 // Clock supplies the current time, settable in tests.
@@ -156,7 +162,7 @@ func (w *Watcher) tick() (done bool, err error) {
 			if err != nil {
 				return false, err
 			}
-			storeReading(&st, reading)
+			storeReading(&st, reading, ev)
 			readingChanged = true
 		}
 	}
@@ -200,6 +206,8 @@ func (w *Watcher) tick() (done bool, err error) {
 		return false, w.tickClearing(st, now)
 	case PhaseResuming:
 		return false, w.tickResuming(st, now)
+	case PhaseCompacting:
+		return false, w.tickCompacting(st, now)
 	}
 	return false, fmt.Errorf("orch: unknown phase %q", st.Phase)
 }
@@ -269,8 +277,9 @@ func (w *Watcher) markStuck(st State, reason string) error {
 	return w.save(st)
 }
 
-// storeReading records reading in st; an unknown reading is stored as zero tokens.
-func storeReading(st *State, reading shuttleengine.ContextReading) {
+// storeReading records reading in st, taken through turnEnd; an unknown reading is stored as zero tokens.
+func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shuttleengine.Event) {
+	st.ReadingTurnEnd = &turnEnd
 	st.LastContextTokens, st.LastContextKnown = reading.Tokens, reading.Known
 	if !reading.Known {
 		st.LastContextTokens = 0
@@ -297,12 +306,18 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if w.newest == nil || !isTurnEnd(*w.newest) {
 		return nil
 	}
+	compact := w.cfg.Mode() == CycleCompact
+	deferralHolds := !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < w.cfg.SoftIdle()
 	quiet := w.cfg.IdleGrace()
 	if trigger == TriggerSoft {
 		quiet = w.cfg.SoftIdle()
-		if !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < quiet {
+		if deferralHolds {
 			return nil
 		}
+	}
+	if compact && trigger == TriggerHard && deferralHolds {
+		// A failed compaction holds every automatic trigger for the soft idle; a requested cycle is never held.
+		return nil
 	}
 	if now.Sub(w.newestRead) < quiet {
 		return nil
@@ -320,7 +335,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		storeReading(&st, reading)
+		storeReading(&st, reading, *w.newest)
 		if err := w.save(st); err != nil {
 			return err
 		}
@@ -331,6 +346,10 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 		if !st.LastContextKnown || st.LastContextTokens < threshold {
 			return nil
 		}
+	}
+
+	if compact {
+		return w.startCompacting(st, trigger, now)
 	}
 
 	path := NewHandoffPath(w.paths, now)
@@ -486,7 +505,7 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 		if err != nil {
 			return err
 		}
-		storeReading(&st, reading)
+		storeReading(&st, reading, w.seen.firstTurnEnd)
 		return w.toIdle(st, "")
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
@@ -505,6 +524,92 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 		return nil
 	}
 	if err := w.session.Send(st.Strand, st.PendingResume); err != nil {
+		return err
+	}
+	return w.confirm(st)
+}
+
+// startCompacting renders the focus first, so a stencil failure changes nothing, then persists compacting and types `/compact`.
+// The caller must have seen the session idle on this tick.
+func (w *Watcher) startCompacting(st State, trigger string, now time.Time) error {
+	focus, err := RenderCompactFocus(w.stencilsDir)
+	if err != nil {
+		return err
+	}
+	st.CycleTrigger = trigger
+	if st, err = w.enter(st, PhaseCompacting, now); err != nil {
+		return err
+	}
+	w.newest = nil
+	if err := ClearCycleRequest(w.paths); err != nil {
+		return err
+	}
+	if err := w.session.CompactSession(st.Strand, focus); err != nil {
+		return err
+	}
+	return w.confirm(st)
+}
+
+// tickCompacting re-reads the context through State.ReadingTurnEnd every tick, since a compaction ends without a turn end.
+// The phase completes on a compaction boundary at or after the phase was entered, once the idle probe passes; an earlier boundary never completes it.
+// Past the handoff timeout it returns to idle and holds the next automatic trigger for the soft idle, through LastDeferral.
+// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
+func (w *Watcher) tickCompacting(st State, now time.Time) error {
+	var reading shuttleengine.ContextReading
+	qualifying := false
+	if st.ReadingTurnEnd != nil {
+		var err error
+		if reading, err = w.session.ContextTokens(*st.ReadingTurnEnd); err != nil {
+			return err
+		}
+		qualifying = reading.Known && reading.Compacted && !reading.BoundaryAt.Before(st.PhaseEnteredAt)
+	}
+
+	idleProbed, idle := false, false
+	probe := func() (bool, error) {
+		if !idleProbed {
+			var err error
+			if idle, err = w.session.SessionIdle(st.Strand); err != nil {
+				return false, err
+			}
+			idleProbed = true
+		}
+		return idle, nil
+	}
+
+	if qualifying {
+		idle, err := probe()
+		if err != nil {
+			return err
+		}
+		if idle {
+			storeReading(&st, reading, *st.ReadingTurnEnd)
+			st.CycleCount++
+			return w.toIdle(st, "")
+		}
+	}
+	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
+		if st.ReadingTurnEnd != nil {
+			storeReading(&st, reading, *st.ReadingTurnEnd)
+		}
+		st.LastDeferral = now
+		return w.toIdle(st, "compaction timed out")
+	}
+	if qualifying || st.PhaseInjected {
+		return nil
+	}
+	idle, err := probe()
+	if err != nil {
+		return err
+	}
+	if !idle {
+		return nil
+	}
+	focus, err := RenderCompactFocus(w.stencilsDir)
+	if err != nil {
+		return err
+	}
+	if err := w.session.CompactSession(st.Strand, focus); err != nil {
 		return err
 	}
 	return w.confirm(st)

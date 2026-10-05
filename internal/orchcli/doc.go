@@ -28,6 +28,6 @@
 // # Priorities
 //
 // In order: fewer and recoverable stops, since a false stop costs as much as a wrong landing and every refusal needs a way forward;
-// an automated loop, through batten, the driver's own repairs and the orchestrator's context cycling;
+// an automated loop, through batten, the driver's own repairs and the orchestrator's context cycling, by `/compact` or `/clear` as orch.yaml's `cycle_mode` says;
 // records that survive teardown; and the operator's surface, meaning panes, the IDE workspace and the launch line.
 package orchcli

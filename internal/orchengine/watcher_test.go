@@ -19,18 +19,20 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 
 // fakeSession scripts the Session seam; event offsets are indexes into events.
 type fakeSession struct {
-	alive     bool
-	events    []shuttleengine.Event
-	usage     map[string]int // Turn-end message to tokens; a missing message is unknown.
-	idle      bool
-	idleSeq   []bool // Consumed before idle.
-	sendErrs  []error
-	clearErr  error // Returned by every ClearSession while set.
-	clearErrs []error
-	calls     []string // "send:<text>" and "clear", in order.
-	tokenAsks []string
-	onSend    func()
-	onAlive   func()
+	alive      bool
+	events     []shuttleengine.Event
+	usage      map[string]int       // Turn-end message to tokens; a missing message is unknown.
+	boundary   map[string]time.Time // Turn-end message to a compaction boundary read through it; the boundary's tokens are usage's.
+	idle       bool
+	idleSeq    []bool // Consumed before idle.
+	sendErrs   []error
+	clearErr   error // Returned by every ClearSession while set.
+	clearErrs  []error
+	compactErr error    // Returned by every CompactSession while set.
+	calls      []string // "send:<text>", "clear" and "compact:<focus>", in order.
+	tokenAsks  []string
+	onSend     func()
+	onAlive    func()
 }
 
 func (f *fakeSession) StrandAlive(string) (bool, error) {
@@ -50,7 +52,8 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
-	return shuttleengine.ContextReading{Tokens: n, Known: ok}, nil
+	at, compacted := f.boundary[ev.Message]
+	return shuttleengine.ContextReading{Tokens: n, Known: ok, Compacted: compacted, BoundaryAt: at}, nil
 }
 
 func (f *fakeSession) SessionIdle(string) (bool, error) {
@@ -84,6 +87,14 @@ func (f *fakeSession) ClearSession(string) error {
 		err := f.clearErrs[0]
 		f.clearErrs = f.clearErrs[1:]
 		return err
+	}
+	return nil
+}
+
+func (f *fakeSession) CompactSession(_, focus string) error {
+	f.calls = append(f.calls, "compact:"+focus)
+	if f.compactErr != nil {
+		return f.compactErr
 	}
 	return nil
 }
@@ -126,7 +137,7 @@ func newWatchEnv(t *testing.T) *watchEnv {
 		paths: testPaths(t),
 		stDir: seedStencils(t),
 		s:     &fakeSession{alive: true, idle: true, usage: map[string]int{}},
-		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100},
+		cfg:   Config{ThresholdTokens: 1000, IdleGraceS: 10, HandoffTimeoutS: 100, CycleMode: CycleClear},
 		clock: &fakeClock{now: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
 	}
 	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle}); err != nil {

@@ -77,11 +77,22 @@ func TestRenderSoftHandoffInstruction(t *testing.T) {
 	}
 }
 
+func TestRenderCompactFocus(t *testing.T) {
+	got, err := RenderCompactFocus(seedStencils(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == "" || strings.ContainsAny(got, "\r\n") {
+		t.Errorf("compact focus must be one non-empty line: %q", got)
+	}
+}
+
 func TestRenderAdoptAndSoft_MultiLineOverrideFails(t *testing.T) {
 	cases := []struct {
 		name   string
 		render func(dir string) (string, error)
 	}{
+		{compactStencilName, RenderCompactFocus},
 		{adoptStencilName, RenderAdoptPrompt},
 		{softHandoffStencilName, func(dir string) (string, error) { return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md") }},
 	}

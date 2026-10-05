@@ -54,3 +54,9 @@ func (s runnerSession) ClearSession(guid string) error {
 	logger.Debug("orch: clear session", "strandGUID", guid)
 	return s.runner.ClearSession(guid)
 }
+
+// CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.
+func (s runnerSession) CompactSession(guid, focus string) error {
+	logger.Debug("orch: compact session", "strandGUID", guid)
+	return s.runner.CompactSession(guid, focus)
+}

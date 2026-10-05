@@ -52,6 +52,7 @@
 // `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
 // `compact` keeps the session id and the Remote Control link and writes no handoff file.
 // `clear` runs the handoff, `/clear` and resume cycle.
+// The trigger selection, gates and re-read under "Idle rules" are shared; the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
 // # The watcher
 //
@@ -70,7 +71,8 @@
 //   - soft: a known reading at or over `soft_threshold_tokens` and below the hard cap.
 //     A soft threshold at or above the hard cap never fires.
 //
-// The trigger is recorded in State.CycleTrigger before the handoff-requested phase is entered, and the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply.
+// The trigger is recorded in State.CycleTrigger before the cycle's first phase is entered.
+// In clear mode the soft trigger sends its own handoff stencil, which offers the session a `DEFER` reply; compact mode has no `DEFER` exchange.
 // A hard or requested cycle acts only when all of these hold:
 //
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
@@ -80,6 +82,7 @@
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
+// In compact mode a hard trigger is held by the same rule, and a requested cycle never is.
 //
 // A hard or soft cycle also re-reads the context through the newest turn end once those gates pass, saves the new reading, and fires only if it still meets that trigger's threshold.
 // The transcript can change without a turn end, so the reading saved at the last turn end can be stale.
@@ -90,7 +93,7 @@
 // A fresh launch or adopt resets the reading to unknown until the new session's first turn end.
 // The template hard cap is 400000 tokens, sized for a session with a context window of about one million tokens, and the template soft threshold is 300000.
 //
-// # The four-phase cycle
+// # The four-phase cycle (clear mode)
 //
 // The persisted phases are idle, handoff-requested, clearing and resuming.
 // The watcher saves State before every side effect, so a restarted watcher resumes from it.
@@ -119,6 +122,29 @@
 // A clearing phase that exceeds it keeps waiting for the idle probe and records the wait in State.Stuck, which `status` reports.
 // Once the session is idle it moves on to resuming, and an unconfirmed `/clear` is not retried then, since the handoff is already written and the resume prompt lands in an idle, uncleared session.
 // The guarantee holds through every restart: nothing before the handoff file is written and seen can reach `/clear`, and LastHandoff moves only when a cycle passes that gate.
+//
+// # The compact cycle (compact mode)
+//
+// The persisted phases are idle and compacting.
+// When a trigger fires, the watcher renders the focus stencil first, so a stencil failure changes nothing,
+// then persists compacting with the trigger, clears the cycle request, types `/compact` followed by the focus, and records the injection as confirmed.
+// The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
+// Nothing is typed unless the idle probe passed on the same tick.
+// No handoff file is written, and State.LastHandoff is untouched.
+//
+// A compaction ends without a turn end, so the compacting phase re-reads the context every tick through State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records.
+// The phase completes when the reading is a compaction boundary stamped at or after the phase was entered and the idle probe passes on that tick:
+// the boundary's tokens become the reading, `cycle_count` increments and the watcher returns to idle.
+// An earlier boundary never completes it.
+// Past the handoff timeout the phase returns to idle with the abort reason `compaction timed out`, re-reads the reading, and records the time in State.LastDeferral,
+// which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
+// That hold delays a hard trigger by at most `soft_idle_s` per failed compaction.
+//
+// Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
+// A qualifying boundary read after a restart completes the phase without typing anything.
+//
+// There is no `DEFER` handshake, so a background task's in-flight completion has no handshake protecting it if it does not survive `/compact`;
+// `cycle_mode: clear` restores the handshake.
 //
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,
 // so a watcher never overwrites the binding a concurrent `start` just recorded.
@@ -157,9 +183,10 @@
 //   - Shuttle switches Claude's prompt suggestion off in every settings file it writes, and the idle probe still fails closed on any non-empty box, so a session with a draft is never cycled until it is cleared.
 //   - A SendMessage landing between the handoff turn's end and `/clear` is lost from context.
 //   - The transcript and Stop-payload shapes are Claude Code internals, so usage degrades to unknown rather than failing.
-//   - A threshold above the auto-compaction point lets Claude Code compact first.
-//   - reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
+//   - A threshold above the auto-compaction point lets Claude Code compact first, and the boundary it writes is a reading, so the watcher reads the shrunken context correctly.
+//   - In clear mode, reed's resume path replays the launch's `--resume <session-id>`, which names the pre-clear session once a cycle has run, so a reed server rebirth resumes the older context.
 //     `lyx orch stop` plus `lyx orch start` relaunches from the last completed handoff instead.
+//     Compact mode keeps the session id, so it does not apply there.
 //
 // # Open risks
 //

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -27,7 +28,7 @@ type Paths struct {
 	WatchLogPath     string // Detached watcher's stdout and stderr.
 }
 
-// Phase is a step of the four-phase cycle.
+// Phase is a step of a cycle: the four-phase clear cycle, or the compact cycle's one non-idle phase.
 type Phase string
 
 // The cycle phases.
@@ -36,6 +37,7 @@ const (
 	PhaseHandoffRequested Phase = "handoff-requested"
 	PhaseClearing         Phase = "clearing"
 	PhaseResuming         Phase = "resuming"
+	PhaseCompacting       Phase = "compacting"
 )
 
 // The triggers that start a cycle, recorded in State.CycleTrigger.
@@ -62,6 +64,9 @@ type State struct {
 	LastInjectionOffset int64 `json:"last_injection_offset"` // Events position read through at the last return to idle.
 	LastContextTokens   int   `json:"last_context_tokens"`   // Latest context reading.
 	LastContextKnown    bool  `json:"last_context_known"`    // Whether LastContextTokens is a real reading.
+
+	// ReadingTurnEnd is the turn end the current reading was taken through, so a restarted watcher in compacting can re-read the transcript with no turn end in memory; nil when none.
+	ReadingTurnEnd *shuttleengine.Event `json:"reading_turn_end"`
 
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
@@ -167,11 +172,12 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // ResetForFreshLaunch returns s prepared for a newly launched session on strand.
 // A non-idle phase is recorded in LastAbortReason as abandoned;
 // the offsets are zeroed because a new run has a new events file.
-// The context reading is cleared, since it describes the previous session;
-// the new session's first turn end sets it again.
+// The context reading and the turn end it was taken through are cleared, since they describe the previous session;
+// the new session's first turn end sets them again.
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string) State {
 	s.LastContextTokens, s.LastContextKnown = 0, false
+	s.ReadingTurnEnd = nil
 	if s.Phase != "" && s.Phase != PhaseIdle {
 		s.LastAbortReason = fmt.Sprintf("fresh launch abandoned phase %s", s.Phase)
 	}
