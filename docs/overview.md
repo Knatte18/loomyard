@@ -307,7 +307,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The README renders Tasks split into dependency layers whose entries can run in parallel, then Notes grouped by type label, and links each slug to its design doc.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
-- **config** — interactive menu for viewing and editing module configs;
+- **config** — bare `lyx config` lists modules and verbs, and `lyx config <module>` edits that module's config;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
   A key under a module's declared open map adds or rewrites one entry, e.g. `lyx config board --set labels.quarry="glyphs and the quarry index"`. ✅ Implemented.
