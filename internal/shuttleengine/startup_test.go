@@ -1017,6 +1017,8 @@ func TestStartup_SkillSkipCauses(t *testing.T) {
 				if elapsed != 0 {
 					t.Errorf("virtual elapsed = %s; want 0 — an unknown skill must not wait out the timeout", elapsed)
 				}
+			default:
+				t.Fatalf("elapsed expectation %q is not one of the declared constants", tt.elapsed)
 			}
 		})
 	}
