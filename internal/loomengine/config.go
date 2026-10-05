@@ -1,8 +1,8 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, review, judge, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min below 1,
-// so a mistake in any of those eleven keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
+// then validates the discussion, plan, review, judge, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1,
+// so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -338,6 +338,9 @@ type Config struct {
 	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
 	Driver                string `yaml:"driver"`
 	ParentReviewWaitMin   int    `yaml:"parent_review_wait_min"`
+
+	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
+	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -416,6 +419,19 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	// so the one off switch is the gate entry's own attempts, not this key.
 	if cfg.ParentReviewWaitMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
+	}
+
+	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the budget escalation instead.
+	for _, knob := range []struct {
+		key   string
+		value int
+	}{
+		{"review_circling_checkpoint", cfg.ReviewCirclingCheckpoint},
+		{"review_max_bounces", cfg.ReviewMaxBounces},
+	} {
+		if knob.value < 1 {
+			return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d", knob.key, knob.value)
+		}
 	}
 
 	return cfg, nil
