@@ -429,6 +429,7 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
+		ReapTimeout:      0,
 	}
 	if got != want {
 		t.Errorf("watchdogDefaultTiming() = %+v, want %+v", got, want)

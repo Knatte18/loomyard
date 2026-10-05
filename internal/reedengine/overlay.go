@@ -15,6 +15,7 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -169,12 +170,18 @@ func reapSessionKill(cmd TmuxCmd, session string) error {
 // reparents the pane children — a closure computed after the kill collapses to the root pids
 // alone and silently loses the detached agent descendants the reap exists to kill
 // (paneProcessTreePIDsLocked, lifecycle.go, carries this same rule in its own doc comment).
-func ReapSession(tmuxPath, shellPath, socketKey, sessionName string) error {
-	return reapSessionVia(NewTmuxCmd(tmuxPath, socketKey), shellPath, socketKey, sessionName)
+//
+// timeout bounds how long step 4 waits for the pane children to exit before force-killing them;
+// zero selects reapExitTimeout, the only value production passes.
+func ReapSession(tmuxPath, shellPath, socketKey, sessionName string, timeout time.Duration) error {
+	return reapSessionVia(NewTmuxCmd(tmuxPath, socketKey), shellPath, socketKey, sessionName, timeout)
 }
 
 // reapSessionVia is ReapSession's body over an already-built TmuxCmd, so a test can drive it through the exec seam.
-func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) error {
+func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeout time.Duration) error {
+	if timeout == 0 {
+		timeout = reapExitTimeout
+	}
 	live, err := reapSessionPanes(cmd, sessionName)
 	if err != nil {
 		// A session whose panes cannot be listed is the one most worth killing, so a
@@ -194,7 +201,7 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) error
 
 	logger.Info("reed: reaping orphaned session", "socket", socketKey, "session", sessionName, "pids", len(pids))
 	killErr := reapSessionKill(cmd, sessionName)
-	reapPaneChildren(pids, reapExitTimeout)
+	reapPaneChildren(pids, timeout)
 	logger.Info("reed: reaped orphaned session", "socket", socketKey, "session", sessionName, "err", killErr)
 
 	return killErr
@@ -226,7 +233,7 @@ func endSessionByNameVia(cmd TmuxCmd, shellPath, socketKey, sessionName string) 
 		return false, nil
 	}
 
-	killErr := reapSessionVia(cmd, shellPath, socketKey, sessionName)
+	killErr := reapSessionVia(cmd, shellPath, socketKey, sessionName, 0)
 
 	// Tidy the server as Engine.Down does: an empty or failed list-sessions means no healthy sibling session remains,
 	// and kill-server takes the socket with the server.
