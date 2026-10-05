@@ -39,6 +39,8 @@ const (
 	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a CIRCLING judgement or a spent review budget), and a plain CONTINUE round below the budget needs no decision`
 	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lyx loom start", which re-escalates the round, and re-run the verb`
 	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom start" in the task worktree to resume the run`
+	circlingWayRetry     = `way forward: re-run the verb; if the failure persists, fix the file or directory the message names`
+	circlingWayRecipe    = `way forward: the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run the verb`
 )
 
 // circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.
@@ -60,7 +62,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 
 	st, found, err := deps.readStatus()
 	if err != nil {
-		return refuse("read the run status: %s", err)
+		return refuse("read the run status: %s; %s", err, circlingWayRetry)
 	}
 	if !found {
 		return refuse("the run has no status file; %s", circlingWayNoRun)
@@ -70,7 +72,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 	}
 	subdir, isBouncer, err := deps.bouncerSubdir(st.CurrentProducer)
 	if err != nil {
-		return refuse("%s", err)
+		return refuse("%s; %s", err, circlingWayRecipe)
 	}
 	if !isBouncer {
 		return refuse("the run is awaiting at %s, which is not a review segment's Bouncer row; %s", st.CurrentProducer, circlingWayNotAtHalt)
@@ -85,7 +87,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 	case errors.Is(err, shedadapters.ErrEscalationMalformed):
 		return refuse("%s; %s", err, circlingWayMalformed)
 	case err != nil:
-		return refuse("%s", err)
+		return refuse("%s; %s", err, circlingWayRetry)
 	}
 	return output.Ok(out, map[string]any{
 		"slug":     slug,

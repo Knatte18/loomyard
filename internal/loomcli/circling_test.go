@@ -24,13 +24,19 @@ type circlingFake struct {
 	round     int
 	cause     shedadapters.EscalationCause
 	recordErr error
+	// subdirErr, when set, makes the Bouncer lookup fail.
+	subdirErr error
 	records   []string
 }
 
 func (f *circlingFake) deps() circlingDeps {
+	bouncerSubdir := loomrecipe.BouncerRunSubdir
+	if f.subdirErr != nil {
+		bouncerSubdir = func(string) (string, bool, error) { return "", false, f.subdirErr }
+	}
 	return circlingDeps{
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
-		bouncerSubdir: loomrecipe.BouncerRunSubdir,
+		bouncerSubdir: bouncerSubdir,
 		record: func(subdir string, d shedadapters.CirclingDecision) (int, shedadapters.EscalationCause, error) {
 			if f.recordErr != nil {
 				return 0, "", f.recordErr
@@ -71,6 +77,9 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		want string
 	}{
 		{"no status file", circlingFake{}, "no status file"},
+		{"status read failure", circlingFake{statusErr: errors.New("boom")}, "re-run the verb"},
+		{"bouncer lookup failure", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, subdirErr: errors.New("recipe broken")}, "rebuild or reinstall lyx"},
+		{"record I/O failure", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, recordErr: errors.New("write circling decision: disk full")}, "re-run the verb"},
 		{"running run", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, "not awaiting"},
 		{"awaiting at PR-Gate", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, "not a review segment's Bouncer row"},
 		{"latest round not escalated", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, "is not escalated"},
@@ -93,15 +102,6 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCirclingVerb_StatusReadFailure(t *testing.T) {
-	f := &circlingFake{statusErr: errors.New("boom")}
-	var out bytes.Buffer
-	if code := circlingVerb(&out, "task-a", f.deps(), shedadapters.CirclingContinue); code != 1 {
-		t.Fatalf("exit = %d; want 1", code)
-	}
-	envelope.RequireErr(t, out.String(), "boom")
 }
 
 func TestCirclingStatusReader(t *testing.T) {
