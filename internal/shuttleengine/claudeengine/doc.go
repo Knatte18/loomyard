@@ -28,6 +28,12 @@
 // pane is its input-box marker at the bottom, far from any transcript prose above (crucible round
 // fable-high-r7, F1).
 //
+// A Stop line whose turn ended with background work still running becomes EventWaiting, and its
+// Event.Outstanding lists that work as provider-neutral shuttleengine.BackgroundTask values:
+// a fork for an Agent or Task subagent, a shell for a backgrounded Bash or a Monitor.
+// The list merges the running background_tasks[] entries of the Stop payload with the transcript's
+// background launches that no later task notification names, deduplicated by task id.
+//
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.
