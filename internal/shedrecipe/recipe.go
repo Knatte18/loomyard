@@ -61,7 +61,7 @@ type Env struct {
 	// BurlerRound.
 	RunRoot string
 	// DecisionRecordPath is the told decision record path, read by the gate resolver's "discussion"
-	// gate.
+	// gate and by the Bouncer entry, which names it in the escalation brief.
 	DecisionRecordPath string
 	// SupportLogPath is the told support log path, read by the gate resolver's "discussion" gate.
 	SupportLogPath string

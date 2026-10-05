@@ -390,8 +390,11 @@ User-facing modules each get one `lyx <module>` namespace:
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.
   A PR-review wait at `PR-Gate` halts the run `awaiting`, the planned hand-off state: it behaves like `blocked` for resume but spends no bounce budget, triggers no friction reflection and raises no anomaly; a `blocked` or `failed` halt writes a Go halt note and reflects.
-  A review segment's circling halt (the judge's `CIRCLING` verdict) is also `awaiting`, resolved with `lyx loom circling accept|continue [<slug>]`, which records the decision and resumes nothing; `lyx loom start` then resumes the run.
-  A batten-driven run is not resumed by batten on a circling decision, since batten's wait reads only PR-Gate approval and rejection records, so the operator resumes it with `lyx loom start` in the task worktree.
+  A review segment escalates to the run's parent, also `awaiting`, for one of two causes: the judge's `CIRCLING` verdict, or a bounce budget spent without convergence.
+  The Bouncer writes a brief and a one-line parent notice into its run directory and returns the notice as `parent_notice`; `ly-drive` relays it to the parent, whose one-shot fork reads the brief and decides.
+  The fork settles with `lyx loom circling accept|continue [<slug>]`, which records the decision and resumes nothing, and resumes the run with `lyx loom start`.
+  A `continue` after a budget escalation runs exactly one more round without spending budget; the next round past the budget needs its own decision.
+  A batten-driven run is not resumed by batten on such a decision, since batten's wait reads only PR-Gate approval and rejection records, so it is resumed the same way with `lyx loom start` in the task worktree.
   `approve` records an operator approval of the open pull request when the run is awaiting (or blocked) at the gate and the local HEAD equals the PR's head, writing `.lyx/loom/approval.json` and removing a pending rejection; resuming with `lyx loom start` then lets `PR-Gate` return Done without a GitHub merge.
   `reject <review-file>` records the operator's findings (removing a pending approval), and refuses once the `PR-Review` segment's five rejection rounds are spent.
   `lyx loom start` then routes the run through `PR-Rework`, which starts a new plan generation and re-runs `Plan-Review`, `Webster`, `Webster-Review`, `Describe`, `Publish` and the gate.

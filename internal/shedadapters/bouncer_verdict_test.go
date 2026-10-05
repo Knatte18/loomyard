@@ -193,8 +193,8 @@ func TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning(t *tes
 	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 	}
-	if !strings.Contains(ptr.Reason, "round 2") || !strings.Contains(ptr.Reason, "no progress") {
-		t.Errorf("Call() Reason = %q; want it to name the round and that the judge found no progress", ptr.Reason)
+	if !strings.Contains(ptr.Reason, "round 2") || !strings.Contains(ptr.Reason, "cause: circling") {
+		t.Errorf("Call() Reason = %q; want it to name the round and the circling cause", ptr.Reason)
 	}
 
 	again := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}

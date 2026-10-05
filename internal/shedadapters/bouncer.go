@@ -97,12 +97,16 @@ type BouncerConfig struct {
 	// Nil is the absent value and leaves every row behaving exactly as before.
 	// The seam can only approve what its caller already classified: it cannot reject, re-route, or touch the run directory.
 	Skip func() (bool, error)
-	// Slug is the task slug the CIRCLING Awaiting Reason addresses the `lyx loom circling` verbs with.
-	// Empty means the verbs run without a slug argument.
+	// Slug is the task slug the escalation Awaiting Reason addresses the `lyx loom circling` verbs with, and the escalation brief names the task by.
+	// Empty means the verbs run without a slug argument, and the brief render degrades.
 	Slug string
+	// DecisionRecordPath is the absolute decision record path the escalation brief names.
+	// Empty is legal and only degrades the brief render.
+	DecisionRecordPath string
 	// Bounces is the optional seam reporting this segment's spent bounce count and its budget.
-	// The Awaiting Reason adds its budget-block sentence only when ok is true and count has reached budget.
-	// Nil is the absent value, ok false means unknown, and an error warns; each omits the sentence and none blocks the Awaiting.
+	// The budget is reached when ok is true, err is nil and count >= budget, the comparison Shed applies to the history it read before appending;
+	// a CONTINUE or CIRCLING verdict then escalates to the parent instead of reaching Shed's generic budget block.
+	// Nil is the absent value, ok false means unknown, and an error warns; each means the budget is not reached.
 	Bounces func() (count, budget int, ok bool, err error)
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
@@ -218,20 +222,20 @@ var _ shedengine.ShedProducer = (*Bouncer)(nil)
 // Re-entering means the gated artifact was written again, so that old verdict must not gate the new one:
 // the run directory is archived aside via archiveRunDir and recreated empty, the round is re-resolved to 0,
 // and the same call falls through into the seed branch below, since round1FocusSeeded() reads false over the freshly recreated, empty directory.
-// The clear also fires when the round's verdict is CIRCLING and its recorded decision is a settled accept,
+// The clear also fires when the round's recorded decision is a settled accept, whatever its verdict,
 // so a re-entry, including a resume after a failed Commit seam, archives and re-seeds instead of settling again;
 // the entry-time probe still runs before both.
-// It does not fire on an undecided CIRCLING round,
+// It does not fire on an undecided escalated round,
 // so a segment re-entered after a `lyx loom goto` to an earlier row halts Awaiting again on that round,
 // and a `continue` then sends the rewritten artifact to a fresh review round.
 //
-// Circling decision: an accept lets exactly one circling round pass without a converged judgment.
+// Escalation decision: an accept lets exactly one escalated round pass without a converged judgment.
 // It skips no seam, its record stays in the committed run directory,
 // and Done remains reachable only from a judged round whose review exists.
 //
 // Pointer rule: OutputPointer.Path names a file this producer has verified exists, or it is empty.
-// shedengine.Done is reachable only through harvest,
-// and a CONTINUE shedengine.Stuck or a CIRCLING shedengine.Awaiting is reachable through harvest or a replay;
+// shedengine.Done is reachable only through harvest or a pending accept on a replay,
+// and a CONTINUE shedengine.Stuck or an escalated shedengine.Awaiting is reachable through harvest or a replay;
 // a CONVERGED replay no longer exists, since the clear above intercepts it before the branch.
 // Every other outcome -- the seed call, the re-bounce, the clear itself, every degraded path, every error return -- reports an empty pointer.
 func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -387,21 +391,18 @@ func (b *Bouncer) judged(round int) bool {
 }
 
 // settledGeneration reports whether round's verdict on disk is the durable record of an earlier Call settling the segment:
-// CONVERGED, or CIRCLING with a settled accept.
+// CONVERGED, or any verdict whose decision is a settled accept.
 // A malformed decision file is not a settled one, so settle reports it.
 func (b *Bouncer) settledGeneration(round int) bool {
 	verdict, ok := recordedVerdict(b.cfg.RunDir, round)
 	if !ok {
 		return false
 	}
-	switch verdict {
-	case verdictConverged:
+	if verdict == verdictConverged {
 		return true
-	case verdictCircling:
-		decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
-		return err == nil && exists && settled && decision == CirclingAccept
 	}
-	return false
+	decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+	return err == nil && exists && settled && decision == CirclingAccept
 }
 
 // awaitLiveJudge probes for a still-live judge run for round and, when it finds one, waits on it
@@ -531,13 +532,11 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 // Sending a seam failure through it would silently convert an approval into a rejection.
 // Approve runs before Commit, and a failing Approve skips Commit entirely.
 //
-// On verdictContinue it calls ensureFocus(round + 1) and returns shedengine.Stuck with the same ledger pointer, deliberately committing nothing:
+// On verdictContinue and verdictCircling it acts on the round's recorded decision, then on the bounce budget (see settleUnconverged).
+// A CONTINUE that reaches neither calls ensureFocus(round + 1) and returns shedengine.Stuck with the same ledger pointer, deliberately committing nothing:
 // an unapproved artifact must not be committed,
 // and a blocked run has already escalated to a human who is the right party to judge the partial fixes.
-//
-// On verdictCircling it acts on the operator's recorded decision (see settleCircling):
-// with none it calls ensureFocus(round + 1) and returns shedengine.Awaiting with the same ledger pointer and a Reason naming the segment, the round, the circling verbs and the resume command;
-// it spawns nothing, and a re-call over the same on-disk state returns the same Awaiting.
+// An escalation spawns nothing, and a re-call over the same on-disk state returns the same Awaiting.
 //
 // All three returns survive cancellation:
 // a genuinely parsed verdict is the one exception cancelErr never applies to, exactly as SingleLLMProducer treats a shuttle OutcomeDone.
@@ -578,15 +577,8 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 			}
 		}
 		return shedengine.Done, ptr, nil
-	case verdictContinue:
-		b.ensureFocus(round + 1)
-		if !spawned {
-			// A CONTINUE replay means the round producer handed control back without producing a new report.
-			logger.Warn("shedadapters: bouncer replayed a CONTINUE verdict with no new spawn", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
-		}
-		return shedengine.Stuck, ptr, nil
-	case verdictCircling:
-		return b.settleCircling(ctx, round, ptr)
+	case verdictContinue, verdictCircling:
+		return b.settleUnconverged(ctx, round, verdict, spawned, ptr)
 	default:
 		// Unreachable: parseRecordedVerdict only ever returns one of the three verdict constants.
 		return b.degrade(ctx, "shedadapters: bouncer verdict file carries an unrecognized verdict", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "verdict", verdict)
@@ -612,24 +604,26 @@ func (b *Bouncer) unearnedCircling(round int) string {
 	return ""
 }
 
-// settleCircling maps a CIRCLING round onto the operator's recorded decision.
-// No decision halts Awaiting with the verbs and the resume command in the Reason;
-// a continue is a CONTINUE;
-// a pending accept settles its record, then approves and commits exactly as CONVERGED does.
+// settleUnconverged maps a CONTINUE or CIRCLING round onto the recorded decision, then the bounce budget.
+// A decision file for the round is acted on first, whatever the budget:
+// a continue returns Stuck, marked BudgetExempt exactly when the decision's cause is budget,
+// and a pending accept settles its record, then approves and commits exactly as CONVERGED does.
 // A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
 // A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
 // A malformed decision file degrades with the read error as the Reason.
-func (b *Bouncer) settleCircling(ctx context.Context, round int, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	decision, _, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+// With no decision, a spent budget escalates with cause budget, even over a CIRCLING verdict;
+// otherwise a CIRCLING verdict escalates with cause circling and a CONTINUE returns Stuck.
+func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	decision, cause, settled, exists, err := readCirclingDecision(b.cfg.RunDir, round)
 	if err != nil {
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling decision for round %d is unreadable: %v", round, err), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
 	}
 	switch {
 	case !exists:
-		b.ensureFocus(round + 1)
-		return shedengine.Awaiting, shedengine.OutputPointer{Path: ptr.Path, Reason: b.circlingReason(round)}, nil
+		return b.settleUndecided(round, verdict, spawned, ptr)
 	case decision == CirclingContinue:
 		b.ensureFocus(round + 1)
+		ptr.BudgetExempt = cause == EscalationBudget
 		return shedengine.Stuck, ptr, nil
 	case settled:
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
@@ -651,27 +645,119 @@ func (b *Bouncer) settleCircling(ctx context.Context, round int, ptr shedengine.
 	return shedengine.Done, ptr, nil
 }
 
-// circlingReason is the Awaiting Reason of an undecided CIRCLING round:
-// the verbs that record the decision, the resume command, and, when the segment's bounce budget is spent, what a continue will hit.
-// The circling verbs take the slug, while the resume commands address the cwd worktree's own run.
-func (b *Bouncer) circlingReason(round int) string {
+// settleUndecided maps a CONTINUE or CIRCLING round that has no decision file onto an escalation or a plain Stuck.
+// A spent budget escalates with cause budget, also over a CIRCLING verdict;
+// otherwise a CIRCLING verdict escalates with cause circling, and a CONTINUE calls ensureFocus(round + 1) and returns Stuck.
+func (b *Bouncer) settleUndecided(round int, verdict bouncerVerdict, spawned bool, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	switch {
+	case b.budgetReached(round):
+		return b.escalate(round, EscalationBudget, ptr)
+	case verdict == verdictCircling:
+		return b.escalate(round, EscalationCircling, ptr)
+	}
+	b.ensureFocus(round + 1)
+	if !spawned {
+		// A CONTINUE replay means the round producer handed control back without producing a new report.
+		logger.Warn("shedadapters: bouncer replayed a CONTINUE verdict with no new spawn", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
+	}
+	return shedengine.Stuck, ptr, nil
+}
+
+// budgetReached reports whether the segment's bounce budget is spent, by the same count >= budget comparison Shed applies to the history it read before appending.
+// An unwired seam, an unknown count and an errored read each report false, so a CONTINUE then takes Shed's generic budget block.
+func (b *Bouncer) budgetReached(round int) bool {
+	if b.cfg.Bounces == nil {
+		return false
+	}
+	count, budget, ok, err := b.cfg.Bounces()
+	if err != nil {
+		logger.Warn("shedadapters: bouncer bounce-budget seam failed; treating the budget as not reached", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
+		return false
+	}
+	return ok && count >= budget
+}
+
+// escalate hands round to the run's parent and returns Awaiting with the ledger pointer and the parent notice.
+// A round that already carries an escalation record rewrites nothing and returns the same Awaiting from the record's cause and notice.
+// Otherwise it renders the brief and the one-line notice and writes the record through writeEscalation;
+// a failed render warns and degrades to the plain Reason with no notice, while the record frontmatter is still written.
+// It calls ensureFocus(round + 1) so a continue resumes into a prepared round.
+func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	recordedCause, notice, exists, err := readEscalation(b.cfg.RunDir, round)
+	if err != nil {
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v", round, err)}, nil
+	}
+
+	briefPath := ""
+	if exists {
+		cause = recordedCause
+		briefPath = escalationPath(b.cfg.RunDir, round)
+	} else {
+		brief, renderedNotice, rerr := b.renderEscalation(round, cause)
+		if rerr != nil {
+			logger.Warn("shedadapters: bouncer escalation render failed; escalating with the plain Reason", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", rerr)
+		}
+		if err := writeEscalation(b.cfg.RunDir, round, cause, brief, renderedNotice); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %w", b.cfg.Name, bouncerEngineLabel, err)
+		}
+		notice = renderedNotice
+		if rerr == nil {
+			briefPath = escalationPath(b.cfg.RunDir, round)
+		}
+	}
+
+	b.ensureFocus(round + 1)
+	return shedengine.Awaiting, shedengine.OutputPointer{Path: ptr.Path, Reason: b.escalationReason(round, cause, briefPath), ParentNotice: notice}, nil
+}
+
+// renderEscalation renders round's escalation brief and parent notice stencils.
+// The notice interpolates only the slug and the brief path.
+func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, notice string, err error) {
+	briefTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-escalation")
+	if err != nil {
+		return "", "", fmt.Errorf("read escalation brief stencil: %w", err)
+	}
+	noticeTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-parent-notice")
+	if err != nil {
+		return "", "", fmt.Errorf("read parent notice stencil: %w", err)
+	}
+	briefBytes, err := stencil.Fill(briefTemplate, map[string]string{
+		"segment":              b.cfg.Name,
+		"slug":                 b.cfg.Slug,
+		"round":                strconv.Itoa(round),
+		"cause":                string(cause),
+		"review_path":          filepath.Join(b.cfg.RunDir, b.cfg.ReportName(round)),
+		"ledger_path":          ledgerPath(b.cfg.RunDir, round),
+		"verdict_path":         verdictPath(b.cfg.RunDir, round),
+		"decision_record_path": b.cfg.DecisionRecordPath,
+		"worktree":             b.cfg.WorktreeRoot,
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("fill escalation brief stencil: %w", err)
+	}
+	noticeBytes, err := stencil.Fill(noticeTemplate, map[string]string{
+		"slug":       b.cfg.Slug,
+		"brief_path": escalationPath(b.cfg.RunDir, round),
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("fill parent notice stencil: %w", err)
+	}
+	return string(briefBytes), strings.TrimSpace(string(noticeBytes)), nil
+}
+
+// escalationReason is the Awaiting Reason of an escalated round:
+// the segment, the round and the cause, the brief path when one was rendered, the verbs that record the decision, and the resume command.
+// The circling verbs take the slug, while the resume command addresses the cwd worktree's own run.
+func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath string) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
 		verbSuffix = " " + b.cfg.Slug
 	}
-	reason := fmt.Sprintf("bouncer %s: the judge found no progress at round %d (CIRCLING); decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom start` in the task worktree to resume", b.cfg.Name, round, verbSuffix, verbSuffix)
-	if b.cfg.Bounces == nil {
-		return reason
+	reason := fmt.Sprintf("bouncer %s: round %d escalated to the parent (cause: %s)", b.cfg.Name, round, cause)
+	if briefPath != "" {
+		reason += fmt.Sprintf("; brief at %s", briefPath)
 	}
-	count, budget, ok, err := b.cfg.Bounces()
-	if err != nil {
-		logger.Warn("shedadapters: bouncer bounce-budget seam failed; omitting the budget sentence", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", err)
-		return reason
-	}
-	if ok && count >= budget {
-		reason += fmt.Sprintf("; continue will block on the bounce budget (%d of %d spent), and `lyx loom goto --to %s` in the task worktree, from that block, gives the segment a fresh budget", count, budget, b.cfg.Name)
-	}
-	return reason
+	return reason + fmt.Sprintf("; decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom start` in the task worktree to resume", verbSuffix, verbSuffix)
 }
 
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt

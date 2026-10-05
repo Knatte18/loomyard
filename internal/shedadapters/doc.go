@@ -12,7 +12,7 @@
 // # Outcome mapping
 //
 // Each adapter maps its own verdict onto Done or Stuck,
-// and the Bouncer alone also onto Awaiting, the hand-off to a person when its judge finds the review circling;
+// and the Bouncer alone also onto Awaiting, the hand-off to the run's parent when its judge finds the review circling or its bounce budget is spent;
 // the adapters report the output pointer differently because they report success differently:
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
@@ -54,16 +54,26 @@
 //     at Call entry, an already-CONVERGED verdict maps to the clear instead -- unless the entry-time probe finds the judge that wrote it still alive,
 //     in which case waiting on that judge is itself the harvest that earns the Done (see "Every spawning adapter probes for a live agent first" below).
 //     A parsed CONTINUE verdict maps to Stuck on harvest or on a CONTINUE replay,
-//     and a parsed CIRCLING verdict maps to Awaiting on harvest or on a replay without spawning anything,
+//     and a parsed CIRCLING verdict maps to Awaiting on harvest or on a replay without spawning anything (see Escalation below),
 //     all three reporting the round's ledger path as the pointer.
 //     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker) and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.
-//     A CIRCLING round acts on the operator's recorded decision:
-//     a recorded continue maps to Stuck, a pending accept settles its record and maps to Done after Approve and Commit,
-//     and no decision maps to Awaiting whose Reason names the `lyx loom circling` verbs, the `lyx loom start` resume and,
-//     when the segment's bounce budget is spent, the budget block and the `lyx loom goto` that clears it.
+//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of two causes.
+//     Cause budget holds whenever the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies, even over a CIRCLING verdict;
+//     cause circling holds for a guarded CIRCLING below the budget.
+//     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
+//     writes them with the Go-owned cause frontmatter as round-<N>-escalation.md and round-<N>-parent-notice.md,
+//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom start` resume,
+//     and the notice as OutputPointer.ParentNotice, which Shed carries as parent_notice.
+//     A failed render warns and degrades to the plain Reason with no notice, the record frontmatter still written.
+//     A re-call over an existing record rewrites nothing and returns the same Awaiting.
+//     A CONTINUE with no spent budget, and one whose Bounces seam is unwired, unknown or errored, returns Stuck and takes Shed's generic bounce-budget block.
+//     A recorded decision is acted on first, whatever the budget:
+//     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
+//     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
 //     The legacy words APPROVED and BLOCKING are read as CONVERGED and CONTINUE only for a verdict already on disk at Call entry (the clear, the replay and BurlerProducer's may-advance check).

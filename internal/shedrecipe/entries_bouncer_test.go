@@ -840,7 +840,7 @@ func layoutBouncerCirclingRounds(t *testing.T, env Env) {
 	}
 }
 
-// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's circling Awaiting Reason, and the row built with neither.
+// TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's escalation Awaiting Reason, and the row built with neither.
 func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 	callReason := func(t *testing.T, env Env) string {
 		t.Helper()
@@ -874,7 +874,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		}
 
 		reason := callReason(t, env)
-		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "5 of 5 spent"} {
+		for _, want := range []string{"lyx loom circling accept my-task", "lyx loom circling continue my-task", "cause: budget"} {
 			if !strings.Contains(reason, want) {
 				t.Errorf("Reason = %q; want it to contain %q", reason, want)
 			}
@@ -884,22 +884,22 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		}
 	})
 
-	t.Run("BudgetLeftOmitsTheSentence", func(t *testing.T) {
+	t.Run("BudgetLeftEscalatesAsCircling", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Slug = "my-task"
 		env.SegmentBounces = func(string) (int, int, bool, error) { return 2, 5, true, nil }
 
-		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence while budget remains", reason)
+		if reason := callReason(t, env); !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause while budget remains", reason)
 		}
 	})
 
-	t.Run("RowOutsideASegmentOmitsTheSentence", func(t *testing.T) {
+	t.Run("RowOutsideASegmentEscalatesAsCircling", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.SegmentBounces = func(string) (int, int, bool, error) { return 5, 5, false, nil }
 
-		if reason := callReason(t, env); strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence for a row outside a segment", reason)
+		if reason := callReason(t, env); !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause for a row outside a segment", reason)
 		}
 	})
 
@@ -910,8 +910,8 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 		if !strings.Contains(reason, "`lyx loom circling accept`") {
 			t.Errorf("Reason = %q; want the verbs without a slug argument", reason)
 		}
-		if strings.Contains(reason, "bounce budget") {
-			t.Errorf("Reason = %q; want no budget sentence without the seam", reason)
+		if !strings.Contains(reason, "cause: circling") {
+			t.Errorf("Reason = %q; want the circling cause without the seam", reason)
 		}
 	})
 }

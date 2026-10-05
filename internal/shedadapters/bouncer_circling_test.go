@@ -1,4 +1,4 @@
-// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the operator and the way it acts on the operator's recorded decision.
+// bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the parent and the way it acts on the recorded decision.
 
 package shedadapters
 
@@ -98,32 +98,6 @@ func TestBouncer_Circling_EmptySlugOmitsTheArgument(t *testing.T) {
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 	requireReasonContains(t, ptr.Reason, "`lyx loom circling accept`", "`lyx loom circling continue`")
-}
-
-func TestBouncer_Circling_BudgetSentence(t *testing.T) {
-	tests := []struct {
-		name      string
-		bounces   func() (int, int, bool, error)
-		wantBlock bool
-	}{
-		{"budget spent", func() (int, int, bool, error) { return 3, 3, true, nil }, true},
-		{"budget left", func() (int, int, bool, error) { return 1, 3, true, nil }, false},
-		{"unknown", func() (int, int, bool, error) { return 0, 0, false, nil }, false},
-		{"seam error", func() (int, int, bool, error) { return 0, 0, false, errors.New("status unreadable") }, false},
-		{"nil seam", nil, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b, _, _ := circlingBouncer(t, func(c *BouncerConfig) { c.Slug = "my-task"; c.Bounces = tt.bounces })
-
-			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			requireReasonContains(t, ptr.Reason, "lyx loom circling accept my-task")
-			hasBlock := strings.Contains(ptr.Reason, "bounce budget") && strings.Contains(ptr.Reason, "lyx loom goto --to gate")
-			if hasBlock != tt.wantBlock {
-				t.Errorf("Reason = %q; budget-block sentence present = %v, want %v", ptr.Reason, hasBlock, tt.wantBlock)
-			}
-		})
-	}
 }
 
 func TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam(t *testing.T) {
