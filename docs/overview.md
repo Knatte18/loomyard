@@ -538,6 +538,9 @@ See [PATTERN-told-geometry](../pattern/PATTERN-told-geometry.md) for the rule.
   with one terminal per worktree they fold cleanly into `internal/reedengine` + `internal/reedengine/render`.
   `lyx reed remove --name <name> --detach` removes a strand by name from inside itself through a detached remover, and reed replaces a strand atomically in its slot.
   See the `internal/reedengine` package documentation.
+- **skills and the parent directive** — a spawn's skills are named on the launch spec and typed by the provider engine before the prompt, never asked for by a stencil;
+  every spawned role's opening stencil renders the parent directive, so a role escalates to its parent rather than the operator.
+  See [PATTERN-role-skills-typed](../PATTERN.md) and [PATTERN-parent-directive](../PATTERN.md).
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**;
   the verdict/output contract is provider-invariant, so a different model can be swapped in without touching the review machinery.
   Non-Claude is not a current priority.

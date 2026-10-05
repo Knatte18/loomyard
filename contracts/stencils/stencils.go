@@ -345,6 +345,46 @@ var entries = []registryEntry{
 	{"parent-directive-none", &ParentDirectiveNone},
 }
 
+// roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
+// Each carries the parent directive marker, which parentdirective_test.go enforces.
+var roleOpeningStencils = map[string][]string{
+	"driver":            {"shed-template-driver"},
+	"discussion":        {"loom-template-discussion"},
+	"plan":              {"loom-template-plan"},
+	"rework":            {"loom-template-rework"},
+	"webster-master":    {"webster-template-master"},
+	"webster-recovery":  {"webster-prefix-recovery"},
+	"burler":            {"burler-template-round-orchestrator"},
+	"conflict":          {"landing-template-conflict"},
+	"bouncer-judge":     {"bouncer-template-judge"},
+	"bouncer-seed":      {"bouncer-template-seed"},
+	"treadle-targeting": {"treadle-template-targeting"},
+	"treadle-judge":     {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
+	"treadle-triage":    {"treadle-template-triage"},
+	"friction":          {"friction-template-reflection"},
+	"describe":          {"landing-template-describe"},
+}
+
+// askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.
+var askOperatorPhrases = []string{
+	"ask the operator",
+	"ask the user",
+	"ask the human",
+	"ask your operator",
+	"check with the operator",
+	"confirm with the operator",
+}
+
+// askOperatorBounds are the words that make an ask-the-operator sentence a prohibition rather than an instruction.
+var askOperatorBounds = []string{
+	"do not",
+	"don't",
+	"never",
+	"must not",
+	"may not",
+	"before",
+}
+
 // registry implements stencilstore.Registry over entries.
 type registry struct{}
 
