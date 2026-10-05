@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
@@ -162,10 +161,7 @@ func TestCLIFind(t *testing.T) {
 // seedUndecidedLabel rewrites the seeded board.yaml of cwd to configure the undecided label, which the template no longer does.
 func seedUndecidedLabel(t *testing.T, cwd string) {
 	t.Helper()
-	content := "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n"
-	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
-	}
+	seedHubBoardConfig(t, filepath.Dir(cwd), "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n")
 }
 
 func TestCLIListAndFindLabelFilter(t *testing.T) {
@@ -446,9 +442,7 @@ func TestCLILabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedCwd(t)
 	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  enhancement: A new capability\n  bug: Something broken\nlabels:\n  quarry: The code index\n  board: The task board\n"
-	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
-	}
+	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 
 	result := runJSON(t, 0, "labels")
 	wantTypes := [][2]string{{"enhancement", "A new capability"}, {"bug", "Something broken"}}
@@ -465,9 +459,7 @@ func TestCLILabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	cwd := seedCwd(t)
 	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [quarry]\n"
-	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
-	}
+	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 
 	result := runJSON(t, 0, "labels")
 	wantTypes := [][2]string{{"bug", ""}, {"enhancement", ""}}

@@ -56,6 +56,31 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	}
 }
 
+// TestEditPath_ScaffoldsIntoMissingParentDir tests that EditPath on a path whose parent directory
+// does not exist scaffolds the template there, applies the editor's write and returns nil.
+func TestEditPath_ScaffoldsIntoMissingParentDir(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "missing", "parent", "staged.yaml")
+	template := "key1: value1\n"
+
+	fakeEditor := func(editPath string) error {
+		return os.WriteFile(editPath, []byte("key1: edited\n"), 0o644)
+	}
+
+	if err := configengine.EditPath(path, template, fakeEditor); err != nil {
+		t.Fatalf("EditPath() = %v; want nil", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read staged file: %v", err)
+	}
+	if string(got) != "key1: edited\n" {
+		t.Errorf("staged file = %q; want the editor's write", got)
+	}
+}
+
 // TestEdit_EditExistingFile tests that Edit opens an existing file in the editor,
 // and the editor can rewrite it with valid YAML.
 // Edit returns nil and the file holds the new bytes.

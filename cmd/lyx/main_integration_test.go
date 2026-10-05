@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -34,20 +35,18 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	gitkit.Git(t, cwd, "init")
 
-	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(cwd)
+	// The board config is the hub's: the hub is cwd's parent.
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
+	configDir := configengine.ConfigDir(boardDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+		t.Fatalf("failed to create hub board config dir: %v", err)
 	}
-	configPath := configengine.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(boardDir, "board")
 	// Write a template-complete board config. path: is no longer a template key
 	// (the board data dir is paths-owned), so only readme/design_prefix remain.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+		t.Fatalf("failed to write hub board.yaml: %v", err)
 	}
 	t.Chdir(cwd)
 
@@ -68,19 +67,17 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	gitkit.Git(t, cwd, "init")
 
-	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(cwd)
+	// The board config is the hub's: the hub is cwd's parent.
+	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
+	configDir := configengine.ConfigDir(boardDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+		t.Fatalf("failed to create hub board config dir: %v", err)
 	}
-	configPath := configengine.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(boardDir, "board")
 	// Write a template-complete board config.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
+		t.Fatalf("failed to write hub board.yaml: %v", err)
 	}
 	t.Chdir(cwd)
 

@@ -24,7 +24,7 @@ A note stays as written until the operator decides to build it; then suitable no
 
 ## Labels
 
-Every entry carries `labels`, validated against two maps in `_lyx/config/board.yaml`, each from label to description:
+Every entry carries `labels`, validated against two maps in the hub's `board.yaml`, each from label to description:
 
 - `types`: the type labels, such as `bug` and `enhancement`. A note carries exactly one, and a task one or more.
 - `labels`: every other label, such as an area.

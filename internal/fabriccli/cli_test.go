@@ -414,12 +414,15 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// Per-worktree module configs (e.g. "board") must have been reconciled
-	// on the weft side.
+	// Per-worktree module configs (e.g. "loom") must have been reconciled
+	// on the weft side; hub-wide ones (e.g. "board") live at the board dir only.
 	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-warp"), "backend")
-	boardConfigPath := configengine.ConfigFile(weftBase, "board")
-	if _, err := os.Stat(boardConfigPath); err != nil {
-		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
+	loomConfigPath := configengine.ConfigFile(weftBase, "loom")
+	if _, err := os.Stat(loomConfigPath); err != nil {
+		t.Errorf("per-worktree loom config missing at %s: %v", loomConfigPath, err)
+	}
+	if _, err := os.Stat(configengine.ConfigFile(weftBase, "board")); !os.IsNotExist(err) {
+		t.Errorf("per-worktree board config materialized under %s; want it only at the board dir (stat err = %v)", weftBase, err)
 	}
 }
 
@@ -666,29 +669,118 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 	envelope.RequireErr(t, out.String(), "weft sibling of a pair")
 }
 
-// TestRunCLI_Reconcile_HealsMissingRepoWideConfig pins reconcile's self-healing of the repo-wide
-// fabric.yaml: on a hub that has none, reconcile used to fail with "not initialized here; run
-// \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
-// materialize the config and proceed.
+// TestRunCLI_Reconcile_HealsMissingRepoWideConfig pins reconcile's self-healing of the hub-wide
+// fabric.yaml and board.yaml: on a hub that has none, reconcile used to fail with "not initialized
+// here; run \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
+// materialize the configs, commit them in _board and proceed.
+// board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
 func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	const primeBoard = "types:\n  spike: A time-boxed investigation\n"
 
-	// hubforge.NewHub always materializes a repo-wide fabric.yaml as part of building a real hub, so
-	// the "missing config" state this test exists to heal must be produced by hand here -- an operator
-	// deleting the file is exactly the scenario the healing logic guards against.
-	cfgPath := configengine.ConfigFile(h.BoardDir(), "fabric")
-	if err := os.Remove(cfgPath); err != nil {
-		t.Fatalf("remove repo-wide fabric config: %v", err)
+	tests := []struct {
+		name         string
+		primeHasCopy bool
+		wantSeed     string
+		wantWarning  bool
+	}{
+		{name: "prime copy seeds board.yaml", primeHasCopy: true, wantSeed: "prime"},
+		{name: "no prime copy falls back to the template", wantSeed: "template", wantWarning: true},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := hubforge.NewHub(t, ".")
+
+			// hubforge.NewHub always materializes the hub-wide configs as part of building a real hub, so
+			// the "missing config" state this test exists to heal must be produced by hand here -- an
+			// operator deleting the files is exactly the scenario the healing logic guards against.
+			fabricPath := configengine.ConfigFile(h.BoardDir(), "fabric")
+			boardPath := configengine.ConfigFile(h.BoardDir(), "board")
+			for _, path := range []string{fabricPath, boardPath} {
+				if err := os.Remove(path); err != nil {
+					t.Fatalf("remove hub-wide config %s: %v", path, err)
+				}
+			}
+			if tt.primeHasCopy {
+				hubforge.SeedConfig(t, h, map[string]string{"board": primeBoard})
+			} else if err := os.Remove(configengine.ConfigFile(h.WeftBase, "board")); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove prime board config: %v", err)
+			}
+
+			var out bytes.Buffer
+			exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"reconcile"})
+			if exitCode != 0 {
+				t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
+			}
+
+			if _, err := os.Stat(fabricPath); err != nil {
+				t.Errorf("hub-wide fabric config not materialized at %s: %v", fabricPath, err)
+			}
+			boardYAML, err := os.ReadFile(boardPath)
+			if err != nil {
+				t.Fatalf("hub-wide board config not materialized at %s: %v", boardPath, err)
+			}
+			if got := strings.Contains(string(boardYAML), "spike:"); got != tt.primeHasCopy {
+				t.Errorf("board.yaml carries the prime's custom type = %v; want %v\n%s", got, tt.primeHasCopy, boardYAML)
+			}
+
+			result := envelope.Decode(t, out.String())
+			hubConfig, _ := result.Raw["hub_config"].([]any)
+			boardSeed := ""
+			for _, entry := range hubConfig {
+				fields, _ := entry.(map[string]any)
+				if fields["module"] == "board" {
+					boardSeed, _ = fields["seed"].(string)
+				}
+			}
+			if boardSeed != tt.wantSeed {
+				t.Errorf("hub_config board seed = %q; want %q\nhub_config: %v", boardSeed, tt.wantSeed, hubConfig)
+			}
+			warnings, _ := result.Raw["warnings"].([]any)
+			if tt.wantWarning != (len(warnings) > 0) || (tt.wantWarning && !strings.Contains(warnings[0].(string), boardPath)) {
+				t.Errorf("warnings = %v; want one naming %s = %v", warnings, boardPath, tt.wantWarning)
+			}
+
+			if status := strings.TrimSpace(gitOutputCLI(t, h.BoardDir(), "status", "--porcelain")); status != "" {
+				t.Errorf("_board is dirty after reconcile; want the hub-wide configs committed:\n%s", status)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Reconcile_HubConfigPushFailureIsNonFatal removes the committed hub-wide configs and points
+// the board remote at an unreachable path, so the healing commit lands but its push fails; reconcile
+// must still exit 0 and report the failure under hub_config_detail, leaving the files healed on disk.
+func TestRunCLI_Reconcile_HubConfigPushFailureIsNonFatal(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	boardDir := h.BoardDir()
+
+	for _, module := range []string{"fabric", "board"} {
+		if err := os.Remove(configengine.ConfigFile(boardDir, module)); err != nil {
+			t.Fatalf("remove hub-wide %s config: %v", module, err)
+		}
+	}
+	gitkit.MustRun(t, boardDir, "git", "add", "-A")
+	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: drop hub-wide configs")
+	unreachable := filepath.ToSlash(filepath.Join(t.TempDir(), "does-not-exist.git"))
+	gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"reconcile"})
 	if exitCode != 0 {
-		t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
+		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed hub config push must be non-fatal)\noutput: %s", exitCode, out.String())
 	}
 
-	if _, err := os.Stat(cfgPath); err != nil {
-		t.Errorf("repo-wide fabric config not materialized at %s: %v", cfgPath, err)
+	result := envelope.RequireOK(t, out.String())
+	detail, _ := result.Raw["hub_config_detail"].(string)
+	if !strings.Contains(detail, "hub-wide config committed but push failed") {
+		t.Errorf("hub_config_detail = %q; want it to report the committed-but-unpushed config", detail)
+	}
+	for _, module := range []string{"fabric", "board"} {
+		if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); err != nil {
+			t.Errorf("hub-wide %s config not healed: %v", module, err)
+		}
 	}
 }
 

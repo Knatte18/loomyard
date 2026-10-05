@@ -1,6 +1,6 @@
 // edit.go — interactive config editing with scaffold, validate, and abort contract.
 //
-// Provides the Edit function to load a config file, open it in an injected editor, validate the
+// Provides the Edit function, and EditPath for a file at a told path, to load a config file, open it in an injected editor, validate the
 // YAML syntax, and loop on validation failure.
 // Scaffolds missing files from a template and removes them on abort to leave the filesystem in its
 // pre-call state.
@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -111,10 +112,16 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 		return err
 	}
 
-	path := ConfigFile(baseDir, module)
+	return EditPath(ConfigFile(baseDir, module), template, edit)
+}
 
-	configDir := ConfigDir(baseDir)
-	scaffolded, err := scaffoldIfMissing(path, configDir, template)
+// EditPath is Edit's body for a file at a told path, with no _lyx/ check:
+// it scaffolds path from template when absent (creating its parent directory), runs the editor,
+// and loops on a YAML parse error.
+// An unchanged unparseable save returns ErrAborted, and any abort removes a file EditPath scaffolded.
+// Validation is syntactic only.
+func EditPath(path, template string, edit EditorFunc) error {
+	scaffolded, err := scaffoldIfMissing(path, filepath.Dir(path), template)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@
 package configsync
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -18,50 +19,44 @@ func TestReconcileAll_DryRun(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Seed board.yaml with a missing key and a stale key
-	boardPath := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
+	// Seed loom.yaml with a missing key and a stale key
+	loomPath := configengine.ConfigFile(tmpDir, "loom")
+	if err := os.WriteFile(loomPath, []byte("discussion_timeout_min: 480\nstale_key: old_value\n"), 0o644); err != nil {
+		t.Fatalf("write loom.yaml: %v", err)
 	}
 
 	// Run ReconcileAll with apply=false
-	results, err := ReconcileAll(tmpDir, false)
+	results, err := ReconcileAll(tmpDir, t.TempDir(), false)
 	if err != nil {
 		t.Fatalf("ReconcileAll(false): %v", err)
 	}
 
-	// Find board result
-	var boardResult *Result
-	for i := range results {
-		if results[i].Module == "board" {
-			boardResult = &results[i]
-			break
-		}
-	}
-	if boardResult == nil {
-		t.Error("board result not found")
+	// Find loom result
+	loomResult := findResult(results, "loom")
+	if loomResult == nil {
+		t.Error("loom result not found")
 	} else {
-		// Board should have added keys (the template has more keys than the seed)
-		if len(boardResult.Added) == 0 {
-			t.Errorf("board.Added is empty; want non-empty (template has missing keys)")
+		// Loom should have added keys (the template has more keys than the seed)
+		if len(loomResult.Added) == 0 {
+			t.Errorf("loom.Added is empty; want non-empty (template has missing keys)")
 		}
-		// Board should have removed keys (stale_key)
-		if len(boardResult.Removed) == 0 {
-			t.Errorf("board.Removed is empty; want non-empty (stale_key should be reported)")
+		// Loom should have removed keys (stale_key)
+		if len(loomResult.Removed) == 0 {
+			t.Errorf("loom.Removed is empty; want non-empty (stale_key should be reported)")
 		}
 		// Dry-run should never apply
-		if boardResult.Applied {
-			t.Error("board.Applied is true; want false (dry-run)")
+		if loomResult.Applied {
+			t.Error("loom.Applied is true; want false (dry-run)")
 		}
 	}
 
 	// Verify file is unchanged
-	content, err := os.ReadFile(boardPath)
+	content, err := os.ReadFile(loomPath)
 	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
+		t.Fatalf("read loom.yaml: %v", err)
 	}
 	if !contains(string(content), "stale_key") {
-		t.Error("board.yaml was modified during dry-run; stale_key should still be present")
+		t.Error("loom.yaml was modified during dry-run; stale_key should still be present")
 	}
 }
 
@@ -72,59 +67,36 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Seed board.yaml
-	boardPath := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
+	// Seed loom.yaml
+	loomPath := configengine.ConfigFile(tmpDir, "loom")
+	if err := os.WriteFile(loomPath, []byte("discussion_timeout_min: 480\nstale_key: old_value\n"), 0o644); err != nil {
+		t.Fatalf("write loom.yaml: %v", err)
 	}
 
 	// Run ReconcileAll with apply=true
-	results, err := ReconcileAll(tmpDir, true)
+	results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll(true): %v", err)
 	}
 
-	// Board result should show it was applied
-	var boardResult *Result
-	for i := range results {
-		if results[i].Module == "board" {
-			boardResult = &results[i]
-			break
-		}
-	}
-	if boardResult == nil {
-		t.Error("board result not found")
-	} else if !boardResult.Applied {
-		t.Error("board.Applied is false; want true (changes should be applied)")
+	// Loom result should show it was applied
+	loomResult := findResult(results, "loom")
+	if loomResult == nil {
+		t.Error("loom result not found")
+	} else if !loomResult.Applied {
+		t.Error("loom.Applied is false; want true (changes should be applied)")
 	}
 
-	// fabric is skipped in ReconcileAll's per-worktree loop: its config is a
-	// repo-wide fact materialized once via ReconcileFabricAt, not a
-	// per-worktree file, so no fabric result is ever reported here.
-	for i := range results {
-		if results[i].Module == "fabric" {
-			t.Errorf("ReconcileAll returned a fabric result %+v; want none (fabric is skipped)", results[i])
-			break
-		}
-	}
-
-	// Verify fabric.yaml was NOT created under the per-worktree base.
-	fabricPath := configengine.ConfigFile(tmpDir, "fabric")
-	if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
-		t.Errorf("fabric.yaml was created under the per-worktree base; want absent (stat err = %v)", err)
-	}
-
-	// Verify board.yaml was rewritten: stale_key removed and path: also removed
-	// (path: is no longer in the board template; Reconcile treats it as an extra key).
-	content, err := os.ReadFile(boardPath)
+	// Verify loom.yaml was rewritten: stale_key removed and the template's missing keys added.
+	content, err := os.ReadFile(loomPath)
 	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
+		t.Fatalf("read loom.yaml: %v", err)
 	}
 	if contains(string(content), "stale_key") {
-		t.Error("board.yaml still contains stale_key after apply; should have been removed")
+		t.Error("loom.yaml still contains stale_key after apply; should have been removed")
 	}
-	if contains(string(content), "path:") {
-		t.Error("board.yaml still contains path: key after apply; should have been removed (not in template)")
+	if !contains(string(content), "review_max_bounces:") {
+		t.Error("loom.yaml lacks review_max_bounces: after apply; should have been added from the template")
 	}
 }
 
@@ -135,7 +107,7 @@ func TestReconcileAll_SeedsLoggerYAML(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	results, err := ReconcileAll(tmpDir, true)
+	results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll(true): %v", err)
 	}
@@ -182,7 +154,7 @@ func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 		t.Fatalf("write reed.yaml: %v", err)
 	}
 
-	results, err := ReconcileAll(tmpDir, true)
+	results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll(true): %v", err)
 	}
@@ -241,7 +213,7 @@ func TestReconcileAll_DropsStaleReedHeaderBlock(t *testing.T) {
 		t.Fatalf("write reed.yaml: %v", err)
 	}
 
-	results, err := ReconcileAll(tmpDir, true)
+	results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll(true): %v", err)
 	}
@@ -295,13 +267,13 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 	}
 
 	// First apply
-	results1, err := ReconcileAll(tmpDir, true)
+	results1, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll first apply: %v", err)
 	}
 
 	// Second apply should be idempotent
-	results2, err := ReconcileAll(tmpDir, true)
+	results2, err := ReconcileAll(tmpDir, t.TempDir(), true)
 	if err != nil {
 		t.Fatalf("ReconcileAll second apply: %v", err)
 	}
@@ -338,7 +310,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 		if err != nil {
 			t.Fatalf("ReconcileAll(true): %v", err)
 		}
@@ -381,7 +353,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 			t.Fatalf("write models.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 		if err != nil {
 			t.Fatalf("ReconcileAll(true): %v", err)
 		}
@@ -421,7 +393,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 			t.Fatalf("write models.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 		if err != nil {
 			t.Fatalf("ReconcileAll(true): %v", err)
 		}
@@ -450,53 +422,190 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		// Seed board.yaml (non-seed-only) with a stale key alongside an
+		// Seed loom.yaml (non-seed-only) with a stale key alongside an
 		// untouched models.yaml, to guard against the seed-only branch
 		// over-broadly skipping every module's reconcile.
-		boardPath := configengine.ConfigFile(tmpDir, "board")
-		if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
-			t.Fatalf("write board.yaml: %v", err)
+		loomPath := configengine.ConfigFile(tmpDir, "loom")
+		if err := os.WriteFile(loomPath, []byte("discussion_timeout_min: 480\nstale_key: old_value\n"), 0o644); err != nil {
+			t.Fatalf("write loom.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		results, err := ReconcileAll(tmpDir, t.TempDir(), true)
 		if err != nil {
 			t.Fatalf("ReconcileAll(true): %v", err)
 		}
 
-		boardResult := findResult(results, "board")
-		if boardResult == nil {
-			t.Fatal("board result not found")
+		loomResult := findResult(results, "loom")
+		if loomResult == nil {
+			t.Fatal("loom result not found")
 		}
-		if !boardResult.Applied {
-			t.Error("board.Applied is false; want true (stale key should still trigger a rewrite)")
+		if !loomResult.Applied {
+			t.Error("loom.Applied is false; want true (stale key should still trigger a rewrite)")
 		}
 		found := false
-		for _, r := range boardResult.Removed {
+		for _, r := range loomResult.Removed {
 			if r == "stale_key" {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("board.Removed = %v; want it to contain %q", boardResult.Removed, "stale_key")
+			t.Errorf("loom.Removed = %v; want it to contain %q", loomResult.Removed, "stale_key")
 		}
 
-		content, err := os.ReadFile(boardPath)
+		content, err := os.ReadFile(loomPath)
 		if err != nil {
-			t.Fatalf("read board.yaml: %v", err)
+			t.Fatalf("read loom.yaml: %v", err)
 		}
 		if contains(string(content), "stale_key") {
-			t.Error("board.yaml still contains stale_key after apply; should have been removed (pruning must still work)")
+			t.Error("loom.yaml still contains stale_key after apply; should have been removed (pruning must still work)")
 		}
 	})
 }
 
-// TestReconcileFabricAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration
+// reconcileFabricResult runs ReconcileHubWideAt and returns the "fabric" result.
+func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, error) {
+	results, err := ReconcileHubWideAt(boardDir, primeBaseDir, apply)
+	if err != nil {
+		return Result{}, err
+	}
+	result := findResult(results, "fabric")
+	if result == nil {
+		return Result{}, fmt.Errorf("ReconcileHubWideAt returned no fabric result: %+v", results)
+	}
+	return *result, nil
+}
+
+// TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins which input each hub-wide module's
+// reconcile starts from: a present hub file is never replaced, an absent board.yaml is seeded from the
+// prime's copy when it has one, and an absent fabric.yaml never reads the prime.
+func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
+	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
+	const hubBoard = "readme: README.md\ndesign_prefix: design-\ntypes:\n  bug: Hub bug\nlabels: {}\n"
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		module       string
+		hubFile      string
+		primeFile    string
+		legacyFirst  string
+		wantSeed     string
+		wantContains []string
+		wantAbsent   []string
+	}{
+		{
+			name:         "board absent with a prime copy is seeded from the prime",
+			module:       "board",
+			primeFile:    primeBoard,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"spike: A time-boxed investigation", "area-x: Area X", "design_prefix:"},
+			wantAbsent:   []string{"enhancement:"},
+		},
+		{
+			name:         "board absent and no prime copy starts from the template",
+			module:       "board",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"enhancement:"},
+		},
+		{
+			name:         "board present is never replaced by a differing prime copy",
+			module:       "board",
+			hubFile:      hubBoard,
+			primeFile:    primeBoard,
+			wantSeed:     SeedHub,
+			wantContains: []string{"bug: Hub bug"},
+			wantAbsent:   []string{"spike:", "area-x:"},
+		},
+		{
+			name:         "fabric absent ignores the prime copy",
+			module:       "fabric",
+			primeFile:    "branch_prefix: prime/\npathspec: \"\"\n",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"branch_prefix:"},
+			wantAbsent:   []string{"prime/"},
+		},
+		{
+			name:         "fabric absent with a legacy warp.yaml folds it in",
+			module:       "fabric",
+			legacyFirst:  "branch_prefix: legacy/\n",
+			wantSeed:     SeedLegacy,
+			wantContains: []string{"branch_prefix: legacy/"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			primeDir := t.TempDir()
+			writeModule := func(dir, module, content string) {
+				if content == "" {
+					return
+				}
+				if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(configengine.ConfigFile(dir, module), []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s.yaml: %v", module, err)
+				}
+			}
+			writeModule(boardDir, tt.module, tt.hubFile)
+			writeModule(primeDir, tt.module, tt.primeFile)
+			writeModule(boardDir, "warp", tt.legacyFirst)
+			hubPath := configengine.ConfigFile(boardDir, tt.module)
+
+			dry, err := ReconcileHubWideAt(boardDir, primeDir, false)
+			if err != nil {
+				t.Fatalf("ReconcileHubWideAt(false): %v", err)
+			}
+			dryResult := findResult(dry, tt.module)
+			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied {
+				t.Errorf("dry-run result = %+v; want Seed %q and Applied false", dryResult, tt.wantSeed)
+			}
+			if tt.hubFile == "" {
+				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
+					t.Errorf("hub file written on a dry run (stat err = %v)", err)
+				}
+			}
+			if tt.legacyFirst != "" {
+				if _, err := os.Stat(configengine.ConfigFile(boardDir, "warp")); err != nil {
+					t.Errorf("legacy warp.yaml removed on a dry run: %v", err)
+				}
+			}
+
+			applied, err := ReconcileHubWideAt(boardDir, primeDir, true)
+			if err != nil {
+				t.Fatalf("ReconcileHubWideAt(true): %v", err)
+			}
+			appliedResult := findResult(applied, tt.module)
+			if appliedResult == nil || appliedResult.Seed != tt.wantSeed {
+				t.Fatalf("applied result = %+v; want Seed %q", appliedResult, tt.wantSeed)
+			}
+			got, err := os.ReadFile(hubPath)
+			if err != nil {
+				t.Fatalf("read hub file: %v", err)
+			}
+			for _, want := range tt.wantContains {
+				if !contains(string(got), want) {
+					t.Errorf("hub file = %q; want it to contain %q", got, want)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if contains(string(got), absent) {
+					t.Errorf("hub file = %q; want it not to contain %q", got, absent)
+				}
+			}
+		})
+	}
+}
+
+// TestReconcileHubWideAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration
 // (F-D): a pre-cutover hub's warp.yaml/weft.yaml values must be folded into fabric.yaml's first
 // write instead of silently discarded in favor of the bare template default,
 // and the legacy files must be pruned afterward so the migration does not re-fire.
-// Routed through ReconcileFabricAt(boardDir, apply), the repo-wide counterpart now that
-// ReconcileAll skips fabric entirely (see TestReconcileAll_ApplyCreatesFiles).
-func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
+// Routed through ReconcileHubWideAt(boardDir, "", apply), since ReconcileAll never reconciles a
+// hub-wide module (see TestReconcileAll_HubWideCopy).
+func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
 		boardDir := t.TempDir()
 		configDir := configengine.ConfigDir(boardDir)
@@ -513,9 +622,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write weft.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if !fabricResult.Applied {
@@ -563,9 +672,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 1 || fabricResult.MigratedFrom[0] != "warp" {
@@ -601,9 +710,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, false)
+		fabricResult, err := reconcileFabricResult(boardDir, "", false)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(false): %v", err)
+			t.Fatalf("ReconcileHubWideAt(false): %v", err)
 		}
 
 		if fabricResult.Applied {
@@ -638,9 +747,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 0 {
@@ -671,9 +780,9 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Fatalf("write corrupt warp.yaml: %v", err)
 		}
 
-		fabricResult, err := ReconcileFabricAt(boardDir, true)
+		fabricResult, err := reconcileFabricResult(boardDir, "", true)
 		if err != nil {
-			t.Fatalf("ReconcileFabricAt(true): %v", err)
+			t.Fatalf("ReconcileHubWideAt(true): %v", err)
 		}
 
 		if len(fabricResult.MigratedFrom) != 0 {
@@ -708,53 +817,96 @@ func contains(s, substr string) bool {
 	return false
 }
 
-// TestReconcileAll_BoardOpenMapsCarriedWhole pins that a repository's own `types` and `labels` entries,
-// map- or list-shaped, are neither reported nor removed by reconcile,
-// and that apply leaves them as written.
-func TestReconcileAll_BoardOpenMapsCarriedWhole(t *testing.T) {
-	cases := map[string]string{
-		"maps":        "types:\n  chore: housekeeping\nlabels:\n  infra: build and deploy\n",
-		"list labels": "types:\n  chore: housekeeping\nlabels:\n  - infra\n  - docs\n",
+// TestReconcileAll_HubWideCopy pins how ReconcileAll treats a hub-wide module ("board"): it never
+// reconciles or writes it under the worktree, and a leftover per-worktree copy is kept, reported
+// Retired when the hub file subsumes it (apply deletes it) or Divergent when it holds an entry the
+// hub file lacks.
+func TestReconcileAll_HubWideCopy(t *testing.T) {
+	t.Parallel()
+	const hubBoard = "types:\n  bug: Hub bug\nlabels:\n  area-x: Area X\n"
+
+	tests := []struct {
+		name          string
+		copyFile      string
+		hubFile       string
+		wantRetired   bool
+		wantDivergent []string
+		wantKept      bool
+	}{
+		{name: "no per-worktree copy"},
+		{name: "copy and no hub file keeps the copy", copyFile: hubBoard, wantKept: true},
+		{name: "copy subsumed by the hub file is retired", copyFile: "labels:\n  area-x: Area X\n", hubFile: hubBoard, wantRetired: true},
+		{
+			name:          "copy holding a label the hub file lacks is divergent",
+			copyFile:      "labels:\n  area-x: Area X\n  area-y: Area Y\n",
+			hubFile:       hubBoard,
+			wantDivergent: []string{"labels.area-y: Area Y"},
+			wantKept:      true,
+		},
+		{
+			name:          "copy value differing from the hub file is divergent",
+			copyFile:      "types:\n  bug: Local bug\n",
+			hubFile:       hubBoard,
+			wantDivergent: []string{"types.bug: Local bug"},
+			wantKept:      true,
+		},
 	}
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0o755); err != nil {
-				t.Fatalf("mkdir: %v", err)
-			}
-			path := configengine.ConfigFile(tmpDir, "board")
-			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-				t.Fatalf("write board.yaml: %v", err)
-			}
 
-			results, err := ReconcileAll(tmpDir, true)
-			if err != nil {
-				t.Fatalf("ReconcileAll: %v", err)
-			}
-			r := findResult(results, "board")
-			if r == nil {
-				t.Fatal("no result for board")
-			}
-			for _, k := range append(append([]string{}, r.Added...), r.Removed...) {
-				if len(k) >= 5 && (k[:5] == "types" || k[:5] == "label") {
-					t.Errorf("reconcile reported open-map key %q; want none (added=%v removed=%v)", k, r.Added, r.Removed)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			boardDir := t.TempDir()
+			write := func(dir, content string) {
+				if content == "" {
+					return
+				}
+				if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(configengine.ConfigFile(dir, "board"), []byte(content), 0o644); err != nil {
+					t.Fatalf("write board.yaml: %v", err)
 				}
 			}
+			write(baseDir, tt.copyFile)
+			write(boardDir, tt.hubFile)
+			copyPath := configengine.ConfigFile(baseDir, "board")
 
-			got, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read board.yaml: %v", err)
-			}
-			for _, want := range []string{"chore", "infra"} {
-				if !contains(string(got), want) {
-					t.Errorf("board.yaml lost %q after apply:\n%s", want, got)
+			check := func(apply bool) {
+				t.Helper()
+				results, err := ReconcileAll(baseDir, boardDir, apply)
+				if err != nil {
+					t.Fatalf("ReconcileAll(%v): %v", apply, err)
+				}
+				r := findResult(results, "board")
+				if r == nil {
+					t.Fatal("no result for board")
+				}
+				if r.Retired != tt.wantRetired {
+					t.Errorf("apply=%v Retired = %v; want %v", apply, r.Retired, tt.wantRetired)
+				}
+				if r.Applied != (tt.wantRetired && apply) {
+					t.Errorf("apply=%v Applied = %v; want %v", apply, r.Applied, tt.wantRetired && apply)
+				}
+				if fmt.Sprint(r.Divergent) != fmt.Sprint(tt.wantDivergent) {
+					t.Errorf("apply=%v Divergent = %v; want %v", apply, r.Divergent, tt.wantDivergent)
+				}
+				_, statErr := os.Stat(copyPath)
+				wantPresent := tt.wantKept || (tt.wantRetired && !apply)
+				if present := statErr == nil; present != wantPresent {
+					t.Errorf("apply=%v per-worktree board.yaml present = %v; want %v", apply, present, wantPresent)
+				}
+				if tt.copyFile == "" {
+					if _, err := os.Stat(copyPath); !os.IsNotExist(err) {
+						t.Errorf("apply=%v per-worktree board.yaml created (stat err = %v)", apply, err)
+					}
+				}
+				if _, err := os.Stat(configengine.ConfigFile(baseDir, "fabric")); !os.IsNotExist(err) {
+					t.Errorf("apply=%v per-worktree fabric.yaml written (stat err = %v)", apply, err)
 				}
 			}
-			for _, gone := range []string{"bug", "enhancement"} {
-				if contains(string(got), gone) {
-					t.Errorf("board.yaml gained template entry %q after apply:\n%s", gone, got)
-				}
-			}
+			check(false)
+			check(true)
 		})
 	}
 }

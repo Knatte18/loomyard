@@ -179,23 +179,41 @@ design_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the board-specific not-initialized
-// error.
+// TestLoadConfig_NotInitialized tests that an absent _lyx/ and an absent board.yaml under a present
+// _lyx/config/ both return the board-specific not-initialized error, naming the file and the way forward.
 func TestLoadConfig_NotInitialized(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
-
-	cfg, err := boardengine.LoadConfig(tmpDir, "board")
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	tests := []struct {
+		name      string
+		createDir bool
+	}{
+		{name: "absent _lyx", createDir: false},
+		{name: "absent board.yaml under present _lyx/config", createDir: true},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			if tt.createDir {
+				if err := os.MkdirAll(configengine.ConfigDir(tmpDir), 0755); err != nil {
+					t.Fatalf("failed to create _lyx/config: %v", err)
+				}
+			}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
-	}
-	if !strings.Contains(errMsg, "lyx fabric reconcile") {
-		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+			cfg, err := boardengine.LoadConfig(tmpDir, "board")
+			if err == nil {
+				t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+			}
+
+			errMsg := err.Error()
+			if !strings.Contains(errMsg, "not initialized") {
+				t.Errorf("expected error containing 'not initialized', got: %v", err)
+			}
+			if !strings.Contains(errMsg, configengine.ConfigFile(tmpDir, "board")) {
+				t.Errorf("expected error naming the board.yaml path, got: %v", err)
+			}
+			if !strings.Contains(errMsg, "lyx fabric reconcile") {
+				t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+			}
+		})
 	}
 }
 

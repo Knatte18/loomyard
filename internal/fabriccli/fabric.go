@@ -18,10 +18,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -316,7 +318,14 @@ not reported already-healthy.
 It also restores a pair's hub-level portal junction (_portals/<slug>) and
 launcher directory (_launchers/<slug>) when either has gone missing, reporting
 portal_restored rather than already_healthy. The hub's prime worktree is
-skipped: it never had either, so there is nothing there to repair.`,
+skipped: it never had either, so there is nothing there to repair.
+
+It also heals the hub-wide config files (fabric.yaml and board.yaml) at the
+hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
+when it has one, and the written files are committed in _board and pushed. The
+envelope reports each module under hub_config, a commit or push failure under
+hub_config_detail without changing the exit code, and a board.yaml started from
+the template, which carries no custom types or labels, under warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
@@ -700,26 +709,81 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	}
 
 	// The recorder is built here, as soon as l resolves, and not after top.Reconcile(l) returns:
-	// configsync.ReconcileFabricAt below runs before top.Reconcile in this handler and may already
+	// configsync.ReconcileHubWideAt below runs before top.Reconcile in this handler and may already
 	// have written a file, so seeding from r.Mutated() first would misstate the array's order — array
 	// order is the only thing carrying ordering in this vocabulary. This is the one handler where
 	// "pre-flight" and "pre-mutation" come apart: none of the three output.Err sites below qualifies
-	// for the ordinary pre-flight carve-out, since ReconcileFabricAt may already have mutated state by
+	// for the ordinary pre-flight carve-out, since ReconcileHubWideAt may already have mutated state by
 	// the time any of them is reached.
 	rec := fabricengine.NewMutations(l.HubPath)
 
-	// Reconcile is the repair verb, so a missing repo-wide fabric config is healed here rather
-	// than reported: without this, LoadConfig's "not initialized here; run \"lyx fabric
-	// reconcile\"" remedy was circular when reconcile itself emitted it.
-	// ReconcileFabricAt only adds absent keys and never rewrites a recorded pathspec.
-	fabricResult, err := configsync.ReconcileFabricAt(fabricengine.BoardDir(l.HubPath), true)
-	if err != nil {
-		// ReconcileFabricAt can fail after a partial write, so this emits whatever rec holds rather
-		// than a bare error.
-		return errWithRecord(out, rec.Snapshot(), err)
+	// Reconcile is the repair verb, so a missing hub-wide config is healed here rather than reported:
+	// without this, the "run \"lyx fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
+	// ReconcileHubWideAt only adds absent keys and never rewrites a recorded pathspec.
+	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	primeBaseDir := ""
+	if primeName, primeErr := fabricengine.PrimeName(l); primeErr == nil {
+		primeBaseDir = filepath.Join(l.HubPath, primeName, l.AnchorRel)
 	}
-	if fabricResult.Applied {
-		rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(fabricengine.BoardDir(l.HubPath), fabricResult.Module), "")
+
+	// The files are written and committed in _board under the board write lock.
+	// A commit or push failure never changes the exit code and leaves the file for the next board sync, mirroring the warp-binding backfill below.
+	var hubWideResults []configsync.Result
+	var reconcileErr error
+	hubConfigBolt := fabricengine.NewBolt(boardDir)
+	commitSHA, hubConfigCommitted, commitErr := hubConfigBolt.CommitWritten("fabric reconcile: hub-wide config", func() ([]string, error) {
+		results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, true)
+		if err != nil {
+			reconcileErr = err
+			return nil, err
+		}
+		hubWideResults = results
+		var written []string
+		for _, result := range results {
+			if !result.Applied {
+				continue
+			}
+			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(boardDir, result.Module), "")
+			written = append(written, configengine.ConfigFileRel(result.Module))
+			for _, legacy := range result.MigratedFrom {
+				written = append(written, configengine.ConfigFileRel(legacy))
+			}
+		}
+		return written, nil
+	}, fabricengine.SyncOptions{})
+	if reconcileErr != nil {
+		// ReconcileHubWideAt can fail after a partial write, so this emits whatever rec holds rather
+		// than a bare error.
+		return errWithRecord(out, rec.Snapshot(), reconcileErr)
+	}
+	hubConfigDetail := ""
+	if hubWideResults == nil && commitErr != nil {
+		// The write step never ran: the board write lock could not be taken.
+		return errWithRecord(out, rec.Snapshot(), commitErr)
+	}
+	if commitErr != nil {
+		hubConfigDetail = commitErr.Error()
+	} else {
+		if hubConfigCommitted {
+			rec.Append(fabricengine.KindCommitCreated, boardDir, commitSHA)
+		}
+		if pushErr := hubConfigBolt.Push(fabricengine.SyncOptions{}); pushErr != nil {
+			hubConfigDetail = fmt.Sprintf("hub-wide config committed but push failed: %v", pushErr)
+		}
+	}
+
+	hubConfig := make([]map[string]any, 0, len(hubWideResults))
+	var warnings []string
+	for _, result := range hubWideResults {
+		hubConfig = append(hubConfig, map[string]any{"module": result.Module, "seed": result.Seed, "applied": result.Applied})
+		module, _ := configreg.Lookup(result.Module)
+		if len(module.OpenMaps) > 0 && result.Seed == configsync.SeedTemplate {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: the prime held no copy, so custom types and labels were not carried; add them by editing that file",
+				configengine.ConfigFile(boardDir, result.Module),
+			))
+		}
 	}
 
 	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
@@ -787,9 +851,16 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	envelope := map[string]any{
 		"pairs":        r.Pairs,
 		"warp_binding": string(binding),
+		"hub_config":   hubConfig,
 	}
 	if detail != "" {
 		envelope["warp_binding_detail"] = detail
+	}
+	if hubConfigDetail != "" {
+		envelope["hub_config_detail"] = hubConfigDetail
+	}
+	if len(warnings) > 0 {
+		envelope["warnings"] = warnings
 	}
 
 	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must

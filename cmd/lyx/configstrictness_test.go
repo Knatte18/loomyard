@@ -67,6 +67,7 @@ var configStrictnessStrictSet = map[string]bool{
 	"internal/boardengine":  true,
 	"internal/loomengine":   true,
 	"internal/landingshed":  true,
+	"internal/configcli":    true,
 }
 
 // configStrictnessMinScannedFiles is the vacuous-scan floor for this guard's

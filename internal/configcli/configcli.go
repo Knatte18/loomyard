@@ -1,6 +1,6 @@
 // configcli.go — configuration CLI command.
 //
-// Implements the lyx config command, which edits module configurations and triggers a fabric sync.
+// Implements the lyx config command, which edits module configurations, committing a hub-wide module in _board and syncing fabric for any other.
 
 package configcli
 
@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -37,13 +38,15 @@ type syncFunc func(w io.Writer) int
 // cannot be read. On os.IsNotExist it returns a descriptive "not configured" message
 // rather than a raw OS error so the caller gets actionable output. On success the raw
 // file bytes are written verbatim and exit 0 is returned.
-func printModule(baseDir string, out io.Writer, module string) int {
+// A hub-wide module is read at the board dir, any other at the worktree.
+func printModule(dirs configDirs, out io.Writer, module string) int {
 	// Validate the module name against the registry before touching the filesystem.
-	if _, ok := configreg.Template(module); !ok {
+	mod, ok := configreg.Lookup(module)
+	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	path := configengine.ConfigFile(baseDir, module)
+	path := configengine.ConfigFile(dirs.baseFor(mod), module)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -67,12 +70,14 @@ func printModule(baseDir string, out io.Writer, module string) int {
 // The aggregate form never errors on absence — it exits 0 regardless of how many
 // modules are configured so callers can use it for inspection without a fully-seeded
 // workspace.
-func printAll(baseDir string, out io.Writer) int {
-	for _, name := range configreg.Names() {
+// A hub-wide module's section is read at the board dir, any other at the worktree.
+func printAll(dirs configDirs, out io.Writer) int {
+	for _, mod := range configreg.Modules() {
+		name := mod.Name
 		// Write a section delimiter so the reader can separate module blocks.
 		fmt.Fprintf(out, "# %s\n", name)
 
-		path := configengine.ConfigFile(baseDir, name)
+		path := configengine.ConfigFile(dirs.baseFor(mod), name)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -92,16 +97,19 @@ func printAll(baseDir string, out io.Writer) int {
 	return 0
 }
 
-// editOne edits a single config module and optionally syncs on success.
-func editOne(baseDir string, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc) int {
+// editOne edits a single config module and, on success, commits a hub-wide module in _board or syncs fabric for any other.
+func editOne(dirs configDirs, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the template for this module.
-	template, ok := configreg.Template(module)
+	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
+	if mod.HubWide {
+		return editHubWide(dirs, out, mod, edit, commit)
+	}
 
 	// Call configengine.Edit to open the file in the editor.
-	err := configengine.Edit(baseDir, module, template(), edit)
+	err := configengine.Edit(dirs.worktree, module, mod.Template(), edit)
 	if err != nil {
 		// Check if this is an abort (user saved without fixing YAML).
 		if errors.Is(err, configengine.ErrAborted) {
@@ -148,17 +156,21 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // setModule writes pairs into a single config module's file and optionally
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
-func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int {
+// A hub-wide module is written at the board dir and committed in _board instead of syncing fabric.
+func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the module;
 	// its declared open maps let --set add or rewrite one entry.
 	mod, ok := configreg.Lookup(module)
 	if !ok {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
+	if mod.HubWide {
+		return setHubWide(dirs, out, mod, pairs, commit)
+	}
 
 	// Call configengine.Set to scaffold-if-missing and apply pairs directly,
 	// with no editor invocation.
-	preserved, err := configengine.Set(baseDir, module, mod.Template(), pairs, mod.OpenMaps...)
+	preserved, err := configengine.Set(dirs.worktree, module, mod.Template(), pairs, mod.OpenMaps...)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -190,11 +202,10 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 // When printOnly is true the command is read-only: it writes on-disk YAML to out
 // without opening an editor.
 // The print path is evaluated before any edit logic.
-// The --set path is a fully non-interactive write: it never calls edit and is
-// mutually exclusive with --print. The baseDir is computed from the layout as
-// filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
-	baseDir := baseDirOf(l)
+// The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
+// The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
+func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string) int {
+	dirs := dirsOf(l)
 
 	// Handle --set before any --print/edit dispatch:
 	// it is a fully non-interactive write path that never opens the editor,
@@ -211,7 +222,7 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 		if err != nil {
 			return output.Err(out, err.Error())
 		}
-		return setModule(baseDir, out, args[0], pairs, sync)
+		return setModule(dirs, out, args[0], pairs, sync, commit)
 	}
 
 	// Handle --print before any edit dispatch;
@@ -219,9 +230,9 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	// and never opens the editor.
 	if printOnly {
 		if len(args) >= 1 {
-			return printModule(baseDir, out, args[0])
+			return printModule(dirs, out, args[0])
 		}
-		return printAll(baseDir, out)
+		return printAll(dirs, out)
 	}
 
 	// Command lists modules for a bare invocation before dispatch runs,
@@ -229,7 +240,7 @@ func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengin
 	if len(args) < 1 {
 		return output.Err(out, `module required; run "lyx config" to list modules and verbs`)
 	}
-	return editOne(baseDir, out, args[0], edit, sync)
+	return editOne(dirs, out, args[0], edit, sync, commit)
 }
 
 // baseDirOf returns the enclosing _lyx parent: the worktree root joined with the relative path.
@@ -241,8 +252,16 @@ func baseDirOf(l *lyxcwd.Location) string {
 // embedding the live list of known modules from the registry so the help text
 // stays in sync without requiring manual updates when modules are added or removed.
 func buildConfigLong() string {
+	var hubWide []string
+	for _, mod := range configreg.Modules() {
+		if mod.HubWide {
+			hubWide = append(hubWide, mod.Name)
+		}
+	}
 	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
-		"success. With no argument it lists the known modules and verbs; with a module\n" +
+		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
+		"hub's board dir and committed in _board. With no argument it lists the known\n" +
+		"modules and verbs; with a module\n" +
 		"name it edits that module directly; `lyx config menu` is the interactive\n" +
 		"picker, which lists the modules and edits the one you choose. The editor is\n" +
 		"resolved from $VISUAL or $EDITOR;\n" +
@@ -290,7 +309,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, apply)
+	results, err := configsync.ReconcileAll(baseDir, fabricengine.BoardDir(l.HubPath), apply)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
@@ -310,6 +329,13 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		// ordinary module rather than always present as an empty array.
 		if len(result.MigratedFrom) > 0 {
 			m["migratedFrom"] = result.MigratedFrom
+		}
+		// retired and divergent are exceptional too: only a hub-wide module's leftover per-worktree copy sets them.
+		if result.Retired {
+			m["retired"] = true
+		}
+		if len(result.Divergent) > 0 {
+			m["divergent"] = result.Divergent
 		}
 		modules[i] = m
 	}
@@ -372,7 +398,11 @@ func Command() *cobra.Command {
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
-Pass --apply to write the reconciled files to disk atomically.`,
+Pass --apply to write the reconciled files to disk atomically.
+Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
+per-worktree copy is "retired" when the hub file holds everything it holds
+(--apply deletes it), or "divergent" when it holds an entry the hub file lacks
+(it is left in place).`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
@@ -424,50 +454,52 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // runConfig is the package-private handler for the lyx config command.
 //
 // It resolves the layout from the seam cwd,
-// builds the real editor (DefaultEditor) and the real sync function
-// (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state),
+// builds the real editor (DefaultEditor),
+// the real sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the nested call re-derive it from process state)
+// and the real hub commit,
 // and dispatches to dispatch.
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
 func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string) int {
-	l, realSync, err := resolveReal(ctx)
+	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	// Dispatch to the print path, --set path, or specific module.
-	return dispatch(l, out, args, configengine.DefaultEditor, realSync, printOnly, setFlags)
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags)
 }
 
 // runMenu is the package-private handler for the lyx config menu subcommand.
 //
-// It resolves the layout and builds the real sync exactly as runConfig does,
+// It resolves the layout and builds the real sync and hub commit exactly as runConfig does,
 // then runs the picker over in with the real editor.
 func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
-	l, realSync, err := resolveReal(ctx)
+	l, realSync, realCommit, err := resolveReal(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	return menu(baseDirOf(l), in, out, configengine.DefaultEditor, realSync)
+	return menu(dirsOf(l), in, out, configengine.DefaultEditor, realSync, realCommit)
 }
 
-// resolveReal resolves the layout from the seam cwd and builds the real sync function.
+// resolveReal resolves the layout from the seam cwd and builds the real sync function and hub commit.
 //
 // The sync is fabriccli.RunCLIIn with "sync", carrying the already-resolved cwd
 // rather than letting the nested call re-derive it from process state;
 // doing so is precisely the bug this seam removes.
-func resolveReal(ctx context.Context) (*lyxcwd.Location, syncFunc, error) {
+// The hub commit is newHubCommit over the hub's board dir.
+func resolveReal(ctx context.Context) (*lyxcwd.Location, syncFunc, hubCommitFunc, error) {
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	realSync := func(w io.Writer) int {
 		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
 	}
-	return l, realSync, nil
+	return l, realSync, newHubCommit(fabricengine.BoardDir(l.HubPath)), nil
 }

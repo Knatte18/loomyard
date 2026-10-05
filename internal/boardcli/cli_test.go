@@ -27,7 +27,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
@@ -45,21 +44,23 @@ func seedCwd(t *testing.T) string {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	if err := os.MkdirAll(filepath.Join(cwd, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Write board config with all template keys; path: is no longer a template key.
-	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
+	// Write the hub's board config with all template keys; path: is no longer a template key.
+	seedHubBoardConfig(t, filepath.Dir(cwd), "readme: Home.md\ndesign_prefix: proposal-\n")
 
 	t.Chdir(cwd)
 	return cwd
+}
+
+// seedHubBoardConfig writes content as the board.yaml in the hub's board dir, the one file every board reader loads.
+func seedHubBoardConfig(t *testing.T, hub, content string) {
+	t.Helper()
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("failed to create hub board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "board"), []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write hub board.yaml: %v", err)
+	}
 }
 
 // TestCLIContract tests the JSON envelope shape and exit code behavior for each happy-path verb:
@@ -208,10 +209,10 @@ func TestCLIContract(t *testing.T) {
 }
 
 // TestCLIErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error
-// for nonexistent remove, and not-initialized error.
+// for nonexistent remove.
+// The not-initialized refusal is covered by TestCLILoadsHubBoardConfig.
 //
-// Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error),
-// TestCLINotInitialized
+// Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error)
 func TestCLIErrorAndEdgeCases(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -251,20 +252,6 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "", // any error is fine
-		},
-		{
-			name: "TestCLINotInitialized",
-			setup: func(t *testing.T) string {
-				// Do NOT call seedCwd: cwd has no _lyx/
-				cwd := t.TempDir()
-				t.Chdir(cwd)
-				return cwd
-			},
-			verb:         "list",
-			payload:      "",
-			wantExitCode: 1,
-			wantOK:       false,
-			wantError:    "not initialized",
 		},
 	}
 
@@ -784,6 +771,72 @@ func TestCLILookupContract(t *testing.T) {
 	}
 }
 
+// TestCLILoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds:
+// a hub-declared type and label are accepted and rendered, and without the hub file the verb refuses naming `lyx fabric reconcile`.
+func TestCLILoadsHubBoardConfig(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+
+	tests := []struct {
+		name         string
+		hubConfig    string
+		wantExitCode int
+		wantError    string
+		wantReadme   string
+	}{
+		{
+			name:         "hub vocabulary applies although the worktree copy lacks it",
+			hubConfig:    "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  feature: A new capability\nlabels:\n  area: An area\n",
+			wantExitCode: 0,
+			wantReadme:   "### Features",
+		},
+		{
+			name:         "worktree copy alone does not satisfy the reader",
+			wantExitCode: 1,
+			wantError:    "lyx fabric reconcile",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := t.TempDir()
+			worktree := filepath.Join(hub, "worktree")
+			if err := os.MkdirAll(worktree, 0o755); err != nil {
+				t.Fatalf("mkdir worktree: %v", err)
+			}
+			if out, err := exec.Command("git", "-C", worktree, "init").CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v\n%s", err, out)
+			}
+			if err := os.MkdirAll(configengine.ConfigDir(worktree), 0o755); err != nil {
+				t.Fatalf("mkdir worktree config: %v", err)
+			}
+			worktreeConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
+			if err := os.WriteFile(configengine.ConfigFile(worktree, "board"), []byte(worktreeConfig), 0o644); err != nil {
+				t.Fatalf("write worktree board.yaml: %v", err)
+			}
+			if tt.hubConfig != "" {
+				seedHubBoardConfig(t, hub, tt.hubConfig)
+			}
+			t.Chdir(worktree)
+
+			exitCode, stdout := runCLI(t, "upsert", `{"slug":"n","title":"N","kind":"note","labels":["feature","area"]}`)
+			if exitCode != tt.wantExitCode {
+				t.Fatalf("upsert exit %d, want %d; stdout: %s", exitCode, tt.wantExitCode, stdout)
+			}
+			if tt.wantError != "" && !strings.Contains(stdout, tt.wantError) {
+				t.Fatalf("stdout %q does not name %q", stdout, tt.wantError)
+			}
+			if tt.wantReadme != "" {
+				readme, err := os.ReadFile(filepath.Join(fabricengine.BoardDir(hub), "Home.md"))
+				if err != nil {
+					t.Fatalf("read rendered README: %v", err)
+				}
+				if !strings.Contains(string(readme), tt.wantReadme) {
+					t.Fatalf("README lacks %q:\n%s", tt.wantReadme, readme)
+				}
+			}
+		})
+	}
+}
+
 // TestCLIBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE:
 // without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lyxcwd.Resolve;
 // with --board-path the supplied path takes precedence.
@@ -803,14 +856,8 @@ func TestCLIBoardPathResolution(t *testing.T) {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	// Seed _lyx/config/board.yaml without path: (not a template key).
-	if err := os.MkdirAll(configengine.ConfigDir(worktree), 0o755); err != nil {
-		t.Fatalf("mkdir config: %v", err)
-	}
-	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(configengine.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
-		t.Fatalf("write board.yaml: %v", err)
-	}
+	// Seed the hub's board.yaml without path: (not a template key).
+	seedHubBoardConfig(t, topDir, "readme: Home.md\ndesign_prefix: proposal-\n")
 
 	// Change to the worktree so lyxcwd.Getwd() in the CLI returns it.
 	t.Chdir(worktree)

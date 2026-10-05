@@ -21,7 +21,7 @@ import (
 )
 
 // CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes
-// "clone does everything" true: repo-wide fabric.yaml materialization, the weft:main anchor+config
+// "clone does everything" true: hub-wide config materialization, the weft:main anchor+config
 // commit and push, warp junction wiring, per-worktree config reconciliation, and a commit of the
 // resulting per-worktree module configs on the weft primary branch, with no push.
 //
@@ -49,12 +49,16 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	rec.Extend(res.Mutated())
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	fabricResult, err := configsync.ReconcileFabricAt(res.BoardDir, true)
+	// No warning is raised for a template-seeded module: no vocabulary can predate a fresh clone.
+	// The whole-repo commit below carries every file this call wrote.
+	hubWideResults, err := configsync.ReconcileHubWideAt(res.BoardDir, res.WeftBase, true)
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	if fabricResult.Applied {
-		rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, fabricResult.Module), "")
+	for _, hubWideResult := range hubWideResults {
+		if hubWideResult.Applied {
+			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
+		}
 	}
 
 	b := fabricengine.NewBolt(res.BoardDir)
@@ -94,10 +98,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	// entry would advertise that LYX is in use, and a warp→weft junction must never
 	// leave a tracked artifact behind in the user's repo.
 	//
-	// ReconcileAll returns one Result per registered module, each reporting whether that module's own
-	// file was written — record one KindFileWritten per Result whose Applied is true, not one entry
-	// for the call as a whole, so every materialised per-worktree config file is individually covered.
-	results, err := configsync.ReconcileAll(res.WeftBase, true)
+	// ReconcileAll returns one Result per registered module, each reporting whether that module's own file was written (or, for a retired hub-wide copy, deleted).
+	// Record one KindFileWritten per Result whose Applied is true, not one entry for the call as a whole, so every changed per-worktree config file is individually covered.
+	results, err := configsync.ReconcileAll(res.WeftBase, res.BoardDir, true)
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -109,11 +112,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		}
 	}
 
-	// Commit the per-worktree module configs ReconcileAll just materialised, on the weft primary
-	// branch, with no push: an adopt-path re-clone leaves relPaths empty, which
-	// CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no
-	// lock and recording nothing. CommitWeftPaths appends its own KindCommitCreated entry at its
-	// success site, so no recording happens here.
+	// Commit the per-worktree module configs ReconcileAll just materialised or retired, on the weft primary branch, with no push.
+	// An adopt-path re-clone leaves relPaths empty, which CommitAnchoredPaths's own len(relPaths) == 0 guard treats as a legitimate no-op, taking no lock and recording nothing.
+	// CommitWeftPaths appends its own KindCommitCreated entry at its success site, so no recording happens here.
 	if _, _, err := fabricengine.CommitAnchoredPaths(rec, l, relPaths, "fabric clone: record module configs", fabricengine.SyncOptions{}); err != nil {
 		return fabricengine.CloneResult{}, err
 	}

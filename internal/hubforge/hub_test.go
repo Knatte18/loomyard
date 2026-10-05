@@ -232,7 +232,7 @@ func TestNewHub_ConfigMaterializedWithoutSeeding(t *testing.T) {
 
 	h := NewHub(t, ".")
 
-	const module = "board"
+	const module = "loom"
 	template, ok := configreg.Template(module)
 	if !ok {
 		t.Fatalf("configreg.Template(%q): module not registered", module)
@@ -279,7 +279,7 @@ func TestSeedConfig_VisibleFromWarpSide(t *testing.T) {
 
 			h := NewHub(t, tt.anchor)
 
-			const module = "board"
+			const module = "loom"
 			const override = "hubforge-seeded-override: true\n"
 			SeedConfig(t, h, map[string]string{module: override})
 

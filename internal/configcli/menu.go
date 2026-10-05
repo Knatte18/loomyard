@@ -18,19 +18,19 @@ import (
 
 // menu presents an interactive picker of available config modules.
 // It prints a numbered list from configreg.Names(), each marked "(configured)" or "(default)"
-// by whether its config file exists.
+// by whether its config file exists, at the board dir for a hub-wide module and at the worktree otherwise.
 // It reads one line from in and quits with 0 on 'q'.
 // Otherwise it parses the line as a 1-indexed number and routes a valid choice to editOne,
 // returning 1 on invalid input.
-func menu(baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
-	names := configreg.Names()
+func menu(dirs configDirs, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
+	modules := configreg.Modules()
 
-	for i, name := range names {
+	for i, mod := range modules {
 		status := "(default)"
-		if _, err := os.Stat(configengine.ConfigFile(baseDir, name)); err == nil {
+		if _, err := os.Stat(configengine.ConfigFile(dirs.baseFor(mod), mod.Name)); err == nil {
 			status = "(configured)"
 		}
-		fmt.Fprintf(out, "%d) %s %s\n", i+1, name, status)
+		fmt.Fprintf(out, "%d) %s %s\n", i+1, mod.Name, status)
 	}
 
 	line, err := bufio.NewReader(in).ReadString('\n')
@@ -49,10 +49,10 @@ func menu(baseDir string, in io.Reader, out io.Writer, edit configengine.EditorF
 		fmt.Fprintf(out, "invalid input: must be a number or 'q'\n")
 		return 1
 	}
-	if num < 1 || num > len(names) {
-		fmt.Fprintf(out, "invalid selection: %d (must be 1-%d or 'q')\n", num, len(names))
+	if num < 1 || num > len(modules) {
+		fmt.Fprintf(out, "invalid selection: %d (must be 1-%d or 'q')\n", num, len(modules))
 		return 1
 	}
 
-	return editOne(baseDir, out, names[num-1], edit, sync)
+	return editOne(dirs, out, modules[num-1].Name, edit, sync, commit)
 }

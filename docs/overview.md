@@ -169,6 +169,7 @@ The wired junction set is not hardcoded,
 and it is not purely the repo-wide `pathspec` list either: it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets — `_lyx` and `.lyx` — are injected in code, never read from `fabric.yaml`;
 only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from the records main branch, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
+`board.yaml` is hub-wide like it: read and written at `<BoardDir>/_lyx/config/board.yaml` and never in a worktree's `_lyx/config/`.
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
@@ -188,7 +189,7 @@ see the board's `raddle` note.
 Every junction is listed in the code worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
 The entry is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor), never a bare name: a slash-free gitignore pattern matches at any depth, which on a subpath-anchored monorepo would silently untrack same-named directories lyx never wired.
 `.lyx` additionally seeds `.lyx/` into the **records** repo's own `.git/info/exclude` at wiring time, so records-side scratch never shows as untracked dirt either.
-From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the records repo without awareness of the indirection.
+From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/loom.yaml` writes through the junction into the records repo without awareness of the indirection.
 
 A pre-existing real `.lyx` directory — every worktree that predates this junction, since several of lyx's own subsystems write `.lyx` unconditionally — is adopted rather than refused: its content is moved into the records-side target and replaced with the junction, one time, on the first `lyx fabric reconcile` after upgrade.
 `_lyx` keeps the hard refusal (fabric never moves or deletes what might be the user's hand-authored content); `.lyx` is the one exception because its content is always lyx's own machine-local scratch.
