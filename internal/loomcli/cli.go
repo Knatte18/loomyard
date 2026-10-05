@@ -11,7 +11,6 @@
 package loomcli
 
 import (
-	"errors"
 	"io"
 	"testing"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -133,14 +131,6 @@ type loomCLI struct {
 	// rowFrictionStatus is the status the Friction-Reflect row's closure recorded in this process;
 	// empty when the row did not run here. loomPostRun reports it on RunDone.
 	rowFrictionStatus string
-	// fileIssue is the filer both hooks pass to detectAndFileAnomalies, matching selfreportengine.CreateIssue.
-	// newLoomCLI assigns it, and a test that pins filing replaces it with a fake.
-	fileIssue func(title string, body *string, labels []string) (url string, number int, err error)
-}
-
-// refuseFileIssue is the filer a test binary gets from newLoomCLI: it files nothing and reports an error, so no test files a real issue.
-func refuseFileIssue(string, *string, []string) (string, int, error) {
-	return "", 0, errors.New("loomcli: filing issues is disabled under go test")
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -148,15 +138,10 @@ func refuseFileIssue(string, *string, []string) (string, int, error) {
 // of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
 // spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
-	fileIssue := selfreportengine.CreateIssue
-	if testing.Testing() {
-		fileIssue = refuseFileIssue
-	}
 	return &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
-		fileIssue:             fileIssue,
 		spec:                  &shedverbs.Spec{},
 	}
 }

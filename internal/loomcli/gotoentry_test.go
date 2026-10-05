@@ -53,8 +53,8 @@ func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
 	if entry.State != shedengine.StatePaused {
 		t.Errorf("observeEntry: State = %q; want %q", entry.State, shedengine.StatePaused)
 	}
-	if anomaly, ok := loomengine.DetectCrashResume(entry); ok {
-		t.Errorf("DetectCrashResume() = %+v, true; want no anomaly after goto", anomaly)
+	if loomengine.DetectCrashResume(entry) {
+		t.Errorf("DetectCrashResume(%+v) = true; want false after goto", entry)
 	}
 }
 
