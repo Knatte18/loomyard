@@ -392,6 +392,16 @@
 //     asynchronously", since both exit 0 either way — so Down/reap logic
 //     waits on the underlying OS process actually exiting rather than
 //     trusting any CLI exit code as a death signal.
+//   - Socket-file removal (socketfile.go, lifecycle.go): a killed tmux server can leave its
+//     `-L` socket file behind, so ensureServerGoneLocked removes it once no tmux process remains
+//     on the socket, on both the graceful and the force-reap path; Down and every other teardown
+//     reach it through that one method. The path is resolved as tmux does (`$TMUX_TMPDIR`, else
+//     `/tmp`, then `tmux-<uid>/<key>`) and removed only when it is a socket, nothing answers a
+//     connection on it and a second Lstat reports the same file. The bound: only the file for the
+//     key just killed, only inside that teardown, never a glob or sweep of the directory. A server
+//     restarting on the same key between the check and the removal is the accepted residual race.
+//     A removal failure is logged at Debug and never fails the teardown. It is a no-op on Windows,
+//     where psmux keeps no socket file.
 //   - Mouse boot pin (lifecycle.go): the engine pins "-g mouse" to the
 //     configured mouse value (default "on") on a fresh boot, right
 //     alongside remain-on-exit. Like remain-on-exit and debug_log, this is

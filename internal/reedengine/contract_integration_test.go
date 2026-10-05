@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -653,6 +654,14 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		// scratch server's only session) down, so Down's own error here is
 		// unsurprising and ignored.
 		_, _ = e.Down()
+
+		// Reed removes the socket file of the server it just tore down; the KillOnCleanup above runs
+		// after this and would hide a missed removal, so the check sits here.
+		if runtime.GOOS != "windows" {
+			if _, err := os.Lstat(filepath.Join(socketDirFromEnv(), geom.SocketKey)); err == nil {
+				t.Errorf("socket file for key %q remains after Down, want it removed", geom.SocketKey)
+			}
+		}
 	})
 
 	if _, err := e.Up(); err != nil {
