@@ -15,6 +15,7 @@ type cyclerEngine struct {
 	tokens   int
 	known    bool
 	idle     bool
+	tooShort bool
 	clear    []PaneInput
 	captures []string
 	foci     []string
@@ -27,6 +28,7 @@ func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)
 	return e.idle
 }
+func (e *cyclerEngine) PaneTooShort(string) bool          { return e.tooShort }
 func (e *cyclerEngine) ClearSessionSequence() []PaneInput { return e.clear }
 func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 	e.foci = append(e.foci, focus)
@@ -113,13 +115,14 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 }
 
 func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
-	for _, want := range []bool{true, false} {
+	// TooShort is reported only for a pane that is not idle.
+	for _, want := range []IdleProbe{{Idle: true}, {}, {TooShort: true}} {
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"the pane"}}
-		engine := &cyclerEngine{idle: want}
+		engine := &cyclerEngine{idle: want.Idle, tooShort: want.TooShort || want.Idle}
 		runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
 		got, err := runner.SessionIdle("strand-1")
 		if err != nil || got != want {
-			t.Errorf("SessionIdle = %v, %v; want %v, nil", got, err, want)
+			t.Errorf("SessionIdle = %+v, %v; want %+v, nil", got, err, want)
 		}
 		if !reflect.DeepEqual(engine.captures, []string{"the pane"}) {
 			t.Errorf("classified captures = %v, want [the pane]", engine.captures)

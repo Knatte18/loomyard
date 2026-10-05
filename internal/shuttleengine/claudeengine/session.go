@@ -20,6 +20,19 @@ const boxRuleChars = "─╭╮╰╯│"
 // boxInteriorChars are stripped from a line between the rules before judging it blank: the caret and side bars, on top of whitespace.
 const boxInteriorChars = gateCaretMarker + "│>"
 
+// boxMinRows is the fewest pane rows Claude's input box needs: the top rule, the caret line, the bottom rule and the footer under it.
+const boxMinRows = 4
+
+// PaneTooShort reports whether capture shows a pane too short to draw the input box: no caret line anywhere, and fewer rows than boxMinRows.
+// A pane of normal height that is busy or showing a dialog is never too short, whatever it draws.
+func (c *Claude) PaneTooShort(capture string) bool {
+	if strings.Contains(capture, gateCaretMarker) {
+		return false
+	}
+	rows := strings.Split(strings.TrimSuffix(capture, "\n"), "\n")
+	return len(rows) < boxMinRows
+}
+
 // IdleSession reports whether capture shows Claude idle: no turn in progress, the input box on screen, and the box empty.
 //
 // The box is located from the last line carrying gateCaretMarker, walking up and down to the first horizontal-rule line on each side.

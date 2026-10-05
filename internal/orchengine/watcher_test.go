@@ -25,6 +25,7 @@ type fakeSession struct {
 	boundary   map[string]time.Time // Turn-end message to a compaction boundary read through it; the boundary's tokens are usage's.
 	idle       bool
 	idleSeq    []bool // Consumed before idle.
+	tooShort   bool   // Reported with every probe that is not idle.
 	sendErrs   []error
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
@@ -56,13 +57,13 @@ func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.Conte
 	return shuttleengine.ContextReading{Tokens: n, Known: ok, Compacted: compacted, BoundaryAt: at}, nil
 }
 
-func (f *fakeSession) SessionIdle(string) (bool, error) {
+func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
+	idle := f.idle
 	if len(f.idleSeq) > 0 {
-		v := f.idleSeq[0]
+		idle = f.idleSeq[0]
 		f.idleSeq = f.idleSeq[1:]
-		return v, nil
 	}
-	return f.idle, nil
+	return shuttleengine.IdleProbe{Idle: idle, TooShort: !idle && f.tooShort}, nil
 }
 
 func (f *fakeSession) Send(_, text string) error {
@@ -293,6 +294,50 @@ func TestWatcher_IdleProbeFalseThenPasses(t *testing.T) {
 	e.tick()
 	if e.s.count("send:") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
+	}
+}
+
+func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *testing.T) {
+	e := newWatchEnv(t)
+	e.s.idle, e.s.tooShort = false, true
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	e.assertNoCalls()
+	st := e.state()
+	if st.Phase != PhaseIdle || st.Stuck != paneTooShortReason {
+		t.Fatalf("state = %+v, want idle stuck on the too-short reason", st)
+	}
+
+	e.s.tooShort = false
+	e.tick()
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after a probe that is not too short, want cleared", st.Stuck)
+	}
+	e.assertNoCalls()
+
+	e.s.idle = true
+	e.tick()
+	if e.s.count("send:") != 1 {
+		t.Errorf("calls = %v, want the handoff request once the pane is idle", e.s.calls)
+	}
+}
+
+func TestWatcher_PassingProbeLeavesOtherStuckReasonsAlone(t *testing.T) {
+	e := newWatchEnv(t)
+	if err := SaveState(e.paths, State{Strand: "s1", Phase: PhaseIdle, Stuck: "something else"}); err != nil {
+		t.Fatal(err)
+	}
+	e.s.idle = false
+	e.s.usage["a"] = 2000
+	e.s.events = []shuttleengine.Event{stop("a")}
+	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if got := e.state().Stuck; got != "something else" {
+		t.Errorf("Stuck = %q, want an unrelated reason untouched by the probe", got)
 	}
 }
 

@@ -34,8 +34,8 @@ type Session interface {
 	ReadEvents(guid string, offset int64) ([]shuttleengine.Event, int64, error)
 	// ContextTokens returns the context reading as of turnEnd; a reading with Known false means unreadable.
 	ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
-	// SessionIdle reports whether the session shows an empty input box with no turn in progress.
-	SessionIdle(guid string) (bool, error)
+	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
+	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 	// Send types text into the session as a new turn.
 	Send(guid, text string) error
 	// ClearSession types the provider's clear command into the session.
@@ -277,6 +277,29 @@ func (w *Watcher) markStuck(st State, reason string) error {
 	return w.save(st)
 }
 
+// paneTooShortReason is the State.Stuck text recorded while the idle probe reports a pane too short to draw an input box.
+const paneTooShortReason = "orch pane too short for the idle probe; resize or use the larger client"
+
+// probeIdle runs the idle probe, the one door every watcher probe goes through.
+// A probe reporting TooShort records paneTooShortReason in st.Stuck, saved and logged once;
+// the next probe that does not report it clears that reason, and only that reason.
+func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
+	probe, err := w.session.SessionIdle(st.Strand)
+	if err != nil {
+		return probe, err
+	}
+	switch {
+	case probe.TooShort && st.Stuck != paneTooShortReason:
+		logger.Warn("orch: pane too short for the idle probe", "phase", string(st.Phase), "strandGUID", st.Strand)
+		st.Stuck = paneTooShortReason
+		return probe, w.save(*st)
+	case !probe.TooShort && st.Stuck == paneTooShortReason:
+		st.Stuck = ""
+		return probe, w.save(*st)
+	}
+	return probe, nil
+}
+
 // storeReading records reading in st, taken through turnEnd; an unknown reading is stored as zero tokens.
 func storeReading(st *State, reading shuttleengine.ContextReading, turnEnd shuttleengine.Event) {
 	st.ReadingTurnEnd = &turnEnd
@@ -322,11 +345,11 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if now.Sub(w.newestRead) < quiet {
 		return nil
 	}
-	idle, err := w.session.SessionIdle(st.Strand)
+	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
 	}
-	if !idle {
+	if !probe.Idle {
 		return nil
 	}
 	if trigger != TriggerRequested {
@@ -385,11 +408,11 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 		return w.toIdle(st, "session asked a question during the handoff")
 	}
 	if w.seen.turnEndAfterHandoff {
-		idle, err := w.session.SessionIdle(st.Strand)
+		probe, err := w.probeIdle(&st)
 		if err != nil {
 			return err
 		}
-		if idle {
+		if probe.Idle {
 			return w.startClearing(st, now)
 		}
 	}
@@ -416,11 +439,11 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.turnEnd {
 		return w.confirm(st)
 	}
-	idle, err := w.session.SessionIdle(st.Strand)
+	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
 	}
-	if !idle {
+	if !probe.Idle {
 		return nil
 	}
 	text, err := renderHandoffRequest(w.stencilsDir, st.CycleTrigger, st.PendingHandoff)
@@ -468,12 +491,12 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 // Once idle, an unconfirmed clear is typed again before the timeout and skipped after it, and a confirmed one moves on to resuming.
 func (w *Watcher) tickClearing(st State, now time.Time) error {
 	timedOut := now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout()
-	idle, err := w.session.SessionIdle(st.Strand)
+	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
 	}
-	if !idle {
-		if timedOut {
+	if !probe.Idle {
+		if timedOut && !probe.TooShort {
 			return w.markStuck(st, "clearing timed out with the session not idle; nothing is typed until it is idle")
 		}
 		return nil
@@ -516,11 +539,11 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 	if st.PhaseInjected {
 		return nil
 	}
-	idle, err := w.session.SessionIdle(st.Strand)
+	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
 	}
-	if !idle {
+	if !probe.Idle {
 		return nil
 	}
 	if err := w.session.Send(st.Strand, st.PendingResume); err != nil {
@@ -568,11 +591,11 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	idleProbed, idle := false, false
 	probe := func() (bool, error) {
 		if !idleProbed {
-			var err error
-			if idle, err = w.session.SessionIdle(st.Strand); err != nil {
+			p, err := w.probeIdle(&st)
+			if err != nil {
 				return false, err
 			}
-			idleProbed = true
+			idle, idleProbed = p.Idle, true
 		}
 		return idle, nil
 	}

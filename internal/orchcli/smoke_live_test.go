@@ -307,8 +307,8 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 	polls := 0
 	waitFor(t, 30, "the idle probe to pass", func() bool {
 		polls++
-		idle, err := f.runner.SessionIdle(guid)
-		if err == nil && idle {
+		probe, err := f.runner.SessionIdle(guid)
+		if err == nil && probe.Idle {
 			return true
 		}
 		if polls == 30 {

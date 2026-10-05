@@ -168,6 +168,14 @@ type ContextReading struct {
 	BoundaryAt time.Time
 }
 
+// IdleProbe is a provider-neutral answer to whether a live session's pane shows the provider idle.
+type IdleProbe struct {
+	// Idle is true when the pane shows the provider's input box empty and no turn in progress.
+	Idle bool
+	// TooShort is true when the pane is too short to draw an input box, so Idle false says nothing about the session; always false when Idle is true.
+	TooShort bool
+}
+
 // SessionCycler is an optional capability beside Engine: the provider operations a caller needs to cycle a live session's context (read its usage, probe whether it is idle, clear it, compact it).
 // An Engine that also implements it lets Runner's session methods work;
 // one that does not makes them return an error naming the missing capability.
@@ -177,6 +185,8 @@ type SessionCycler interface {
 	ContextTokens(turnEnd Event) ContextReading
 	// IdleSession reports whether capture shows the provider idle: its input box present and empty, and no turn in progress.
 	IdleSession(capture string) bool
+	// PaneTooShort reports whether capture shows a pane too short to draw the provider's input box, which makes a not-idle answer from IdleSession unreliable.
+	PaneTooShort(capture string) bool
 	// ClearSessionSequence returns the key choreography that clears the live session's context.
 	ClearSessionSequence() []PaneInput
 	// CompactSessionSequence returns the key choreography that compacts the live session's context, keeping what focus names.

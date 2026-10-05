@@ -57,25 +57,29 @@ func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 	return cycler.ContextTokens(turnEnd), nil
 }
 
-// SessionIdle reports whether the live pane of the run identified by guid shows the provider idle.
-func (r *Runner) SessionIdle(guid string) (bool, error) {
+// SessionIdle probes the live pane of the run identified by guid for the provider idle.
+// TooShort is filled only for a pane that is not idle.
+func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
-		return false, r.toldErr
+		return IdleProbe{}, r.toldErr
 	}
 	cycler, err := r.sessionCycler()
 	if err != nil {
-		return false, err
+		return IdleProbe{}, err
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return false, err
+		return IdleProbe{}, err
 	}
 	capture, err := r.reed.CapturePane(guid)
 	if err != nil {
-		return false, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
+		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
 	}
-	idle := cycler.IdleSession(capture)
-	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", idle)
-	return idle, nil
+	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
+	if !probe.Idle {
+		probe.TooShort = cycler.PaneTooShort(capture)
+	}
+	logger.Debug("shuttle: session idle probe", "strandGUID", guid, "idle", probe.Idle, "tooShort", probe.TooShort)
+	return probe, nil
 }
 
 // ClearSession plays the provider's clear-session key choreography into the live pane of the run identified by guid.

@@ -568,6 +568,12 @@
 //     select-layout on anything other than latest. Rejected: largest breaks attach-time layout for
 //     every operator with a second client open; smallest turns an intermittent artifact into a
 //     standing one; manual abandons client-following and is already a chain-suppressing value.
+//   - The orch pane under the same policy: a smaller client attached to the orch session can shrink the
+//     window below the rows the input box needs, and the orch watcher's idle probe then reads no box
+//     and records the pane as too short (internal/orchengine's State.Stuck), holding every cycle. The
+//     policy is kept rather than changed or conditioned for the orch pane, since no policy avoids a
+//     mismatch with two clients of different sizes. The window returns to the larger client's size at
+//     that client's next keystroke, which clears the hold at the next passing probe.
 //   - The repaint entry (windowsize.go's installResizePinsLocked): none shipped. The measurement
 //     gate (the Measurement record bullet above) rejected both candidates on the same criterion — no
 //     repeated hook fire — so installResizePinsLocked installs no forced-repaint entry into the

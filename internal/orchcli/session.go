@@ -38,7 +38,7 @@ func (s runnerSession) ContextTokens(turnEnd shuttleengine.Event) (shuttleengine
 }
 
 // SessionIdle delegates to Runner.SessionIdle, which captures the pane through tmux.
-func (s runnerSession) SessionIdle(guid string) (bool, error) {
+func (s runnerSession) SessionIdle(guid string) (shuttleengine.IdleProbe, error) {
 	logger.Debug("orch: session idle probe", "strandGUID", guid)
 	return s.runner.SessionIdle(guid)
 }

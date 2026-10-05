@@ -80,6 +80,10 @@
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// Every idle probe goes through one watcher helper.
+// A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
+// The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
+//
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
 // In compact mode a hard trigger is held by the same rule, and a requested cycle never is.
