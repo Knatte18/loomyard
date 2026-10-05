@@ -15,6 +15,7 @@ The only legitimate reason to leave a finding unfixed is something you genuinely
 or a capability you do not have);
 even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section.
 Never leave a finding unfixed just because it looked small — small findings are usually the cheapest to fix, not a reason to skip them.
+A fix adds a test only when the finding is a coverage gap; for any other finding it corrects the existing test that asserted the wrong thing, per `PATTERN-test-economy`.
 
 ## Fix-scope rules — your write surface and git discipline for job B
 
