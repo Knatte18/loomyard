@@ -192,6 +192,7 @@ var wordingClaims = []stencilClaims{
 		{must: "`_lyx/plan/`", why: "a later phase's artifact is fenced"},
 		{must: "no `git add`", why: "mutating git is fenced"},
 		{must: "do not repair it", why: "a broken environment is reported, never repaired"},
+		{must: "not a test to write", why: "a must-cover scenario is a behavior, which an existing test or table row may meet"},
 		{must: "lyx board list", why: "Step 1 reads the wider board"},
 		{must: "{{.decision_record_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
 		{must: "{{.support_log_path}}", section: discussionFenceSection, why: "the fence names the output files by marker, so the permitted set cannot drift from the paths Step 5 writes"},
@@ -228,6 +229,7 @@ var wordingClaims = []stencilClaims{
 		{must: "not whether it gets fixed", why: "every finding is fixed, severity decides only the order"},
 		{must: "never push", why: "the fixer commits to code source and never pushes"},
 		{must: "nothing fixed", why: "the fixer report states when nothing was fixed"},
+		{must: "adds a test only when the finding is a coverage gap", why: "a fix grows the suite only for a coverage gap, per PATTERN-test-economy"},
 	}},
 	{"bouncer-template-seed.md", BouncerTemplateSeed, focusEntryClaims()},
 	{"bouncer-template-judge.md", BouncerTemplateJudge, append([]claim{
