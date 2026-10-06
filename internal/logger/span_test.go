@@ -3,175 +3,127 @@
 // records versus open/close records.
 // Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one
 // call across cases, per sink.go's SetDurableSinkDir doc.
+// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the
+// output writer, the durable sink).
 
 package logger
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestSpan_NestingProducesDottedPath(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-	t.Cleanup(func() { SetVerbosity(0) })
+// TestSpan_PathsAreExplicitAndIndependentOfSiblings pins that a span's path comes from its explicit
+// parent chain: nesting yields a dotted path, and neither an ended nor a never-ended sibling shows
+// up in another span's path.
+//
+//testtiming:keep pins the dotted span path and sibling independence on stderr, which TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords asserts only for the durable sink
+func TestSpan_PathsAreExplicitAndIndependentOfSiblings(t *testing.T) {
+	tests := []struct {
+		name        string
+		logFrom     func() *Span
+		wantPath    string
+		wantAbsence string
+	}{
+		{
+			name: "nesting produces a dotted path",
+			logFrom: func() *Span {
+				return StartSpan("a").Child("b").Child("c")
+			},
+			wantPath: "span=a.b.c",
+		},
+		{
+			name: "ending a sibling leaves the other span's path intact",
+			logFrom: func() *Span {
+				root := StartSpan("parent")
+				first := root.Child("first")
+				sibling := root.Child("sibling")
+				first.End(nil)
+				return sibling
+			},
+			wantPath:    "span=parent.sibling",
+			wantAbsence: "span=parent.first",
+		},
+		{
+			name: "a never-ended child does not corrupt a later sibling's path",
+			logFrom: func() *Span {
+				root := StartSpan("parent")
+				_ = root.Child("first")
+				return root.Child("second")
+			},
+			wantPath:    "span=parent.second",
+			wantAbsence: "span=parent.first",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := withCapturedOutput(t)
+			SetVerbosity(2)
+			t.Cleanup(func() { SetVerbosity(0) })
+			span := tt.logFrom()
 
-	root := StartSpan("a")
-	child := root.Child("b")
-	grandchild := child.Child("c")
+			buf.Reset()
+			span.Info("line from the span under test")
 
-	buf.Reset()
-	grandchild.Info("innermost line")
-
-	if !strings.Contains(buf.String(), "span=a.b.c") {
-		t.Errorf("output = %q; want it to contain span=a.b.c", buf.String())
+			if !strings.Contains(buf.String(), tt.wantPath) {
+				t.Errorf("output = %q; want it to contain %s", buf.String(), tt.wantPath)
+			}
+			if tt.wantAbsence != "" && strings.Contains(buf.String(), tt.wantAbsence) {
+				t.Errorf("output = %q; want it to NOT contain %s", buf.String(), tt.wantAbsence)
+			}
+		})
 	}
 }
 
-func TestSpan_EndDoesNotCorruptSiblingSpan(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	root := StartSpan("parent")
-	firstChild := root.Child("first")
-	sibling := root.Child("sibling")
-
-	firstChild.End(nil)
-
-	buf.Reset()
-	sibling.Info("sibling line after first child ended")
-
-	if !strings.Contains(buf.String(), "span=parent.sibling") {
-		t.Errorf("output = %q; want it to contain span=parent.sibling, unaffected by the ended sibling", buf.String())
-	}
-	if strings.Contains(buf.String(), "span=parent.first") {
-		t.Errorf("output = %q; want it to NOT contain the ended sibling's path span=parent.first", buf.String())
-	}
-}
-
-func TestSpan_UnendedChildDoesNotCorruptSiblingPath(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	root := StartSpan("parent")
-	// firstChild is deliberately never ended.
-	_ = root.Child("first")
-	second := root.Child("second")
-
-	buf.Reset()
-	second.Info("second child line")
-
-	if !strings.Contains(buf.String(), "span=parent.second") {
-		t.Errorf("output = %q; want it to contain exactly span=parent.second", buf.String())
-	}
-	if strings.Contains(buf.String(), "span=parent.first") {
-		t.Errorf("output = %q; want it to NOT contain the unended first child's path", buf.String())
-	}
-}
-
-func TestSpan_EndWithErrorRecordsErrorText(t *testing.T) {
+// TestSpan_EndWithErrorReachesBothSinksAtWarn pins that End(err) records the error text at Warn on
+// stderr and in the durable sink.
+func TestSpan_EndWithErrorReachesBothSinksAtWarn(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
 	buf := withCapturedOutput(t)
 	SetVerbosity(2)
 	t.Cleanup(func() { SetVerbosity(0) })
 
 	sp := StartSpan("failing")
 	buf.Reset()
-
-	wantErr := errors.New("boom")
-	sp.End(wantErr)
+	sp.End(errors.New("boom"))
 
 	if !strings.Contains(buf.String(), "boom") {
-		t.Errorf("output = %q; want the close record to contain the error text %q", buf.String(), wantErr.Error())
+		t.Errorf("output = %q; want the close record to contain the error text %q", buf.String(), "boom")
 	}
 	if !strings.Contains(buf.String(), "level=WARN") {
 		t.Errorf("output = %q; want the close record for a non-nil error to be at Warn level", buf.String())
 	}
-}
-
-// TestSpan_OpenCloseRecordsAbsentFromDurableSink verifies open/close records don't reach the
-// durable sink.
-func TestSpan_OpenCloseRecordsAbsentFromDurableSink(t *testing.T) {
-	dir := t.TempDir()
-	SetDurableSinkDir(dir)
-	withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	sp := StartSpan("root")
-	child := sp.Child("child")
-	child.End(nil)
-	sp.End(nil)
-
-	Info("unrelated info line opens the sink")
-
-	files := listSinkDirFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	content := string(data)
-	if strings.Contains(content, "span started") || strings.Contains(content, "span ended") {
-		t.Errorf("durable sink content = %q; want no span open/close records (they emit at Debug)", content)
-	}
-}
-
-// TestSpan_EndWithErrorReachesDurableSink verifies End(err) reaches the durable sink.
-func TestSpan_EndWithErrorReachesDurableSink(t *testing.T) {
-	dir := t.TempDir()
-	SetDurableSinkDir(dir)
-	withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	sp := StartSpan("failing-root")
-	sp.End(errors.New("durable boom"))
-
-	files := listSinkDirFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "span ended") || !strings.Contains(content, "durable boom") {
+	content := readSoleSinkFile(t, dir)
+	if !strings.Contains(content, "span ended") || !strings.Contains(content, "boom") {
 		t.Errorf("durable sink content = %q; want it to contain the End(err) close record with the error text", content)
 	}
 }
 
-// TestSpan_InfoCarriesSpanPathIntoDurableSink verifies Info carries span= into the durable sink.
-func TestSpan_InfoCarriesSpanPathIntoDurableSink(t *testing.T) {
+// TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords pins that an Info record inside a
+// span carries span=<path> into the durable sink while the span's open and close records, which emit
+// at Debug, stay out of it.
+//
+//testtiming:keep pins that open and close records stay out of the durable sink, which its covering tests do not assert
+func TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	withCapturedOutput(t)
 	SetVerbosity(0)
 	t.Cleanup(func() { SetVerbosity(0) })
 
-	sp := StartSpan("root").Child("work")
-	sp.Info("doing the work")
+	root := StartSpan("root")
+	work := root.Child("work")
+	work.Info("doing the work")
+	work.End(nil)
+	root.End(nil)
 
-	files := listSinkDirFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	content := string(data)
+	content := readSoleSinkFile(t, dir)
 	if !strings.Contains(content, "doing the work") || !strings.Contains(content, "span=root.work") {
 		t.Errorf("durable sink content = %q; want the Info line to carry span=root.work", content)
 	}
 	if strings.Contains(content, "span started") || strings.Contains(content, "span ended") {
-		t.Errorf("durable sink content = %q; want no span open/close records present", content)
+		t.Errorf("durable sink content = %q; want no span open/close records (they emit at Debug)", content)
 	}
 }
