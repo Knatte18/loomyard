@@ -76,7 +76,8 @@ type loadBlock struct {
 	} `json:"input"`
 }
 
-// blocks returns the content blocks of e's message; a plain string content is one text block.
+// blocks returns the content blocks of e's message.
+// A plain string content is one text block.
 func (e loadEntry) blocks() []loadBlock {
 	var text string
 	if json.Unmarshal(e.Message.Content, &text) == nil {

@@ -722,7 +722,8 @@ func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []st
 }
 
 // tickResuming walks the reload sequence: the skills step, the retry step when skills were left missing, then the pointer.
-// A skills or retry step is confirmed by a turn end read after it was typed and settled from that turn; past its timeout, from its first typing, every skill it loads is skipped with no retry.
+// A skills or retry step is confirmed by a turn end read after it was typed, and settled from that turn.
+// Past its timeout, from its first typing, every skill it loads is skipped with no retry.
 // The pointer step ends the phase at its first turn end and times out the same way.
 // Nothing is typed unless the idle probe passed on the same tick, and a step typed before a restart is typed again until confirmed.
 func (w *Watcher) tickResuming(st State, now time.Time) error {

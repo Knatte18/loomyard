@@ -35,7 +35,7 @@ type fakeSession struct {
 	onSend     func()
 	onAlive    func()
 
-	skillLoads  map[string]shuttleengine.SkillLoadReport // Turn-end message to the report ClassifySkillLoad answers; a missing message reports every skill loaded.
+	skillLoads  map[string]shuttleengine.SkillLoadReport // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
 	autoCompact map[string]time.Time                     // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
 }
 

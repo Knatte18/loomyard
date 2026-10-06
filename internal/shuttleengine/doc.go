@@ -98,7 +98,8 @@
 // The run's events offset ends past every load turn end, the retry's included, so Wait never reads one as the run asking.
 // A pane that dies meanwhile is a died startup.
 // An empty Skills list changes nothing.
-// Runner.LoadSkills and Runner.ClassifySkillLoad are the same capability's per-tick primitives for a caller reloading a live session: the first sends the load message for a list, the second classifies the turn end that followed; neither carries provider command text.
+// Runner.LoadSkills and Runner.ClassifySkillLoad are the same capability's per-tick primitives for a caller reloading a live session: the first sends the load message for a list, the second classifies the turn end that followed.
+// Neither carries provider command text.
 //
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.

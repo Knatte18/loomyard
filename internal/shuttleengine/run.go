@@ -453,7 +453,8 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 // loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt:
 // it loads spec.Skills in one turn, retries the skills the model did not load once, then delivers promptLine through the verified send path.
-// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning, and an unreadable turn is confirmed unverified; none fails or hangs the launch.
+// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning, and an unreadable turn is confirmed unverified.
+// None of these fails or hangs the launch.
 // The run's events offset ends past every load turn end, the retry's included, so Wait never reads one as the run asking.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
@@ -485,7 +486,8 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 }
 
 // settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.
-// It returns the skills a first turn found missing, which the caller retries once; after the retry (final), still-missing skills are skipped with cause "not loaded" and none is returned.
+// It returns the skills a first turn found missing, which the caller retries once.
+// After the retry (final), still-missing skills are skipped with cause "not loaded" and none is returned.
 // died is true when the strand's pane is no longer live.
 func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time.Duration, final bool) (missing []string, died bool, err error) {
 	guid := run.state.StrandGUID

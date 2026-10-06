@@ -180,7 +180,8 @@
 // A clear, a compaction and an auto-compaction each lose the session's skills and role, so the resuming phase restores them: a skills step loads the whole orch skill list in one turn, an optional retry step loads what that turn left missing, and the one-line pointer follows.
 // `start` and `--adopt` load the same skills through the launch spec.
 // The step, the skills the retry step loads, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
-// `reload_step` is 0 for the skills step and -1 for the retry step; every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry`.
+// `reload_step` is 0 for the skills step and -1 for the retry step.
+// Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry`.
 //
 //   - The skills step types one provider-built message asking the model to load every skill, only when the idle probe passed on the same tick.
 //     Its first turn end after the typing is classified against the transcript.
@@ -194,7 +195,8 @@
 //     The move into it persists the step and `reload_retry` in one save, so a restart before the move reads the same turn end again and a restart after it never retries twice.
 //   - The pointer step types State.PendingResume under the same rule and ends the phase at its first turn end.
 //     Its timeout runs from its first typing and returns to idle with `resume timed out`.
-//   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout; loading a skill twice costs one turn and changes nothing.
+//   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
+//     Loading a skill twice costs one turn and changes nothing.
 //
 // The sequence has three entry points, each entered only on a tick whose idle probe passed:
 //
