@@ -32,9 +32,8 @@ func mustReflowWidth(t *testing.T, src string, maxWidth int) string {
 	return out
 }
 
-// TestReflowSource_ReflowsDocComments covers every doc-comment kind that is reflowed: an
-// exported func, a package doc, a file header with a package doc, a grouped const spec, and a
-// hard-wrapped comment that is rejoined before it is split again.
+// TestReflowSource_ReflowsDocComments covers every doc-comment kind that is reflowed.
+// Those are an exported func, a package doc, a file header with a package doc, a grouped const spec, and a hard-wrapped comment that is rejoined before it is split again.
 func TestReflowSource_ReflowsDocComments(t *testing.T) {
 	t.Parallel()
 
@@ -131,9 +130,8 @@ package pkg
 	}
 }
 
-// TestReflowSource_LeavesUntouched covers every source the tool must return byte-for-byte:
-// out-of-scope declarations and comment shapes, generated files, an already-reflowed comment,
-// and the width fallback when it is disabled or every line already fits.
+// TestReflowSource_LeavesUntouched covers every source the tool must return byte-for-byte.
+// Those are out-of-scope declarations and comment shapes, generated files, an already-reflowed comment, and the width fallback when it is disabled or every line already fits.
 func TestReflowSource_LeavesUntouched(t *testing.T) {
 	t.Parallel()
 
