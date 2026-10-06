@@ -33,6 +33,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
+//testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, collapsed and minimum full rows, debug_log off and mouse on; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
@@ -140,35 +141,35 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_StaleHeaderBlockIsIgnored pins the no-removal-logic decision: an un-reconciled
-// reed.yaml that still carries a stale header: block alongside the new status_line: and selvage:
-// blocks must unmarshal cleanly, with the stale block simply ignored because nothing unmarshals it
-// into Config any more.
-func TestLoadConfig_StaleHeaderBlockIsIgnored(t *testing.T) {
-	tmpDir := t.TempDir()
-	staleContent := reedengine.ConfigTemplate() + "\nheader:\n  template: \"stale\"\n  height_rows: 5\n"
-	seedLyxConfig(t, tmpDir, "reed", staleContent)
-
-	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins the no-removal-logic decision: an un-reconciled
+// reed.yaml that still carries a stale header: block alongside the new status_line: and selvage: blocks,
+// or the retired strand_name key, must unmarshal cleanly, with the old keys simply ignored
+// because nothing unmarshals them into Config any more.
+//
+//testtiming:keep pins an older reed.yaml with a stale header block or the retired strand_name key loading cleanly with the rest of the config undisturbed; its covering tests run this code without asserting it
+func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra string
+	}{
+		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n"},
+		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n"},
 	}
-	if cfg.Selvage.HeightRows != 1 {
-		t.Errorf("Selvage.HeightRows = %d, want 1 (stale header: block must not override it)", cfg.Selvage.HeightRows)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate()+tt.extra)
 
-// An older reed.yaml still carries the retired strand_name key; the non-strict decode ignores it.
-func TestLoadConfig_RetiredStrandNameKeyIsIgnored(t *testing.T) {
-	tmpDir := t.TempDir()
-	oldContent := reedengine.ConfigTemplate() + "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n"
-	seedLyxConfig(t, tmpDir, "reed", oldContent)
-
-	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if cfg.Width != 220 {
-		t.Errorf("Width = %d, want 220 (a retired key must not disturb the rest)", cfg.Width)
+			cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Selvage.HeightRows != 1 {
+				t.Errorf("Selvage.HeightRows = %d, want 1 (an old key must not override it)", cfg.Selvage.HeightRows)
+			}
+			if cfg.Width != 220 {
+				t.Errorf("Width = %d, want 220 (an old key must not disturb the rest)", cfg.Width)
+			}
+		})
 	}
 }

@@ -3227,218 +3227,106 @@ No coverage:
 
 ## internal/reedengine
 
-330 tests, wall 15.46s, serial 15.28s.
+212 tests, wall 13.54s, serial 13.49s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate` | yes |
-| `TestPlanLayout_HiddenStrandExcludedFromPlacement` | `TestAttachArgv_ChainGate`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate` | yes |
-| `TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery` | `TestAttachArgv_ChainGate` | yes |
-| `TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestApplyLayoutLockedOpts_SkipWhenBoxEquals` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestReapplyLayout_HookProbeExactMatchOnly`, `TestLiveBoxLocked` | yes |
-| `TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestAnyPlacedStrand` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
-| `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestWatchLoop_FailuresNeverKillTheLoop`, `TestLiveBoxLocked` | yes |
-| `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`, `TestLiveBoxLocked` | yes |
-| `TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
-| `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`, `TestLiveBoxLocked` | yes |
-| `TestPaneIDsByTop_SortsByVerticalPosition` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestAttachArgv_ChainedShape` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_ToldBoxAndNoLiveQuery` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_ReservedRows` | `TestAttachArgv_ChainGate`, `TestAttachArgv_ReservedRowsFloor`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_NeverMutatesTheSessionOrPersistsState` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
-| `TestAttachArgv_DegradedPathsInstallNoResizePinHook` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
-| `TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | yes |
-| `TestDirectory_MapsEachStrandToItsRow` | `TestDirectory_DoesNotRepairOrPersist`, `TestMarkRetiring_RoundTripsThroughStateAndStatus`, `TestDirectoryRows_ColdSessionIsAllDormant` | no |
-| `TestDirectory_DoesNotRepairOrPersist` | `TestDirectory_MapsEachStrandToItsRow` | yes |
-| `TestDirectoryRows_ColdSessionIsAllDormant` | `TestDirectory_MapsEachStrandToItsRow` | yes |
-| `TestEndSessionByName_SiblingsRemainKeepsServer` | `TestEndSessionByName_LastSessionKillsServer` | yes |
-| `TestCleanClaudeEnv` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestCleanClaudeEnv_NoClaudeKeysUnchanged` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestParsePaneGeneration` | `TestAdoptPaneGenerationLocked` | yes |
-| `TestPaneGeneration_RecordedAndSameIncarnation` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestRemoveStrand_DeletesLeafScriptKeepsSibling` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
-| `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | `TestRemoveStrand_DeletesLeafScriptKeepsSibling`, `TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved` | no |
-| `TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor` | `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
-| `TestRemoveStrand_NoScriptSucceedsSilently` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts`, `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
-| `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact` | `TestUp_ValidWatchdogValuesPassTheBootCheck`, `TestPinGeometryOptionsLocked` | yes |
-| `TestUp_ValidWatchdogValuesPassTheBootCheck` | `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate`, `TestPinGeometryOptionsLocked_HookLifecycle` | no |
-| `TestStripAgentNameEnv_DropsNameAndParentOnly` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestWithOpLock_PathIsUnderDotLyx` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithOpLock_SerializesConcurrentCalls` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithOpLock_ReacquireAfterReleaseSucceeds` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestEngine_SocketAndSessionName` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithOpLock_QuietWhenTheLockFileSurvives` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithTryOpLock_RunsFnOnAFreeLock` | `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue` | `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestNewGUID_UniqueAndHex` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestPlanTitleRepairs` | `TestDirectory_MapsEachStrandToItsRow` | yes |
-| `TestRepairNames_DriftedTitleIsRewrittenAndLogged` | `TestNaming_RepairNamesRestoresAHandChangedTitle`, `TestRepairNames_SessionNameRenamedOnIdlePane` | yes |
-| `TestRepairNames_MatchingTitleIsLeftAlone` | `TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID` | yes |
-| `TestReapSessionKill` | `TestEndSessionByName_LastSessionKillsServer` | yes |
-| `TestReapSessionPanes` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv`, `TestEndSessionByName_LastSessionKillsServer` | yes |
-| `TestReapSession_CallOrdering` | `TestLaunchScript_SourcedScriptRunsInThePaneShellScope`, `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv`, `TestEndSessionByName_LastSessionKillsServer` | yes |
-| `TestPaneCreationSitesRouteThroughThePreludeChokepoint` | `TestSelvageIdentifiersConfinedToSelvagePane` | yes |
-| `TestLaunchStrandLockedStillComposesThePrelude` | `TestSelvageIdentifiersConfinedToSelvagePane` | yes |
-| `TestPaneBinPrelude_ComposesPrependThenExport` | `TestComposePaneLaunchLine_NameExports` | no |
-| `TestComposePaneLaunchLine_PreludeThenCommand` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable` | yes |
-| `TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestComposePaneLaunchLine_NameExports` | `TestNaming_TaskWorktreeStrandNameTitleAndEnv`, `TestPaneBinPrelude_ComposesPrependThenExport` | yes |
-| `TestComposePaneLaunchLine_ExportsSurviveAnExecutableError` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable`, `TestNaming_TaskWorktreeStrandNameTitleAndEnv`, `TestPaneBinPrelude_ComposesPrependThenExport` | yes |
-| `TestComposePaneLaunchLine_DashLeadingLineStillRoundTripsThroughSendKeysLiteralArg` | `TestMultiplexerContract` | yes |
-| `TestStageLaunchScript_RegenerateReplacesContent` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStageLaunchScript_FileMode` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStageLaunchScript_EmptyLine` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStageLaunchScript_WriteFailureDegrades` | `TestLaunchStrandLocked_WriteFailureSendsTheFullLine` | no |
-| `TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestDescendantClosure` | `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
-| `TestReapplyLayout_GuardInheritance` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestReapplyLayout_FocusIsNeverMoved` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestReapplyLayout_Deferral` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestReapplyLayout_BoxEqualityGuard` | `TestWatchLoop_DeferralCostsNoBudget`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestReapplyLayout_DegradedBox` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestLiveBoxLocked` | yes |
-| `TestReapplyLayout_ProbeOrdering` | `TestReapplyLayout_HookProbeExactMatchOnly`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestReapplyLayout_ProbeHookFalseAsksNothing` | `TestReapplyLayout_HookProbeExactMatchOnly`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestReapplyLayout_PersistsNothing` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux` | `TestLaunchStrandLocked_RelaunchRegeneratesTheScript`, `TestAddStrandUnless_NotLiveAdds`, `TestAddStrand_EmptyCmdLeavesALivePane` | no |
-| `TestClearConflictingPaneBindings` | `TestMarkRetiring_RoundTripsThroughStateAndStatus`, `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` | yes |
-| `TestMoveStrandTo` | `TestMoveStrandTo_NoOps`, `TestReplaceStrand_KeepsTopSlotAtCollapsedRows` | yes |
-| `TestMoveStrandTo_NoOps` | `TestMoveStrandTo`, `TestResolveLivePaneID` | no |
-| `TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestRemoveStrandLocked_UnknownGUIDWrapsErrUnknownStrand` | `TestRemoveStrandLocked_UnknownGuidRejected` | yes |
-| `TestSelvageIdentViolations_ExemptionsAndFlags` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestNewReapPolicy_ThreeQuestionsAssertedIndependently` | `TestPlanReconcile` | yes |
-| `TestSelvageRenderParams` | `TestAttachArgv_ChainGate` | yes |
-| `TestSeedSelvageClaim` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestClearSelvagePaneBinding` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestBottommostPaneID` | `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout` | yes |
-| `TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit` | `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand` | yes |
-| `TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand` | `TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit` | no |
-| `TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag` | `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand`, `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout` | yes |
-| `TestServerName_Deterministic` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestServerName_SocketSafe` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestServerName_BoundedForALongHubBasename` | `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
-| `TestTruncateAtRuneBoundary` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestServerName_DistinctForDistinctHubsSharingBasename` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestServerName_HasHubBasenameAndPrefix` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestSessionName_IsWorktreeBasename` | `TestAddStrandLocked_UnknownParentRejected` | yes |
-| `TestSanitizeSessionName` | `TestSanitizeSessionName_OutputAlwaysPassesValidation` | yes |
-| `TestSanitizeSessionName_OutputAlwaysPassesValidation` | `TestAddStrandUnless_LiveNamedSkips`, `TestSanitizeSessionName` | no |
-| `TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape`, `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
-| `TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile` | `TestAddStrandUnless_LiveNamedSkips`, `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape`, `TestValidateToldWorktreeRootLive` | yes |
-| `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape` | `TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | no |
-| `TestWithOpLock_SucceedsForTheStandaloneFirstRunShape` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestWithOpLock_SucceedsForTheHubFirstRunShape` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestPlanLogPrune` | `TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestRemoveSocketFileOnceGone` | `TestRemoveStaleSocket`, `TestEndSessionByName_LastSessionKillsServer` | yes |
-| `TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAddStrand_PersistFailureLeavesNoScript`, `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity` | yes |
-| `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity` | no |
-| `TestSendKeysLiteralArg` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestMultiplexerContract` | yes |
-| `TestValidateSplitCreatedNewPane` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure` | yes |
-| `TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestLaunchStrandLocked_RelaunchRegeneratesTheScript` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux` | yes |
-| `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestComposePaneLaunchLine_ExportsSurviveAnExecutableError` | no |
-| `TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestLaunchStrandLocked_WriteFailureSendsTheFullLine` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestStageLaunchScript_WriteFailureDegrades` | yes |
-| `TestAddStrandLocked_FailedSendLeavesNoScript` | `TestAddStrand_PersistFailureLeavesNoScript` | yes |
-| `TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestSpawnWatchdog_SuppressedReturnsWithoutSpawning` | `TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning` | no |
-| `TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning` | `TestSpawnWatchdog_SuppressedReturnsWithoutSpawning` | yes |
-| `TestLoadState_AbsentFileReturnsNilNil` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestSaveState_ThenLoadState_RoundTrips` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestLoadState_CorruptFileErrors` | `TestAddStrandUnless_LiveNamedSkips`, `TestLoadState_UnreadableFileIsActionable` | yes |
-| `TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStatusLineText_EmptyTemplateRendersEmbeddedDefault` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStatusLineText_ConfiguredTemplateRendersFromConfig` | `TestPinGeometryOptionsLocked` | yes |
-| `TestStatusLineText_ConfiguredTemplateRendersAllThreeTokens` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestValidateStatusLine_UnknownTopLevelTokenErrors` | `TestPinGeometryOptionsLocked`, `TestUp_ValidWatchdogValuesPassTheBootCheck` | yes |
-| `TestValidateStatusLine_GoodTemplateReturnsNil` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestPinGeometryOptionsLocked` | yes |
-| `TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
-| `TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
-| `TestAddStrandLocked_KnownParentAccepted` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestGuidByName` | yes |
-| `TestNeedsLaunchOnAdd` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestNeedsLaunchOnSurface` | `TestUpdateStrandLocked_HiddenToHidden_NoOpNoLaunch` | yes |
-| `TestUpdateStrandLocked_UnknownGuidRejected` | `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
-| `TestRemoveStrandLocked_UnknownGuidRejected` | `TestRemoveStrandLocked_UnknownGUIDWrapsErrUnknownStrand` | no |
-| `TestValidateIfAbsent` | `TestAddStrandUnless_LiveNamedSkips`, `TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact` | yes |
-| `TestAddStrand_IfAbsent_MatchedAliveNoOps` | `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName` | yes |
-| `TestAddStrand_IfAbsent_HiddenOnlyNoOps` | `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure`, `TestClassifyIfAbsent` | yes |
-| `TestLiveStrandNamed` | `TestAddStrandUnless_LiveNamedSkips`, `TestAddStrandUnless_NotLiveAdds` | no |
-| `TestAddStrandUnless_NotLiveAdds` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestAddStrandUnless_LiveNamedSkips`, `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux`, `TestLiveStrandNamed` | yes |
-| `TestStrandNameLocked_FormsAndNumbersRoles` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
-| `TestStrandNameLocked_DormantStrandStillCounts` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
-| `TestStrandNameLocked_LegacyNameHoldsNothing` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAddStrandUnless_UnformableNameRefusesBeforeTmux`, `TestGuidByName_RoleSegmentFullNameAndLegacyName` | yes |
-| `TestStrandNameLocked_EmptySlugGivesTwoSegments` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestNaming_EmptySlugGivesShortnameAndRole` | yes |
-| `TestStrandNameLocked_DefaultRole` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
-| `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName` | `TestAddStrand_IfAbsent_MatchedAliveNoOps` | no |
-| `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | `TestAddStrand_PersistFailureLeavesNoScript`, `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | `TestUpdateStrandLocked_UnknownGuidRejected`, `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | no |
-| `TestAlivePanePIDs` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` | yes |
-| `TestSessionReapRoots` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestPaneIDsInSession` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` | yes |
-| `TestRemoveStrand_NeverKillsAPaneOutsideThisSession` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestLaunchScript_SourcedScriptRunsInThePaneShellScope` | yes |
-| `TestWatchdogOption` | `TestPinGeometryOptionsLocked_HookLifecycle` | yes |
-| `TestWatchdogTemplateDefault_BothGOOS` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestResizeHookCommand_Posix` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestResizeHookCommand_Pwsh` | `TestResizeHookCommand_PathWithSpace` | no |
-| `TestResizeHookCommand_PathWithSpace` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestResizeHookCommand_Pwsh` | yes |
-| `TestTmuxQuoteValue` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestResizeSignalPath` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestWatchDefaultTiming_MatchesTheSixConstants` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestTickerPeriodFor_AnswersPerModeCadence` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
-| `TestWatchState_SingleSignalWaitsThenApplies` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_CoalescesABurstIntoOneApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_SignalInsideQuietRestartsIt` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_SucceededClearsTheOwedApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_FailedEscalatesAndCaps` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_StreakResetsOnSuccess` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestWatchState_StreakResetsOnFreshSignal` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
-| `TestWatchState_DeferredChangesNothing` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchState_FreshSignalAfterExhaustedStreakReArms` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
-| `TestWatchLoop_DisabledNeverReturnsWhileCtxLive` | `TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | yes |
-| `TestWatchLoop_StaleSignalFileRemovedAtStart` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWatchLoop_PollModeByDefault` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestWatchLoop_ModePromotion` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWatchLoop_NeverDemotes` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWatchLoop_UndecidedProbeDoesNotGuess` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWatchLoop_SignalConsumedByRemovalBeforeTheApply` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
-| `TestWatchLoop_TakeEffectBoundary` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
-| `TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
-| `TestWatchLoop_NonSentinelFailureDoesNotGoDormant` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_DegradedPathStillConverges` | yes |
-| `TestParseWindowSize` | `TestLiveBoxLocked` | yes |
-| `TestLiveBoxLocked` | `TestApplyLayoutLockedOpts_SkipWhenBoxEquals`, `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout`, `TestParseWindowSize` | no |
-| `TestReservedRowsFromStatus` | `TestAttachArgv_ChainGate`, `TestAttachArgv_ReservedRowsFloor`, `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
-| `TestWindowSizeAllowsChain` | `TestAttachArgv_ChainGate` | yes |
-| `TestEscapeStatusText` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStatusLeftLength` | `TestStatusLeftLength_EscapeThenMeasureOrderMatters` | yes |
-| `TestStatusLeftLength_EscapeThenMeasureOrderMatters` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestStatusLeftLength` | no |
-| `TestReadStatusRowsLocked` | `TestAttachArgv_ChainGate` | yes |
-| `TestReadWindowSizeLatestLocked` | `TestAttachArgv_ChainGate` | yes |
-| `TestResizePinHookArgvs` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestResizePinHookArgvs_SignalEntry` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestResizePinHookArgvs_NoRepaintEntryShips` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply`, `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear` | no |
-| `TestLoadConfig_TemplateDefaultsResolve` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestLoadConfig_StaleHeaderBlockIsIgnored` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestLoadConfig_RetiredStrandNameKeyIsIgnored` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+No candidates.
+
+Kept:
+
+- `TestPlanLayout_MatchesRenderRules`: pins planLayout producing the layout and focus render.Rules gives for a canonical below-parent chain and for a hidden strand, laying out against the told box rather than the configured size and issuing no tmux query; its covering tests run this code without asserting it
+- `TestApplyLayoutLocked_GuardSkips`: pins both apply entry points issuing no tmux call at all when fewer than two panes are live or no strand owns a present pane, the Opts form returning the zero result; its covering tests run this code without asserting it
+- `TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell`: pins a stale Selvage pane id rendering exactly the no-Selvage plan and a present dead Selvage still holding a layout cell; its covering tests run this code without asserting it
+- `TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane`: pins SkipFocus issuing select-layout without select-pane while the zero options and the applyLayoutLocked wrapper issue both; its covering tests run this code without asserting it
+- `TestApplyLayoutLockedOpts_SkipWhenBoxEquals`: pins the box-equality guard: an equal live-observed box suppresses select-layout and reports the observed box, a differing box applies, and a degraded fallback box never satisfies the guard; its covering tests run this code without asserting it
+- `TestAnyPlacedStrand`: pins which strand shapes count as placed: bound and present yes, absent pane, unbound and hidden no; its covering tests run this code without asserting it
+- `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout`: pins the order of one apply's calls: select-layout, then only set-hook calls starting with the -u clear, then select-pane; its covering tests run this code without asserting it
+- `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear`: pins the clear being unconditional on a zero-pin plan and the resize-signal entry riding the watchdog setting; its covering tests run this code without asserting it
+- `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply`: pins a failing set-hook leaving the apply successful; its covering tests run this code without asserting it
+- `TestPaneIDsByTop_SortsByVerticalPosition`: pins the pane ids coming back ordered by vertical position from an unordered input; its covering tests run this code without asserting it
+- `TestAttachArgv_PreflightOnAKnownGoodSession`: pins one known-good AttachArgv call issuing every geometry pin itself, the status-line pin before the #{status} readback and the set-hook clear after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the chained argv unchanged; its covering tests run this code without asserting it
+- `TestCleanClaudeEnv`: pins CleanClaudeEnv stripping exactly CLAUDECODE and the CLAUDE_CODE_ keys, reporting them in environ order and leaving other keys and an unaffected environ as they were; its covering tests run this code without asserting it
+- `TestParsePaneGeneration`: pins the generation answer parser: a well-formed answer, trimmed whitespace, and an error for an empty, short, long, blank-field or tmux absent-session answer; its covering tests run this code without asserting it
+- `TestPaneGeneration_RecordedAndSameIncarnation`: pins Recorded and SameIncarnation: a renamed session is the same incarnation, a different session id, server pid or creation time is not; its covering tests run this code without asserting it
+- `TestLaunchScriptCleanup`: pins every path forgetting a strand deleting exactly that strand's launch script, a recursive remove deleting the subtree's, a replace keeping the survivor's, and a remove without a script succeeding with no launch-script warning; its covering tests run this code without asserting it
+- `TestStripAgentNameEnv_DropsNameAndParentOnly`: pins the pane env dropping exactly LYX_STRAND_NAME and LYX_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
+- `TestWithOpLock_PathIsUnderDotLyx`: pins the lock file living under the anchor path's .lyx, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
+- `TestWithOpLock_SerializesConcurrentCalls`: pins a second withOpLock blocking until the first releases and then proceeding; its covering tests run this code without asserting it
+- `TestEngine_SocketAndSessionName`: pins Socket() returning the told socket key and SessionName() the worktree basename; its covering tests run this code without asserting it
+- `TestWithTryOpLock`: pins withTryOpLock running fn on a free lock with acquired true, wrapping fn's error with acquired still true, and deferring with (false, nil) and no fn call or tmux call while the lock is held; its covering tests run this code without asserting it
+- `TestNewGUID_UniqueAndHex`: pins newGUID returning 32 lowercase hex characters, unique across calls; its covering tests run this code without asserting it
+- `TestPlanTitleRepairs`: pins which strands get a title repair: a bound live drifted pane only, never a matching, dead, unbound or vanished one; its covering tests run this code without asserting it
+- `TestRepairNames_PaneTitle`: pins a drifted pane title being rewritten with exactly one select-pane -T and logged while a matching title is left alone; its covering tests run this code without asserting it
+- `TestReapSessionKill`: pins the exact kill-session argv with the exact-match target and that it runs uncaptured; its covering tests run this code without asserting it
+- `TestReapSessionPanes`: pins list-panes output parsed into LivePane rows and a listing failure surfacing as an error; its covering tests run this code without asserting it
+- `TestReapSession_CallOrdering`: pins list-panes running before kill-session and a list-panes failure still reaching kill-session, with the pane list feeding the reap roots; its covering tests run this code without asserting it
+- `TestPaneCreationSitesRouteThroughThePreludeChokepoint`: pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
+- `TestLaunchStrandLockedStillComposesThePrelude`: pins launchStrandLocked still calling composePaneLaunchLine, so the allowlisted chokepoint cannot become a plain pass-through; its covering tests run this code without asserting it
+- `TestPaneBinPrelude_ComposesPrependThenExport`: pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYX_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
+- `TestComposePaneLaunchLine`: pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
+- `TestStageLaunchScript_WriteFailureDegrades`: pins an unwritable launch directory returning the composed line unchanged and logging the strand and script path; its covering tests run this code without asserting it
+- `TestProbeCapability`: pins the capability probe's three outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError; its covering tests run this code without asserting it
+- `TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd`: pins the probe going through the socket-scoped TmuxCmd as exactly -V then list-commands, never the configured binary directly; its covering tests run this code without asserting it
+- `TestDescendantClosure`: pins the fixed-point walk over a straight chain, a parent missing from the map, a pid re-parented to init and a self or cyclic entry; its covering tests run this code without asserting it
+- `TestReapplyLayout`: pins reapplyLayout's outcome per scenario: both session-survival guards issuing no select-layout, a differing box applying without moving focus, an equal live box skipping, a degraded box never counting as live, the hook probe running once even when the guards skip, and reed.json left byte-identical; its covering tests run this code without asserting it
+- `TestReapplyLayout_Deferral`: pins reapplyLayout returning exactly ReapplyResult{Deferred: true} with no tmux call while reed.lock is held; its covering tests run this code without asserting it
+- `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux`: pins reconcileLocked mutating the real state record, clearing a gone strand's binding and keeping a present one's, with no tmux call; its covering tests run this code without asserting it
+- `TestClearConflictingPaneBindings`: pins the first-writer-wins repair of contradicting bindings: a strand naming Selvage's pane or sharing another strand's pane is cleared in table order, unbound strands never conflict and Selvage's own binding is never cleared; its covering tests run this code without asserting it
+- `TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged`: pins a reed.json still carrying the retired display keys loading with them ignored and laying out exactly like one without; its covering tests run this code without asserting it
+- `TestSelvageIdentViolations_ExemptionsAndFlags`: pins the Selvage identifier scanner's exemptions and flags over a synthetic source, so the confinement scan cannot pass vacuously; its covering tests run this code without asserting it
+- `TestNewReapPolicy_ThreeQuestionsAssertedIndependently`: pins the reap policy's three questions apart: an alive Selvage is exempt from both kills and authorizes the reap, a present corpse is exempt from both but authorizes none, and an unrelated pane is never exempt; its covering tests run this code without asserting it
+- `TestSelvageRenderParams`: pins the render parameters: a present Selvage pane id passes through, an absent or empty one is blanked, and HeightRows comes from the engine's config; its covering tests run this code without asserting it
+- `TestSeedSelvageClaim`: pins the seeded claim: the Selvage pane id is added to the claimed set when set and an absent Selvage claims nothing; its covering tests run this code without asserting it
+- `TestClearSelvagePaneBinding`: pins the Selvage binding being emptied when set and left empty when already empty; its covering tests run this code without asserting it
+- `TestBottommostPaneID`: pins the split target being chosen by pane_top rather than list-panes order, which tmux does not guarantee is top to bottom; its covering tests run this code without asserting it
+- `TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane`: pins the Selvage create path's split-window call: targeting the bottommost pane with no -b, pinned to PaneCwd, launching the shell as the trailing argument and never via send-keys, then recording the new pane id; its covering tests run this code without asserting it
+- `TestTruncateAtRuneBoundary`: pins the readable half of the socket key being cut at a rune boundary: under or at the limit untouched, a straddling rune dropped whole, zero keeps nothing, always valid UTF-8; its covering tests run this code without asserting it
+- `TestSessionName_IsWorktreeBasename`: pins SessionName deriving the session name as the worktree's basename; its covering tests run this code without asserting it
+- `TestPlanLogPrune`: pins which log files the prune plans to delete: none at or under the keep count, the oldest beyond it, and ties broken by name order; its covering tests run this code without asserting it
+- `TestRemoveSocketFileOnceGone`: pins the post-kill socket removal waiting out the grace period: a stale socket file is removed and one a live listener still answers on stays with no error; its covering tests run this code without asserting it
+- `TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped`: pins launchStrandLocked paying for exactly one list-panes and issuing no kill-pane when reconcile reaps nothing; its covering tests run this code without asserting it
+- `TestSendKeysLiteralArg`: pins the dash-escape rule for send-keys -l: a dash-leading text gets one leading space and every other text, an already spaced one included, passes verbatim; its covering tests run this code without asserting it
+- `TestValidateSplitCreatedNewPane`: pins the genuinely-new-pane guard: a fresh pane id passes while an empty, pre-existing alive or pre-existing dead pane id errors; its covering tests run this code without asserting it
+- `TestLaunchStrandLocked_LaunchScript`: pins what a launch types and writes: the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
+- `TestLaunchStrandLocked_WriteFailureSendsTheFullLine`: pins the degrade path: when the launch script cannot be written the send-keys payload is the full composed line and the warning names the strand guid; its covering tests run this code without asserting it
+- `TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls`: pins the split-window argv ending with -F #{pane_id} with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the split and the send-keys; its covering tests run this code without asserting it
+- `TestSaveState_ThenLoadState_RoundTrips`: pins LoadState answering (nil, nil) for an absent file and returning every field SaveState wrote, strand records included; its covering tests run this code without asserting it
+- `TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet`: pins toRenderStrands mapping every strand field and marking Live only for panes in the set, without filtering; its covering tests run this code without asserting it
+- `TestStatusLineText`: pins the embedded default template rendering the repo, worktree and hub values and a configured template rendering from the config; its covering tests run this code without asserting it
+- `TestValidateStatusLine`: pins a template with an unknown top-level token being an error and a good template validating; its covering tests run this code without asserting it
+- `TestNeedsLaunchOnAdd`: pins the add-time launch decision: a hidden add never launches and a below-parent add does; its covering tests run this code without asserting it
+- `TestNeedsLaunchOnSurface`: pins the surface-time launch decision: only a hidden strand turned visible launches, a hidden-to-hidden or visible-to-visible update never does; its covering tests run this code without asserting it
+- `TestValidateIfAbsent`: pins --if-absent requiring a name: rejected naming --name when IfAbsent is set without one, accepted otherwise; its covering tests run this code without asserting it
+- `TestLiveStrandNamed`: pins which strand counts as the live named one: the live visible match chosen among others by index, and none for a dead pane, an empty pane id, a hidden strand, an absent strand or another name; its covering tests run this code without asserting it
+- `TestAddStrandUnless_NotLiveAdds`: pins the add going ahead when the named strand is dead or absent, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
+- `TestStrandNameLocked_Names`: pins how an add forms its strand name: the role numbered by the strands holding it, a dormant strand still counting, a legacy name holding nothing, an empty slug giving two segments and an empty role defaulting to strand; its covering tests run this code without asserting it
+- `TestAlivePanePIDs`: pins the reap-root selection: only a pane that is requested, present and alive contributes its pid, a dead, pid-less or absent one never does since a dead pane's recorded pid may have been reused; its covering tests run this code without asserting it
+- `TestSessionReapRoots`: pins that Down's reap roots exclude a dead pane's recorded pid, a pid-less pane and a corpse-only session; its covering tests run this code without asserting it
+- `TestPaneIDsInSession`: pins the kill-pane targets being filtered to panes of this worktree's session, a dead but present pane kept and a sibling worktree's pane id dropped; its covering tests run this code without asserting it
+- `TestRemoveStrand_NeverKillsAPaneOutsideThisSession`: pins RemoveStrand's kill-pane loop consulting the session filter, so a stale reed.json naming a sibling worktree's pane kills nothing there; its covering tests run this code without asserting it
+- `TestWatchdogOption`: pins the watchdog option validating and normalizing: on and off in any case or padding, and an empty, numeric, true, yes or misspelled value rejected naming the offending value; its covering tests run this code without asserting it
+- `TestWatchdogTemplateDefault_BothGOOS`: pins both embedded templates and the shipped accessor declaring the watchdog default line, reading the posix and windows files directly since ConfigTemplate exposes only one; its covering tests run this code without asserting it
+- `TestTmuxQuoteValue`: pins the tmux double-quote escaping of a double quote, a backslash and a dollar sign; its covering tests run this code without asserting it
+- `TestResizeSignalPath`: pins the signal path being the anchor path's .lyx directory plus reed-resize.signal, the same directory as the state; its covering tests run this code without asserting it
+- `TestWatchState`: pins the watcher's pure contracts on a synthetic clock: default timing, per-mode ticker cadence, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
+- `TestWatchLoop_StaleSignalFileRemovedAtStart`: pins a signal file present before the loop starts being removed at start, so an old resize does not trigger an apply; its covering tests run this code without asserting it
+- `TestWatchLoop_PollModeByDefault`: pins the loop repeating reapplyLayout cycles at the poll cadence and probing the hook every cycle while show-options reports no hook, never promoting; its covering tests run this code without asserting it
+- `TestWatchLoop_SignalMode`: pins promotion into signal mode stopping per-cycle polling, a signal file producing exactly one select-layout after the file is removed, and signal mode never re-probing the hook; its covering tests run this code without asserting it
+- `TestWatchLoop_UndecidedProbeDoesNotGuess`: pins the mode staying poll with no tmux call while reed.lock is held and every tick defers, then promoting as normal once the lock is released and the hook reported; its covering tests run this code without asserting it
+- `TestWatchLoop_TakeEffectBoundary`: pins the loop reading e.cfg.Watchdog once at start, so flipping it mid-run neither stops the loop nor changes its cadence; its covering tests run this code without asserting it
+- `TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot`: pins the poll-mode loop stopping its tmux round trips when the told worktree root vanishes, staying alive and logging exactly one dormancy warning; its covering tests run this code without asserting it
+- `TestWatchLoop_NonSentinelFailureDoesNotGoDormant`: pins a re-apply failure other than errWorktreeRootGone leaving the loop at its poll cadence with no dormancy warning; its covering tests run this code without asserting it
+- `TestParseWindowSize`: pins the window-size parser: a well-formed pair with trailing newline or extra whitespace parses, and an empty, one-field, three-field, non-numeric, zero or negative answer is rejected; its covering tests run this code without asserting it
+- `TestLiveBoxLocked`: pins the live box readback: a well-formed pair is returned live and a garbage, empty, non-positive or errored answer falls back to the configured size and reports not live; its covering tests run this code without asserting it
+- `TestReservedRowsFromStatus`: pins the status readback as the reserved-row source: off is zero rows, on one, a non-negative integer that many, case and padding are tolerated, and an empty, garbage or negative answer is rejected; its covering tests run this code without asserting it
+- `TestWindowSizeAllowsChain`: pins which window-size readbacks allow the chain: only latest, in any case and padding, while manual, largest, smallest and empty do not; its covering tests run this code without asserting it
+- `TestEscapeStatusText`: pins the doubling rule: every "#" becomes "##" at any position; its covering tests run this code without asserting it
+- `TestStatusLeftLength`: pins the rune-counted floor-at-10 status-left length, a multi-byte string counted by runes not bytes, and escaping before measuring yielding a larger length; its covering tests run this code without asserting it
+- `TestReadbacksLocked`: pins the status-row and window-size-latest readbacks answering from a scripted display-message and degrading on a round-trip error; its covering tests run this code without asserting it
+- `TestPinGeometryOptionsLocked`: pins the set-option calls issued to pin the geometry: the seven status-line options plus window-size with the escaped rendered text, only status-left and status-left-length skipped when the render errors, no failure stopping the calls after it, and the window-resized hook lifecycle left to unset and clean the signal file when the watchdog is off; its covering tests run this code without asserting it
+- `TestResizePinHookArgvs`: pins the resize hook array: the exact clear first, one resize-pane entry per pin, the watchdog's touch entry last and even for zero pins, -a only after the first entry, no empty or bare ; element and no repaint entry; its covering tests run this code without asserting it
+- `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`: pins installResizePinsLocked handing tmux the touch entry last for watchdog on, none for off, and attempting every call when each errors; its covering tests run this code without asserting it
+- `TestLoadConfig_TemplateDefaultsResolve`: pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, collapsed and minimum full rows, debug_log off and mouse on; its covering tests run this code without asserting it
+- `TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored`: pins an older reed.yaml with a stale header block or the retired strand_name key loading cleanly with the rest of the config undisturbed; its covering tests run this code without asserting it
 
 No coverage:
 
@@ -3455,17 +3343,13 @@ No coverage:
 - `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`: out of process
 - `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout`: out of process
 - `TestSelvageNeverGetsZeroHeightLayoutCell`: out of process
-- `TestAddStrand_EmptyCmdLeavesALivePane`: out of process
 - `TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm`: out of process
 - `TestAddStrand_LogsAttributionOnlyOnColdBoot`: out of process
 - `TestLaunchScript_SourcedScriptRunsInThePaneShellScope`: out of process
 - `TestMouseBootIntegration_PinsOptionAtBoot`: out of process
 - `TestMouseBootIntegration_NoLiveToggleWithoutRestart`: out of process
-- `TestNaming_TaskWorktreeStrandNameTitleAndEnv`: out of process
-- `TestNaming_EmptySlugGivesShortnameAndRole`: out of process
-- `TestNaming_RepairNamesRestoresAHandChangedTitle`: out of process
-- `TestStatus_NoSessionWrapsErrNoSession`: out of process
-- `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`: out of process
+- `TestNaming`: out of process
+- `TestStrandOps_RealTmux`: out of process
 - `TestWatchdogSelfHeal_GrowsBackToPlannedLayout`: out of process
 - `TestWatchdogSelfHeal_ShrinksBackToPlannedLayout`: out of process
 - `TestWatchdogSelfHeal_BurstCoalesces`: out of process

@@ -260,6 +260,7 @@ func findStrandPaneID(strands []Strand, guid string) string {
 	return ""
 }
 
+//testtiming:keep pins reconcileLocked mutating the real state record, clearing a gone strand's binding and keeping a present one's, with no tmux call; its covering tests run this code without asserting it
 func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *testing.T) {
 	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture): if
 	// reconcileLocked ever shelled out here, this test would fail loudly
@@ -374,6 +375,8 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 // reporting ok:true, then report the strand live against a pane it does not own.
 // The repair is first-writer-wins, so the table order of the cleared GUIDs is part of the contract,
 // not an implementation detail.
+//
+//testtiming:keep pins the first-writer-wins repair of contradicting bindings: a strand naming Selvage's pane or sharing another strand's pane is cleared in table order, unbound strands never conflict and Selvage's own binding is never cleared; its covering tests run this code without asserting it
 func TestClearConflictingPaneBindings(t *testing.T) {
 	tests := []struct {
 		name         string
