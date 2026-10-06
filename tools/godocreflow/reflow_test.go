@@ -156,9 +156,8 @@ func Foo() {}
 			maxWidth: wideEnough,
 		},
 		{
-			// A comment that already occupies exactly one physical source line is left alone regardless of
-			// length -- there is no existing hard-wrap to reflow, matching pydocreflow.py's own
-			// single-line-docstring/single-line-comment-block skip.
+			// A comment that already occupies exactly one physical source line is left alone regardless of length.
+			// There is no existing hard-wrap to reflow, matching pydocreflow.py's own single-line-docstring/single-line-comment-block skip.
 			name: "single physical line group",
 			src: `// Package pkg provides utilities for testing this reflow tool, and it exists solely for that purpose.
 package pkg
