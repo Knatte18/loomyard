@@ -906,7 +906,8 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	}
 }
 
-// TestWatcher_SkillSkipCauses does not call t.Parallel: it asserts on the logger output, which is process-global.
+// TestWatcher_SkillSkipCauses does not call t.Parallel: it asserts on the logger output,
+// which is process-global.
 func TestWatcher_SkillSkipCauses(t *testing.T) {
 	verified := func(unknown, missing []string) shuttleengine.SkillLoadReport {
 		return shuttleengine.SkillLoadReport{Verified: true, Unknown: unknown, Missing: missing}

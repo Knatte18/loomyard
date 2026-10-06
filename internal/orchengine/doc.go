@@ -178,7 +178,8 @@
 // # The reload sequence
 //
 // A clear, a compaction and an auto-compaction each lose the session's skills and role,
-// so the resuming phase restores them: a skills step loads the whole orch skill list in one turn, an optional retry step loads what that turn left missing,
+// so the resuming phase restores them: a skills step loads the whole orch skill list in one turn,
+// an optional retry step loads what that turn left missing,
 // and the one-line pointer follows.
 // `start` and `--adopt` load the same skills through the launch spec.
 // The step, the skills the retry step loads, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
