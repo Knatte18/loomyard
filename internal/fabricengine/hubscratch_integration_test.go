@@ -33,6 +33,8 @@ import (
 // directory is empty, so this checks the exclude entry itself — the load-bearing assertion for
 // card 2's ordering.
 func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "hubscratch-order-warp")
 	weftBare := makeBareRemote(t, fixtures, "hubscratch-order-weft")
@@ -63,6 +65,8 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 // a real directory; a file planted inside it must be absent from the tree of the board's own
 // stage-all commit.
 func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "hubscratch-stage-warp")
 	weftBare := makeBareRemote(t, fixtures, "hubscratch-stage-weft")

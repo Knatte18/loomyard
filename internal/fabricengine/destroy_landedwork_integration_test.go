@@ -41,6 +41,8 @@ func landedWorkCheck(repo, branch string) error {
 }
 
 func TestLandedWork_PushedBranchPasses(t *testing.T) {
+	t.Parallel()
+
 	repo, _ := landedWorkRepo(t)
 	gitkit.Git(t, repo, "switch", "-c", "task")
 	gitkit.Git(t, repo, "commit", "--allow-empty", "-m", "work")
@@ -53,6 +55,8 @@ func TestLandedWork_PushedBranchPasses(t *testing.T) {
 }
 
 func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
+	t.Parallel()
+
 	repo, _ := landedWorkRepo(t)
 	gitkit.Git(t, repo, "switch", "-c", "task")
 	gitkit.CommitFile(t, repo, "work.txt", "work.txt", "work.txt")
@@ -66,6 +70,8 @@ func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 }
 
 func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
+	t.Parallel()
+
 	repo, _ := landedWorkRepo(t)
 	gitkit.Git(t, repo, "switch", "-c", "task")
 	gitkit.CommitFile(t, repo, "one.txt", "one.txt", "one.txt")
@@ -81,6 +87,8 @@ func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
 }
 
 func TestLandedWork_CheckedOutBranchRefused(t *testing.T) {
+	t.Parallel()
+
 	repo, _ := landedWorkRepo(t)
 	gitkit.Git(t, repo, "switch", "-c", "task")
 	gitkit.Git(t, repo, "push", "origin", "task")

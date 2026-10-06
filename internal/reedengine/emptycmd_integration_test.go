@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // emptycmd_integration_test.go proves AddStrand with Cmd: "" succeeds against a real tmux session
 // and leaves a live pane, following contract_integration_test.go's own conventions for fixture

@@ -96,6 +96,8 @@ func awaitVerb(t *testing.T, held *lock.FileLock, done <-chan error) error {
 // through the freshly landed conclude commits, destroying the operator's resolutions with nothing
 // left to notice (deleteMergeState tolerates absence).
 func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting(t *testing.T) {
+	t.Parallel()
+
 	h, f := setupResolvedConflictedMergeIn(t)
 
 	fresh := openFreshFabric(t, h.PrimeWorktree())
@@ -128,6 +130,8 @@ func TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting
 // stale record, which pre-fix adopted (and thereby resurrected) a record the winner had retired
 // and answered committed:true.
 func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress(t *testing.T) {
+	t.Parallel()
+
 	h, f := setupResolvedConflictedMergeIn(t)
 
 	fresh := openFreshFabric(t, h.PrimeWorktree())
@@ -159,6 +163,8 @@ func TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress
 // silently replaced the live record with this call's own source, so its conclude would have landed
 // the other merge's content under this record's name.
 func TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t *testing.T) {
+	t.Parallel()
+
 	hub, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, hub.PrimeWorktree(), "feature", "clash.txt")
 	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
@@ -192,6 +198,8 @@ func TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(
 // of the MergeIn re-check test — Merge's window is wider still, because its pre-merge sync step
 // mutates both checkouts immediately after the acquisition.
 func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t *testing.T) {
+	t.Parallel()
+
 	_, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch("feature", "clean-warp.txt", "clean\n", "warp: clean branch")
 	commitOnWeftBranch("feature-weft", "_lyx/clean-weft.txt", "clean\n", "weft: clean branch")
@@ -226,6 +234,8 @@ func TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting(t 
 // makes MergeAbort hard-reset the weft checkout through a commit the previous lock holder (a
 // concurrent Fabric.Commit, the most plausible one) had already landed there.
 func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
 	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
@@ -312,6 +322,8 @@ func assertForeignRefusalUnderLock(t *testing.T, f *fabricengine.Fabric, warpDir
 // MergeStart read the operator's conflicted entries as THIS merge's own conflicts — fabric wrote a
 // record over, and reported conflicts from, a merge it never started.
 func TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
+	t.Parallel()
+
 	h, f := newCleanMergeablePair(t)
 
 	held, done := launchBlockedOnLock(t, f, func() error {
@@ -334,6 +346,8 @@ func TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) 
 // pre-merge sync step and MergeStart calls run immediately after the acquisition, so a stale
 // foreign answer there ends in Merge's conflict path force-resetting the operator's merge away.
 func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
+	t.Parallel()
+
 	h, f := newCleanMergeablePair(t)
 
 	held, done := launchBlockedOnLock(t, f, func() error {
@@ -358,6 +372,8 @@ func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 // operator's edit away under force: true. The re-check refuses with the same aggregated reason a
 // strictly sequential MergeIn over a dirty pair reports, and the edit survives.
 func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
+	t.Parallel()
+
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")
@@ -393,6 +409,8 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 // dirty re-check test, additionally asserting the refusal fired before the pre-merge sync step
 // recorded anything — the re-check sits between the acquisition and the sync.
 func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *testing.T) {
+	t.Parallel()
+
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "overlap.txt", "seed content\n", "seed overlap.txt")
 	commitOnWarpBranch("feature", "overlap.txt", "feature content\n", "feature: modify overlap.txt")

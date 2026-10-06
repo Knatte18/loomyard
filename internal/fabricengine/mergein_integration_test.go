@@ -110,6 +110,8 @@ func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile
 // it neither side commits anything, and the Committed assertion below passes for the wrong reason —
 // which is exactly how this test used to false-green while MergeIn hardcoded Committed true.
 func TestMergeIn_BothSidesClean(t *testing.T) {
+	t.Parallel()
+
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
 
 	commitOnWarpBranch("feature", "warp-feature.txt", "warp feature\n", "warp: add feature")
@@ -151,6 +153,8 @@ func TestMergeIn_BothSidesClean(t *testing.T) {
 // weft side at all, so a weft-side conflict is not a shape it can produce any more — see the
 // merge-drops-weft task.
 func TestMergeIn_WarpConflicts(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	commitOnWeftBranch("feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
@@ -185,6 +189,8 @@ func TestMergeIn_WarpConflicts(t *testing.T) {
 // was a second, independent place the quoted form could fail. That arm is deleted along with the
 // weft's ability to conflict at all — see the merge-drops-weft task.
 func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "ä-warp.txt")
@@ -216,6 +222,8 @@ func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *tes
 // either and Committed is false — the pair advanced without any merge commit existing. AlreadyUpToDate
 // is likewise false: one side did move.
 func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
@@ -275,6 +283,8 @@ func hubRelForTest(t *testing.T, f *fabricengine.Fabric, target string) string {
 // TestMergeIn_BothSidesAlreadyUpToDate covers the degenerate no-op: AlreadyUpToDate true, an empty
 // mutation record, and no merge-state record written.
 func TestMergeIn_BothSidesAlreadyUpToDate(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	branchAtCurrentHEAD(t, h.PrimeWorktree(), "feature")
@@ -299,6 +309,8 @@ func TestMergeIn_BothSidesAlreadyUpToDate(t *testing.T) {
 // git add) and running MergeContinue: both sides conclude, correspondence is recorded, and the
 // record is deleted.
 func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
@@ -338,6 +350,8 @@ func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
 // TestMergeContinue_UnresolvedConflictsRefuse covers MergeContinue's refusal while conflict markers
 // remain: a *MergeGuardError whose sole reason is the fixed "unresolved conflicts remain".
 func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
@@ -361,6 +375,8 @@ func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 // their exact pre-merge SHAs, worktrees are clean, the record is deleted, and MergeInProgress
 // reports false.
 func TestMergeAbort_AfterConflict(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
@@ -400,6 +416,8 @@ func TestMergeAbort_AfterConflict(t *testing.T) {
 // TestMergeIn_NeverSquashes covers that a clean, non-fast-forward MergeIn lands a real merge commit
 // on warp: two parents.
 func TestMergeIn_NeverSquashes(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "branch-file.txt", "current-file.txt")

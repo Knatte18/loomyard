@@ -32,6 +32,8 @@ const operatorExcludePattern = "/operator-build-output"
 // TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent runs many simultaneous mutations
 // against one repository's exclude file and asserts that pre-existing content survives all of them.
 func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 
 	excludePath, err := resolveGitExcludePath(repoDir)
@@ -89,6 +91,8 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 // TestMutateGitExclude_ReportsWhetherContentChanged pins the no-op contract a caller relies on to
 // decide whether it actually unwired anything.
 func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 
 	_, changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
@@ -110,6 +114,8 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 
 // TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent second call.
 func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
 
@@ -142,6 +148,8 @@ func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
 
 // TestExcludeAnchoredDir_AnchorsToSubpath pins that the entry covers only the anchor's own directory.
 func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 	seedExclude(t, repoDir, "")
 
@@ -163,6 +171,8 @@ func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
 
 // TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing pins the check-ignore short-circuit.
 func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 	if err := os.WriteFile(filepath.Join(repoDir, ".gitignore"), []byte(".vscode/\n"), 0o644); err != nil {
 		t.Fatalf("write .gitignore: %v", err)
@@ -196,6 +206,8 @@ func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
 
 // TestExcludeAnchoredDir_HoldsExcludeLock pins that the write waits on the shared exclude lock.
 func TestExcludeAnchoredDir_HoldsExcludeLock(t *testing.T) {
+	t.Parallel()
+
 	repoDir := newGitRepoForExcludeTest(t)
 	excludePath := seedExclude(t, repoDir, operatorExcludePattern+"\n")
 

@@ -18,6 +18,8 @@ import (
 
 // TestOpen_HappyPath asserts that Open returns a non-nil handle on a paired hub.
 func TestOpen_HappyPath(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	f, err := fabricengine.Open(h.Location)
@@ -32,6 +34,8 @@ func TestOpen_HappyPath(t *testing.T) {
 // TestOpen_MissingWarpWorktree asserts that a missing warp worktree errors, naming the warp path,
 // and that the warp side is checked first (ahead of the sibling).
 func TestOpen_MissingWarpWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	if err := os.RemoveAll(h.PrimeWorktree()); err != nil {
@@ -54,6 +58,8 @@ func TestOpen_MissingWarpWorktree(t *testing.T) {
 // TestOpen_MissingSiblingWorktree asserts that a missing weft sibling errors, naming the sibling
 // path, when the warp worktree is present.
 func TestOpen_MissingSiblingWorktree(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	if err := os.RemoveAll(h.PrimeWeft()); err != nil {

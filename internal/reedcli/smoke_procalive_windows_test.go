@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux || llm
 
 // smoke_procalive_windows.go exists only so smoke_test.go's
 // runtime.GOOS-branching processGone compiles on Windows too: its

@@ -61,6 +61,8 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 // .weft lock dir) and drops a push lock file, then asserts neither artifact appears in `git status
 // --porcelain` — the exact check Remove's no-force weft dirty gate runs.
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
+	t.Parallel()
+
 	f, weftPath := newFabricPair(t)
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
@@ -115,6 +117,8 @@ func nonEmptyExcludeLines(content string) []string {
 // machine-local patterns, and re-seeding via a second commit leaves the file
 // byte-identical.
 func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	f, weftPath := newFabricPair(t)
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
@@ -199,6 +203,8 @@ func mustWriteFile(t *testing.T, path, content string) {
 // durable per-module state file is written under _lyx and committed alongside the .lyx artifacts at
 // every depth, proving the property is exact and does not over-match real state.
 func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
+	t.Parallel()
+
 	for _, anchor := range []string{".", "backend", "wts/some-task"} {
 		t.Run(anchor, func(t *testing.T) {
 			h := hubforge.NewHub(t, anchor)
@@ -247,6 +253,8 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 // This test has a verified pre-fix failure: on the pre-card-41 code it fails with a
 // "gitrepo: git add:" error instead of landing a clean no-op.
 func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
+	t.Parallel()
+
 	f, weftPath := newFabricPair(t)
 
 	ignoredRel := filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "ignored.tmp"))

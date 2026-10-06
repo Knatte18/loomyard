@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 package reedcli
 
@@ -6,13 +6,81 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
+
+// smokeClaudeModel is the model every real `claude` process this package spawns must run on.
+// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque resumeCmd replay), never about model capability, so the cheapest model is always the right one — and leaving it unpinned silently bills the operator's default model on every sweep.
+const smokeClaudeModel = "haiku"
+
+// claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory for cwd dir.
+func claudeProjectDir(t *testing.T, dir string) string {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("resolve home dir: %v", err)
+	}
+	encoded := []byte(dir)
+	for i, c := range encoded {
+		isAlnum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if !isAlnum {
+			encoded[i] = '-'
+		}
+	}
+	return filepath.Join(home, ".claude", "projects", string(encoded))
+}
+
+// claudeTranscriptFiles returns the set of every *.jsonl transcript path under projectDir.
+func claudeTranscriptFiles(t *testing.T, projectDir string) map[string]bool {
+	t.Helper()
+	found := map[string]bool{}
+	_ = filepath.WalkDir(projectDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".jsonl") {
+			found[path] = true
+		}
+		return nil
+	})
+	return found
+}
+
+// waitTranscriptStable blocks until a new transcript appears in projectDir and stops growing.
+func waitTranscriptStable(t *testing.T, projectDir string, before map[string]bool, dismissTrust func(paneID string), paneID string, timeout time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	sizes := map[string]int64{}
+	for {
+		dismissTrust(paneID)
+
+		for path := range claudeTranscriptFiles(t, projectDir) {
+			if before[path] {
+				continue // pre-existing — not this test's transcript
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+			prev, seen := sizes[path]
+			if seen && prev > 0 && info.Size() == prev {
+				return path
+			}
+			sizes[path] = info.Size()
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("no new claude transcript persisted+stabilized within %s (env hygiene may be broken — claude in a nested Claude Code session stops writing transcripts)", timeout)
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
 
 // TestSmokeCrashRecovery covers crash recovery with server reboot.
 func TestSmokeCrashRecovery(t *testing.T) {
@@ -56,6 +124,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	if socket == "" || session == "" {
 		t.Fatalf("status result missing socket/session: %v", statusResult)
 	}
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
 	// readStrand runs `status` fresh and returns this test's strand record
 	// plus the raw JSON, so a failing assertion can print what status saw.
@@ -128,7 +197,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 // runs a real subscription session (~1-3 min).
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	claudePath := claudeBinaryPath(t)
+	claudePath := llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())

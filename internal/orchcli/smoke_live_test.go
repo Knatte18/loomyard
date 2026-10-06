@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger, the compact cycle, and adopting a running session.
 // Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lyx and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -68,11 +69,7 @@ func requireLiveSubstrate(t *testing.T) {
 			t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
 		}
 	}
-	if os.Getenv("LYX_SHUTTLE_CLAUDE") == "" {
-		if _, err := exec.LookPath("claude"); err != nil {
-			t.Skip("claude binary not found on PATH; set LYX_SHUTTLE_CLAUDE to override")
-		}
-	}
+	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
 }
 
 // newLiveFixture builds cmd/lyx, a hub seeded with orchCfg plus extraCfg, and the in-process handles.

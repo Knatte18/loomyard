@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_staterecovery_test.go drives the R5 review's state-loss/corruption recovery findings at the
 // CLI seam a real operator uses, against a real tmux server: a reed.json that outlives the session

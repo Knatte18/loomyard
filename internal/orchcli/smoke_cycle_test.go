@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
@@ -174,11 +175,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 		}
 	}
 	_ = tmuxPath
-	if os.Getenv("LYX_SHUTTLE_CLAUDE") == "" {
-		if _, err := exec.LookPath("claude"); err != nil {
-			t.Skip("claude binary not found on PATH; set LYX_SHUTTLE_CLAUDE to override")
-		}
-	}
+	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
 
 	exe := lyxbin.Build(t)
 

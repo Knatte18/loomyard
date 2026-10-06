@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // naming_integration_test.go carries the standalone acceptance criterion at the engine `lyx webster run --target-dir` and `lyx burler run --target-dir` build,
 // since a CLI-level run would spawn live Claude producers.
@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
@@ -43,9 +44,9 @@ func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
 	}
 
 	e := reedengine.New(cfg, standalonegeom.ReedGeometry(target, stateDir, hash8))
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, "lyx-"+hash8)
 	t.Cleanup(func() {
 		_, _ = e.Down()
-		_ = exec.Command(cfg.Tmux, "-L", "lyx-"+hash8, "kill-server").Run()
 	})
 
 	probe := filepath.Join(t.TempDir(), "env.txt")

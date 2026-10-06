@@ -30,6 +30,8 @@ func initTinyRepo(t *testing.T, dir string) {
 // <hub>/_board/_lyx, created only after the board worktree exists, a real directory rather than a
 // junction.
 func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpSrc := filepath.Join(fixtures, "warp-src")
 	weftSrc := filepath.Join(fixtures, "weft-src")

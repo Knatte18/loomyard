@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // naming_integration_test.go proves against a real tmux that a strand's full name reaches its state record, its pane title and its process environment.
 // The pane title is a display mirror, so the test reads it back through list-panes and never resolves anything by it.

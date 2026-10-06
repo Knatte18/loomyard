@@ -1,7 +1,7 @@
-// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`/`smoke`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
+// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`, `tmux` or `llm`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
-// See `PATTERN-test-tier-purity`.
+// See `PATTERN-test-speed`.
 // It also flags an untagged file containing a long literal time.Sleep(...) (see
 // cmd/lyx/tiersleep_test.go).
 
@@ -23,6 +23,8 @@ import (
 var allowedSpawners = []scankit.Entry{
 	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
 	{Key: "cmd/lyx/tierpurity_test.go", Why: "contains the banned token strings as its own test data"},
+	{Key: "cmd/lyx/llmtier_test.go", Why: "contains the banned `exec.Command` token string as its own fixture data (LLM-tier guard)"},
+	{Key: "cmd/testtiming/spawnscan_test.go", Why: "contains the banned `exec.Command` token string as fixture source for the spawn scan, which only parses it"},
 	{Key: "cmd/lyx/hermeticenv_test.go", Why: "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)"},
 	{Key: "tools/sandbox/pathresolve_guard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)"},
 	{Key: "cmd/lyx/ghguard_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)"},
@@ -37,7 +39,7 @@ var allowedSpawners = []scankit.Entry{
 // as tagged (i.e. excluded from a plain `go test` run) for Test Tier Purity purposes.
 // isTierTagged matches on any entry, so adding a new tier tag here is the single place
 // that both the purity guard and its doc comments need to stay in sync with.
-var knownTierTags = []string{"integration", "smoke"}
+var knownTierTags = []string{"integration", "tmux", "llm"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
@@ -91,7 +93,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		}
 		if bad && !spawners.Allowed(f.Rel) {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration or smoke), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration, tmux or llm), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				f.Rel, bannedTok,
 			))
 		}
@@ -111,7 +113,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	sleepers.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-test-tier-purity` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-test-speed` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
@@ -143,7 +145,9 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 		want bool
 	}{
 		{"integration", "//go:build integration", true},
-		{"smoke", "//go:build smoke", true},
+		{"tmux", "//go:build tmux", true},
+		{"llm", "//go:build llm", true},
+		{"shared_helper_disjunction", "//go:build tmux || llm", true},
 		{"platform_only_untagged", "//go:build windows", false},
 		{"empty", "", false},
 	}

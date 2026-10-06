@@ -37,6 +37,7 @@ import (
 // (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left
 // behind.
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
+	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-removes-stale"
@@ -90,6 +91,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 // unrelated commit landing on the weft branch during setup would otherwise make a bare commit-count
 // assertion fragile.
 func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
+	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-lyx-and-extra"
@@ -181,6 +183,8 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 // Gitignore field — the CLI envelope (internal/fabriccli/unwire.go's output.Ok map, built directly
 // from this struct's fields) can then never carry a "gitignore" key.
 func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
+	t.Parallel()
+
 	typ := reflect.TypeOf(fabricengine.UnwireVerbResult{})
 	if _, ok := typ.FieldByName("Gitignore"); ok {
 		t.Errorf("UnwireVerbResult has a Gitignore field; want it removed so the CLI envelope carries no gitignore key")
@@ -194,6 +198,7 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 // initengine.Undo's TestUndo_NoWeftPairing coverage mirrored), so the FIRST Unwire call below does
 // real teardown work rather than observing a no-op; only the second call is the no-op.
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
+	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	h := hubforge.NewHub(t, ".")
@@ -226,6 +231,7 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 // records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml) survive a worktree's Unwire untouched,
 // so a later `lyx fabric reconcile` can still re-wire it.
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
+	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-repo-wide-records"

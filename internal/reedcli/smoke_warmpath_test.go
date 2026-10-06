@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_warmpath_test.go pins the other half of this task's hard boundary: a `reed add` or `reed
 // attach` against a live session holding at least one pane performs no reconcile, no layout apply, no
@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // writeReedConfigWithOverride seeds worktree's reed config the way the engine's own integration
@@ -255,6 +256,7 @@ func TestSmokeWarmAddIsUnchanged(t *testing.T) {
 	guid := addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "warm-add")
 
 	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	if !sessionAlive(tmuxPath, socket, session) {
 		t.Fatalf("session %s not alive on socket %s after a warm add", session, socket)

@@ -57,6 +57,8 @@ func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fab
 // read-only verb succeed unaffected, and every guarded verb works again once MergeAbort clears the
 // record.
 func TestMergeSiblings_Dispositions(t *testing.T) {
+	t.Parallel()
+
 	h, f, l, slug := newMergeSiblingsFixture(t)
 	warpDir := h.PairWarpWorktree(slug)
 	weftDir := h.PairWeftSibling(slug)
@@ -253,6 +255,8 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 // \"lyx fabric merge --abort\" first" (fabric has
 // no merge of its own in progress here, and both of those verbs would refuse).
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	warpDir := h.PrimeWorktree()
 

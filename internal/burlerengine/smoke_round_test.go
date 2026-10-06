@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_round_test.go is burlerengine's opt-in live-integration smoke test:
 // TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then
@@ -10,7 +10,7 @@
 // The assertions are deliberately trivial (the toy is unambiguous on
 // purpose) — this proves the A->B machinery, the file contract, and the
 // verdict parse against a real engine, never review quality. Follows the
-// internal/shuttlecli/smoke_*.go conventions: opt-in via -tags smoke,
+// internal/shuttlecli/smoke_*.go conventions: opt-in via -tags llm,
 // skipped when no claude binary resolves, poll-with-deadline waits only, and
 // the orphaned-conhost teardown guard against the fixture hub. The helpers
 // here are reproduced (not imported) from shuttlecli's smoke files, per the
@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
@@ -56,21 +57,6 @@ func seedHubStencils(t *testing.T, hub string) {
 	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
 		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
 	}
-}
-
-// claudeBinaryPath returns the claude CLI's path from the environment or
-// PATH, skipping the calling test when it is absent so a -tags=smoke run
-// never hard-fails on a machine without a configured claude.
-func claudeBinaryPath(t *testing.T) string {
-	t.Helper()
-	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
-		return path
-	}
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude not found on PATH")
-	}
-	return path
 }
 
 // hubHolder is one process still holding the fixture hub as its current
@@ -255,7 +241,7 @@ func distinctColorsMentioned(text string) []string {
 // burlerengine.Engine) — this test IS the caller the Shuttle Provider-Seam Invariant reserves that
 // wiring for.
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_judge_test.go is treadleengine's opt-in live-integration smoke
 // test: TestSmokeJudgeCirclingToyFixture drives one real per-round
@@ -22,7 +22,7 @@
 // them through treadleengine/export_test.go's RunCirclingForTest and
 // JudgeInputsForTest shims instead. Follows the
 // internal/burlerengine/smoke_round_test.go conventions otherwise: opt-in
-// via -tags smoke, skipped when no claude binary resolves, poll-with-deadline
+// via -tags llm, skipped when no claude binary resolves, poll-with-deadline
 // waits only (via shuttleengine.Runner.Run itself), and the orphaned-conhost
 // teardown guard against the fixture hub. The helpers here are reproduced
 // (not imported) from burlerengine's smoke file, per the
@@ -50,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -69,19 +70,6 @@ func seedHubStencils(t *testing.T, hub string) string {
 		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
 	}
 	return baseDir
-}
-
-// claudeBinaryPath returns the claude CLI's path, skipping the test if absent.
-func claudeBinaryPath(t *testing.T) string {
-	t.Helper()
-	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
-		return path
-	}
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude not found on PATH")
-	}
-	return path
 }
 
 // hubHolder is one process holding the fixture hub as its cwd.
@@ -226,7 +214,7 @@ func deferHubRelease(t *testing.T, hub string) {
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check progress judge call
 // against a real claude, proving the machinery works.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	// shuttleengine.ConfigTemplate() and reedengine.ConfigTemplate() are each module's own plain
 	// registered config: fabriccli.CloneAndWire already reconciled default config for every

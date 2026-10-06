@@ -7,7 +7,7 @@
 //
 // Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore
 // lyxcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans
-// gitexec.Run outside integration/smoke-tagged files -- loom's own run additionally calls
+// gitexec.Run outside tier-tagged files -- loom's own run additionally calls
 // c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the
 // comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it
 // stays tier 1.
@@ -33,7 +33,7 @@
 // status and pause are read-only and never reach the substrate on any path, so they are driven against a seeded status file to exercise the
 // success envelope; and batten's run is driven against a slug whose persisted status is
 // StateDone, which refuses inside batten's own PreRun before BuildShed is ever called. That bound
-// is what keeps this suite in the integration tier rather than pushing it to smoke, and it is also
+// is what keeps this suite in the integration tier rather than pushing it to tmux, and it is also
 // why it proves what it needs to: the two paths' divergence risk lives entirely in arming and
 // pre-run resolution, which every one of these arms exercises in full.
 

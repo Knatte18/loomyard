@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_panecwd_test.go pins where a strand's pane actually comes up: at the anchor reed was TOLD
 // (Geometry.AnchorPath), never at whatever directory the lyx process happens to be standing in.

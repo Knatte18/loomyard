@@ -2,7 +2,7 @@
 
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so this package's tests never inherit the
-// operator's global gitconfig (see PATTERN-hermetic-git-tests).
+// operator's global gitconfig (see PATTERN-test-isolation).
 // The binary also runs under tmux isolation through tmuxkit.Main.
 //
 // The `!integration` constraint is load-bearing, not decorative: testmain_integration_test.go

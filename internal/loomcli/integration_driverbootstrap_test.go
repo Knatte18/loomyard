@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // integration_driverbootstrap_test.go covers the one property no Tier 1 test in this task can reach:
 // that a real end-to-end llm driver launch -- the production driverStarter seam, backed by a real

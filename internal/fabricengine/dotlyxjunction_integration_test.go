@@ -57,6 +57,8 @@ func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
 // junction pointing at <weft>/<AnchorRel>/.lyx, seeds ".lyx" into the warp's .git/info/exclude AND
 // ".lyx/" into the weft's, and unwiring removes the junction and the warp entry.
 func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
@@ -136,6 +138,8 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 // materializes per-worktree config via configsync.ReconcileAll without committing it — which is
 // unrelated dirt this test's own subject, `.lyx`'s exclude ordering, was never about.
 func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
@@ -163,6 +167,8 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 // holding files is moved into the weft target and replaced by a junction, and a second reconcile
 // (WireJunctions re-run) is a no-op.
 func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
@@ -214,6 +220,8 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 // present in the weft-side target aborts adoption with an error naming the colliding path and leaves
 // both sides untouched — the warp directory remains a real directory.
 func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
@@ -287,6 +295,8 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 // indiscriminately would pass this test while silently destroying the refusal that keeps fabric from
 // choosing a winner between two files.
 func TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	l := h.Location
@@ -358,6 +368,8 @@ func TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T)
 // never generalise beyond .lyx, since that guard's whole purpose is never touching what might be the
 // user's hand-authored content.
 func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		dirName string

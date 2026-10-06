@@ -43,6 +43,8 @@ func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 // TestPushAnchored_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-circuit
 // to an empty result and a nil error, leaving the weft bare remote unadvanced.
 func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		opts fabricengine.SyncOptions
@@ -81,6 +83,8 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 // carrying a commit ahead of its bare remote pushes it, the bare remote advances to the local HEAD,
 // and the returned record contains exactly one KindBranchPushed entry.
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	weftSHA := gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
 
@@ -116,6 +120,8 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 // error must satisfy errors.Is(err, gitrepo.ErrPushRejected) — the unwrapped-sentinel property
 // batch 7's closure depends on to warn-and-continue on exactly this condition.
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	// A priming push establishes real content and upstream tracking on the weft bare — the weft
@@ -144,6 +150,8 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 // same sentinel property: a push error that is NOT a remote-divergence rejection — here, the weft
 // sibling's origin remote removed entirely — must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
 func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "remote", "remove", "origin")

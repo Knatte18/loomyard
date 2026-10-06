@@ -749,7 +749,12 @@ func bareVocabularyToken(s string) bool {
 
 // bareVocabularyTokenIn is bareVocabularyToken with the weftname package name additionally
 // stripped when weftnameOK, for a file whose weftname import the import rule already governs.
+// Both patterns only strip spellings that themselves contain weft or warp,
+// so text lacking both tokens returns false before either regex runs.
 func bareVocabularyTokenIn(s string, weftnameOK bool) bool {
+	if lower := strings.ToLower(s); !strings.Contains(lower, "weft") && !strings.Contains(lower, "warp") {
+		return false
+	}
 	s = vocabExemptPattern.ReplaceAllString(s, "")
 	if weftnameOK {
 		s = weftnamePackagePattern.ReplaceAllString(s, "")

@@ -1,4 +1,4 @@
-//go:build integration && linux
+//go:build tmux && linux
 
 // attachgeometry_integration_test.go proves the attach handover lands the client-sized layout
 // verbatim against a real tmux, real pty, and real attaching client — the tier-2 assertion that

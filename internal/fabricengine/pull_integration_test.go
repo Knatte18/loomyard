@@ -82,6 +82,8 @@ func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA str
 // resolves (git fetch never prunes) yet Pull still classifies the pull as a rewrite and reconciles
 // — guarding against any regression to SHAExists-style detection.
 func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
 
@@ -119,6 +121,8 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 // TestPull_ReanchorsSingleCommitBack covers a rewrite that orphans only the single newest
 // correspondence entry: the anchor resolves to the one directly before it.
 func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 3)
 
@@ -145,6 +149,8 @@ func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 // TestPull_ReanchorsMultiCommitBack covers a rewrite that orphans several correspondence entries at
 // once: the anchor resolves to the nearest older one that still survives, several steps back.
 func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 4)
 
@@ -169,6 +175,8 @@ func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 // already-reconciled pair reports no further rewrite or reconcile: the new re-anchor commit's own
 // Warp-SHA trailer makes detection idempotent.
 func TestPull_IdempotentAfterReconcile(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
 
@@ -198,6 +206,8 @@ func TestPull_IdempotentAfterReconcile(t *testing.T) {
 // (the re-anchor commit) on top of pre-existing weft history, without altering any commit that was
 // already there.
 func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
 
@@ -229,6 +239,8 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 // unpushed commit AND the remote diverged.
 // Fabric.Pull must return fabricengine.ErrWarpDivergedUnpushed and mutate neither repo.
 func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 1)
 
@@ -253,6 +265,8 @@ func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 // TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence
 // entry survives at all: Fabric.Pull must return fabricengine.ErrNoSurvivingAnchor and mutate neither repo.
 func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, weftFixture, initWarpSHA, _, _ := buildReconcileFixture(t, fixturesDir, 2)
 
@@ -278,6 +292,8 @@ func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 // must actually move to the fetched tip, with no rewrite detected and weft history untouched — a
 // regression guard against a fetch-only no-op.
 func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
@@ -320,6 +336,8 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 // until then Pull's weft step must skip as a vacuous success — not surface git's "no tracking
 // information" exit — and the warp side must still be processed.
 func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
@@ -360,6 +378,8 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 // surviving anchor.
 // Pull must rebuild the index from trailers before the anchor walk and reconcile, never abort.
 func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
 
@@ -395,6 +415,8 @@ func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 // in the warp worktree and an advanced remote, Pull must return fabricengine.ErrWarpDirty, leave warp HEAD
 // unmoved, and leave the modification intact on disk.
 func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, _, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
@@ -438,6 +460,8 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 // (warp commits that were never synced to weft at all): warp must still advance, with no reconcile
 // commit written.
 func TestPull_EmptyIndexNoDrift(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
@@ -479,6 +503,8 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 // claiming the weft pull succeeded — this is the rewrite of the pre-non-fatal-weft test that used
 // to assert the opposite disposition (an immediate error with warp never touched).
 func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
@@ -527,6 +553,8 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 // fetch and advance warp, report WeftPulled false, return a nil error, and leave weft HEAD exactly
 // where it was before the call.
 func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
@@ -571,6 +599,8 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 // stops pulling the weft: with a healthy weft upstream and an advanced warp remote, both sides must
 // still report success and the weft HEAD must actually advance.
 func TestPull_HealthyPairBothSidesPullCleanly(t *testing.T) {
+	t.Parallel()
+
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 

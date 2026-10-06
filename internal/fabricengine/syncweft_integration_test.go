@@ -25,6 +25,8 @@ import (
 // incrementally updating the index via RecordCorrespondence), a full RebuildIndex reconstructs an
 // index whose entries are identical to the incrementally-built one.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
@@ -93,6 +95,8 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 // genuinely stop resolving via expireAndPruneUnreachable.
 // WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
@@ -179,6 +183,8 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 // TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite RebuildIndex cannot
 // recover from: WeftSHAForWarpSHA must surface wrapped ErrStaleSHA (errors.Is).
 func TestWeftSHAForWarpSHA_StalenessSurvivesRebuild(t *testing.T) {
+	t.Parallel()
+
 	f, warpSHA := staleCorrespondenceFixture(t)
 
 	if _, err := f.WeftSHAForWarpSHA(warpSHA); !errors.Is(err, fabricengine.ErrStaleSHA) {

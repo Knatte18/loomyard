@@ -199,7 +199,7 @@ func TestStartup_Classification(t *testing.T) {
 // that needle directly rather than through the constant, so nothing else in this file ties the two
 // together -- a future rewording of the needle could silently leave the exported fixture stale, and
 // only a caller building a live-substrate fixture from it (e.g. loomcli's driver-strand smoke test,
-// gated behind -tags smoke) would ever notice, and only at that cost. This test is untagged so it
+// gated behind -tags tmux) would ever notice, and only at that cost. This test is untagged so it
 // runs at Tier 1.
 func TestReadyFooterFixture_ClassifiesReady(t *testing.T) {
 	c := New()

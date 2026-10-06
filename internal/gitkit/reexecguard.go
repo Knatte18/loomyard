@@ -8,9 +8,7 @@
 // Under go test that executable IS the test binary,
 // and Go's flag parsing stops at the first non-flag argument — so the positional args are ignored,
 // no error is raised, and the full suite runs with no -run filter.
-// With -tags smoke that re-runs every live-substrate test from inside a pane the suite itself
-// booted, recursively (the 2026-07-30 RAM-exhaustion incidents: ~30 tmux server + claude pairs from
-// one permitted single-test invocation).
+// With -tags integration, tmux or llm that re-runs every live-substrate test from inside a pane the suite itself booted, recursively (the 2026-07-30 RAM-exhaustion incidents: ~30 tmux server + claude pairs from one permitted single-test invocation).
 // reedengine now suppresses the re-exec itself (headerLaunchLine's underTest branch);
 // this guard is the defense-in-depth backstop for any FUTURE spawn point that hands os.Executable()
 // to a child while running under go test.

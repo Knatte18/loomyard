@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_interrupt_test.go proves the run loop's core interrupt use case
 // against a REAL claude in a REAL tmux pane: Runner.Start's returned *Run
@@ -59,6 +59,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // midTurnActivityThreshold is how many pane-capture changes (across polls of
@@ -242,7 +243,7 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 // and a mechanism failure (an error, or a died/timeout outcome) still fails the test — only the
 // specific "must be done" claim is dropped.
 func TestSmokeInterruptSendContinues(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

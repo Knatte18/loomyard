@@ -14,6 +14,8 @@ import (
 )
 
 func TestMidMerge_CleanPair_None(t *testing.T) {
+	t.Parallel()
+
 	h, _, _, _, _, _ := newMergePairFixture(t, ".")
 
 	got, err := fabricengine.MidMerge(h.Location)
@@ -26,6 +28,8 @@ func TestMidMerge_CleanPair_None(t *testing.T) {
 }
 
 func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
 	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
@@ -51,6 +55,8 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 }
 
 func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
+	t.Parallel()
+
 	h, _ := setupResolvedConflictedMergeIn(t)
 
 	got, err := fabricengine.MidMerge(h.Location)
@@ -63,6 +69,8 @@ func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
 }
 
 func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		onWeft bool
@@ -117,6 +125,8 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 }
 
 func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
+	t.Parallel()
+
 	l := &lyxcwd.Location{RepoName: "ghost", HubPath: t.TempDir(), WorktreeName: "ghost", AnchorRel: "."}
 
 	if _, err := fabricengine.MidMerge(l); err == nil {

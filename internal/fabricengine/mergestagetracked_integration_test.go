@@ -19,6 +19,8 @@ import (
 // TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed drives a conflicted MergeIn, edits a tracked file the merge did not conflict on and creates a new file,
 // then asserts the verb stages only the tracked edit and MergeContinue's commit carries it.
 func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	warpDir := h.PrimeWorktree()
 
@@ -82,6 +84,8 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 
 // TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses, staging nothing, when no fabric merge record exists.
 func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
+	t.Parallel()
+
 	_, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	res, err := f.MergeStageTracked()
@@ -96,6 +100,8 @@ func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 
 // TestMergeStageTracked_ForeignMergeStateRefuses asserts the verb refuses a plain-git conflicted merge fabric did not start.
 func TestMergeStageTracked_ForeignMergeStateRefuses(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "other", "plain-conflict.txt")

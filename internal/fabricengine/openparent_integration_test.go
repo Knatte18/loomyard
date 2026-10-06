@@ -24,6 +24,8 @@ import (
 // parent's (prime) fabric pair rather than the task's own — and that f.OriginURL() delegates to the
 // warp side's configured origin remote.
 func TestOpenParent_HappyPath(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	res := hubforge.AddPair(t, h, "task1")
 
@@ -60,6 +62,8 @@ func TestOpenParent_HappyPath(t *testing.T) {
 // TestOpenParent_NoLivePairForBranch asserts OpenParent errors, naming the branch, when the branch
 // has no live worktree at all.
 func TestOpenParent_NoLivePairForBranch(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "orphan-branch")
 
@@ -76,6 +80,8 @@ func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 // naming the hub's own weft sibling when that sibling is deleted, leaving the task pair itself
 // untouched.
 func TestOpenParent_ParentSiblingMissing(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	res := hubforge.AddPair(t, h, "task1")
 	taskLoc, err := lyxcwd.ResolveWorktree(res.Path)
@@ -104,6 +110,8 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 // makes OpenParent report "no live pair" naming the branch — never an *fabricengine.ErrMissingPath —
 // since the prunable entry is skipped by matchParentBranch before it is ever opened.
 func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	res := hubforge.AddPair(t, h, "task2")
 
@@ -133,6 +141,8 @@ func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 // "prunable" porcelain line even once the directory is gone, which is the deterministic way to
 // construct "matched at List time, gone by ResolveWorktree time" without depending on a real race.
 func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 	res := hubforge.AddPair(t, h, "task3")
 

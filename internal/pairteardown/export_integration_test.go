@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // export_integration_test.go re-exports the seams teardown_integration_test.go drives:
 // internal/pairteardown sits inside internal/fabriccli's dependency set, so its hubforge-using test cannot live in-package without closing a compile cycle through internal/hubforge — the standard Go export_test.go idiom.

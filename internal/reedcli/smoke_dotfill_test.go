@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_dotfill_test.go reproduces the tmux client-side dot-fill render artifact described by reed's
 // root-cause-model decision: tmux itself, not reed, paints a run of dot-fill glyphs (see dotFillGlyphs)
@@ -17,8 +17,6 @@ package reedcli
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -27,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // dotRunFloor is the minimum number of consecutive dot-fill characters on one captured line that
@@ -189,7 +188,7 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 
 	reedSocket, reedSession := socketAndSession(t)
 
-	harnessSocket := fmt.Sprintf("lyx-dotfill-harness-%d", os.Getpid())
+	harnessSocket := tmuxkit.Socket(t, tmuxPath)
 	if err := exec.Command(tmuxPath, "-L", harnessSocket, "new-session", "-d", "-s", "h",
 		"-x", strconv.Itoa(cols), "-y", strconv.Itoa(rows), shellPath).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)
@@ -474,8 +473,9 @@ func TestSmokeDotFillCrossClientControl(t *testing.T) {
 	}
 
 	// Both attaches complete before anything else.
+	// The toucher pane is about 8 rows, too short to render the second strand, so both attaches wait on the first strand's marker.
 	h.attachIn(t, observedPane, "DOTFILL-MARKER-ALPHA")
-	h.attachIn(t, toucherPane, "DOTFILL-MARKER-BETA")
+	h.attachIn(t, toucherPane, "DOTFILL-MARKER-ALPHA")
 
 	// Last setup step, after both attaches: rewrite reed's own array to pins only, then prove the
 	// rewrite stuck.

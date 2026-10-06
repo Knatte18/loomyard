@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // list_integration_test.go drives `lyx reed list` on a real hub: strands in the prime and in a task worktree all appear in one listing from the prime, and retitling a pane by hand flips only that row's drift.
 

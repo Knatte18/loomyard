@@ -1,7 +1,7 @@
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so boardengine's new git-worktree fixture
 // (sync_integration_test.go) never inherits the operator's global gitconfig (see
-// PATTERN-hermetic-git-tests).
+// PATTERN-test-isolation).
 // The binary also runs under tmux isolation through tmuxkit.Main.
 // Mirrors internal/fabricengine/testmain_test.go.
 

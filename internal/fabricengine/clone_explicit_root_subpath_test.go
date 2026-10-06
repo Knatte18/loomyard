@@ -24,6 +24,8 @@ import (
 // TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath asserts an explicit "." is refused against
 // a recorded "backend", and that leaving Subpath unset still adopts the record.
 func TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemoteWithSubdir(t, fixtures, "explicit-root-warp", "backend")

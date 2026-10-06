@@ -17,6 +17,7 @@ import "testing"
 // commit, so Committed() is value-identical to WeftCommitted for that call shape, even when an
 // unrelated warp-side file is also dirty in the worktree.
 func TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
 

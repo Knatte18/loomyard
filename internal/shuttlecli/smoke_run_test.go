@@ -1,13 +1,13 @@
-//go:build smoke
+//go:build llm
 
 // smoke_run_test.go is shuttlecli's live-integration smoke suite entry
-// point: the shared helpers (claude binary discovery, the orphaned-conhost
+// point: the shared helpers (the orphaned-conhost
 // teardown guard) used across this file, smoke_guardrail_test.go, and
 // smoke_interrupt_test.go, plus TestSmokeShuttleRunWritesOutputAndCleans —
 // the full round-trip proof that `lyx shuttle run` drives a REAL claude in a
 // REAL tmux pane to a "done" outcome, writes the file-contract output, and
 // cleans up the strand and run directory afterward. Follows the
-// internal/reedcli/smoke_*.go conventions: opt-in via -tags smoke, skipped
+// internal/reedcli/smoke_*.go conventions: opt-in via -tags llm, skipped
 // when no claude binary resolves, deferHubRelease against the
 // orphaned-conhost hazard. The helpers here are reproduced (not imported)
 // from reedcli's smoke files, per the smoke-files-are-self-contained
@@ -29,6 +29,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
@@ -44,21 +45,6 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 // A test that genuinely needs model-specific behaviour must say so explicitly rather than silently
 // omitting the pin.
 const smokeClaudeModel = "haiku"
-
-// claudeBinaryPath returns the claude CLI's path from the environment or
-// PATH, skipping the calling test when it is absent so a -tags=smoke run
-// never hard-fails on a machine without a configured claude.
-func claudeBinaryPath(t *testing.T) string {
-	t.Helper()
-	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
-		return path
-	}
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude not found on PATH")
-	}
-	return path
-}
 
 // hubHolder is one process still holding the fixture hub as its current
 // working directory, as reported by hubHolders.
@@ -245,7 +231,7 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 // directory are cleaned up afterward — the same happy path the sandbox suite's S1 scenario
 // exercises manually.
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

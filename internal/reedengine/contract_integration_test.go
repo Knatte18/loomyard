@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // contract_integration_test.go asserts the full psmux/tmux wire contract that
 // doc.go's "Multiplexer contract surface" section pins, against a real,
@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -643,15 +644,22 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 	e := New(cfg, geom)
 
+	// Registered before the Down cleanup so it runs after it (cleanups run last-in-first-out).
+	// It is the belt-and-suspenders guard against a leaked scratch server on a genuine test failure that never reached RemoveStrand, and it removes the server's socket file.
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
 		// Best-effort: the fix under test is expected to have already torn
 		// the session (and, on tmux, the whole server, since it was this
 		// scratch server's only session) down, so Down's own error here is
-		// unsurprising and ignored. The raw kill-server afterward is the
-		// belt-and-suspenders guard against a leaked scratch server on a
-		// genuine test failure that never reached RemoveStrand.
+		// unsurprising and ignored.
 		_, _ = e.Down()
-		_ = e.tmux.run("kill-server")
+
+		// Reed removes the socket file of the server it just tore down; the KillOnCleanup above runs after this and would hide a missed removal, so the check sits here.
+		if runtime.GOOS != "windows" {
+			if _, err := os.Lstat(filepath.Join(socketDirFromEnv(), geom.SocketKey)); err == nil {
+				t.Errorf("socket file for key %q remains after Down, want it removed", geom.SocketKey)
+			}
+		}
 	})
 
 	if _, err := e.Up(); err != nil {
@@ -755,9 +763,9 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	}
 	e := New(cfg, geom)
 
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, geom.SocketKey)
 	t.Cleanup(func() {
 		_, _ = e.Down()
-		_ = e.tmux.run("kill-server")
 	})
 
 	if _, err := e.Up(); err != nil {

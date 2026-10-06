@@ -2,11 +2,10 @@
 // starts a REAL `claude` process must thread the shared smokeClaudeModel constant, so no future edit
 // can silently put a live spawn back on the account-default model.
 //
-// It is an UNTAGGED source scan on purpose. The smoke files are behind `//go:build smoke`, so an
-// assertion written inside them only runs on the rare `-tags smoke` invocation — which is exactly
-// the run that would already have spent the money. Reading them as text runs on every ordinary
-// `go test`, before any spawn happens. That also means the constant can only be referred to by name
-// here, never used as a value, since it does not exist in an untagged build.
+// It is an UNTAGGED source scan on purpose.
+// The smoke files are behind `//go:build llm`, so an assertion written inside them only runs on the rare `-tags llm` invocation — which is exactly the run that would already have spent the money.
+// Reading them as text runs on every ordinary `go test`, before any spawn happens.
+// That also means the constant can only be referred to by name here, never used as a value, since it does not exist in an untagged build.
 //
 // No process is spawned and no scan root is resolved: the test's own working directory IS the
 // package directory, so the Test Tier Purity Invariant is satisfied with no allowlist entry.
@@ -21,9 +20,8 @@ import (
 	"testing"
 )
 
-// modelPinConstantName is the shared constant every real-`claude` spawn site in the smoke suite must
-// thread. Named as a string rather than referenced as an identifier because it is declared in a
-// `//go:build smoke` file and does not exist in this untagged build.
+// modelPinConstantName is the shared constant every real-`claude` spawn site in the smoke suite must thread.
+// Named as a string rather than referenced as an identifier because it is declared in a `//go:build llm` file and does not exist in this untagged build.
 const modelPinConstantName = "smokeClaudeModel"
 
 // wantSpawnSiteCount is how many sites in the smoke suite start a real `claude`, pinned so the scan
@@ -49,10 +47,8 @@ var spawnSiteOpeners = []struct {
 
 // TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel is the guard itself.
 //
-// Round 1 pinned all four smoke spawns to the cheap model via a shared constant but added nothing
-// that fails when a site stops referencing it: deleting `"--model", smokeClaudeModel,` from any one
-// call left build, vet, and the whole hermetic suite green, and the only symptom was a larger bill
-// on the next `-tags smoke` run — a defect that is invisible precisely while it is costing money.
+// Round 1 pinned all four smoke spawns to the cheap model via a shared constant but added nothing that fails when a site stops referencing it:
+// deleting `"--model", smokeClaudeModel,` from any one call left build, vet, and the whole hermetic suite green, and the only symptom was a larger bill on the next `-tags llm` run — a defect that is invisible precisely while it is costing money.
 func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 	smokeFiles, err := filepath.Glob("smoke_*_test.go")
 	if err != nil {
@@ -85,7 +81,7 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 				}
 				foundSites++
 				if !strings.Contains(argumentList, modelPinConstantName) {
-					t.Errorf("%s: a %s starts a real claude process without threading %s — every live spawn in this suite must pin the cheap model, and a site that omits it costs real money on the next -tags smoke run with nothing else going red. Site:\n%s",
+					t.Errorf("%s: a %s starts a real claude process without threading %s — every live spawn in this suite must pin the cheap model, and a site that omits it costs real money on the next -tags llm run with nothing else going red. Site:\n%s",
 						file, opener.name, modelPinConstantName, argumentList)
 				}
 			}
