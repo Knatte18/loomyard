@@ -12,6 +12,8 @@ import (
 )
 
 func TestAwaitingStatusArmsWithoutRefusal(t *testing.T) {
+	t.Parallel()
+
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
 		CurrentProducer: battenrecipe.NameWorktreeTeardown,
