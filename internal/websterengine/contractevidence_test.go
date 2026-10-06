@@ -1,5 +1,5 @@
-// contractevidence_test.go covers contractFileStatus and the sites that consult it without git:
-// AcceptPendingAudit and pendingPathsWayForward over contract-file paths only.
+// contractevidence_test.go covers contractFileStatus and AcceptPendingAudit over contract-file
+// paths, without git.
 // Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.
 
 package websterengine
@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -122,82 +121,77 @@ func writesEngine(master, fork []shuttleengine.WriteEvent) *shuttlefake.Engine {
 	}}
 }
 
-func TestAcceptPendingAudit_ContractFilesAbsentAccepts(t *testing.T) {
-	geom := evidenceGeom(t)
-	st := contractState(OutcomePath(geom.WebsterDir), summaryparser.Path(geom.WebsterDir))
+// TestAcceptPendingAudit_ContractFiles pins accept-audit over contract-file findings: absent files
+// or a Master write after the fork's clear the finding, reporting whether the files were absent, and
+// a fork write after Master's refuses, naming the delete route and leaving the finding pending.
+func TestAcceptPendingAudit_ContractFiles(t *testing.T) {
+	t.Parallel()
 
-	got, onAbsent, err := AcceptPendingAudit(writesEngine(nil, nil), st, geom, nil)
-	if err != nil {
-		t.Fatalf("AcceptPendingAudit: %v", err)
+	tests := []struct {
+		name string
+		// fixture returns the finding's paths and the engine answering the audit.
+		fixture      func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine)
+		wantOnAbsent bool
+		// wantRefusal lists what the refusal names; empty expects an accept.
+		wantRefusal func(paths []string) []string
+	}{
+		{
+			name: "absent contract files accept",
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+				return []string{OutcomePath(geom.WebsterDir), summaryparser.Path(geom.WebsterDir)}, writesEngine(nil, nil)
+			},
+			wantOnAbsent: true,
+		},
+		{
+			name: "Master writing after the fork accepts",
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+				path := writeContractFile(t, geom)
+				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
+			},
+		},
+		{
+			name: "the fork writing last refuses naming the delete route",
+			fixture: func(t *testing.T, geom Geometry) ([]string, shuttleengine.Engine) {
+				path := writeContractFile(t, geom)
+				return []string{path}, writesEngine([]shuttleengine.WriteEvent{succeeded(path, 0)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
+			},
+			wantRefusal: func(paths []string) []string {
+				return []string{"rm " + paths[0], "after Master's last write", "lyx webster accept-audit"}
+			},
+		},
 	}
-	if len(got) != 1 || len(st.PendingAuditFindings) != 0 {
-		t.Errorf("accepted %v, pending %v; want one cleared finding", got, st.PendingAuditFindings)
-	}
-	if !onAbsent {
-		t.Error("onAbsentContract = false; want true on absent contract files")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestAcceptPendingAudit_MasterWroteAfterForkAccepts(t *testing.T) {
-	geom := evidenceGeom(t)
-	path := writeContractFile(t, geom)
-	st := contractState(path)
-	engine := writesEngine([]shuttleengine.WriteEvent{succeeded(path, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
+			geom := evidenceGeom(t)
+			paths, engine := tt.fixture(t, geom)
+			st := contractState(paths...)
 
-	got, onAbsent, err := AcceptPendingAudit(engine, st, geom, nil)
-	if err != nil {
-		t.Fatalf("AcceptPendingAudit: %v", err)
-	}
-	if len(got) != 1 || len(st.PendingAuditFindings) != 0 {
-		t.Errorf("accepted %v, pending %v; want one cleared finding", got, st.PendingAuditFindings)
-	}
-	if onAbsent {
-		t.Error("onAbsentContract = true; want false when the file exists")
-	}
-}
-
-func TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute(t *testing.T) {
-	geom := evidenceGeom(t)
-	path := writeContractFile(t, geom)
-	st := contractState(path)
-	engine := writesEngine([]shuttleengine.WriteEvent{succeeded(path, 0)}, []shuttleengine.WriteEvent{succeeded(path, time.Minute)})
-
-	_, _, err := AcceptPendingAudit(engine, st, geom, nil)
-	if !errors.Is(err, ErrAuditNotAcceptable) {
-		t.Fatalf("AcceptPendingAudit error = %v; want ErrAuditNotAcceptable", err)
-	}
-	for _, want := range []string{"rm " + path, "after Master's last write", "lyx webster accept-audit"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q lacks %q", err, want)
-		}
-	}
-	if len(st.PendingAuditFindings) != 1 {
-		t.Errorf("pending = %v; want unchanged", st.PendingAuditFindings)
-	}
-}
-
-func TestPendingPathsWayForward_ContractPaths(t *testing.T) {
-	geom := evidenceGeom(t)
-	path := writeContractFile(t, geom)
-
-	st := contractState(path)
-
-	cleared, _, err := pendingPathsWayForward(geom, st, RunWrites{Master: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "lyx webster run")
-	if err != nil {
-		t.Fatalf("cleared: %v", err)
-	}
-	if want := []string{"lyx webster accept-audit", "lyx webster run"}; !slices.Equal(cleared, want) {
-		t.Errorf("cleared steps = %q; want %q", cleared, want)
-	}
-
-	uncleared, notes, err := pendingPathsWayForward(geom, st, RunWrites{Forks: []shuttleengine.WriteEvent{succeeded(path, time.Minute)}}, []string{path}, false, "lyx webster run")
-	if err != nil {
-		t.Fatalf("uncleared: %v", err)
-	}
-	if want := []string{"rm " + path, "lyx webster accept-audit", "lyx webster run"}; !slices.Equal(uncleared, want) {
-		t.Errorf("uncleared steps = %q; want %q", uncleared, want)
-	}
-	if !strings.Contains(notes[path], "after Master's last write") {
-		t.Errorf("uncleared note = %q; want it to say a fork wrote last", notes[path])
+			got, onAbsent, err := AcceptPendingAudit(engine, st, geom, nil)
+			if tt.wantRefusal != nil {
+				if !errors.Is(err, ErrAuditNotAcceptable) {
+					t.Fatalf("AcceptPendingAudit error = %v; want ErrAuditNotAcceptable", err)
+				}
+				for _, want := range tt.wantRefusal(paths) {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+				if len(st.PendingAuditFindings) != 1 {
+					t.Errorf("pending = %v; want unchanged", st.PendingAuditFindings)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AcceptPendingAudit: %v", err)
+			}
+			if len(got) != 1 || len(st.PendingAuditFindings) != 0 {
+				t.Errorf("accepted %v, pending %v; want one cleared finding", got, st.PendingAuditFindings)
+			}
+			if onAbsent != tt.wantOnAbsent {
+				t.Errorf("onAbsentContract = %v; want %v", onAbsent, tt.wantOnAbsent)
+			}
+		})
 	}
 }

@@ -14,6 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
+// TestStrandLive pins StrandLive's live, not-live, absent and probe-error results.
+//
+//testtiming:keep pins StrandLive's own live/not-live/absent results and wrapped probe error, which the removeStrandIfLive test only observes as whether a removal happened
 func TestStrandLive(t *testing.T) {
 	t.Parallel()
 

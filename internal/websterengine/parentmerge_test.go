@@ -18,6 +18,8 @@ import (
 
 // TestParentMergeBetweenForkCommitAndRecordBatch is the 2026-09-30 parent-merge-ring regression.
 // It walks begin → fork commit → parent merge → record → next begin → next record and asserts each recorded value exactly.
+//
+//testtiming:keep pins the 2026-09-30 wedge end to end over real git: a parent merge between the fork's commit and record-batch, then the next begin and record; each covering test pins one step over a fake or a single call
 func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	fx := newBeginFixture(t)
 	// The ring is git itself, so the fixture's fakeGit gives way to a real repository.

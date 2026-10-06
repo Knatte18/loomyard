@@ -4842,291 +4842,55 @@ No coverage:
 
 ## internal/websterengine
 
-456 tests, wall 5.49s, serial 7.80s.
+175 tests, wall 1.31s, serial 2.73s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestFirstFreeArchivePath_ReturnsBareCandidateWhenFree` | `TestFailBatch_RecordsSuspectBlobs` | yes |
-| `TestFirstFreeArchivePath_CollisionAppendsSuffix` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestArchiveStateFile_RenamesAndPreservesContent` | `TestRun_FreshContractFileEvidence` | yes |
-| `TestArchiveReportsDir_ArchivesExistingContentAndRecreatesEmpty` | `TestRun_FreshContractFileEvidence` | yes |
-| `TestArchiveRunRecord_MovesWholeRecordAndClearsPrompts` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
-| `TestArchiveRunRecord_SecondCallIsNoOp` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
-| `TestArchiveRunRecord_AbsentWebsterDirIsNoOp` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
-| `TestCheckFork` | `TestRecordBatch_ForgedTerminalRecordFails`, `TestRun_ForkStateWriteAtRunExit`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot`, `TestCheckParent`, `TestRefScannerMatches`, `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRun_DoneWithNestedAgentInFixerForkWarns` | yes |
-| `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | `TestCheckFork` | no |
-| `TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | `TestCheckParent` | yes |
-| `TestForkWarnings` | `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_NoReportKeepsNeverReturnedWarning` | no |
-| `TestNewTranscripts` | `TestRecordBatch_ForgedTerminalRecordFails` | yes |
-| `TestSettleRetry_ReturnsEarlyOnLaterTick` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
-| `TestSettleRetry_WindowExhausted` | `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
-| `TestSettleRetry_FetchErrorPropagates` | `TestRecordBatch_MissingSessionTranscriptArchivesReport` | yes |
-| `TestClassifyAttribution` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
-| `TestFindingIdentity_ParentKeyPerSession` | `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | yes |
-| `TestRecordFailedFinding_DispositionsWithoutWarning` | `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
-| `TestRecordedAuditWarnings_BatchesThenRunLevel` | `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`, `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | yes |
-| `TestAuditLedger_StateRoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestFailBatch_ArchivesReportAndFreesLivePath` | `TestFailBatch_RecordsSuspectBlobs` | yes |
-| `TestFailBatch_NoReportArchivesNothing` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestFailBatch_RecordsTerminalFailed` | `TestFailBatch_RecordsSuspectBlobs` | yes |
-| `TestFailBatch_TranscriptsAppendedOnce` | `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
-| `TestBatchFailedError_TextAndSentinel` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestRenderCardGates_OneLinePerCard` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestCardGateCommand` | yes |
-| `TestClassify_ReportPresentShortCircuitsToTerminal` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestClassify_ReportPresentFailedIsStuck` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestClassify_NoReport_TimeoutIsDeadTimeout` | `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead` | yes |
-| `TestClassify_NoReport_StillRunning` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestAcceptPendingAudit_ContractFilesAbsentAccepts` | `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRun_FreshContractFileEvidence`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestAcceptPendingAudit_MasterWroteAfterForkAccepts` | `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestPendingPathsWayForward_ContractPaths` | `TestPendingFindingsText_BoardModelFindingsGolden`, `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep`, `TestAcceptPendingAudit_MasterWroteAfterForkAccepts` | no |
-| `TestDistill_StatusMapping` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestDistill_CarriesHeadSHAAndDeviations` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestDistill_LargeDeviationListNeverChangesStatus` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestPendingFindingsText_BoardModelFindingsGolden` | `TestRun_ForkStateWriteAtRunExit`, `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestPendingPathsWayForward_ContractPaths`, `TestRun_FreshContractFileEvidence`, `TestUncheckableReason` | yes |
-| `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep` | `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_ForkStateWriteAtRunExit`, `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestPendingPathsWayForward_ContractPaths` | yes |
-| `TestPendingFindingsText_PathlessFindingTakesTheResetRoute` | `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestFindingsClause_NamesAPathTheDetailLacksOnce` | `TestRun_PendingPlanPathNamesRestorePlan` | no |
-| `TestFingerprint_IdenticalDirsMatch` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestFingerprint_ChangesOnRename` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestFingerprint_ChangesOnByteEdit` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestFingerprint_ChangesOnAddedBatchFile` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestFingerprint_IgnoresNonMarkdownAndSubdirs` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
-| `TestFingerprint_IgnoresTheAmendmentLog` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
-| `TestRestampFingerprint_RebaselinesTheStalenessGuard` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestRestampFingerprint_MovesBegunCardHashButRestampBaselineDoesNot` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
-| `TestPlanEditError_NilOnUnchangedPlanAndNamesWayForwardAfterEdit` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330` | yes |
-| `TestHeadSHA_ReturnsHEAD` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestDirty_TrueAndFalse` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330` | yes |
-| `TestRefuseMidMerge` | `TestRecordBatch_MergeInProgressRefusedThenSucceeds` | yes |
-| `TestRefuseMidMerge_LinkedWorktree` | `TestRecordBatch_MergeInProgressRefusedThenSucceeds` | yes |
-| `TestOtherWorktrees` | `TestClassifyViolation` | yes |
-| `TestParseOutcome_MissingFile` | `TestRunInFlight` | yes |
-| `TestArchiveStaleOutcome_AbsentFileIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestArchiveStaleOutcome_RenamesAndPreservesContent` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestStorePlanBaseline_ContentAddressed` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved` | yes |
-| `TestRestorePlan_NothingChanged` | `TestRestorePlan_RestoresEditedAndRemovesUnrecorded` | yes |
-| `TestPollUntilTerminal_TerminalMidWaitReturnsEarly` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestPollUntilTerminal_DeadlineReturnsRunning` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestMasterPlanDirDisplay` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderCardPointers_ReRootsOntoPlanDirDisplay` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved` | yes |
-| `TestRenderProgress_NilBatchStateIsSkippedNotPanicked` | `TestRun_WayForward_RunExitRefusals` | yes |
-| `TestReport_RoundTrip_OK_EmptyDeviations` | `TestReport_RoundTrip_FAILED_PopulatedDeviations` | no |
-| `TestReport_RoundTrip_FAILED_PopulatedDeviations` | `TestReport_RoundTrip_OK_EmptyDeviations` | yes |
-| `TestReportFileName` | `TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses` | yes |
-| `TestParseReport_RejectsUnknownKey` | `TestParseReport_RejectsEmptyFile` | no |
-| `TestParseReport_RejectsBadStatus` | `TestRecordBatch_MalformedReportYAMLErrors` | yes |
-| `TestParseReport_RejectsMalformedYAML` | `TestParseReport_RejectsUnknownKey` | yes |
-| `TestParseReport_RejectsEmptyFile` | `TestParseReport_RejectsUnknownKey` | yes |
-| `TestParseReport_MissingFile` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
-| `TestLoadRunWrites_MergesEverySessionsEvents` | `TestRecoverSpawnOrAttach_ContractFileEvidence` | yes |
-| `TestLoadRunWrites_SessionRecordedTwiceAuditedOnce` | `TestPlanReset_OwnPathsHoldSucceededWriteAndOmitFailedOne` | yes |
-| `TestStrandLive` | `TestRemoveStrandIfLive` | yes |
-| `TestCheckRecoveredSuspects_EmptyStartHoldsNothing` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestCheckSuspectPaths` | yes |
-| `TestRunEvidenceBases_PicksByAncestry` | `TestAcceptPendingAudit_UsesExecutionOrderHead`, `TestAcceptPendingAudit_RefusesMissingCommit`, `TestRun_FabricReferenceInFixerForkIsStuck` | yes |
-| `TestVerifyGate_FlakyFailurePassesOnRerunWithNote` | `TestRun_FlakyVerifyKeepsDoneWithWarning` | yes |
-| `TestVerifyGate_FailedEvaluationWritesReport` | `TestRun_VerifyGateExhaustedEndsStuck`, `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
-| `TestVerifyGate_DirtyFailureRecordsPreFixHead` | `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses`, `TestRun_VerifyGateExhaustedEndsStuck` | yes |
-| `TestVerifyGate_PreFixHeadPersistence` | `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
-| `TestVerifyGate_RejectedFixCommitFailsTerminal` | `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal` | yes |
-| `TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead` | `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal` | yes |
-| `TestCardHint_NamesCardsThatTouchedAFailingPackage` | `TestRun_VerifyGateExhaustedEndsStuck` | yes |
-| `TestVerifyGateReport_RoundTrip` | `TestRun_VerifyGateExhaustedEndsStuck` | yes |
-| `TestParseVerifyFailures_Package` | `TestParseVerifyFailures` | yes |
-| `TestWebsterGeometryHelpers` | `TestWebsterGeometryHelpers_SubpathAnchored` | yes |
-| `TestWebsterGeometryHelpers_SubpathAnchored` | `TestWebsterGeometryHelpers` | no |
-| `TestWebsterGeometryHelpers_ToldDirectory` | `TestWebsterGeometryHelpers_SubpathAnchored` | yes |
-| `TestAwaitBatch_ReportAlreadyPresentReturnsImmediately` | `TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow` | yes |
-| `TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow` | `TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses`, `TestAwaitBatch_ReportAlreadyPresentReturnsImmediately` | no |
-| `TestBeginBatch_FingerprintMismatch` | `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestBeginBatch_PromptFilePrevDigest` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestBeginBatch_StateUpdated` | `TestBeginBatch_ModelAssertion` | yes |
-| `TestBeginBatch_ReBeginKeepsStartSHA` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
-| `TestBeginBatch_RecordsCardSet` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
-| `TestBeginBatch_ReBeginKeepsAuditWarnings` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
-| `TestBeginBatch_ReBeginEmptyStartSHARecordsHead` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
-| `TestBeginBatch_CreatesReportsDir` | `TestBeginBatch_ModelAssertion` | yes |
-| `TestBeginBatch_PreExistingReportRefused` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_WayForward_ReportExistsIsRecorded` | yes |
-| `TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestBeginBatch_ReResolvesPlanAtDispatch` | yes |
-| `TestBeginBatch_WayForward_ReportExistsIsRecorded` | `TestBeginBatch_CreatesReportsDir`, `TestBeginBatch_PreExistingReportRefused` | no |
-| `TestBeginBatch_PromptFileCarriesCardGateCommand` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestBeginBatch_ModelAssertion` | yes |
-| `TestConfigTemplate_ParsesAsYAML` | `TestLoadConfig_BadRoleGrammarNamesTheKey` | yes |
-| `TestConfigTemplate_RoundTripsThroughLoadConfig` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults`, `TestLoadConfig_UninitializedFallsBackToTemplate` | yes |
-| `TestConfigTemplate_ContainsEveryConfigYAMLTag` | `TestLoadConfig_BadRoleGrammarNamesTheKey` | yes |
-| `TestLoadConfig_OverridesRoundTrip` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults`, `TestLoadConfig_UninitializedFallsBackToTemplate`, `TestResolveRoles_NoOversizedRole` | yes |
-| `TestLoadConfig_RetiredPollWaitKeyStillLoads` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults` | yes |
-| `TestParentMergeBetweenForkCommitAndRecordBatch` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_VerifyGateExhaustedEndsStuck`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
-| `TestPause_RequestObserveClearCycle` | `TestPause_ClearIsIdempotent`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | no |
-| `TestPause_RequestIsIdempotent` | `TestBeginBatch_PauseSentinel` | yes |
-| `TestPause_ClearIsIdempotent` | `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestPause_RequestObserveClearCycle` | yes |
-| `TestRebaseline_ForeignEditAcceptedMidRun` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRebaseline_ForeignEditToBegunCardStaysRefused`, `TestRebaseline_RecordWithoutCardHashesComparesIDsOnly`, `TestBeginBatch_FingerprintMismatch` | no |
-| `TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb` | `TestRebaseline_RefusesChangedCardSet` | yes |
-| `TestRebaseline_LegacyRecordWithoutCardsAccepted` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestRebaseline_RefusesChangedBegunCardBody` | `TestRebaseline_ForeignEditToBegunCardStaysRefused` | no |
-| `TestRebaseline_AcceptsEditedUnbegunCard` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
-| `TestRebaseline_RecordWithoutCardHashesComparesIDsOnly` | `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestRebaseline_RefusesUnnamedEditedCard` | `TestRebaseline_RefusesEditedCardTheOperatorDidNotName` | no |
-| `TestRebaseline_RefusesEditedCardTheOperatorDidNotName` | `TestRebaseline_RefusesUnnamedEditedCard`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
-| `TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
-| `TestRebaseline_ForeignEditToBegunCardStaysRefused` | `TestRebaseline_RefusesChangedBegunCardBody`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards` | yes |
-| `TestRecordBatch_AuditsBracketOpeningSession` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
-| `TestRecordBatch_TranscriptAppearsOnLaterTick` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
-| `TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
-| `TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
-| `TestRecordBatch_ReportPresentDropsNeverReturnedWarning` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestForkWarnings` | yes |
-| `TestRecordBatch_NoReportKeepsNeverReturnedWarning` | `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestForkWarnings` | yes |
-| `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | `TestRecordBatch_RetryNeverDuplicatesWarning`, `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches`, `TestPersistRecoveryTerminal_PassesRederived`, `TestRecordBatch_ForkPlanWriteFailsBatch`, `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch`, `TestClassifyViolation` | no |
-| `TestRecordBatch_ForkNestedAgentWarnsWhenVerifyPasses` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRerunCardVerifies_AllPass` | yes |
-| `TestRecordBatch_MutatingFabricReferenceFailsBatch` | `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestRecordBatch_FabricReferenceRecordsUncheckable` | `TestRecordBatch_MutatingFabricReferenceFailsBatch` | no |
-| `TestRecordBatch_ScratchParentWriteRecordsUncheckable` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestUncheckableReason` | yes |
-| `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty` | `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch` | no |
-| `TestRecordBatch_RetryNeverDuplicatesWarning` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestRerunCardVerifies_AllPass` | yes |
-| `TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch` | yes |
-| `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty` | yes |
-| `TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch` | `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRun_DoneWithNestedAgentInFixerForkWarns` | yes |
-| `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
-| `TestRecordBatch_ParentWriteToRunStateFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails` | yes |
-| `TestRecordBatch_ForkContractWriteFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | yes |
-| `TestRecordBatch_ForkPlanWriteFailsBatch` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_ForkStateWriteAtRunExit`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
-| `TestRecordBatch_Regression20260930_ForkAuditFalsePositive` | `TestRecoverSpawnOrAttach_RefusesUncheckableFindings`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_ForkStateWriteAtRunExit`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRecordBatch_ForgedTerminalRecordFails` | yes |
-| `TestRecordBatch_RefusesPlanEditedSinceBegin` | `TestRecordBatch_RefusedForeignEditLeavesCardHashes` | no |
-| `TestRecordBatch_BindsHandleFromDeltaEndToEnd` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_RefusesPlanEditedSinceBegin` | yes |
-| `TestRecordBatch_ScopeGuardFindingsLandInWarnings` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift` | yes |
-| `TestRecordBatch_DriftBlocksOnDeletedStillReferenced` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
-| `TestRecordBatch_DoneChecksPassOnLandedCreate` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
-| `TestRecordBatch_ParentMergeAfterForkCommit` | `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | yes |
-| `TestRecordBatch_TwoParentMergesAfterForkCommit` | `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | yes |
-| `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | `TestRecordBatch_ParentMergeAfterForkCommit`, `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_ScopeGuardFindingsLandInWarnings` | no |
-| `TestRecordBatch_RefusedForeignEditLeavesCardHashes` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts`, `TestRun_FreshDropsFindingsOnceReset`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_RefusesPlanEditedSinceBegin` | yes |
-| `TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestRecoverBatch_DoneReportRefusedUnlessPriorDead` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient`, `TestRecoverBatch_WayForward_DoneReportRecordsInstead` | yes |
-| `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes` | no |
-| `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest` | `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | yes |
-| `TestRecoverBatch_ReportHeadSHAMismatchIsHardError` | `TestRecoverBatch_NonMergeCommitAfterReportHeadRefused` | no |
-| `TestRecoverBatch_NonMergeCommitAfterReportHeadRefused` | `TestRecoverBatch_ReportHeadSHAMismatchIsHardError`, `TestRecoverBatch_ParentMergeAfterReportHead` | yes |
-| `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | no |
-| `TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestRecoverSpawnOrAttach_RefusesUncheckableFindings` | `TestRecordBatch_Regression20260930_ForkAuditFalsePositive` | no |
-| `TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestRecoverSpawn_InheritsTheStuckForksStartSHA` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestRecoverSpawn_RecordsCardSet` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
-| `TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing` | `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient` | yes |
-| `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes`, `TestRecoverBatch_DoneReportRefusedUnlessPriorDead`, `TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing` | no |
-| `TestRecoverSpawnOrAttach_WayForward_MalformedReport` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRecordBatch_MalformedReportYAMLErrors` | yes |
-| `TestRecoverBatch_WayForward_DoneReportRecordsInstead` | `TestRecoverBatch_DoneReportRefusedUnlessPriorDead` | no |
-| `TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | `TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives`, `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved`, `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix` | no |
-| `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestPersistRecoveryTerminal_PassesReverted` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestPersistRecoveryTerminal_PassesRederived` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved`, `TestAcceptPendingAudit_RefusesUnverifiablePath` | no |
-| `TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestRecoverSpawn_CarriesSuspectPathsAndTranscripts` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
-| `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_InformationalFindingsDoNotRefuseRun`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_VerifyGateExhaustedEndsStuck`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
-| `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | yes |
-| `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`, `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | no |
-| `TestResolveRoles_BothRolesResolve` | `TestResolveRoles_NoOversizedRole`, `TestResolveRoles_EscapeFormNeedsNoRegistryEntry` | yes |
-| `TestResolveRoles_NoOversizedRole` | `TestResolveRoles_BothRolesResolve` | no |
-| `TestResolveRoles_BracketParamsSurviveIntoResolved` | `TestResolveRoles_NoOversizedRole`, `TestResolveRoles_EscapeFormNeedsNoRegistryEntry` | yes |
-| `TestRun_BlockingGlyphFindingRefusesRun` | `TestRun_WayForward_ValidationRefusal` | no |
-| `TestRun_QuarryUnavailableRefusesRunNamingQuarry` | `TestRun_BlockingGlyphFindingRefusesRun`, `TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth` | yes |
-| `TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact` | `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
-| `TestRun_FreshArchivesStateReportsAndClearsPrompts` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshOnUnchangedPlanWithoutFindingsResumes`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
-| `TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
-| `TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn` | `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_FreshContractFileEvidence`, `TestRun_WayForward_RunExitRefusals`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
-| `TestRun_AssertedModelInitializedToMasterRoleModel` | `TestRun_MasterSpecCarriesWebsterStrandRole`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
-| `TestRun_MasterSpecCarriesWebsterStrandRole` | `TestRun_AssertedModelInitializedToMasterRoleModel` | no |
-| `TestRun_NoExpiredShellsWritesNothing` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestRun_MasterSpecAwaitsRecoverBatchShell` | `TestRun_MasterSpecCarriesWebsterStrandRole` | yes |
-| `TestRun_MasterStrandPersistedBeforeFindRun` | `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
-| `TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
-| `TestRun_DoneWithMissingSummaryIsHardError` | `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_WayForward_RunExitRefusals` | yes |
-| `TestRun_DoneWithUnrecordedBatchIsHardError` | `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`, `TestRun_WayForward_RunExitRefusals` | yes |
-| `TestRun_VerifyGateFailsThenPassesEndsDone` | `TestRun_VerifyGateExhaustedEndsStuck`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
-| `TestRun_ReorderingIsObservableInMasterPrompt` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestRun_AcyclicPlanReportsNoCycles` | `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches` | yes |
-| `TestRun_ResumeWithCompletedCreateCardIsNotRefused` | `TestRun_FreshContractFileEvidence`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_WayForward_MasterEndedEarly`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite` | yes |
-| `TestRun_UnapprovedPlanRefused` | `TestRun_WayForward_UnapprovedPlan` | yes |
-| `TestRun_GateReachesStartMaster` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_GateNamingVerifyIsRefused` | yes |
-| `TestRun_ZeroGateReachesStartMasterWithOnlyVerify` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestRun_Regression20260930_BegunUnrecordedBatchResumes` | `TestRun_FreshContractFileEvidence`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_WayForward_MasterEndedEarly`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite` | yes |
-| `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation` | `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestRun_WayForward_UnapprovedPlan` | `TestRun_ErrRunBusy`, `TestRun_UnapprovedPlanRefused` | no |
-| `TestRun_WayForward_ValidationRefusal` | `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_FreshRefusesDifferingPlanPath`, `TestRun_InformationalFindingsDoNotRefuseRun`, `TestRun_BlockingGlyphFindingRefusesRun`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards` | yes |
-| `TestRun_WayForward_QuarryUnavailable` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth` | yes |
-| `TestRun_WayForward_StartMasterFailure` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
-| `TestRun_FirstInitRecordsPlanFileHashes` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
-| `TestRun_FreshDropsPathlessFinding` | `TestRun_FreshDropsPlanPathWithoutCopy` | yes |
-| `TestRun_FreshDropsUncheckableBatch` | `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestRun_FreshRefusesUncheckableBatchPastStart` | `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_FreshDropsUncheckableBatch`, `TestRun_FreshRefusesCommitPastStart` | no |
-| `TestRun_FreshOnUnchangedPlanWithoutFindingsResumes` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshArchivesStateReportsAndClearsPrompts` | no |
-| `TestRun_FreshRefusesCommitPastStart` | `TestRun_FreshDropsFindingsOnceReset`, `TestRun_FreshRefusesWhileSuspectPathDiffers`, `TestRun_FreshRefusesUncheckableBatchPastStart` | yes |
-| `TestRun_PendingPlanPathNamesRestorePlan` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_FreshRefusesDifferingPlanPath`, `TestRun_ForkStateWriteAtRunExit`, `TestFindingsClause_NamesAPathTheDetailLacksOnce` | yes |
-| `TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestSequenceBatches_MultiCardBatch` | `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning` | yes |
-| `TestSequenceBatches_AcyclicOrdering` | `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_NoOpOnDeclaredCorrectOrder` | `TestSequenceBatches_EdgeDerivation`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestSequenceBatches_ConsumerDeclaredBeforeProducer` | `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_TwoCardCycle` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_TwoDisjointCycles` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_AcyclicPlanReportsNoCycles` | `TestSequenceBatches_EdgeDerivation`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestSequenceBatches_StructuralGuarantees` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestCycle_Warning` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestCycle_WarningZeroValueAndEmptyBatchesDoNotPanic` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestState_PreFixHeadRoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestState_RoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestState_DigestPersistsAcrossSaveLoad` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestState_AbsentFileReturnsNil` | `TestRun_BlockingGlyphFindingRefusesRun` | yes |
-| `TestState_LegacyIntegrationRecordsStillLoad` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestAcquireStateMutation_ExcludesSecondHolder` | `TestRun_ErrRunBusy` | yes |
-| `TestRunActive_ReflectsRunLockHeld` | `TestPlanReset_HeldRunLockIsTransientBusy`, `TestPlanReset_DetachedHeadRefuses` | yes |
-| `TestArchiveStaleSummary_AbsentFileIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestArchiveStaleSummary_RenamesAndPreservesContent` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
-| `TestAppendIntegrationTriage_FlakyListedByIdentity` | `TestRun_FlakyVerifyKeepsDoneWithWarning` | yes |
-| `TestAppendAuditWarnings_AppendsBulletsInOrder` | `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning` | yes |
-| `TestAppendBackgroundShells_EmptyIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestAppendBackgroundShells_AppendsBulletsInOrder` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote` | yes |
-| `TestRenderPrompts_CarryCardGates` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestMasterTemplate_QuotesDigestFieldsAndNoOthers` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_QuotesOutcomeSchemaKeys` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_FillsWithAllMarkers` | `TestRenderPrompts_ParentDirective`, `TestRenderForkPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_PatternDirectiveOptional` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestForkTemplate_FillsWithAllMarkers` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRecoveryTemplate_FillsWithAllMarkers` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRenderRecoveryPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderForkPrompt_StatesSpecsDir` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderForkPrompt_OmitsSharedDecisions` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderForkPrompt_OmitsRenameMechanic` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderRecoveryPrompt_InstructsColdOrientation` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | no |
-| `TestRenderPrompts_PatternDirectiveFromRepoRoot` | `TestRenderPrompts_ParentDirective`, `TestRenderRecoveryPrompt_InstructsColdOrientation` | yes |
-| `TestRenderRecoveryPrompt_StatesSpecsDir` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderRecoveryPrompt_FailureDigest` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderMasterPrompt_NeverFillsWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderVerifyFixPrompt_NamesGateReport` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestTemplates_ComposedOutputCarriesNoBannerLeak` | `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestTemplates_ComposedReadsReflectOnDiskEdits` | `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_MissingBoardIsAHardError` | `TestRenderMasterPrompt_MissingPatternStencilErrors`, `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderProgress_ListsOnlyTerminalBatches` | `TestRun_WayForward_RunExitRefusals`, `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord` | `TestRun_WayForward_RunExitRefusals` | yes |
-| `TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderProgress_FollowsSliceOrderNotAscendingNumber` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestRenderMasterPrompt_ReflectsSequencedOrder` | `TestRenderPrompts_ParentDirective` | yes |
-| `TestRenderForkPrompt_FrictionDirective` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestRenderRecoveryPrompt_FrictionDirective` | yes |
-| `TestRenderRecoveryPrompt_FrictionDirective` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes`, `TestRenderMasterPrompt_FrictionDirective`, `TestRenderForkPrompt_FrictionDirective`, `TestRenderPrompts_CarryCardGates` | no |
-| `TestRenderVerifyFixPrompt_FrictionDirective` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote`, `TestRenderRecoveryPrompt_FrictionDirective` | yes |
-| `TestRenderMasterPrompt_FrictionDirective` | `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestRenderRecoveryPrompt_FrictionDirective`, `TestRenderPrompts_ParentDirective`, `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote` | yes |
+No candidates.
+
+Kept:
+
+- `TestCheckFork`: pins the violation class and path for every write-path and command shape a fork can produce, including the allowed ones; the covering record-batch table reaches a few shapes through whole calls
+- `TestSettleRetry`: pins the exact fetch and sleep counts for an early hit and an exhausted window, and no retry after a fetch error; the record-batch tests only observe that a tick happened
+- `TestFindingIdentity_ParentKeyPerSession`: pins a parent finding's identity carrying its session, so one key under two sessions is two findings, and a fork finding's identity being its bare key; no RecordBatch test records one parent key under two sessions
+- `TestRecordedAuditWarnings_BatchesThenRunLevel`: pins the order of recorded warnings: batch warnings in batch-list order, not batch number, then run-level warnings last; the covering tests record a single batch
+- `TestFailBatch`: pins the archive stamp name, each transcript appended once, every suspect path in the way forward and the terminal failed digest; the covering record and recover tests observe each only in part
+- `TestRenderCardGates_OneLinePerCard`: pins the per-card gate line shape re-rooted onto the plan display and the bare build-and-test gate of a card with no Go target; the begin-batch prompt test checks one card's command
+- `TestFindingsClause`: pins the bare-path suffix and its omission when the detail names the path; every pending-findings case carries a note per path
+- `TestFingerprint`: pins which plan-directory changes move the fingerprint and which (non-markdown files, subdirectories, the amendment log) do not; the covering record-batch test only observes a refusal on one edit
+- `TestRestamp`: pins both re-baselines' fingerprint and stored copies and that only restampFingerprint moves a begun card's hash; the covering regression test observes one begin
+- `TestRepositoryProbes`: pins the real-git head, dirty and worktree-list probes' own return values, an untracked file counting as dirty, and both sides of a worktree pair; the covering verb tests observe them only through verb outcomes
+- `TestStorePlanBaseline_ContentAddressed`: pins each stored copy's bytes under its own hash and an existing copy left unrewritten by a second store; the covering begin-batch test only counts copies
+- `TestPlanDirDisplay`: pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests run hub geometry only
+- `TestStrandLive`: pins StrandLive's own live/not-live/absent results and wrapped probe error, which the removeStrandIfLive test only observes as whether a removal happened
+- `TestVerifyGate_FlakyFailurePassesOnRerunWithNote`: pins the rerun's flaky note naming the failing package and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
+- `TestVerifyGate_FailedEvaluationWritesReport`: pins the failure report's attempt, cap, failures, card hint, fix commits and log path, and the findings naming them; the run-level verify-gate test observes only the failure
+- `TestVerifyGate_DirtyTreeRecordsPreFixHead`: pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
+- `TestVerifyGate_RejectedFixCommitFailsTerminal`: pins a rejected fix commit failing the gate terminally without verifying, its findings naming the commit, the reason and the pre-fix head and never telling Merriam to move HEAD; the covering merge test runs against real git and checks only the terminal failure
+- `TestCardHint`: pins which commits count as touching a failing package, the card order of the hint and the no-hint cases; the covering run-level verify-gate test checks one hint
+- `TestVerifyGateReport_RoundTrip`: pins the fixed verify-gate.yaml name, a second write replacing the first and every report field surviving the YAML round trip; the run-level test reads back only the fields its failure sets
+- `TestBeginBatch_StartSHAIsTheRealHead`: pins a nil Git defaulting to the real repository's HEAD as the start commit; every other begin-batch test runs over a fake git
+- `TestBeginBatch_PromptFile`: pins the prompt's predecessor digest or first-batch sentinel in execution order, the prompt path and the card gate command; the covering tests render a prompt without reading these
+- `TestBeginBatch_Record`: pins every field a first begin and each re-begin shape records, and the reports dir a first begin creates; the covering tests check only that a begin succeeds
+- `TestConfigTemplate`: pins every Config yaml tag having a template line; the load test only observes the keys the template already holds
+- `TestParentMergeBetweenForkCommitAndRecordBatch`: pins the 2026-09-30 wedge end to end over real git: a parent merge between the fork's commit and record-batch, then the next begin and record; each covering test pins one step over a fake or a single call
+- `TestRebaseline_ForeignEditAcceptedMidRun`: pins the whole refuse, rebaseline, re-begin loop across three calls on one state; the covering tests each make one of those calls
+- `TestRebaseline_ForeignEditToBegunCardStaysRefused`: pins a refused begin-batch leaving the begun card's recorded hash untouched, so a later rebaseline naming that card still refuses; the covering tests make only one of the two calls
+- `TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew`: pins attribution advancing across a no-report call and the second call classifying only its own new transcript; the audit-outcome table only covers single calls
+- `TestRecordBatch_RetryNeverDuplicatesWarning`: pins the warning staying recorded once across a no-report call and its retry, and the card verify re-running on the later OK report; the audit-outcome table only covers single calls
+- `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches`: pins a session-wide finding dispositioned by the first batch and not re-warned on the second batch; the audit-outcome table only records single batches
+- `TestRecordBatch_HeadSHAMismatchErrors`: pins the head_sha mismatch refusal naming the worktree's actual HEAD and the same call recording once the report is corrected; the parent-moved-HEAD table only refuses moved heads that match the report
+- `TestRecordBatch_ParentMovedHead`: pins each moved-HEAD shape's record or refusal, the warning naming every merge, the fork's own delta range and the retry once HEAD is moved back; each covering test reaches one shape
+- `TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand`: pins the whole first-spawn effect — the stale report archived under the injected clock's stamp, the prior live strand stopped and every recorded strand field — which the spawn-decision table only samples one field at a time
+- `TestRecoverSpawnOrAttach`: pins the spawn-or-attach decision for every batch state, the prompt's card set, start commit and digests, the archived late report and the refusals; each covering test reaches one state
+- `TestState_RoundTrip`: pins every State and BatchState field surviving save and load, and the lock landing in the scratch dir only; the run-level test round-trips only the fields its run sets
+- `TestAcquireStateMutation_ExcludesSecondHolder`: pins the lease's cross-holder exclusion and release directly; the covering run-level test only observes ErrRunBusy
+- `TestRunActive_ReflectsRunLockHeld`: pins RunActive's not-active result releasing the probed lock and its active result while the lock is held; the plan-reset tests only observe the busy refusal
+- `TestMasterTemplate_QuotesBulletLists`: pins the master template's digest-field and outcome-key bullet lists matching the Digest fields and outcome schema exactly, in order; the composition test checks markers and sections, not these lists
+- `TestTemplates_FillRequiresEveryRequiredMarker`: pins each template refusing a fill missing any single required marker, naming it, and accepting each optional marker absent; the render tests always supply every marker
+- `TestRenderBatchLists`: pins each list's exact text in slice order and its none forms; the covering prompt and run-exit tests check only that a list is present
 
 No coverage:
 
+- `TestClassifyViolation`: unclassifiable call
 - `TestCheckParent_KeysDistinctAndStable`: unclassifiable call
 - `TestFailBatch_RecordsSuspectBlobs`: unclassifiable call
 - `TestRerunCardVerifies_AllPass`: unclassifiable call
@@ -5139,17 +4903,12 @@ No coverage:
 - `TestReconcileReportHead_Refusals`: unclassifiable call
 - `TestReconcileReportHead_UncleanParentMergesRefused`: unclassifiable call
 - `TestReconcileReportHead_ParentOnlyOnOrigin`: unclassifiable call
-- `TestPlanReset_MergeInProgressRefuses`: unclassifiable call
-- `TestPlanReset_DetachedHeadRefuses`: unclassifiable call
-- `TestPlanReset_ParentBranchRefuses`: unclassifiable call
-- `TestPlanReset_NoRecordedTargetRefuses`: unclassifiable call
-- `TestPlanReset_MissingCommitRefuses`: unclassifiable call
-- `TestPlanReset_NotAncestorRefuses`: unclassifiable call
-- `TestPlanReset_ForeignDirtRefusesAndNamesPath`: unclassifiable call
-- `TestPlanReset_UntrackedFileIsNotDirt`: unclassifiable call
-- `TestPlanReset_StartTargetsOctopusMergeBaseOfDivergingStarts`: unclassifiable call
-- `TestPlanReset_OwnPathsHoldSucceededWriteAndOmitFailedOne`: unclassifiable call
+- `TestRefuseMidMerge`: unclassifiable call
+- `TestRefuseMidMerge_LinkedWorktree`: unclassifiable call
+- `TestPlanReset`: unclassifiable call
 - `TestCheckSuspectPaths`: unclassifiable call
+- `TestCheckRecoveredSuspects_EmptyStartHoldsNothing`: unclassifiable call
+- `TestRunEvidenceBases_PicksByAncestry`: unclassifiable call
 - `TestAcceptPendingAudit_RefusesMissingCommit`: unclassifiable call
 - `TestAcceptPendingAudit_UsesExecutionOrderHead`: unclassifiable call
 - `TestAcceptPendingAudit_ClearsWhenPathsMatchHead`: unclassifiable call
@@ -5163,22 +4922,7 @@ No coverage:
 - `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal`: unclassifiable call
 - `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses`: unclassifiable call
 - `TestVerifyGate_NoParentBranchAcceptsNoMerge`: unclassifiable call
-- `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`: unclassifiable call
-- `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`: unclassifiable call
-- `TestRecordBatch_HeadSHAMismatchErrors`: unclassifiable call
-- `TestRecordBatch_NonMergeMovementRefused`: unclassifiable call
-- `TestRecordBatch_EvilParentMergeRefused`: unclassifiable call
-- `TestRecordBatch_MergeInProgressRefusedThenSucceeds`: unclassifiable call
-- `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`: unclassifiable call
-- `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`: unclassifiable call
-- `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`: unclassifiable call
-- `TestRun_DoneWithNestedAgentInFixerForkWarns`: unclassifiable call
-- `TestRun_ForkStateWriteAtRunExit`: unclassifiable call
-- `TestRun_FixerForkPlanWriteIsFlagged`: unclassifiable call
-- `TestRun_RendersVerifyFixPrompt`: unclassifiable call
-- `TestRun_FabricReferenceInFixerForkIsStuck`: unclassifiable call
-- `TestRun_WayForward_RunExitRefusals`: unclassifiable call
-- `TestRun_FreshDropsFindingsOnceReset`: unclassifiable call
+- `TestRecoverBatch_SuspectEvidence`: unclassifiable call
 
 ## internal/weftname
 

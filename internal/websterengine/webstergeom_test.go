@@ -19,176 +19,62 @@ import (
 )
 
 // TestWebsterGeometryHelpers pins every webster path constructor for an unanchored Location
-// (AnchorRel == ".").
+// (AnchorRel == "."), for a nested AnchorRel (every accessor moves down by AnchorRel together,
+// since both trees share the Cwd Resolution Invariant's per-module anchoring) and for a plain told
+// directory that is not derived from any *lyxcwd.Location at all (the property
+// internal/standalonegeom depends on).
 func TestWebsterGeometryHelpers(t *testing.T) {
 	t.Parallel()
 
 	baseDir := "/home/user/project"
-	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-	anchorRoot := l.AnchorPath()
+	unanchored := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
+	subpathAnchored := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "backend"}
 
-	t.Run("Dir", func(t *testing.T) {
-		t.Parallel()
-
-		got := Dir(anchorRoot)
-		want := filepath.Join(baseDir, lyxdirs.LyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("Dir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ReportsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ReportsDir(anchorRoot)
-		want := filepath.Join(baseDir, lyxdirs.LyxDirName, "webster", "reports")
-
-		if got != want {
-			t.Errorf("ReportsDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ScratchDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ScratchDir(anchorRoot)
-		want := filepath.Join(baseDir, lyxdirs.DotLyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("ScratchDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("PromptsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := PromptsDir(anchorRoot)
-		want := filepath.Join(baseDir, lyxdirs.DotLyxDirName, "webster", "prompts")
-
-		if got != want {
-			t.Errorf("PromptsDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-}
-
-// TestWebsterGeometryHelpers_SubpathAnchored proves every accessor resolves consistently at a
-// nested AnchorRel too: Dir/ReportsDir (AnchorPath-anchored, durable) and ScratchDir/PromptsDir
-// (AnchorPath-anchored, never-tracked) all move down by AnchorRel together, since both trees share
-// the Cwd Resolution Invariant's per-module anchoring.
-func TestWebsterGeometryHelpers_SubpathAnchored(t *testing.T) {
-	t.Parallel()
-
-	worktree := "/home/user/project"
-	l := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
-	anchor := l.AnchorPath()
-
-	t.Run("Dir", func(t *testing.T) {
-		t.Parallel()
-
-		got := Dir(anchor)
-		want := filepath.Join(anchor, lyxdirs.LyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("Dir(anchor) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ReportsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ReportsDir(anchor)
-		want := filepath.Join(anchor, lyxdirs.LyxDirName, "webster", "reports")
-
-		if got != want {
-			t.Errorf("ReportsDir(anchor) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ScratchDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ScratchDir(anchor)
-		want := filepath.Join(anchor, lyxdirs.DotLyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("ScratchDir(anchor) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("PromptsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := PromptsDir(anchor)
-		want := filepath.Join(anchor, lyxdirs.DotLyxDirName, "webster", "prompts")
-
-		if got != want {
-			t.Errorf("PromptsDir(anchor) = %q; want %q", got, want)
-		}
-	})
-}
-
-// TestWebsterGeometryHelpers_ToldDirectory drives every accessor with a plain told directory that
-// is not derived from any *lyxcwd.Location at all, proving the accessors need only a string — the
-// property internal/standalonegeom depends on.
-func TestWebsterGeometryHelpers_ToldDirectory(t *testing.T) {
-	t.Parallel()
-
-	anchorRoot := "/var/lib/lyx-standalone/state"
-
-	t.Run("Dir", func(t *testing.T) {
-		t.Parallel()
-
-		got := Dir(anchorRoot)
-		want := filepath.Join(anchorRoot, lyxdirs.LyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("Dir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ReportsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ReportsDir(anchorRoot)
-		want := filepath.Join(anchorRoot, lyxdirs.LyxDirName, "webster", "reports")
-
-		if got != want {
-			t.Errorf("ReportsDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("ScratchDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := ScratchDir(anchorRoot)
-		want := filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, "webster")
-
-		if got != want {
-			t.Errorf("ScratchDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("PromptsDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := PromptsDir(anchorRoot)
-		want := filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, "webster", "prompts")
-
-		if got != want {
-			t.Errorf("PromptsDir(anchorRoot) = %q; want %q", got, want)
-		}
-	})
-}
-
-// TestWebsterGeometry_VerifyDirBesideScratch pins that the verify directory both tellers fill sits under lyxdirs.DotLyxDirName, beside webster's scratch directory, for a plain told anchor.
-func TestWebsterGeometry_VerifyDirBesideScratch(t *testing.T) {
-	t.Parallel()
-
-	anchorRoot := "/var/lib/lyx-standalone/state"
-	g := Geometry{ScratchDir: ScratchDir(anchorRoot), VerifyDir: verifytree.Dir(anchorRoot)}
-
-	if got, want := filepath.Dir(g.VerifyDir), filepath.Dir(g.ScratchDir); got != want {
-		t.Errorf("filepath.Dir(VerifyDir) = %q; want %q (the directory holding ScratchDir)", got, want)
+	tests := []struct {
+		name       string
+		anchorRoot string
+		// wantAnchorRoot, when set, is the anchor the Location must resolve to.
+		wantAnchorRoot string
+	}{
+		{name: "unanchored location", anchorRoot: unanchored.AnchorPath(), wantAnchorRoot: baseDir},
+		{name: "subpath-anchored location", anchorRoot: subpathAnchored.AnchorPath()},
+		{name: "told directory", anchorRoot: "/var/lib/lyx-standalone/state"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.wantAnchorRoot != "" && tt.anchorRoot != tt.wantAnchorRoot {
+				t.Fatalf("AnchorPath() = %q; want %q", tt.anchorRoot, tt.wantAnchorRoot)
+			}
+			accessors := []struct {
+				name string
+				got  string
+				want string
+			}{
+				{"Dir", Dir(tt.anchorRoot), filepath.Join(tt.anchorRoot, lyxdirs.LyxDirName, "webster")},
+				{"ReportsDir", ReportsDir(tt.anchorRoot), filepath.Join(tt.anchorRoot, lyxdirs.LyxDirName, "webster", "reports")},
+				{"ScratchDir", ScratchDir(tt.anchorRoot), filepath.Join(tt.anchorRoot, lyxdirs.DotLyxDirName, "webster")},
+				{"PromptsDir", PromptsDir(tt.anchorRoot), filepath.Join(tt.anchorRoot, lyxdirs.DotLyxDirName, "webster", "prompts")},
+			}
+			for _, a := range accessors {
+				if a.got != a.want {
+					t.Errorf("%s(%q) = %q; want %q", a.name, tt.anchorRoot, a.got, a.want)
+				}
+			}
+		})
+	}
+
+	// The verify directory both tellers fill sits under lyxdirs.DotLyxDirName, beside webster's
+	// scratch directory, for a plain told anchor.
+	t.Run("verify directory beside scratch", func(t *testing.T) {
+		t.Parallel()
+
+		anchorRoot := "/var/lib/lyx-standalone/state"
+		g := Geometry{ScratchDir: ScratchDir(anchorRoot), VerifyDir: verifytree.Dir(anchorRoot)}
+
+		if got, want := filepath.Dir(g.VerifyDir), filepath.Dir(g.ScratchDir); got != want {
+			t.Errorf("filepath.Dir(VerifyDir) = %q; want %q (the directory holding ScratchDir)", got, want)
+		}
+	})
 }

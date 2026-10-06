@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+//testtiming:keep pins a nil Git defaulting to the real repository's HEAD as the start commit; every other begin-batch test runs over a fake git
 func TestBeginBatch_StartSHAIsTheRealHead(t *testing.T) {
 	fx := newBeginFixture(t)
 	repo := newScratchRepo(t)
