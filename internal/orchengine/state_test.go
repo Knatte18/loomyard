@@ -3,6 +3,7 @@ package orchengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +58,8 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 		LastDeferral:        time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC),
 		CycleMode:           CycleCompact,
 		CycleRequestedAt:    time.Date(2026, 1, 2, 3, 4, 0, 0, time.UTC),
+		ReloadStep:          ReloadStepRetry,
+		ReloadRetry:         []string{"ly:board"},
 	}
 	if err := SaveState(p, want); err != nil {
 		t.Fatalf("SaveState: %v", err)
@@ -75,7 +78,7 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 		t.Errorf("CycleRequestedAt = %v, want %v", got.CycleRequestedAt, want.CycleRequestedAt)
 	}
 	got.PhaseEnteredAt, got.LastDeferral, got.CycleRequestedAt = want.PhaseEnteredAt, want.LastDeferral, want.CycleRequestedAt
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
 }
@@ -144,13 +147,13 @@ func TestResetForFreshLaunch(t *testing.T) {
 	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
 	launched := time.Date(2026, 1, 2, 3, 6, 7, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {
-		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: 2, ReloadTypedAt: deferred}
+		in := State{Phase: PhaseIdle, LastHandoff: "h", PhaseEventsOffset: 5, LastInjectionOffset: 6, CycleCount: 2, LastContextTokens: 9, LastContextKnown: true, ReloadStep: ReloadStepRetry, ReloadTypedAt: deferred, ReloadRetry: []string{"ly:board"}}
 		got := ResetForFreshLaunch(in, "g2", launched)
 		if !got.CompactionBaseline.Equal(launched) {
 			t.Errorf("CompactionBaseline = %v, want the launch time %v", got.CompactionBaseline, launched)
 		}
-		if got.ReloadStep != 0 || !got.ReloadTypedAt.IsZero() {
-			t.Errorf("reload step = %d at %v, want cleared", got.ReloadStep, got.ReloadTypedAt)
+		if got.ReloadStep != ReloadStepSkills || !got.ReloadTypedAt.IsZero() || got.ReloadRetry != nil {
+			t.Errorf("reload step = %d at %v retrying %v, want cleared", got.ReloadStep, got.ReloadTypedAt, got.ReloadRetry)
 		}
 		if got.LastAbortReason != "" {
 			t.Errorf("LastAbortReason = %q, want empty", got.LastAbortReason)

@@ -68,9 +68,11 @@ import (
 // startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
 // or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
 // needs a realistic stand-in, never the classification details behind it.
-// The driver spec names skills, and shuttle types `/<skill>` for each before the prompt pointer, waiting on each until the turn ends or the pane reports the skill unknown.
-// The script answers each `/<skill>` line with the unknown-skill notice, so shuttle skips it at once instead of waiting out the skill-load timeout,
-// and it starts the sleep at the first other line, the pointer.
+// The driver spec names skills,
+// and shuttle types one skill-load message before the prompt pointer, waiting until the turn ends.
+// The script answers that first line by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
+// so shuttle confirms the load unverified at once instead of waiting out the skill-load timeout,
+// and it starts the sleep at the second line, the pointer.
 // The script never needs to
 // exit on its own -- this file's own third case kills its pane directly (see the file-level doc
 // comment) -- so the sleep only needs to outlast the whole test, never to be observed finishing.
@@ -78,13 +80,15 @@ func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := `#!/bin/sh
-echo '` + claudeengine.ReadyFooterFixture + `'
-while IFS= read -r line; do
-  case "$line" in
-    /*) echo "Unknown skill: ${line#/}" ;;
-    *) break ;;
-  esac
+settings=
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--settings" ]; then settings=$2; fi
+  shift
 done
+echo '` + claudeengine.ReadyFooterFixture + `'
+IFS= read -r line
+printf '%s\n' '{"hook_event_name":"Stop","last_assistant_message":"ok"}' >> "$(dirname "$settings")/events.jsonl"
+IFS= read -r line
 sleep 3600
 `
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {

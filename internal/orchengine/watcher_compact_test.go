@@ -198,12 +198,11 @@ func TestCompact_CycleReloadsSkillsThenPointerNamingTheNote(t *testing.T) {
 	e.withSkills()
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-	e.tick() // boundary read and the pane idle: the first skill typed
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != 0 {
+	e.tick() // boundary read and the pane idle: the skills typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills {
 		t.Fatalf("state = %+v", st)
 	}
 	e.endTurn("t1")
-	e.endTurn("t2")
 	e.endTurn("resumed")
 	e.assertReload("compact:", e.state().LastHandoff)
 	if st := e.state(); st.Phase != PhaseIdle {
@@ -211,7 +210,7 @@ func TestCompact_CycleReloadsSkillsThenPointerNamingTheNote(t *testing.T) {
 	}
 	e.assertCompactCalls(1)
 	e.tick()
-	if e.s.count("skill:") != len(reloadSkills) {
+	if e.s.count("skills:") != 1 {
 		t.Errorf("the compaction's own boundary reloaded again: %v", e.s.calls)
 	}
 }
