@@ -1,4 +1,4 @@
-// cycle.go implements the `cycle` orch verb and the request helper it shares with `distill`:
+// refresh.go implements the `refresh` orch verb and the request helper it shares with `distill`:
 // an operator's request that the watcher run one cycle, in a mode the verb picks, at its next idle moment.
 
 package orchcli
@@ -48,12 +48,12 @@ func (c *orchCLI) requestCmd(cmd *cobra.Command, mode string) error {
 	return nil
 }
 
-// cycleCmd builds the `cycle` subcommand.
-func (c *orchCLI) cycleCmd() *cobra.Command {
+// refreshCmd builds the `refresh` subcommand.
+func (c *orchCLI) refreshCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "cycle",
+		Use:   "refresh",
 		Short: "ask the watcher to clear the orchestrator session now",
-		Long: `cycle writes a clear-cycle request the watcher picks up at the session's next
+		Long: `refresh writes a clear-cycle request the watcher picks up at the session's next
 idle moment, whatever cycle_mode says. The session writes a note first; only
 then does the watcher clear it and resume it from the note. The envelope's
 watcher_live tells you at once when no watcher is running to act on it; the

@@ -417,15 +417,14 @@ func TestWatcher_UnknownUsageNeverTriggers(t *testing.T) {
 	}
 }
 
-func TestWatcher_ManualRequestBelowThresholdCycles(t *testing.T) {
+func TestWatcher_ManualRequestBelowThresholdCyclesWithoutGrace(t *testing.T) {
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
 	if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
 		t.Fatal(err)
 	}
-	e.tick()
-	e.clock.advance(11 * time.Second)
+	// The turn end is read on this same tick: a requested cycle waits no idle grace.
 	e.tick()
 	if e.state().Phase != PhaseHandoffRequested {
 		t.Fatalf("phase = %s", e.state().Phase)

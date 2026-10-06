@@ -24,7 +24,7 @@ type Paths struct {
 	StateLockPath    string // Advisory lock guarding StatePath.
 	WatchLockPath    string // Lock held for the watcher's life.
 	StartLockPath    string // Lock serializing `start`.
-	CycleRequestPath string // Marker file a `cycle` request writes.
+	CycleRequestPath string // Marker file a `refresh` or `distill` request writes.
 	HandoffsDir      string // One timestamped handoff file per cycle.
 	NoticesDir       string // One file per queued notice, delivered by the watcher.
 	WatchLogPath     string // Detached watcher's stdout and stderr.

@@ -410,6 +410,10 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	deferralHolds := !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < w.cfg.SoftIdle()
 	quiet := w.cfg.IdleGrace()
+	if trigger == TriggerRequested {
+		// The operator asked for this cycle at a moment of their choosing; the idle probe alone guards the pane.
+		quiet = 0
+	}
 	if trigger == TriggerSoft {
 		quiet = w.cfg.SoftIdle()
 		if deferralHolds {

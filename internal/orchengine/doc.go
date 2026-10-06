@@ -13,7 +13,7 @@
 //     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
-//   - cycle: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
+//   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
 //   - distill: the same for a compact cycle: a note, then `/compact`, whatever `cycle_mode` says.
 //     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
@@ -61,7 +61,7 @@
 //
 // `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
 // `compact` keeps the session id and the Remote Control link; `clear` runs the handoff, `/clear` and resume cycle.
-// `cycle_mode` picks the mode of an automatic (hard or soft) cycle; an operator request carries its own mode, `cycle` for clear and `distill` for compact, recorded in State.CycleMode.
+// `cycle_mode` picks the mode of an automatic (hard or soft) cycle; an operator request carries its own mode, `refresh` for clear and `distill` for compact, recorded in State.CycleMode.
 // Both modes write the note first, and neither clears or compacts before the note gate has passed.
 // The trigger selection, gates and re-read under "Idle rules" are shared; the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
@@ -96,6 +96,7 @@
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
 //   - That event was first read at least the idle grace ago.
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
+//     A requested cycle waits no grace: the operator chose the moment, and the idle probe below still guards the pane.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
 // Every idle probe goes through one watcher helper.
@@ -222,7 +223,7 @@
 //   - state.json and state.json.lock: the persisted State and its lock.
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
-//   - cycle-request: the JSON marker `cycle` and `distill` write and the watcher consumes.
+//   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - notices/: one file per queued notice, removed on delivery.
