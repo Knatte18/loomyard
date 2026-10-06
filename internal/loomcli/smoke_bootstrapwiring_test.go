@@ -69,7 +69,8 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
 	// friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
 	//
-	// The first `step` is a genuine first seed. It dispatches Preflight, a pure-Go row, and nothing else.
+	// The first `step` is a genuine first seed.
+	// It dispatches Preflight, a pure-Go row, and nothing else.
 	t.Run("first seed clears friction notes", func(t *testing.T) {
 		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
 		if err != nil {
@@ -94,7 +95,8 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	// lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
 	// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
 	//
-	// Relies on the first step's completed `step`; it must run before the re-entry step changes the status again.
+	// Relies on the first step's completed `step`.
+	// It must run before the re-entry step changes the status again.
 	t.Run("step records a handoff voucher matching the persisted status", func(t *testing.T) {
 		persisted, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
 		if err != nil || !found {
@@ -114,8 +116,8 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		}
 	})
 
-	// The second `step` is an ErrSeedExists re-entry over the same task. A resume's notes are the ones
-	// most worth reading, so this branch must leave them exactly where they are.
+	// The second `step` is an ErrSeedExists re-entry over the same task.
+	// A resume's notes are the ones most worth reading, so this branch must leave them exactly where they are.
 	t.Run("re-entry keeps friction notes", func(t *testing.T) {
 		resumePath := plantFrictionNote(t, loc, "written-during-this-task.md")
 		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")

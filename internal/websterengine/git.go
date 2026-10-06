@@ -1,5 +1,6 @@
 // git.go declares Git, the git surface webster's verbs read a worktree through, and realGit, the implementation every production run uses.
-// Geometry carries the Git a run is told; a nil one means realGit, so only a test that fakes git sets it.
+// Geometry carries the Git a run is told.
+// A nil one means realGit, so only a test that fakes git sets it.
 
 package websterengine
 

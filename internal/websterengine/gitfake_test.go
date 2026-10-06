@@ -34,7 +34,8 @@ type fakeGit struct {
 	merging bool
 	// parents maps each registered commit to its parent SHAs.
 	parents map[string][]string
-	// rejections maps a merge commit to the reason MergeRejection gives; a merge not listed qualifies.
+	// rejections maps a merge commit to the reason MergeRejection gives.
+	// A merge not listed qualifies.
 	rejections map[string]string
 	// others are the sibling worktrees OtherWorktrees returns.
 	others []string

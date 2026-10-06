@@ -310,7 +310,8 @@ type moduleLayout struct {
 }
 
 // runRedundancy writes the redundancy report for the packages matching pkgFlag, a comma-separated list of package patterns.
-// A missing report, or a run over every package of the module, writes the whole report; any other run rewrites only its own packages' sections of the existing one.
+// A missing report, or a run over every package of the module, writes the whole report.
+// Any other run rewrites only its own packages' sections of the existing one.
 // It must run from the module root, the way the other modes do.
 func runRedundancy(tags, pkgFlag, outPath string) error {
 	layout, err := loadLayout(tags)
@@ -408,7 +409,8 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 }
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
-// A test named in keeps carries its keep reason on its verdict; the keep changes the report only, never the classification.
+// A test named in keeps carries its keep reason on its verdict.
+// The keep changes the report only, never the classification.
 func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string) ([]verdict, error) {
 	dir := layout.dirs[importPath]
 	names, err := listTests(tags, importPath)

@@ -16,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestCommittedAnchoredFile runs both outcomes over one hub; the steps run in order and touch disjoint paths.
+// TestCommittedAnchoredFile runs both outcomes over one hub.
+// The steps run in order and touch disjoint paths.
 func TestCommittedAnchoredFile(t *testing.T) {
 	t.Parallel()
 

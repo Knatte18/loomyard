@@ -107,7 +107,8 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 }
 
 // fileTier reads the file's //go:build line and reports whether it mentions a tier tag at all and the tmux tag in particular.
-// A constraint such as `tmux && linux` or `tmux && !windows` mentions tmux; a file without a //go:build line mentions nothing.
+// A constraint such as `tmux && linux` or `tmux && !windows` mentions tmux.
+// A file without a //go:build line mentions nothing.
 func fileTier(file *ast.File) (tagged, tmuxTier bool) {
 	for _, group := range file.Comments {
 		if group.Pos() >= file.Package {

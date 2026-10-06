@@ -57,8 +57,8 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 // aborted so the weft is clean again;
 // and a conflicted `git merge --squash` in the weft, which never writes a MERGE_HEAD, reports true —
 // unreachable by the MERGE_HEAD probe alone, pinning that neither probe kind is redundant.
-// The steps run serially on one pair; each leaves the weft clean or conflicted exactly as the next
-// step expects.
+// The steps run serially on one pair.
+// Each leaves the weft clean or conflicted exactly as the next step expects.
 func TestMergeStateActive(t *testing.T) {
 	t.Parallel()
 

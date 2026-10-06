@@ -55,7 +55,8 @@ type failBatchInput struct {
 	Uncheckable    []string
 	NewTranscripts []string
 	Now            func() time.Time
-	// Git answers the suspect-blob probes; nil means the real repository.
+	// Git answers the suspect-blob probes.
+	// Nil means the real repository.
 	Git Git
 }
 

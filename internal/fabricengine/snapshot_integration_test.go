@@ -78,7 +78,8 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 // integration-level witness for card 10's multi-line-value split;
 // and a tag recorded as "raddle" is not resolved by "Raddle" or "raddle ", both reading as absent.
 // Each step builds on the history of the steps before it and relies on its lookups being scoped to
-// a tag the earlier steps recorded no commit for; the steps run serially on one fixture.
+// a tag the earlier steps recorded no commit for.
+// The steps run serially on one fixture.
 func TestSnapshotWarpSHA_Lookup(t *testing.T) {
 	t.Parallel()
 

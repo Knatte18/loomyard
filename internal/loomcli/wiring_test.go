@@ -135,7 +135,8 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 }
 
 // TestWire_DefaultConfig drives wire once over the default config and asserts the assembled receiver.
-// The steps read the one wired receiver and run in order; the last step writes a status file into the run directory the wired paths name, which no earlier step reads.
+// The steps read the one wired receiver and run in order.
+// The last step writes a status file into the run directory the wired paths name, which no earlier step reads.
 func TestWire_DefaultConfig(t *testing.T) {
 	t.Parallel()
 

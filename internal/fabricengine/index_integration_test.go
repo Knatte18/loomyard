@@ -35,9 +35,9 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 // TestCorrespondenceIndex runs the correspondence index's git wiring over one plain warp repo and one
 // hub weft: gitdir resolution, the miss path, the RecordCorrespondence/WeftSHAForWarpSHA round trip
 // and RebuildIndex's trailer scan.
-// The steps share the fixture and run in order; each commits its own warp and weft commits, so none
-// reads an earlier step's entries, and the rebuild step's lookups succeed only through the rebuild,
-// never through an earlier step's RecordCorrespondence.
+// The steps share the fixture and run in order.
+// Each commits its own warp and weft commits, so none reads an earlier step's entries.
+// The rebuild step's lookups succeed only through the rebuild, never through an earlier step's RecordCorrespondence.
 func TestCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 

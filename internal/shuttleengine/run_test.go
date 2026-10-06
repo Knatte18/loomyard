@@ -172,7 +172,8 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 }
 
 // TestRunner_Start_HappyPath covers one successful Start whose readyStart scripting resolves
-// StartupReady on the very first tick. The steps share that run and read what it left behind.
+// StartupReady on the very first tick.
+// The steps share that run and read what it left behind.
 //
 //testtiming:keep pins Start's exact AddSpec wiring, its single ready probe, the persisted Started and running Outcome, and RunDir naming the created directory
 func TestRunner_Start_HappyPath(t *testing.T) {

@@ -37,8 +37,8 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 }
 
 // TestStencilBaseByStamp covers the three outcomes over one hub whose stencil history grows step by step.
-// The steps run in order on the same stencil; each seeds bodies no earlier step seeded last, and looks up a
-// stamp only its own seeding (or none) produced, so a longer history never changes a step's expectation.
+// The steps run in order on the same stencil.
+// Each seeds bodies no earlier step seeded last, and looks up a stamp only its own seeding (or none) produced, so a longer history never changes a step's expectation.
 func TestStencilBaseByStamp(t *testing.T) {
 	t.Parallel()
 

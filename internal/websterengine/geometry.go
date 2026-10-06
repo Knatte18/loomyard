@@ -58,7 +58,8 @@ type Geometry struct {
 	// Empty means no parent, which renders the no-parent variant.
 	ParentName string
 	// Git is the git surface every worktree read goes through, such as the head-SHA capture and the dirty check.
-	// Nil means the real repository on disk, which is what every constructor leaves; it derives no path.
+	// Nil means the real repository on disk, which is what every constructor leaves.
+	// It derives no path.
 	// It is a field here because every function that reads git already receives the Geometry.
 	Git Git
 }

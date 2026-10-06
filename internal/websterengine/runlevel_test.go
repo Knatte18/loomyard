@@ -189,7 +189,8 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	return fx
 }
 
-// newRunFixtureOver builds the fixture over worktree, answering git questions from git; a nil git means the real repository at worktree.
+// newRunFixtureOver builds the fixture over worktree, answering git questions from git.
+// A nil git means the real repository at worktree.
 func newRunFixtureOver(t *testing.T, numCards int, worktree string, git websterengine.Git) *runFixture {
 	t.Helper()
 
