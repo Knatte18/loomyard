@@ -4117,154 +4117,64 @@ No test lacks coverage.
 
 ## internal/shuttleengine
 
-218 tests, wall 0.36s, serial 0.30s.
+129 tests, wall 0.35s, serial 0.30s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestDispositionCandidate_AskingReentry` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestAttach_Multiplicity` | yes |
-| `TestCollectAttachCandidates_RecordsEventsSize` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
-| `TestAttach_OutcomeDisposition` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestAttach_Multiplicity` | yes |
-| `TestAttach_DeadPane` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestAttach_Multiplicity` | yes |
-| `TestAttach_UntrackedStrand_AgeRule` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors` | yes |
-| `TestAttach_BindingClearedStrand_AgeRule` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | yes |
-| `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestStartup_FailedStartThenAttach_RespawnEligible`, `TestAttach_BindingClearedStrand_AgeRule` | no |
-| `TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
-| `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors` | `TestAttach_Multiplicity`, `TestAttach_BindingClearedStrand_AgeRule`, `TestAttach_DeadPane` | no |
-| `TestAttach_OutputFilesExistButLive_AttachesNotLeftover` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
-| `TestAttach_AnchorDefaulting` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestAttach_KeepPane` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
-| `TestAttach_WaitRunsAgainstPersistedEventsPath` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
-| `TestAttach_DeadlineRestartedAtAttachTime` | `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
-| `TestAttach_OffsetStartsAtZero` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
-| `TestAttach_StartedSeededTrue` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestAttach_LaterGoesNotLive_StillClassifiesDone` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
-| `TestCompletionSignal_NegativeVerdictReturnSites` | `TestProviderSeamImportRule` | yes |
-| `TestCompletionSignal_FileContractCallSites` | `TestProviderSeamImportRule` | yes |
-| `TestGateList_SecondEntryRunsOnlyAfterFirstPasses` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGateList_FailPassFailStartsBudgetAfresh` | `TestGateList_EveryStateAndAggregateAttempts` | no |
-| `TestGateList_FinalArrivalAtFailingPassOnCapEntry` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar` | yes |
-| `TestGateList_ExhaustionWithoutPassOnCapFinalizesFailed` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGateList_PassOnCapLetsThroughWithoutRunningAgain` | `TestGateList_EveryStateAndAggregateAttempts` | no |
-| `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | `TestGateList_EveryStateAndAggregateAttempts` | no |
-| `TestGateList_EveryStateAndAggregateAttempts` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGateList_PassOnCapLetsThroughWithoutRunningAgain`, `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | yes |
-| `TestGateList_EmptyListLeavesResultGateNil` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestGateList_OnlyOffEntriesYieldPassedOutcome` | `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | yes |
-| `TestGateList_SecondEntryClosureErrorStaysInfrastructureError` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGateTerminal_TerminalOnPassedOrPendingOrPassOnCapIsGateError`, `TestGate_ClosureError` | yes |
-| `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
-| `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates`, `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage` | no |
-| `TestGatePending_RejectAfterPendingRepromptsOnce` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
-| `TestGatePending_VerdictBetweenTicksIsNotMasked` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
-| `TestGatePending_ContractViolationsAreErrors` | `TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal` | yes |
-| `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates` | `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal` | `TestGatePending_ContractViolationsAreErrors` | no |
-| `TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGate_PassesOnFirstDone` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGate_FailsOnceThenPassesOnNextTurn` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGate_FailsEveryAttempt_ExhaustsBudget` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGate_ClosureError` | `TestGateList_SecondEntryClosureErrorStaysInfrastructureError` | no |
-| `TestGate_NoLiveSessionDonePaths` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestGateList_FailPassFailStartsBudgetAfresh`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
-| `TestGate_RunDeadlineExpires_NoLiveSession` | `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal`, `TestGateList_FailPassFailStartsBudgetAfresh`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline` | yes |
-| `TestGate_FinishedDespiteMechanismFailure_NoLiveSession` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | yes |
-| `TestGate_EvaluateOncePerAttempt_Memoized` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar` | `TestGateList_FinalArrivalAtFailingPassOnCapEntry`, `TestGateList_EveryStateAndAggregateAttempts` | no |
-| `TestGate_DeadlineExpiresBetweenAttempts` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | yes |
-| `TestGate_ZeroGateSpec_RegressionGuard` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestAttachGated_ThreadsGateThroughReconstructAndWait` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestAttach_LeavesResultGateNil` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
-| `TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
-| `TestRunnerStart_NoResumeSessionID_NeverCallsCheck` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses` | yes |
-| `TestNewRunner_AcceptsHubGeometryShapes` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
-| `TestRun_RunDir_ReturnsStartCreatedDirectory` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses`, `TestStartup_TrustPromptThenReady` | yes |
-| `TestRunner_Start_HappyPath_WiresAddSpecVerbatim` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses` | yes |
-| `TestRunner_Start_ReadyStartProbesExactlyOnce` | `TestStartup_TrustPromptThenReady`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
-| `TestRunner_Start_PersistsRunningOutcome` | `TestStartup_TrustPromptThenReady`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
-| `TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir` | `TestRunner_Start_StrandTeardownFailure_LogsThroughLogger` | yes |
-| `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
-| `TestRunner_Start_SweepErrorDoesNotBlockStart` | `TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError` | yes |
-| `TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError` | `TestRunner_Start_SweepErrorDoesNotBlockStart` | no |
-| `TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses`, `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestRun_Interrupt_PlaysEscape` | `TestRun_Interrupt_ReadyProbeRetriesTransientBoot` | yes |
-| `TestRun_Send_PlaysEscThenTextWithSubmit` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds` | `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery` | yes |
-| `TestRun_Send_NeverDelivered_ReportsHonestFailure` | `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery`, `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure` | yes |
-| `TestRun_Send_PreexistingText_RequiresNewOccurrence` | `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure`, `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery` | yes |
-| `TestRun_Interrupt_ReadyProbeRetriesTransientBoot` | `TestRun_Interrupt_PlaysEscape`, `TestRun_InterruptAndSend_RefuseAgentlessShellPane` | no |
-| `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure` | `TestRun_Send_PreexistingText_RequiresNewOccurrence`, `TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay` | no |
-| `TestScanPaneForNeedle` | `TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay` | yes |
-| `TestRunDirRoot_DefaultUsesDotLyxShuttle` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
-| `TestRunDirRoot_AbsoluteUsedVerbatim` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
-| `TestRunState_RoundTrip` | `TestStartup_RemoveStrandFailureDuringTeardown` | yes |
-| `TestLoadRunState_AbsentReturnsNotFound` | `TestAttach_ReedStateGate_AbsentOrUnreadable` | yes |
-| `TestFindRunByStrand_Hit` | `TestRunner_ClearSession_PlaysScriptedSequence` | yes |
-| `TestFindRunByStrand_Miss` | `TestRunner_ClearSession_UnknownGUID` | yes |
-| `TestSweepOrphans_AgeGuardAndLiveGuid` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld` | yes |
-| `TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld` | `TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest`, `TestSweepOrphans_AgeGuardAndLiveGuid` | no |
-| `TestProviderSeamImportRule` | `TestCompletionSignal_FileContractCallSites` | no |
-| `TestRunner_ReadEvents_AbsentFileKeepsOffset` | `TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun` | yes |
-| `TestSpec_Validate_EmptyPrompt` | `TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall` | yes |
-| `TestSpec_Validate_RelativeOutputFilesResolveToAbsolute` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | yes |
-| `TestSpec_Validate_TimeoutDefaultsFromConfig` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_TimeoutPassThroughWhenSet` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_AnchorDefaultsToBelowParent` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_EffortUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_VersionUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_AwaitOperatorUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_NameOverrideUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_AnchorPassThroughWhenSet` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestStartup_TrustPromptThenReady` | `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_ProbeCadenceMatchesWait`, `TestStartup_SkillSkipCauses`, `TestRunner_Start_ReadyStartProbesExactlyOnce`, `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | no |
-| `TestStartup_ReadyOnFirstProbe` | `TestStartup_SkillSkipCauses` | yes |
-| `TestStartup_PaneNotLiveMidStartup` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
-| `TestStartup_UndismissableGateUntilWindowExpires` | `TestStartup_PaneNotLiveMidStartup`, `TestStartup_TrustPromptThenReady`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | no |
-| `TestStartup_FileContractSatisfiedWhilePending` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_TrustPromptThenReady`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
-| `TestStartup_OneTransientStatusErrorThenReady` | `TestStartup_TrustPromptThenReady`, `TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent` | yes |
-| `TestStartup_ReedNeverTracksStrand` | `TestStartup_RunGated_MechanismFailure`, `TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles` | yes |
-| `TestStartup_ProbeCadenceMatchesWait` | `TestStartup_TrustPromptThenReady` | yes |
-| `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | `TestStartup_UndismissableGateUntilWindowExpires`, `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | no |
-| `TestStartup_KeepPaneOnNotReadyStart` | `TestStartup_RemoveStrandFailureDuringTeardown` | yes |
-| `TestStartup_RunGated_NotReady` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestStartup_RunDeadlineShorterThanWindow_NeverReady` | yes |
-| `TestStartup_FailedStartThenAttach_RespawnEligible` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | yes |
-| `TestStartup_SkillsLoadInOrderBeforePrompt` | `TestStartup_SkillSkipCauses`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | yes |
-| `TestStartup_NoSkillsNoPromptLineSendsNothing` | `TestStartup_SkillSkipCauses`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
-| `TestPollInterval_FloorsNonPositive` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestRun_Wait_LogsTeardownThroughLogger` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_DoneHappyPath_CleansUp` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_DoneWithKeepPane_SkipsCleanup` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_Asking_CarriesMessageKeepsStrand` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_LiveAsk_DoneFirstStillWins` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_Died_ViaStatusNotLive` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_UntrackedStrand_OutputFilesStillWin` | `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | `TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin` | no |
-| `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
-| `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
-| `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
-| `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline` | yes |
-| `TestRun_Wait_StartedRun_SkipsStartupProbe` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_SkillSkipCauses`, `TestStartup_TrustPromptThenReady`, `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
-| `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins` | `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | `TestGate_FinishedDespiteMechanismFailure_NoLiveSession`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | no |
-| `TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
-| `TestRun_Wait_Timeout_KeepsStrand` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone` | `TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath` | yes |
-| `TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath` | `TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone` | no |
-| `TestRun_Wait_MultiStopOffsetTracking` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | yes |
-| `TestRun_Wait_EventsOffsetResilience_PartialLine` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly` | yes |
-| `TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin` | `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
-| `TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
-| `TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup` | `TestAttach_OutputFileMatching_ResolvedAbsoluteSet`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestPollEventsTick_WaitingIsStillRunning` | `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestPollEventsTick_StopAfterWaitingClassifiesAsking` | `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
-| `TestPollEventsTick_WaitingWithOutputFilesIsDone` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound` | yes |
-| `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestWait_GatedShellExpiryEvaluatesGate` | yes |
-| `TestPollEventsTick_ShellExpiresAfterBound` | `TestWait_GatedShellExpiryEvaluatesGate` | yes |
-| `TestPollEventsTick_ShellExpiryWithMissingOutputIsAsking` | `TestPollEventsTick_LaterTurnEndListingExpiredShellEndsWithoutNewWait` | yes |
-| `TestWait_GatedShellExpiryEvaluatesGate` | `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival`, `TestGatePending_RejectAfterPendingRepromptsOnce`, `TestPollEventsTick_ShellExpiresAfterBound` | no |
-| `TestLoadConfig_TemplateDefaultsResolve` | `TestLoadConfig_BackgroundShellWaitMin` | yes |
-| `TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition` | `TestLoadConfig_BackgroundShellWaitMin` | yes |
+No candidates.
+
+Kept:
+
+- `TestDispositionCandidate_AskingReentry`: pins the three asking re-entry verdicts at the unit level, including no events since the recorded offset and no recorded offset, which the end-to-end attach test never reaches
+- `TestCollectAttachCandidates_RecordsEventsSize`: pins that the candidate scan records each events file's size, which the end-to-end attach test observes only through its one growth case
+- `TestAttach_OutcomeDisposition`: pins which persisted Outcome values attach and which are respawn-eligible, with a row each for every terminal, omitted and unrecognized value
+- `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge`: pins that a terminal persisted Outcome is respawn-eligible at any directory age for both an untracked strand and a cleared pane binding, which the age-rule rows never reach
+- `TestAttach_KeepPane`: pins that Spec.KeepPane suppresses an attached run's done cleanup (run dir kept, no RemoveStrand) and that its absence performs both
+- `TestAttach_OffsetStartsAtZero`: pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for an ask
+- `TestAttach_StartedSeededTrue`: pins that a persisted Started: true skips the startup probe on attach, with no engine Startup call and no trust-dismiss Enter played into a live pane
+- `TestAttach_StrandLaterLosesPaneBinding`: pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted
+- `TestCompletionSignal_NegativeVerdictReturnSites`: scans wait.go and attach.go for the negative-verdict return sites, catching an unguarded new exit, which no other test reads
+- `TestCompletionSignal_FileContractCallSites`: scans the allOutputFilesExist call sites, catching a guard deleted from an exit that already has one, which the return-site scan cannot see
+- `TestGateList_FailPassFailStartsBudgetAfresh`: pins the consecutive-failure reset: an entry that fails, passes and fails again gets its whole budget back, with and without pass_on_cap
+- `TestGateList_FinalArrivalAtFailingPassOnCapEntry`: pins both final arrivals that cannot re-prompt, a failed send and an expired deadline, ending at a failing pass_on_cap entry with the later required entry reported not reached
+- `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage`: pins that a pending gate sends its carried text exactly once, charges no attempt, and settles with the remembered Done message
+- `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`: pins that mid-turn ticks never re-evaluate the gate and that a deadline finalize reads Final rather than Gate, leaving the entry waiting
+- `TestGatePending_RejectAfterPendingRepromptsOnce`: pins that a rejection after a pending hold re-prompts exactly once with the findings and counts one attempt
+- `TestGatePending_VerdictBetweenTicksIsNotMasked`: pins that a verdict recorded between idle ticks is read at the next tick and not masked by the pending state
+- `TestAttachGated_Pending`: pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on every poll tick
+- `TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts`: pins that a non-terminal failure of a MayHold entry below its budget still re-prompts once and leaves Reason empty, the contrast to a terminal failure
+- `TestGate_FirstDoneSettlesWithoutReprompt`: pins that a gate passing on the first Done sends nothing and charges no attempt, that a zero GateSpec leaves Result.Gate nil, and that both clean the run dir
+- `TestGate_FailsOnceThenPassesOnNextTurn`: pins that the re-prompt is a single line naming the findings file, and that the findings file holds the failed attempt's findings
+- `TestGate_NoLiveSessionDonePaths`: pins that every exit with no live session finalizes through its own branch with the gate run once, a failed verdict, and no re-prompt or attempt charged
+- `TestGate_EvaluateOncePerAttempt_Memoized`: pins that evaluateGate memoizes within an attempt, returning the same pointer without re-running the closure
+- `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar`: pins that a failed re-prompt send ends the loop without a retry and charges no attempt
+- `TestGate_DeadlineExpiresBetweenAttempts`: pins that a deadline expiring after one re-prompt runs the gate once more through the deadline's own Done, with Attempts still honest at one
+- `TestAttach_GateThreading`: pins that AttachGated gates a resumed run exactly as a fresh one is gated, and that plain Attach leaves Result.Gate nil
+- `TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare`: pins that the resume check runs against the runner's pane cwd and before Prepare, which the warning test does not observe
+- `TestRunnerStart_NoResumeSessionID_NeverCallsCheck`: pins that a spec with no ResumeSessionID never calls the resume check and carries no resume warning
+- `TestRunner_Start_HappyPath`: pins Start's exact AddSpec wiring, its single ready probe, the persisted Started and running Outcome, and RunDir naming the created directory
+- `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger`: scans this package's production sources for bare log and fmt.Println calls, which no behavioral test can pin
+- `TestScanPaneForNeedle`: pins the pane scan's count and lines-below at the unit level, including a needle straddling a wrap boundary, which the delivery table reaches only through Send
+- `TestRunState_RoundTrip`: pins that every RunState field survives save and load, and that an absent run.json reads as not found rather than as an error
+- `TestSweepOrphans_AgeGuardAndLiveGuid`: pins the age guard over orphans, a live strand guid keeping its dir, and a dir with no run.json being removed only when old
+- `TestProviderSeamImportRule`: scans this package's import paths for the banned claudeengine import, which no other test reads
+- `TestStartup_TrustPromptThenReady`: pins trust-gate dismissal through the real Start flow: the Enter key, the capture handed to the engine, the persisted Started and running Outcome, and the logged dismissal
+- `TestStartup_ReadyProbeTiming`: pins the ready path's virtual-clock timing: no Sleep when ready on the first probe, and exactly two probe intervals otherwise
+- `TestStartup_UndismissableGateUntilWindowExpires`: pins that a gate whose accepting option cannot be located sends no key and logs no dismissal before the window expires
+- `TestStartup_CaptureAlwaysErroringUntilWindowExpires`: pins the not-ready teardown's message and the absent startup capture file when every capture fails
+- `TestStartup_FailedStartThenAttach_RespawnEligible`: pins the seam between a not-ready teardown and Attach: the died run.json left behind is respawn-eligible, not attachable, at any directory age
+- `TestStartup_SkillsLoadInOrderBeforePrompt`: skills-in-one-turn rewrites skill loading and its tests; pins that skills load in order before the prompt and that the run's offset lies past their turn ends
+- `TestStartup_NoSkillsNoPromptLineSendsNothing`: skills-in-one-turn rewrites skill loading and its tests; pins that a launch with no skills and no deferred prompt line types nothing
+- `TestPollInterval_FloorsNonPositive`: pins the busy-spin guard: a non-positive poll_interval_ms falls back to the template default, which no Wait test measures
+- `TestRun_Wait_Classification`: pins the outcome, message and cleanup of every pane, events and file state Wait classifies, of which the AwaitOperator test reaches only a few
+- `TestRun_Wait_StartupWindow`: pins that the startup window, not the run deadline, classifies every not-ready path, and that a satisfied file contract outranks the expired window
+- `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`: pins that a satisfied file contract outranks the run deadline for a started run, with no startup probe run
+- `TestRun_Wait_StartedRun_SkipsStartupProbe`: pins that Wait over a started handle never re-runs the startup probe, with no new engine Startup call and no new capture
+- `TestRun_Wait_EventsHandling`: pins the offset rules over the events file: the last of several Stops wins, a failed parse's bytes are re-read, and a partial line stays unconsumed
+- `TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome`: pins that finalize persists the matching Outcome in run.json for every terminal outcome, and does so before the done cleanup
+- `TestPollEventsTick_Waiting`: pins that a waiting turn end is still running and advances the offset, becomes asking on a later Stop, and is done when the output files exist
+- `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival`: pins that a gated waiting turn end is not an arrival: the gate is not evaluated on it and runs exactly once on the next Stop
+- `TestPollEventsTick_ShellExpiry`: pins the background-shell wait bound: still waiting until the bound, then done with output files or asking with the waiting message without them
+- `TestWait_GatedShellExpiryEvaluatesGate`: pins that a gated Wait evaluates the gate once at a shell expiry and reports the expired shell's label
+- `TestLoadConfig_TemplateDefaultsResolve`: pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 
 No test lacks coverage.
 

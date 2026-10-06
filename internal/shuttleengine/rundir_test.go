@@ -15,40 +15,52 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
-	// anchorPath is a real subpath of a worktree root here so the default
-	// branch's anchor-path anchoring (as opposed to a worktree-root anchoring)
-	// is actually observable.
-	anchorPath := filepath.Join(`C:\worktree`, "sub", "dir")
-	got := runDirRoot(Config{}, anchorPath)
-	want := filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle")
-	if got != want {
-		t.Errorf("runDirRoot() = %q, want %q", got, want)
-	}
-}
+func TestRunDirRoot(t *testing.T) {
+	t.Parallel()
 
-func TestRunDirRoot_RelativeResolvesAgainstAnchorRoot(t *testing.T) {
-	anchorPath := `C:\worktree`
-	got := runDirRoot(Config{RunDir: "custom-runs"}, anchorPath)
-	want := filepath.Join(anchorPath, "custom-runs")
-	if got != want {
-		t.Errorf("runDirRoot() = %q, want %q", got, want)
-	}
-}
-
-func TestRunDirRoot_AbsoluteUsedVerbatim(t *testing.T) {
-	anchorPath := `C:\worktree`
-	// An OS-absolute RunDir must be returned verbatim, never re-joined against
-	// anchorPath. t.TempDir() yields an absolute path on any host (a
-	// drive-rooted path on Windows, a /… path on POSIX), so the test is not
-	// tied to one OS's notion of "absolute".
+	// A real subpath of a worktree root, so the default branch's anchor-path anchoring (as
+	// opposed to a worktree-root anchoring) is observable.
+	defaultAnchor := filepath.Join(`C:\worktree`, "sub", "dir")
+	// An OS-absolute RunDir must be returned verbatim, never re-joined against the anchor path.
+	// t.TempDir() yields an absolute path on any host, so the row is not tied to one OS's notion
+	// of "absolute".
 	abs := filepath.Join(t.TempDir(), "runs")
-	got := runDirRoot(Config{RunDir: abs}, anchorPath)
-	if got != abs {
-		t.Errorf("runDirRoot() = %q, want %q", got, abs)
+
+	tests := []struct {
+		name       string
+		runDir     string
+		anchorPath string
+		want       string
+	}{
+		{
+			name:       "default uses dot-lyx shuttle under the anchor path",
+			anchorPath: defaultAnchor,
+			want:       filepath.Join(defaultAnchor, lyxdirs.DotLyxDirName, "shuttle"),
+		},
+		{
+			name:       "relative resolves against the anchor root",
+			runDir:     "custom-runs",
+			anchorPath: `C:\worktree`,
+			want:       filepath.Join(`C:\worktree`, "custom-runs"),
+		},
+		{
+			name:       "absolute is used verbatim",
+			runDir:     abs,
+			anchorPath: `C:\worktree`,
+			want:       abs,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runDirRoot(Config{RunDir: tt.runDir}, tt.anchorPath); got != tt.want {
+				t.Errorf("runDirRoot() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
+//testtiming:keep pins that every RunState field survives save and load, and that an absent run.json reads as not found rather than as an error
 func TestRunState_RoundTrip(t *testing.T) {
 	root := t.TempDir()
 	runID, runDir, err := createRunDir(root)
@@ -84,13 +96,10 @@ func TestRunState_RoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("loadRunState() = %+v, want %+v", got, want)
 	}
-}
 
-func TestLoadRunState_AbsentReturnsNotFound(t *testing.T) {
-	runDir := t.TempDir()
-	_, found, err := loadRunState(runDir)
+	_, found, err = loadRunState(t.TempDir())
 	if err != nil {
-		t.Fatalf("loadRunState() error: %v", err)
+		t.Fatalf("loadRunState() error on an absent run.json: %v", err)
 	}
 	if found {
 		t.Error("loadRunState() found = true, want false for absent run.json")
@@ -111,60 +120,89 @@ func seedRun(t *testing.T, root, id, strandGUID string) string {
 	return runDir
 }
 
-func TestFindRunByStrand_Hit(t *testing.T) {
-	root := t.TempDir()
-	seedRun(t, root, "run-a", "strand-a")
-	wantDir := seedRun(t, root, "run-b", "strand-b")
+func TestFindRunByStrand(t *testing.T) {
+	t.Parallel()
 
-	rs, dir, err := findRunByStrand(root, "strand-b")
-	if err != nil {
-		t.Fatalf("findRunByStrand() error: %v", err)
+	tests := []struct {
+		name string
+		// seed creates the run dirs under root and returns the dir the lookup should hit, if any.
+		seed       func(t *testing.T, root string) (wantDir string)
+		strandGUID string
+		// wantErrIn lists the fragments a miss error must name; empty means the lookup must hit.
+		wantErrIn []string
+		// wantErrNotIn is a fragment a miss error must not carry.
+		wantErrNotIn string
+	}{
+		{
+			name: "hit returns the run state and its directory",
+			seed: func(t *testing.T, root string) string {
+				seedRun(t, root, "run-a", "strand-a")
+				return seedRun(t, root, "run-b", "strand-b")
+			},
+			strandGUID: "strand-b",
+		},
+		{
+			// A clean scan must not hedge: every run.json was read, so "no run found" is the whole
+			// truth and a could-not-be-read clause would make an ordinary caller mistake read like
+			// possible corruption.
+			name: "miss on a clean scan does not hedge",
+			seed: func(t *testing.T, root string) string {
+				seedRun(t, root, "run-a", "strand-a")
+				return ""
+			},
+			strandGUID:   "does-not-exist",
+			wantErrIn:    []string{"does-not-exist"},
+			wantErrNotIn: "could not be read",
+		},
+		{
+			// A truncated run.json is skipped so one damaged dir cannot abort the scan, but the
+			// resulting miss must say the scan was incomplete: Runner.Interrupt and Runner.Send wrap
+			// this error as "%q is not a shuttle strand", which sends an operator away from an agent
+			// that is still live in its pane (proven live by truncating a running run's run.json).
+			name: "miss names unreadable dirs",
+			seed: func(t *testing.T, root string) string {
+				seedRun(t, root, "run-a", "strand-a")
+				damaged := seedRun(t, root, "run-damaged", "strand-damaged")
+				if err := os.WriteFile(filepath.Join(damaged, runStateFileName), []byte(`{"strandGuid": "strand-dam`), 0o644); err != nil {
+					t.Fatalf("truncate run.json: %v", err)
+				}
+				return ""
+			},
+			strandGUID: "strand-damaged",
+			wantErrIn:  []string{"1 run directory", "could not be read", "still in its pane"},
+		},
 	}
-	if rs.StrandGUID != "strand-b" {
-		t.Errorf("StrandGUID = %q, want %q", rs.StrandGUID, "strand-b")
-	}
-	if dir != wantDir {
-		t.Errorf("dir = %q, want %q", dir, wantDir)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			wantDir := tt.seed(t, root)
 
-func TestFindRunByStrand_Miss(t *testing.T) {
-	root := t.TempDir()
-	seedRun(t, root, "run-a", "strand-a")
-
-	_, _, err := findRunByStrand(root, "does-not-exist")
-	if err == nil {
-		t.Fatal("findRunByStrand() = nil error, want error for unknown strand guid")
-	}
-	// A clean scan must NOT hedge: every run.json was read, so "no run found"
-	// is the whole truth and adding the could-not-be-read clause would make an
-	// ordinary caller mistake read like possible corruption.
-	if strings.Contains(err.Error(), "could not be read") {
-		t.Errorf("findRunByStrand() error = %v; want no unreadable-directory clause when every run.json parsed", err)
-	}
-}
-
-func TestFindRunByStrand_MissNamesUnreadableDirs(t *testing.T) {
-	// A truncated run.json is skipped so one damaged dir cannot abort the scan,
-	// but the resulting miss must say the scan was incomplete: Runner.Interrupt
-	// and Runner.Send wrap this error as "%q is not a shuttle strand", which
-	// sends an operator away from an agent that is still live in its pane
-	// (proven live by truncating a running run's run.json).
-	root := t.TempDir()
-	seedRun(t, root, "run-a", "strand-a")
-	damaged := seedRun(t, root, "run-damaged", "strand-damaged")
-	if err := os.WriteFile(filepath.Join(damaged, runStateFileName), []byte(`{"strandGuid": "strand-dam`), 0o644); err != nil {
-		t.Fatalf("truncate run.json: %v", err)
-	}
-
-	_, _, err := findRunByStrand(root, "strand-damaged")
-	if err == nil {
-		t.Fatal("findRunByStrand() = nil error, want a miss for the unreadable run dir's guid")
-	}
-	for _, want := range []string{"1 run directory", "could not be read", "still in its pane"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("findRunByStrand() error = %v; want it to name %q", err, want)
-		}
+			rs, dir, err := findRunByStrand(root, tt.strandGUID)
+			if len(tt.wantErrIn) == 0 {
+				if err != nil {
+					t.Fatalf("findRunByStrand() error: %v", err)
+				}
+				if rs.StrandGUID != tt.strandGUID {
+					t.Errorf("StrandGUID = %q, want %q", rs.StrandGUID, tt.strandGUID)
+				}
+				if dir != wantDir {
+					t.Errorf("dir = %q, want %q", dir, wantDir)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("findRunByStrand() = nil error, want a miss")
+			}
+			for _, want := range tt.wantErrIn {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("findRunByStrand() error = %v; want it to name %q", err, want)
+				}
+			}
+			if tt.wantErrNotIn != "" && strings.Contains(err.Error(), tt.wantErrNotIn) {
+				t.Errorf("findRunByStrand() error = %v; want no %q clause", err, tt.wantErrNotIn)
+			}
+		})
 	}
 }
 
@@ -178,10 +216,26 @@ func setDirMTime(t *testing.T, dir string, referenceNow time.Time, age time.Dura
 	}
 }
 
+//testtiming:keep pins the age guard over orphans, a live strand guid keeping its dir, and a dir with no run.json being removed only when old
 func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()
 	minAge := 90 * time.Second
+
+	// A dir with no run.json at all (unreadable state), young: must be
+	// kept.
+	youngNoState := filepath.Join(root, "young-no-state")
+	if err := os.MkdirAll(youngNoState, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	setDirMTime(t, youngNoState, now, 10*time.Second)
+
+	// Same shape, but old: must be removed.
+	oldNoState := filepath.Join(root, "old-no-state")
+	if err := os.MkdirAll(oldNoState, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	setDirMTime(t, oldNoState, now, 10*time.Minute)
 
 	// A young orphan (StrandGUID not live, but the dir is younger than
 	// minAge) must survive the sweep — it may be mid-startup.
@@ -203,8 +257,9 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 		t.Fatalf("sweepOrphans() error: %v", err)
 	}
 
-	if len(removed) != 1 || removed[0] != oldOrphan {
-		t.Errorf("removed = %v, want [%s]", removed, oldOrphan)
+	// os.ReadDir hands the dirs back sorted by name, so the removed ones come back in that order.
+	if want := []string{oldNoState, oldOrphan}; !reflect.DeepEqual(removed, want) {
+		t.Errorf("removed = %v, want %v", removed, want)
 	}
 	if _, err := os.Stat(youngOrphan); err != nil {
 		t.Errorf("young orphan dir was removed, want kept: %v", err)
@@ -214,35 +269,6 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 	}
 	if _, err := os.Stat(oldOrphan); !os.IsNotExist(err) {
 		t.Errorf("old orphan dir still exists, want removed")
-	}
-}
-
-func TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld(t *testing.T) {
-	root := t.TempDir()
-	now := time.Now()
-	minAge := 90 * time.Second
-
-	// A dir with no run.json at all (unreadable state), young: must be
-	// kept.
-	youngNoState := filepath.Join(root, "young-no-state")
-	if err := os.MkdirAll(youngNoState, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	setDirMTime(t, youngNoState, now, 10*time.Second)
-
-	// Same shape, but old: must be removed.
-	oldNoState := filepath.Join(root, "old-no-state")
-	if err := os.MkdirAll(oldNoState, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	setDirMTime(t, oldNoState, now, 10*time.Minute)
-
-	removed, err := sweepOrphans(root, map[string]bool{}, minAge, now)
-	if err != nil {
-		t.Fatalf("sweepOrphans() error: %v", err)
-	}
-	if len(removed) != 1 || removed[0] != oldNoState {
-		t.Errorf("removed = %v, want [%s]", removed, oldNoState)
 	}
 	if _, err := os.Stat(youngNoState); err != nil {
 		t.Errorf("young no-state dir was removed, want kept: %v", err)

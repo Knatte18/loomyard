@@ -47,8 +47,8 @@ func TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newPendingFixture(t, GateSpec{tc.entry}, nil)
 			_, err := f.run.Wait()
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Wait() error = %v, want it to contain %q", err, tc.want)
+			if err == nil || !strings.Contains(err.Error(), "shuttle: gate: "+tc.want) {
+				t.Fatalf("Wait() error = %v, want it to contain %q", err, "shuttle: gate: "+tc.want)
 			}
 		})
 	}
@@ -84,6 +84,7 @@ func TestGateTerminal_TerminalFailureFinalizesWithoutReprompt(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a non-terminal failure of a MayHold entry below its budget still re-prompts once and leaves Reason empty, the contrast to a terminal failure
 func TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts(t *testing.T) {
 	var calls int
 	gate := scriptedPending(&calls,

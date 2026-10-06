@@ -83,6 +83,7 @@ func scriptedPending(calls *int, script ...GateResult) Gate {
 	}
 }
 
+//testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, and settles with the remembered Done message
 func TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage(t *testing.T) {
 	var calls int
 	gate := scriptedPending(&calls,
@@ -146,6 +147,7 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that mid-turn ticks never re-evaluate the gate and that a deadline finalize reads Final rather than Gate, leaving the entry waiting
 func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T) {
 	var gateCalls, finalCalls int
 	gate := scriptedPending(&gateCalls, GateResult{Pending: true, Send: pendingSendText})
@@ -175,6 +177,7 @@ func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T)
 	}
 }
 
+//testtiming:keep pins that a rejection after a pending hold re-prompts exactly once with the findings and counts one attempt
 func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
 	var calls int
 	gate := scriptedPending(&calls,
@@ -203,6 +206,7 @@ func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a verdict recorded between idle ticks is read at the next tick and not masked by the pending state
 func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 	var calls int
 	recorded := false
@@ -226,92 +230,84 @@ func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 	wantStates(t, result.Gate, GateEntryPassed)
 }
 
-func TestGatePending_ContractViolationsAreErrors(t *testing.T) {
-	pending := func() (GateResult, error) { return GateResult{Pending: true}, nil }
-	passed := func() (GateResult, error) { return GateResult{Passed: true}, nil }
+// TestAttachGated_Pending covers a pending gate over a resumed run whose events file already holds a
+// Done: the replayed Done is the first gated arrival, and with a carried Send text it sends once and
+// is then released by the deadline, whose finalize reads Final; without one, the gate re-evaluates
+// on every poll tick until a verdict arrives.
+//
+//testtiming:keep pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on every poll tick
+func TestAttachGated_Pending(t *testing.T) {
 	tests := []struct {
-		name  string
-		entry GateEntry
-		want  string
+		name string
+		// sendText is the text the first evaluation carries; empty means a bare pending.
+		sendText string
 	}{
-		{"pending_without_pass_on_cap", GateEntry{Name: "x", Gate: pending, Attempts: 1}, `entry "x" returned pending but is not pass_on_cap`},
-		{"final_without_pass_on_cap", GateEntry{Name: "x", Gate: passed, Final: passed, Attempts: 1}, `entry "x" sets Final but is not pass_on_cap`},
+		{name: "replayed Done sends the carried text then the deadline reads Final", sendText: pendingSendText},
+		{name: "pending without text re-evaluates on poll ticks"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := newPendingFixture(t, GateSpec{tt.entry}, nil)
-			_, err := f.run.Wait()
-			if err == nil || !strings.Contains(err.Error(), "shuttle: gate: "+tt.want) {
-				t.Errorf("Wait() error = %v, want it to contain %q", err, "shuttle: gate: "+tt.want)
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
+			var engine *fakeEngine
+			spec := Spec{Timeout: time.Minute}
+			if tt.sendText != "" {
+				reed.CaptureQueue = sendCaptures(tt.sendText)
+				engine = readyAgentEngine()
+				spec.Timeout = 300 * time.Millisecond
+			} else {
+				engine = &fakeEngine{}
+			}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
+			seedPresentReedState(t, dotLyxDir)
+			if tt.sendText != "" {
+				stubInputSleep(t)
+			}
+
+			outputFile := filepath.Join(runRoot, "out.md")
+			spec.OutputFiles = []string{outputFile}
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
+				strandGUID: "strand-1", sessionID: "session-1",
+				outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true, started: true,
+			})
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+
+			var gateCalls, finalCalls int
+			var entry GateEntry
+			if tt.sendText != "" {
+				// The writer is mid-turn after the send, so only the deadline releases the run.
+				entry = GateEntry{
+					Gate:  scriptedPending(&gateCalls, GateResult{Pending: true, Send: tt.sendText}),
+					Final: scriptedPending(&finalCalls, GateResult{Passed: true}),
+				}
+			} else {
+				entry = GateEntry{Gate: scriptedPending(&gateCalls, GateResult{Pending: true}, GateResult{Pending: true}, GateResult{Passed: true})}
+			}
+			entry.Name, entry.Attempts, entry.PassOnCap = "parent-review", 3, true
+
+			result, found, err := runner.AttachGated(spec, GateSpec{entry})
+			if err != nil || !found {
+				t.Fatalf("AttachGated() = found %v, err %v; want found and nil", found, err)
+			}
+			wantStates(t, result.Gate, GateEntryPassed)
+			if tt.sendText == "" {
+				if gateCalls != 3 {
+					t.Errorf("gate ran %d times, want 3 (replayed Done, then one per poll tick with no new arrival)", gateCalls)
+				}
+				return
+			}
+			if gateCalls != 1 {
+				t.Errorf("gate ran %d times, want 1 (the replayed Done evaluates once; the writer is then mid-turn)", gateCalls)
+			}
+			if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != tt.sendText {
+				t.Errorf("SendText calls = %+v, want the carried text once", reed.SendTextCalls)
+			}
+			if finalCalls != 1 {
+				t.Errorf("final ran %d times, want 1", finalCalls)
 			}
 		})
 	}
-}
-
-func TestAttachGated_PendingReplayedDoneThenPollTickReevaluates(t *testing.T) {
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}, CaptureQueue: sendCaptures(pendingSendText)}
-	fx := newFixture(t, reed, readyAgentEngine(), withConfig(fastConfig), withSeparateRunDir())
-	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
-	seedPresentReedState(t, dotLyxDir)
-	stubInputSleep(t)
-
-	outputFile := filepath.Join(runRoot, "out.md")
-	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
-		strandGUID: "strand-1", sessionID: "session-1",
-		outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true, started: true,
-	})
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	// The replayed Done is the first gated arrival: it reads pending and sends the text;
-	// the writer is then mid-turn, so the run is released by the deadline, whose finalize reads Final.
-	var gateCalls, finalCalls int
-	gate := scriptedPending(&gateCalls, GateResult{Pending: true, Send: pendingSendText})
-	final := scriptedPending(&finalCalls, GateResult{Passed: true})
-	result, found, err := runner.AttachGated(Spec{OutputFiles: []string{outputFile}, Timeout: 300 * time.Millisecond},
-		GateSpec{{Name: "parent-review", Gate: gate, Final: final, Attempts: 3, PassOnCap: true}})
-	if err != nil || !found {
-		t.Fatalf("AttachGated() = found %v, err %v; want found and nil", found, err)
-	}
-	if gateCalls != 1 {
-		t.Errorf("gate ran %d times, want 1 (the replayed Done evaluates once; the writer is then mid-turn)", gateCalls)
-	}
-	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != pendingSendText {
-		t.Errorf("SendText calls = %+v, want the carried text once", reed.SendTextCalls)
-	}
-	if finalCalls != 1 {
-		t.Errorf("final ran %d times, want 1", finalCalls)
-	}
-	wantStates(t, result.Gate, GateEntryPassed)
-}
-
-func TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks(t *testing.T) {
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
-	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
-	seedPresentReedState(t, dotLyxDir)
-
-	outputFile := filepath.Join(runRoot, "out.md")
-	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
-		strandGUID: "strand-1", sessionID: "session-1",
-		outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true, started: true,
-	})
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	var calls int
-	gate := scriptedPending(&calls, GateResult{Pending: true}, GateResult{Pending: true}, GateResult{Passed: true})
-	result, found, err := runner.AttachGated(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		GateSpec{{Name: "parent-review", Gate: gate, Attempts: 3, PassOnCap: true}})
-	if err != nil || !found {
-		t.Fatalf("AttachGated() = found %v, err %v; want found and nil", found, err)
-	}
-	if calls != 3 {
-		t.Errorf("gate ran %d times, want 3 (replayed Done, then one per poll tick with no new arrival)", calls)
-	}
-	wantStates(t, result.Gate, GateEntryPassed)
 }

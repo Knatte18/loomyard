@@ -99,6 +99,8 @@ func soleStartupRunDir(t *testing.T, cfg Config, anchorPath string) string {
 // the way, driven through the real Start/StartGated flow: a handle is returned once StartupReady
 // lands, run.json records Started/running, and the capture handed to TrustDismissSequence is the one
 // Startup classified StartupTrustPrompt from.
+//
+//testtiming:keep pins trust-gate dismissal through the real Start flow: the Enter key, the capture handed to the engine, the persisted Started and running Outcome, and the logged dismissal
 func TestStartup_TrustPromptThenReady(t *testing.T) {
 	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
 	reed := &fakeReed{
@@ -149,87 +151,153 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 	}
 }
 
-// TestStartup_ReadyOnFirstProbe covers the fast path: no dismissal ever attempted and no Sleep call
-// before the handle is returned, proven by the virtual clock never advancing.
-func TestStartup_ReadyOnFirstProbe(t *testing.T) {
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fc := newFakeClock(time.Now())
-	seedStartupFakes(reed, engine)
-	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
-	start := fc.Now()
+// TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock. Ready on the
+// first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is
+// returned. The startup step probes at pollInterval x LivenessEveryNPolls, never at the bare poll
+// interval: with PollIntervalMS 100 and LivenessEveryNPolls 10, a ready-on-third-Status-call script
+// must advance the virtual clock by exactly two probe intervals (2 x 100ms x 10 = 2s), never by a
+// bare 100ms step.
+//
+//testtiming:keep pins the ready path's virtual-clock timing: no Sleep when ready on the first probe, and exactly two probe intervals otherwise
+func TestStartup_ReadyProbeTiming(t *testing.T) {
+	tests := []struct {
+		name            string
+		cfg             Config
+		script          []StartupState
+		wantStatusCalls int
+		wantElapsed     time.Duration
+	}{
+		{name: "ready on the first probe never sleeps", cfg: fastConfig, script: []StartupState{StartupReady}, wantStatusCalls: 1},
+		{
+			name:            "probe cadence matches Wait",
+			cfg:             Config{PollIntervalMS: 100, LivenessEveryNPolls: 10, StartupTimeoutS: 30, RunTimeoutMin: 5},
+			script:          []StartupState{StartupPending, StartupPending, StartupReady},
+			wantStatusCalls: 3,
+			wantElapsed:     2 * 100 * time.Millisecond * 10,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
+			engine := &fakeEngine{StartupScript: tt.script}
+			fc := newFakeClock(time.Now())
+			seedStartupFakes(reed, engine)
+			runner := newFixture(t, reed, engine, withConfig(tt.cfg), withClock(fc)).Runner
+			start := fc.Now()
 
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err != nil {
-		t.Fatalf("StartGated() error = %v; want nil", err)
-	}
-	if run == nil {
-		t.Fatal("StartGated() returned a nil run")
-	}
-	if len(reed.SendKeyCalls) != 0 {
-		t.Errorf("SendKeyCalls = %+v; want none", reed.SendKeyCalls)
-	}
-	if elapsed := fc.Now().Sub(start); elapsed != 0 {
-		t.Errorf("virtual elapsed = %s; want exactly 0 — ready on the first probe must never Sleep before returning", elapsed)
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+			if err != nil {
+				t.Fatalf("StartGated() error = %v; want nil", err)
+			}
+			if run == nil {
+				t.Fatal("StartGated() returned a nil run")
+			}
+
+			statusCalls := 0
+			for _, c := range reed.CallLog {
+				if c == "Status" {
+					statusCalls++
+				}
+			}
+			if statusCalls != tt.wantStatusCalls {
+				t.Errorf("Status call count = %d; want %d", statusCalls, tt.wantStatusCalls)
+			}
+			if len(reed.SendKeyCalls) != 0 {
+				t.Errorf("SendKeyCalls = %+v; want none", reed.SendKeyCalls)
+			}
+			if elapsed := fc.Now().Sub(start); elapsed != tt.wantElapsed {
+				t.Errorf("virtual elapsed = %s; want exactly %s", elapsed, tt.wantElapsed)
+			}
+		})
 	}
 }
 
 // TestStartup_PaneNotLiveMidStartup covers the pane going not-live before StartupReady: the run is
 // torn down as ErrNotStarted, the strand is removed, run.json's Outcome is died, the run directory is
 // kept, and startup-capture.txt holds the last successful capture.
+//
+// Two variants share that teardown. A teardown whose own strand removal fails still reports
+// ErrNotStarted, says the strand could not be removed and carries reed's own error text, with the
+// Outcome still persisted. Spec.KeepPane is irrelevant to the not-ready teardown: the strand is
+// removed whatever KeepPane says, since KeepPane governs a COMPLETED run's pane retention, not a
+// startup failure's.
 func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	const lastCapture = "still booting..."
-	reed := &fakeReed{
-		StatusQueue: []reedengine.StatusResult{
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
-		},
-		CaptureQueue: []string{lastCapture},
+	removeErr := errors.New("tmux: kill-pane failed")
+	tests := []struct {
+		name            string
+		removeStrandErr error
+		keepPane        bool
+		// wantCapture asserts startup-capture.txt holds the last successful capture.
+		wantCapture bool
+	}{
+		{name: "pane goes not-live", wantCapture: true},
+		{name: "a failing strand removal is reported", removeStrandErr: removeErr},
+		{name: "KeepPane does not apply", keepPane: true},
 	}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	fc := newFakeClock(time.Now())
-	cfg := fastConfig
-	seedStartupFakes(reed, engine)
-	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
-	runner, anchorPath := fx.Runner, fx.Anchor
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{
+				StatusQueue: []reedengine.StatusResult{
+					{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
+					{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+				},
+				CaptureQueue:    []string{lastCapture},
+				RemoveStrandErr: tt.removeStrandErr,
+			}
+			engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
+			fc := newFakeClock(time.Now())
+			cfg := fastConfig
+			seedStartupFakes(reed, engine)
+			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+			runner, anchorPath := fx.Runner, fx.Anchor
 
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if !errors.Is(err, ErrNotStarted) {
-		t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
-	}
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}, KeepPane: tt.keepPane}, GateSpec{})
+			if run != nil {
+				t.Errorf("StartGated() run = %+v; want nil", run)
+			}
+			if !errors.Is(err, ErrNotStarted) {
+				t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
+			}
+			if tt.removeStrandErr != nil && (!strings.Contains(err.Error(), "could NOT be removed") || !strings.Contains(err.Error(), removeErr.Error())) {
+				t.Errorf("StartGated() error = %v; want it to say the strand could not be removed and carry %q", err, removeErr.Error())
+			}
 
-	if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" {
-		t.Errorf("RemoveStrandCalls = %+v; want exactly one for strand-1", reed.RemoveStrandCalls)
-	}
+			if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" {
+				t.Errorf("RemoveStrandCalls = %+v; want exactly one for strand-1", reed.RemoveStrandCalls)
+			}
 
-	runDir := soleStartupRunDir(t, cfg, anchorPath)
-	rs, found, rerr := loadRunState(runDir)
-	if rerr != nil || !found {
-		t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
-	}
-	if rs.Outcome != string(OutcomeDied) {
-		t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
-	}
-	if _, statErr := os.Stat(runDir); statErr != nil {
-		t.Errorf("run dir removed; want it kept: %v", statErr)
-	}
-	capture, rerr := os.ReadFile(filepath.Join(runDir, startupCaptureFileName))
-	if rerr != nil {
-		t.Fatalf("read %s: %v", startupCaptureFileName, rerr)
-	}
-	if string(capture) != lastCapture {
-		t.Errorf("%s = %q; want %q", startupCaptureFileName, capture, lastCapture)
+			runDir := soleStartupRunDir(t, cfg, anchorPath)
+			rs, found, rerr := loadRunState(runDir)
+			if rerr != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+			}
+			if rs.Outcome != string(OutcomeDied) {
+				t.Errorf("loadRunState().Outcome = %q; want %q", rs.Outcome, OutcomeDied)
+			}
+			if _, statErr := os.Stat(runDir); statErr != nil {
+				t.Errorf("run dir removed; want it kept: %v", statErr)
+			}
+			if tt.wantCapture {
+				capture, rerr := os.ReadFile(filepath.Join(runDir, startupCaptureFileName))
+				if rerr != nil {
+					t.Fatalf("read %s: %v", startupCaptureFileName, rerr)
+				}
+				if string(capture) != lastCapture {
+					t.Errorf("%s = %q; want %q", startupCaptureFileName, capture, lastCapture)
+				}
+			}
+		})
 	}
 }
 
 // TestStartup_UndismissableGateUntilWindowExpires covers a gate whose accepting option cannot be
 // located: no key is ever sent, and the startup window expires with the same not-ready teardown
 // TestStartup_PaneNotLiveMidStartup pins.
+//
+//testtiming:keep pins that a gate whose accepting option cannot be located sends no key and logs no dismissal before the window expires
 func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 	innerReed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
@@ -271,154 +339,148 @@ func TestStartup_UndismissableGateUntilWindowExpires(t *testing.T) {
 	}
 }
 
-// TestStartup_FileContractSatisfiedWhilePending covers the file contract winning through
-// classifyStartupWindow while the pane stays pending forever: a handle is returned and the strand is
-// never torn down. The output file cannot exist before Start (Spec.validate refuses a pre-existing
-// entry), so a multiStepClock writes it from inside the first Sleep call, between two probes.
-func TestStartup_FileContractSatisfiedWhilePending(t *testing.T) {
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	cfg := shortStartupConfig
-	fc := newFakeClock(time.Now())
-	reed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
-	runner := newFixture(t, reed, engine, withConfig(cfg)).Runner
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	mc := &multiStepClock{fakeClock: fc, steps: []func(){
-		func() { touchOutputFile(t, outputFile) },
-	}}
-	runner.clock = mc
-
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err != nil {
-		t.Fatalf("StartGated() error = %v; want nil (file contract satisfied)", err)
+// TestStartup_HandleReturned covers the startup paths that return a handle without the pane ever
+// reaching ready on a clean probe: a single transient reed.Status failure recovering before the
+// retry cap, the retry cap exhausted with the file contract already satisfied by then, and the file
+// contract winning through classifyStartupWindow while the pane stays pending forever (the strand
+// is never torn down). The output file cannot exist before Start (Spec.validate refuses a
+// pre-existing entry), so a multiStepClock writes it from inside the first Sleep call.
+func TestStartup_HandleReturned(t *testing.T) {
+	liveStatusQueue := func() []reedengine.StatusResult {
+		return []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}
 	}
-	if run == nil {
-		t.Fatal("StartGated() returned a nil run")
+	tests := []struct {
+		name string
+		// build returns the runner under test and the reed double whose teardown calls are checked.
+		build func(t *testing.T, outputFile string) (*Runner, *fakeReed)
+		// wantNoTeardown asserts the strand is never removed.
+		wantNoTeardown bool
+	}{
+		{
+			name: "one transient status error then ready",
+			build: func(t *testing.T, outputFile string) (*Runner, *fakeReed) {
+				inner := &fakeReed{StatusQueue: liveStatusQueue(), AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+				reed := &flakyStatusReed{fakeReed: inner, failFirst: 1, err: errors.New("reed status: transient")}
+				engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+				fc := newFakeClock(time.Now())
+				return newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner, inner
+			},
+		},
+		{
+			name: "status errors exhaust the retry cap with the output file present",
+			build: func(t *testing.T, outputFile string) (*Runner, *fakeReed) {
+				inner := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+				reed := &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries + 5, err: errors.New("reed status: unavailable")}
+				engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+				runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
+				runner.clock = &multiStepClock{fakeClock: newFakeClock(time.Now()), steps: []func(){
+					func() { touchOutputFile(t, outputFile) },
+				}}
+				return runner, inner
+			},
+		},
+		{
+			name: "file contract satisfied while the pane stays pending",
+			build: func(t *testing.T, outputFile string) (*Runner, *fakeReed) {
+				reed := &fakeReed{StatusQueue: liveStatusQueue(), AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+				engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
+				runner := newFixture(t, reed, engine, withConfig(shortStartupConfig)).Runner
+				runner.clock = &multiStepClock{fakeClock: newFakeClock(time.Now()), steps: []func(){
+					func() { touchOutputFile(t, outputFile) },
+				}}
+				return runner, reed
+			},
+			wantNoTeardown: true,
+		},
 	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrandCalls = %+v; want none", reed.RemoveStrandCalls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			runner, reed := tt.build(t, outputFile)
+
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+			if err != nil {
+				t.Fatalf("StartGated() error = %v; want nil", err)
+			}
+			if run == nil {
+				t.Fatal("StartGated() returned a nil run")
+			}
+			if tt.wantNoTeardown && len(reed.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrandCalls = %+v; want none", reed.RemoveStrandCalls)
+			}
+		})
 	}
 }
 
-// TestStartup_OneTransientStatusErrorThenReady covers a single transient reed.Status failure
-// recovering before the retry cap is reached.
-func TestStartup_OneTransientStatusErrorThenReady(t *testing.T) {
-	inner := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
-	reed := &flakyStatusReed{fakeReed: inner, failFirst: 1, err: errors.New("reed status: transient")}
-	inner.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err != nil {
-		t.Fatalf("StartGated() error = %v; want nil", err)
-	}
-	if run == nil {
-		t.Fatal("StartGated() returned a nil run")
-	}
-}
-
-// TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles covers the retry-cap mechanism-failure path:
-// a non-nil error that is NOT ErrNotStarted, no teardown, and run.json's Outcome left at running.
-func TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles(t *testing.T) {
+// TestStartup_MechanismFailure covers the startup mechanism-failure paths — the status retry cap
+// exhausted with no output files, and reed never tracking the strand at all: a non-nil error that is
+// NOT ErrNotStarted, no teardown, and run.json's Outcome left at running.
+func TestStartup_MechanismFailure(t *testing.T) {
 	scriptedErr := errors.New("reed status: unavailable")
-	inner := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
-	reed := &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries, err: scriptedErr}
-	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	cfg := fastConfig
-	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
-	runner, anchorPath := fx.Runner, fx.Anchor
+	tests := []struct {
+		name string
+		// build returns the reed double (whose teardown calls are checked) and the error the start
+		// must wrap.
+		build   func() (ReedOps, *fakeReed)
+		wantErr error
+	}{
+		{
+			name: "status errors exhaust the retry cap",
+			build: func() (ReedOps, *fakeReed) {
+				inner := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+				return &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries, err: scriptedErr}, inner
+			},
+			wantErr: scriptedErr,
+		},
+		{
+			name: "reed never tracks the strand",
+			build: func() (ReedOps, *fakeReed) {
+				inner := &fakeReed{
+					AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+					StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
+				}
+				return inner, inner
+			},
+			wantErr: errStrandNotTracked,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed, inner := tt.build()
+			engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+			fc := newFakeClock(time.Now())
+			cfg := fastConfig
+			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
+			runner, anchorPath := fx.Runner, fx.Anchor
 
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if err == nil {
-		t.Fatal("StartGated() error = nil; want a non-nil error")
-	}
-	if !errors.Is(err, scriptedErr) {
-		t.Errorf("StartGated() error = %v; want one wrapping %v", err, scriptedErr)
-	}
-	if errors.Is(err, ErrNotStarted) {
-		t.Errorf("StartGated() error = %v; want it NOT to wrap ErrNotStarted -- this is a mechanism failure, not a not-ready teardown", err)
-	}
-	if len(inner.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrandCalls = %+v; want none -- a mechanism failure tears nothing down", inner.RemoveStrandCalls)
-	}
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
+			if run != nil {
+				t.Errorf("StartGated() run = %+v; want nil", run)
+			}
+			if err == nil {
+				t.Fatal("StartGated() error = nil; want a non-nil error")
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("StartGated() error = %v; want one wrapping %v", err, tt.wantErr)
+			}
+			if errors.Is(err, ErrNotStarted) {
+				t.Errorf("StartGated() error = %v; want it NOT to wrap ErrNotStarted -- this is a mechanism failure, not a not-ready teardown", err)
+			}
+			if len(inner.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrandCalls = %+v; want none -- a mechanism failure tears nothing down", inner.RemoveStrandCalls)
+			}
 
-	runDir := soleStartupRunDir(t, cfg, anchorPath)
-	rs, found, rerr := loadRunState(runDir)
-	if rerr != nil || !found {
-		t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+			runDir := soleStartupRunDir(t, cfg, anchorPath)
+			rs, found, rerr := loadRunState(runDir)
+			if rerr != nil || !found {
+				t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
+			}
+			if rs.Outcome != runOutcomeRunning {
+				t.Errorf("loadRunState().Outcome = %q; want %q -- a mechanism failure writes no Outcome", rs.Outcome, runOutcomeRunning)
+			}
+		})
 	}
-	if rs.Outcome != runOutcomeRunning {
-		t.Errorf("loadRunState().Outcome = %q; want %q -- a mechanism failure writes no Outcome", rs.Outcome, runOutcomeRunning)
-	}
-}
-
-// TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent covers the same exhaustion, but with the
-// file contract already satisfied by the time the cap is reached: a handle is returned, not the
-// error. The output file is written from inside the clock's Sleep, since Spec.validate refuses a
-// pre-existing entry.
-func TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent(t *testing.T) {
-	scriptedErr := errors.New("reed status: unavailable")
-	inner := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
-	reed := &flakyStatusReed{fakeReed: inner, failFirst: maxStatusRetries + 5, err: scriptedErr}
-	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	mc := &multiStepClock{fakeClock: fc, steps: []func(){
-		func() { touchOutputFile(t, outputFile) },
-	}}
-	runner.clock = mc
-
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err != nil {
-		t.Fatalf("StartGated() error = %v; want nil (file contract satisfied)", err)
-	}
-	if run == nil {
-		t.Fatal("StartGated() returned a nil run")
-	}
-}
-
-// TestStartup_ReedNeverTracksStrand covers the untracked-strand mechanism failure.
-func TestStartup_ReedNeverTracksStrand(t *testing.T) {
-	reed := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
-		StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
-	}
-	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	cfg := fastConfig
-	seedStartupFakes(reed, engine)
-	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
-	runner, anchorPath := fx.Runner, fx.Anchor
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if err == nil {
-		t.Fatal("StartGated() error = nil; want the untracked-strand mechanism error")
-	}
-	if !errors.Is(err, errStrandNotTracked) {
-		t.Errorf("StartGated() error = %v; want one wrapping errStrandNotTracked", err)
-	}
-	if errors.Is(err, ErrNotStarted) {
-		t.Errorf("StartGated() error = %v; want it NOT to wrap ErrNotStarted", err)
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrandCalls = %+v; want none", reed.RemoveStrandCalls)
-	}
-	_ = anchorPath
 }
 
 // TestStartup_TickCap covers the tick-count cap under a frozen clock, with a subtest for the
@@ -524,45 +586,10 @@ func TestStartupTickCap(t *testing.T) {
 	}
 }
 
-// TestStartup_ProbeCadenceMatchesWait pins that the startup step probes at pollInterval x
-// LivenessEveryNPolls, never at the bare poll interval: with PollIntervalMS 100 and
-// LivenessEveryNPolls 10, a ready-on-third-Status-call script must advance the virtual clock by
-// exactly two probe intervals (2 x 100ms x 10 = 2s), never by a bare 100ms step.
-func TestStartup_ProbeCadenceMatchesWait(t *testing.T) {
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending, StartupPending, StartupReady}}
-	cfg := Config{PollIntervalMS: 100, LivenessEveryNPolls: 10, StartupTimeoutS: 30, RunTimeoutMin: 5}
-	fc := newFakeClock(time.Now())
-	seedStartupFakes(reed, engine)
-	runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
-	start := fc.Now()
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err != nil {
-		t.Fatalf("StartGated() error = %v; want nil", err)
-	}
-	if run == nil {
-		t.Fatal("StartGated() returned a nil run")
-	}
-
-	statusCalls := 0
-	for _, c := range reed.CallLog {
-		if c == "Status" {
-			statusCalls++
-		}
-	}
-	if statusCalls != 3 {
-		t.Errorf("Status call count = %d; want 3", statusCalls)
-	}
-	wantElapsed := 2 * 100 * time.Millisecond * 10
-	if elapsed := fc.Now().Sub(start); elapsed != wantElapsed {
-		t.Errorf("virtual elapsed = %s; want exactly %s (two probe intervals, not a bare poll-interval step)", elapsed, wantElapsed)
-	}
-}
-
 // TestStartup_CaptureAlwaysErroringUntilWindowExpires covers a pane whose CapturePane always fails:
 // no capture is ever recorded, so the not-ready teardown saves nothing and says so.
+//
+//testtiming:keep pins the not-ready teardown's message and the absent startup capture file when every capture fails
 func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 	reed := &fakeReed{
 		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
@@ -593,148 +620,76 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 	}
 }
 
-// TestStartup_RemoveStrandFailureDuringTeardown covers a teardown whose own strand removal fails:
-// ErrNotStarted is still reported, the message says the strand could not be removed and carries
-// reed's own error text, and run.json's Outcome is still persisted.
-func TestStartup_RemoveStrandFailureDuringTeardown(t *testing.T) {
-	removeErr := errors.New("tmux: kill-pane failed")
-	reed := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
-		StatusQueue: []reedengine.StatusResult{
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+// TestStartup_RunGatedMappings pins RunGated's mapping of the two startup failures. A not-ready
+// start (errors.Is(err, ErrNotStarted)) is swallowed into a died Result with a nil error, carrying
+// the run's identity. A mechanism failure (never ErrNotStarted) returns the error unchanged,
+// alongside a Result carrying the run's identity fields with an empty Outcome. Either way the gate
+// closure never runs (its counter stays at zero), since finalize never evaluates a gate for a
+// non-Done outcome.
+func TestStartup_RunGatedMappings(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         []reedengine.StatusResult
+		script         []StartupState
+		wantErr        bool
+		wantOutcome    Outcome
+		wantNotStarted bool
+	}{
+		{
+			name: "not-ready start is a died result with a nil error",
+			status: []reedengine.StatusResult{
+				{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
+				{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+			},
+			script:         []StartupState{StartupPending},
+			wantOutcome:    OutcomeDied,
+			wantNotStarted: true,
 		},
-		RemoveStrandErr: removeErr,
-	}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	cfg := fastConfig
-	seedStartupFakes(reed, engine)
-	fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
-	runner, anchorPath := fx.Runner, fx.Anchor
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if !errors.Is(err, ErrNotStarted) {
-		t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
-	}
-	if !strings.Contains(err.Error(), "could NOT be removed") || !strings.Contains(err.Error(), removeErr.Error()) {
-		t.Errorf("StartGated() error = %v; want it to say the strand could not be removed and carry %q", err, removeErr.Error())
-	}
-
-	runDir := soleStartupRunDir(t, cfg, anchorPath)
-	rs, found, rerr := loadRunState(runDir)
-	if rerr != nil || !found {
-		t.Fatalf("loadRunState: found=%v err=%v", found, rerr)
-	}
-	if rs.Outcome != string(OutcomeDied) {
-		t.Errorf("loadRunState().Outcome = %q; want %q -- the Outcome write is unaffected by the removal failing", rs.Outcome, OutcomeDied)
-	}
-}
-
-// TestStartup_KeepPaneOnNotReadyStart pins that Spec.KeepPane is irrelevant to the not-ready
-// teardown: the strand is removed whatever KeepPane says, since KeepPane governs a COMPLETED run's
-// pane retention, not a startup failure's.
-func TestStartup_KeepPaneOnNotReadyStart(t *testing.T) {
-	reed := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
-		StatusQueue: []reedengine.StatusResult{
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+		{
+			name:    "mechanism failure returns the error with an empty outcome",
+			status:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
+			wantErr: true,
 		},
 	}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	seedStartupFakes(reed, engine)
-	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: tt.status}
+			engine := &fakeEngine{StartupScript: tt.script, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
+			fc := newFakeClock(time.Now())
+			seedStartupFakes(reed, engine)
+			runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
 
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}, KeepPane: true}, GateSpec{})
-	if run != nil {
-		t.Errorf("StartGated() run = %+v; want nil", run)
-	}
-	if !errors.Is(err, ErrNotStarted) {
-		t.Fatalf("StartGated() error = %v; want one wrapping ErrNotStarted", err)
-	}
-	if len(reed.RemoveStrandCalls) != 1 {
-		t.Errorf("RemoveStrandCalls = %+v; want exactly one -- KeepPane does not apply to a not-ready teardown", reed.RemoveStrandCalls)
-	}
-}
+			gateCalls := 0
+			gate := GateSpec{{Attempts: 3, Gate: func() (GateResult, error) {
+				gateCalls++
+				return GateResult{Passed: true}, nil
+			}}}
 
-// TestStartup_RunGated_NotReady pins RunGated's own not-ready mapping: errors.Is(err, ErrNotStarted)
-// is swallowed into a died Result with a nil error, carrying the run's identity, and the gate closure
-// never runs (its counter stays at zero) since finalize never evaluates a gate for a non-Done
-// outcome.
-func TestStartup_RunGated_NotReady(t *testing.T) {
-	reed := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
-		StatusQueue: []reedengine.StatusResult{
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
-			{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
-		},
-	}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	seedStartupFakes(reed, engine)
-	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
-
-	gateCalls := 0
-	gate := GateSpec{{Attempts: 3, Gate: func() (GateResult, error) {
-		gateCalls++
-		return GateResult{Passed: true}, nil
-	}}}
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, gate)
-	if err != nil {
-		t.Fatalf("RunGated() error = %v; want nil (a not-ready start is not surfaced as an error)", err)
-	}
-	if result.Outcome != OutcomeDied {
-		t.Errorf("RunGated() Outcome = %q; want %q", result.Outcome, OutcomeDied)
-	}
-	if result.StrandGUID != "strand-1" || result.RunDir == "" || result.SessionID == "" {
-		t.Errorf("RunGated() result = %+v; want StrandGUID/RunDir/SessionID all populated", result)
-	}
-	if gateCalls != 0 {
-		t.Errorf("gate closure called %d time(s); want 0", gateCalls)
-	}
-	if !result.NotStarted {
-		t.Errorf("RunGated() NotStarted = false; want true on a not-ready start")
-	}
-}
-
-// TestStartup_RunGated_MechanismFailure pins RunGated's mapping for a startup mechanism failure
-// (never ErrNotStarted): the error is returned unchanged, alongside a Result carrying the run's
-// identity fields with an empty Outcome.
-func TestStartup_RunGated_MechanismFailure(t *testing.T) {
-	reed := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
-		StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
-	}
-	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-	fc := newFakeClock(time.Now())
-	seedStartupFakes(reed, engine)
-	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc)).Runner
-
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, GateSpec{})
-	if err == nil {
-		t.Fatal("RunGated() error = nil; want the mechanism-failure error")
-	}
-	if errors.Is(err, ErrNotStarted) {
-		t.Errorf("RunGated() error = %v; want it NOT to wrap ErrNotStarted", err)
-	}
-	if result.Outcome != "" {
-		t.Errorf("RunGated() Outcome = %q; want empty (no classification was ever reached)", result.Outcome)
-	}
-	if result.NotStarted {
-		t.Errorf("RunGated() NotStarted = true; want false for a mechanism failure")
-	}
-	if result.StrandGUID != "strand-1" || result.RunDir == "" || result.SessionID == "" {
-		t.Errorf("RunGated() result = %+v; want StrandGUID/RunDir/SessionID all populated", result)
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			result, err := runner.RunGated(Spec{Prompt: "x", OutputFiles: []string{outputFile}}, gate)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("RunGated() error = nil; want the mechanism-failure error")
+				}
+				if errors.Is(err, ErrNotStarted) {
+					t.Errorf("RunGated() error = %v; want it NOT to wrap ErrNotStarted", err)
+				}
+			} else if err != nil {
+				t.Fatalf("RunGated() error = %v; want nil (a not-ready start is not surfaced as an error)", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("RunGated() Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
+			}
+			if result.NotStarted != tt.wantNotStarted {
+				t.Errorf("RunGated() NotStarted = %v; want %v", result.NotStarted, tt.wantNotStarted)
+			}
+			if result.StrandGUID != "strand-1" || result.RunDir == "" || result.SessionID == "" {
+				t.Errorf("RunGated() result = %+v; want StrandGUID/RunDir/SessionID all populated", result)
+			}
+			if gateCalls != 0 {
+				t.Errorf("gate closure called %d time(s); want 0", gateCalls)
+			}
+		})
 	}
 }
 
@@ -846,6 +801,8 @@ func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *tes
 // to no longer track the strand, and its state file now present -- does not harvest it as a leftover
 // to wait on (found == false, nil error), since a terminal Outcome makes it respawn-eligible
 // regardless of its directory's age.
+//
+//testtiming:keep pins the seam between a not-ready teardown and Attach: the died run.json left behind is respawn-eligible, not attachable, at any directory age
 func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	reed := &fakeReed{
 		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
@@ -937,6 +894,7 @@ func typedTexts(reed *skillReed) []string {
 	return texts
 }
 
+//testtiming:keep skills-in-one-turn rewrites skill loading and its tests; pins that skills load in order before the prompt and that the run's offset lies past their turn ends
 func TestStartup_SkillsLoadInOrderBeforePrompt(t *testing.T) {
 	run, reed, _, err := skillStartFixture(t, Spec{Skills: []string{"a", "b"}}, []string{"a", "b"}, nil)
 	if err != nil {
@@ -958,6 +916,7 @@ func TestStartup_SkillsLoadInOrderBeforePrompt(t *testing.T) {
 	}
 }
 
+//testtiming:keep skills-in-one-turn rewrites skill loading and its tests; pins that a launch with no skills and no deferred prompt line types nothing
 func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}

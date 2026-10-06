@@ -35,76 +35,71 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 	return events, nil
 }
 
-func TestPollEventsTick_WaitingIsStillRunning(t *testing.T) {
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
-		withRunEvents("WAIT:background work\n"),
-		withRunClock(fc, fc.Now().Add(time.Hour)))
+// TestPollEventsTick_Waiting drives pollEventsTick over an events file holding one waiting turn end
+// ("WAIT:background work"): with no output files it is still running and the offset advances past
+// the parsed bytes, a Stop after it classifies asking, and with the output files present it is done.
+//
+//testtiming:keep pins that a waiting turn end is still running and advances the offset, becomes asking on a later Stop, and is done when the output files exist
+func TestPollEventsTick_Waiting(t *testing.T) {
+	const waitLine = "WAIT:background work\n"
+	tests := []struct {
+		name         string
+		touchOutput  bool
+		wantFirst    Outcome
+		checkOffset  bool
+		stopAfter    string
+		wantSecond   Outcome
+		wantSecondIn string
+	}{
+		{name: "waiting is still running", wantFirst: "", checkOffset: true},
+		{
+			name: "a stop after waiting classifies asking", wantFirst: "", checkOffset: true,
+			stopAfter: "STOP:what now?", wantSecond: OutcomeAsking, wantSecondIn: "what now?",
+		},
+		{name: "waiting with output files is done", touchOutput: true, wantFirst: OutcomeDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			if tt.touchOutput {
+				touchOutputFile(t, outputFile)
+			}
+			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
+			fc := newFakeClock(time.Now())
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
+				withRunEvents(waitLine),
+				withRunClock(fc, fc.Now().Add(time.Hour)))
 
-	outcome, _, err := run.pollEventsTick()
-	if err != nil {
-		t.Fatalf("pollEventsTick error: %v", err)
-	}
-	if outcome != "" {
-		t.Errorf("outcome = %q, want empty (still running)", outcome)
-	}
-	if want := int64(len("WAIT:background work\n")); run.offset != want {
-		t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
+			outcome, _, err := run.pollEventsTick()
+			if err != nil {
+				t.Fatalf("pollEventsTick error: %v", err)
+			}
+			if outcome != tt.wantFirst {
+				t.Errorf("outcome = %q, want %q", outcome, tt.wantFirst)
+			}
+			if tt.checkOffset {
+				if want := int64(len(waitLine)); run.offset != want {
+					t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
+				}
+			}
+			if tt.stopAfter == "" {
+				return
+			}
+
+			appendEventsLine(t, run.state.EventsPath, tt.stopAfter)
+			outcome, message, err := run.pollEventsTick()
+			if err != nil {
+				t.Fatalf("second tick error: %v", err)
+			}
+			if outcome != tt.wantSecond || message != tt.wantSecondIn {
+				t.Errorf("second tick = (%q, %q), want (%q, %q)", outcome, message, tt.wantSecond, tt.wantSecondIn)
+			}
+		})
 	}
 }
 
-func TestPollEventsTick_StopAfterWaitingClassifiesAsking(t *testing.T) {
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
-		withRunEvents("WAIT:background work\n"),
-		withRunClock(fc, fc.Now().Add(time.Hour)))
-	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
-		t.Fatalf("first tick = (%q, %v), want still running", outcome, err)
-	}
-
-	f, err := os.OpenFile(run.state.EventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatalf("open events: %v", err)
-	}
-	if _, err := f.WriteString("STOP:what now?\n"); err != nil {
-		t.Fatalf("append events: %v", err)
-	}
-	f.Close()
-
-	outcome, message, err := run.pollEventsTick()
-	if err != nil {
-		t.Fatalf("second tick error: %v", err)
-	}
-	if outcome != OutcomeAsking || message != "what now?" {
-		t.Errorf("second tick = (%q, %q), want (%q, %q)", outcome, message, OutcomeAsking, "what now?")
-	}
-}
-
-func TestPollEventsTick_WaitingWithOutputFilesIsDone(t *testing.T) {
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	touchOutputFile(t, outputFile)
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
-		withRunEvents("WAIT:background work\n"),
-		withRunClock(fc, fc.Now().Add(time.Hour)))
-
-	outcome, _, err := run.pollEventsTick()
-	if err != nil {
-		t.Fatalf("pollEventsTick error: %v", err)
-	}
-	if outcome != OutcomeDone {
-		t.Errorf("outcome = %q, want %q", outcome, OutcomeDone)
-	}
-}
-
+//testtiming:keep pins that a gated waiting turn end is not an arrival: the gate is not evaluated on it and runs exactly once on the next Stop
 func TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
@@ -174,38 +169,47 @@ func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, s
 
 var oneShell = []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 
-func TestPollEventsTick_ShellExpiresAfterBound(t *testing.T) {
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	touchOutputFile(t, outputFile)
-	// A gated run keeps the files-exist shortcut out of the way, so the expiry alone ends the turn.
-	run, fc := shellWaitFixture(t, outputFile, oneShell, Spec{})
-	run.gate = GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
+// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background
+// shell: the turn keeps waiting until the bound, and at the bound it ends done when the output files
+// exist and asking, with the waiting message, when they do not.
+//
+//testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or asking with the waiting message without them
+func TestPollEventsTick_ShellExpiry(t *testing.T) {
+	tests := []struct {
+		name string
+		// gated keeps the files-exist shortcut out of the way, so the expiry alone ends the turn.
+		gated       bool
+		touchOutput bool
+		wantOutcome Outcome
+		wantMessage string
+	}{
+		{name: "expires after the bound", gated: true, touchOutput: true, wantOutcome: OutcomeDone},
+		{name: "expiry with missing output is asking", wantOutcome: OutcomeAsking, wantMessage: "background work"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputFile := filepath.Join(t.TempDir(), "out.md")
+			if tt.touchOutput {
+				touchOutputFile(t, outputFile)
+			}
+			run, fc := shellWaitFixture(t, outputFile, oneShell, Spec{})
+			if tt.gated {
+				run.gate = GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
+			}
 
-	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
-		t.Fatalf("first tick = (%q, %v), want still waiting", outcome, err)
-	}
-	fc.Sleep(10*time.Minute - time.Second)
-	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
-		t.Fatalf("tick just before the bound = (%q, %v), want still waiting", outcome, err)
-	}
-	fc.Sleep(time.Second)
-	outcome, _, err := run.pollEventsTick()
-	if err != nil || outcome != OutcomeDone {
-		t.Fatalf("tick at the bound = (%q, %v), want %q", outcome, err, OutcomeDone)
-	}
-}
-
-func TestPollEventsTick_ShellExpiryWithMissingOutputIsAsking(t *testing.T) {
-	outputFile := filepath.Join(t.TempDir(), "out.md")
-	run, fc := shellWaitFixture(t, outputFile, oneShell, Spec{})
-
-	if outcome, _, _ := run.pollEventsTick(); outcome != "" {
-		t.Fatalf("first tick outcome = %q, want still waiting", outcome)
-	}
-	fc.Sleep(10 * time.Minute)
-	outcome, message, err := run.pollEventsTick()
-	if err != nil || outcome != OutcomeAsking || message != "background work" {
-		t.Errorf("tick at the bound = (%q, %q, %v), want (%q, %q, nil)", outcome, message, err, OutcomeAsking, "background work")
+			if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+				t.Fatalf("first tick = (%q, %v), want still waiting", outcome, err)
+			}
+			fc.Sleep(10*time.Minute - time.Second)
+			if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+				t.Fatalf("tick just before the bound = (%q, %v), want still waiting", outcome, err)
+			}
+			fc.Sleep(time.Second)
+			outcome, message, err := run.pollEventsTick()
+			if err != nil || outcome != tt.wantOutcome || message != tt.wantMessage {
+				t.Errorf("tick at the bound = (%q, %q, %v), want (%q, %q, nil)", outcome, message, err, tt.wantOutcome, tt.wantMessage)
+			}
+		})
 	}
 }
 
@@ -258,6 +262,7 @@ type jumpClock struct {
 
 func (c *jumpClock) Sleep(time.Duration) { c.fakeClock.Sleep(c.jump) }
 
+//testtiming:keep pins that a gated Wait evaluates the gate once at a shell expiry and reports the expired shell's label
 func TestWait_GatedShellExpiryEvaluatesGate(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
