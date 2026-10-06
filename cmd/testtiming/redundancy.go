@@ -309,16 +309,32 @@ type moduleLayout struct {
 	dirs map[string]string // import path -> directory, every package of the module
 }
 
-// runRedundancy writes the redundancy report for the packages matching pkgPattern.
+// runRedundancy writes the redundancy report for the packages matching pkgFlag, a comma-separated list of package patterns.
+// A missing report, or a run over every package of the module, writes the whole report; any other run rewrites only its own packages' sections of the existing one.
 // It must run from the module root, the way the other modes do.
-func runRedundancy(tags, pkgPattern, outPath string) error {
+func runRedundancy(tags, pkgFlag, outPath string) error {
 	layout, err := loadLayout(tags)
 	if err != nil {
 		return err
 	}
-	targets, err := listPackages(tags, pkgPattern)
+	patterns := splitPatterns(pkgFlag)
+	if len(patterns) == 0 {
+		return errors.New("-pkg names no package pattern")
+	}
+	targets, err := listPackages(tags, patterns)
 	if err != nil {
 		return err
+	}
+	existing, err := os.ReadFile(outPath)
+	splicing := err == nil && !coversModule(layout, targets)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if splicing {
+		// Refuse before the minutes of measuring; spliceReport checks again over the text it rewrites.
+		if err := requireSameTags(string(existing), tags); err != nil {
+			return err
+		}
 	}
 	keeps := map[string]map[string]string{}
 	for _, importPath := range targets {
@@ -330,7 +346,7 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 			return fmt.Errorf("keep directive: %w", err)
 		}
 	}
-	pkgs, err := runPackageTimings(tags, pkgPattern)
+	pkgs, err := runPackageTimings(tags, patterns)
 	if err != nil {
 		return err
 	}
@@ -348,10 +364,12 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 	sort.Strings(coverpkg)
 
 	var reports []pkgReport
+	var measured []measuredPackage
 	failed := 0
 	for _, importPath := range targets {
 		timing := pkgs[importPath]
 		if timing == nil || timing.noTests || (timing.tests == 0 && timing.action != "fail") {
+			measured = append(measured, measuredPackage{pkg: shortPkg(importPath), noTests: true})
 			continue
 		}
 		report := pkgReport{pkg: shortPkg(importPath), tests: timing.tests, wall: timing.elapsed, serial: timing.serial}
@@ -366,16 +384,23 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 			failed++
 		}
 		reports = append(reports, report)
+		measured = append(measured, measuredPackage{pkg: report.pkg, section: renderPackage(report), failed: report.err != ""})
 	}
 	sort.Slice(reports, func(i, j int) bool { return reports[i].pkg < reports[j].pkg })
 
+	text := renderReport(tags, reports)
+	if splicing {
+		if text, err = spliceReport(string(existing), tags, measured); err != nil {
+			return err
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(outPath, []byte(renderReport(tags, reports)), 0o644); err != nil {
+	if err := os.WriteFile(outPath, []byte(text), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "redundancy: wrote %s (%d packages)\n", outPath, len(reports))
+	fmt.Fprintf(os.Stderr, "redundancy: wrote %s (%d packages measured)\n", outPath, len(reports))
 	if failed > 0 {
 		return fmt.Errorf("%d package(s) reported an error — see the report", failed)
 	}
@@ -498,14 +523,28 @@ func listTests(tags, importPath string) ([]string, error) {
 	return names, nil
 }
 
-// runPackageTimings runs the packages' tests once under `go test -json` and folds the stream with the timing mode's own parser.
+// coversModule reports whether targets are every package of the module.
+func coversModule(layout moduleLayout, targets []string) bool {
+	if len(targets) != len(layout.dirs) {
+		return false
+	}
+	for _, importPath := range targets {
+		if _, ok := layout.dirs[importPath]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// runPackageTimings runs the packages matching the patterns once under `go test -json` and folds the stream with the timing mode's own parser.
 // A failing test is recorded on its package and does not fail this call.
-func runPackageTimings(tags, pkgPattern string) (map[string]*pkgResult, error) {
+func runPackageTimings(tags string, patterns []string) (map[string]*pkgResult, error) {
 	args := []string{"test"}
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
-	args = append(args, "-json", "-count=1", pkgPattern)
+	args = append(args, "-json", "-count=1")
+	args = append(args, patterns...)
 	cmd := exec.Command("go", args...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -552,13 +591,13 @@ func loadLayout(tags string) (moduleLayout, error) {
 	return layout, nil
 }
 
-// listPackages returns the import paths matching pattern, sorted.
-func listPackages(tags, pattern string) ([]string, error) {
+// listPackages returns the import paths matching the patterns, sorted.
+func listPackages(tags string, patterns []string) ([]string, error) {
 	args := []string{"list"}
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
-	out, err := goOutput(nil, args, pattern)
+	out, err := goOutput(nil, append(args, patterns...), "")
 	if err != nil {
 		return nil, err
 	}

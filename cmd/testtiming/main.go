@@ -18,9 +18,14 @@
 //
 // The -redundancy mode replaces the timing table with a coverage report:
 //
-//	go run ./cmd/testtiming -redundancy [-pkg ./internal/x] [-out report.md] [-tags t]
+//	go run ./cmd/testtiming -redundancy [-pkg ./internal/x,./internal/y] [-out report.md] [-tags t]
 //
+// -pkg takes comma-separated package patterns, each passed to `go` as its own argument.
 // -tags defaults to integration,tmux in this mode, every tier but llm.
+// A run over every package of the module, or with no report at -out yet, writes the whole report.
+// Any other run splices into the existing report: only the measured packages' sections change, a package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
+// The header and every unmeasured section stay byte-identical, and a run whose tags differ from the report's header refuses and writes nothing.
+// A package that fails to list or build keeps its old section, and the run exits 1 after writing the others.
 // For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or possibly running this module's code in another process).
 // The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lyxbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
 // A test in a file with no tier tag is always judged, and a tier-tagged test with a call the scan cannot resolve is excluded as an unclassifiable call.
@@ -78,7 +83,7 @@ func main() {
 	top := flag.Int("top", 15, "how many of the slowest top-level tests to list")
 	redundancy := flag.Bool("redundancy", false, "per-test coverage redundancy mode: write a markdown report instead of the timing table")
 	out := flag.String("out", defaultRedundancyOut, "with -redundancy: the markdown report to write")
-	pkg := flag.String("pkg", defaultRedundancyPkg, "with -redundancy: the packages to measure")
+	pkg := flag.String("pkg", defaultRedundancyPkg, "with -redundancy: the package patterns to measure, comma-separated")
 	flag.Parse()
 
 	var err error

@@ -13,6 +13,7 @@ The general rules live in `scribe:testing` and `scribe:golang-testing`; this ent
 - A redundant test is a finding exactly as a missing one is.
   The finding names the existing test that already covers the behavior, so it stays grounded and fixable by folding or deleting.
 - `go run ./cmd/testtiming -redundancy` writes the per-test coverage report, `docs/benchmarks/test-redundancy.md`.
+  A run narrowed with `-pkg` rewrites only its own packages' sections of the existing report, so parallel tasks pruning different packages merge cleanly.
   A candidate in it is evidence, not a verdict: coverage blocks do not see assertions, so a candidate whose assertions differ from its covering tests is kept or folded.
   A prune finding names the covering test from the report, and only the removable set may be deleted together: deleting a candidate outside it can leave a block uncovered once its partner is gone.
   A candidate that is kept carries `//testtiming:keep <reason>` directly above its `func Test…` line, and the reason names what it pins that its covering tests do not (an error message, an output shape, an ordering); the report lists it under "Kept".

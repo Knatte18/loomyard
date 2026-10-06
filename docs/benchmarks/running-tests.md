@@ -91,6 +91,9 @@ Exit code mirrors `go test`: `0` on success, `1` if any package fails to build o
 `go run ./cmd/testtiming -redundancy` writes the per-test coverage redundancy report; the committed report is [test-redundancy.md](test-redundancy.md).
 The report judges a test unless it may run this module's code in another process; what that excludes, and the hand check that backs up the static scan, are in `pattern/PATTERN-test-economy.md`.
 A candidate the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line; the report lists it under "Kept" with the reason, and an empty reason or a misplaced directive aborts the run.
+`-pkg` takes comma-separated package patterns (`-pkg ./internal/a,./internal/b`).
+A run over every package of the module, or with no report at `-out` yet, writes the whole report; any other run rewrites only the sections of the packages it measured and leaves the header and the other sections byte-identical.
+A run whose `-tags` differ from the report's header refuses and writes nothing.
 
 Example (Tier 1):
 
