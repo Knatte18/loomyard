@@ -190,6 +190,16 @@ type SkillLoader interface {
 	DefaultSkillLoadTimeout() time.Duration
 }
 
+// SkillLoadReport is the turn-end classification of one load turn that asked the model to load a list of skills.
+// Loaded names the skills the model loaded, Unknown the skills the provider does not know, and Missing the skills it knew but the model did not load, each in request order.
+// Verified false means the evidence was unreadable: the three lists are then empty and the caller treats every requested skill as confirmed but unverified.
+type SkillLoadReport struct {
+	Verified bool
+	Loaded   []string
+	Unknown  []string
+	Missing  []string
+}
+
 // ContextReading is a provider-neutral reading of how much context a live session holds.
 // A reading with Known false could not be read, and a caller must never treat it as over any threshold.
 type ContextReading struct {
