@@ -1014,6 +1014,7 @@ func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 }
 
 func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.s.skillLoads = map[string]shuttleengine.SkillLoadReport{
@@ -1050,6 +1051,7 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 }
 
 func TestWatcher_ReloadReadsAnOldStyleStepAsThePointer(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
