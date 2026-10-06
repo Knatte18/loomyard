@@ -359,123 +359,79 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 	})
 }
 
-// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency configurations with precise error messages: dangling deps and depending on isolated tasks (the kind rules have their own test).
-//
-// Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated
-func TestValidateDependencyErrors(t *testing.T) {
-	t.Run("TestValidateDanglingDependency", func(t *testing.T) {
-		s := boardengine.NewStore("")
+// TestValidateDependencyGraph verifies that UpsertTask rejects a dangling dependency, a dependency on an isolated task and a cycle with precise error messages, and accepts a chain without a cycle (the kind rules have their own test).
+func TestValidateDependencyGraph(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// seed holds the upserts that must succeed before the checked one.
+		seed   []map[string]any
+		upsert map[string]any
+		// wantErr is the exact error message; wantErrContains is a substring of it; both empty means the upsert succeeds.
+		wantErr         string
+		wantErrContains string
+		wantTasks       int
+	}{
+		{
+			name:    "a dangling dependency is rejected",
+			upsert:  map[string]any{"slug": "task1", "depends_on": []string{"nonexistent"}},
+			wantErr: `dangling dependency: "nonexistent" does not exist`,
+		},
+		{
+			name:    "a dependency on an isolated task is rejected",
+			seed:    []map[string]any{{"slug": "isolated", "isolated": true}},
+			upsert:  map[string]any{"slug": "task1", "depends_on": []string{"isolated"}},
+			wantErr: `cannot depend on isolated task "isolated"`,
+		},
+		{
+			name: "a cycle is detected",
+			seed: []map[string]any{
+				{"slug": "a", "title": "A", "kind": "task"},
+				{"slug": "b", "title": "B", "kind": "task", "depends_on": []string{"a"}},
+			},
+			upsert:          map[string]any{"slug": "a", "depends_on": []string{"b"}},
+			wantErrContains: "cycle detected",
+		},
+		{
+			name: "a chain without a cycle is accepted",
+			seed: []map[string]any{
+				{"slug": "c", "kind": "task"},
+				{"slug": "b", "kind": "task", "depends_on": []string{"c"}},
+			},
+			upsert:    map[string]any{"slug": "a", "kind": "task", "depends_on": []string{"b"}},
+			wantTasks: 3,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := boardengine.NewStore("")
+			for _, fields := range tt.seed {
+				if _, err := s.UpsertTask(fields); err != nil {
+					t.Fatalf("seed %v: %v", fields, err)
+				}
+			}
 
-		// (e) dangling dependency rejected
-		_, err := s.UpsertTask(map[string]any{
-			"slug":       "task1",
-			"depends_on": []string{"nonexistent"},
+			_, err := s.UpsertTask(tt.upsert)
+
+			switch {
+			case tt.wantErr != "":
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("error = %v; want %q", err, tt.wantErr)
+				}
+			case tt.wantErrContains != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf("error = %v; want one containing %q", err, tt.wantErrContains)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got := len(s.Tasks()); got != tt.wantTasks {
+					t.Errorf("expected %d tasks, got %d", tt.wantTasks, got)
+				}
+			}
 		})
-		if err == nil {
-			t.Fatalf("expected error for dangling dependency")
-		}
-		if err.Error() != "dangling dependency: \"nonexistent\" does not exist" {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("TestValidateDependencyOnIsolated", func(t *testing.T) {
-		s := boardengine.NewStore("")
-
-		// Create an isolated task
-		_, err := s.UpsertTask(map[string]any{
-			"slug":     "isolated",
-			"isolated": true,
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// (f) dependency on isolated task rejected
-		_, err = s.UpsertTask(map[string]any{
-			"slug":       "task1",
-			"depends_on": []string{"isolated"},
-		})
-		if err == nil {
-			t.Fatalf("expected error for dependency on isolated task")
-		}
-		if err.Error() != "cannot depend on isolated task \"isolated\"" {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-}
-
-func TestValidateCycleDetection(t *testing.T) {
-	s := boardengine.NewStore("")
-
-	// Create task A
-	_, err := s.UpsertTask(map[string]any{
-		"slug":  "a",
-		"title": "A",
-		"kind":  "task",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Create task B depending on A
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "b",
-		"title":      "B",
-		"kind":       "task",
-		"depends_on": []string{"a"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// (h) cycle A→B, B→A detected and rejected with "cycle detected" in error message
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "a",
-		"depends_on": []string{"b"},
-	})
-	if err == nil {
-		t.Fatalf("expected error for cycle detection")
-	}
-	errMsg := err.Error()
-	if !stringContains(errMsg, "cycle detected") {
-		t.Errorf("expected 'cycle detected' in error, got: %v", err)
-	}
-}
-
-func TestValidateNoCycleLongChain(t *testing.T) {
-	s := boardengine.NewStore("")
-
-	// (i) chain A depends on B, B depends on C — no cycle, all upserts succeed
-	_, err := s.UpsertTask(map[string]any{
-		"slug": "c",
-		"kind": "task",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error creating C: %v", err)
-	}
-
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "b",
-		"kind":       "task",
-		"depends_on": []string{"c"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error creating B: %v", err)
-	}
-
-	_, err = s.UpsertTask(map[string]any{
-		"slug":       "a",
-		"kind":       "task",
-		"depends_on": []string{"b"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error creating A: %v", err)
-	}
-
-	tasks := s.Tasks()
-	if len(tasks) != 3 {
-		t.Errorf("expected 3 tasks, got %d", len(tasks))
 	}
 }
 
@@ -1020,171 +976,126 @@ func TestUpsertTasksBatch(t *testing.T) {
 	})
 }
 
-// TestLoadNilDependsOnNormalization verifies that Load normalizes a nil DependsOn to an empty slice
-// and that a missing file yields an empty store with no error.
-//
-// Folds: TestLoadNormalizesNilDependsOn, TestLoadMissingFileReturnsEmpty
-func TestLoadNilDependsOnNormalization(t *testing.T) {
-	t.Run("TestLoadNormalizesNilDependsOn", func(t *testing.T) {
-		boardDir := t.TempDir()
+// TestLoad asserts Store.Load's handling of board.json: a missing file yields an empty store, nil depends_on and labels normalize to empty slices, the version-1 and old tier-and-type shapes load and a Save round-trips them, and an unknown version or corrupt file is an error.
+func TestLoad(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// body is the board.json content; empty means no file.
+		body string
+		// wantErr is a substring the Load error must contain; empty means Load succeeds.
+		wantErr string
+		// check inspects the loaded entries.
+		check func(t *testing.T, tasks []boardengine.Task)
+		// save writes the store back; saveContains and saveAbsent are the whitespace-free substrings the saved file must and must not contain.
+		save                     bool
+		saveContains, saveAbsent []string
+	}{
+		{
+			name: "a missing file yields an empty store",
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 0 {
+					t.Errorf("expected empty task list for missing file, got %d tasks", len(tasks))
+				}
+			},
+		},
+		{
+			name: "a nil depends_on becomes an empty slice",
+			body: `{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].DependsOn == nil || len(tasks[0].DependsOn) != 0 {
+					t.Errorf("want one entry with an empty non-nil DependsOn, got %+v", tasks)
+				}
+			},
+		},
+		{
+			name: "a kind with no labels key becomes an empty labels list",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"note"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].Labels == nil || len(tasks[0].Labels) != 0 {
+					t.Errorf("want one entry with an empty non-nil labels list, got %+v", tasks)
+				}
+			},
+		},
+		{
+			name: "the version-1 shape loads and Save keeps legacy_done",
+			body: `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}],"legacy_done":["old"]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Kind != boardengine.KindTask || len(tasks[0].Labels) != 1 || tasks[0].Labels[0] != "bug" {
+					t.Errorf("loaded %+v; want entry a as a task labelled bug", tasks)
+				}
+			},
+			save:         true,
+			saveContains: []string{`"legacy_done"`},
+		},
+		{
+			name: "the old tier-and-type shape converts on Load and Save writes kind and labels",
+			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[]}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
+					t.Errorf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
+				}
+			},
+			save:         true,
+			saveContains: []string{`"kind":"task"`, `"labels"`},
+			saveAbsent:   []string{`"tier"`, `"type"`},
+		},
+		{
+			name:    "an unknown version is refused naming it",
+			body:    `{"version":2,"entries":[]}`,
+			wantErr: "version 2",
+		},
+		{
+			name:    "a corrupt file is an error, not an empty store",
+			body:    `{this is not valid json`,
+			wantErr: "load store",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			if tt.body != "" {
+				if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(tt.body), 0o644); err != nil {
+					t.Fatalf("write board.json: %v", err)
+				}
+			}
 
-		// Write board.json with an entry that has nil DependsOn
-		err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":1,"entries":[{"id":0,"slug":"task1","title":"Task 1","tier":3,"type":"feature"}]}`), 0o644)
-		if err != nil {
-			t.Fatalf("failed to write test file: %v", err)
-		}
+			store := boardengine.NewStore(boardDir)
+			err := store.Load()
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Load error = %v; want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			tt.check(t, store.Tasks())
 
-		store := boardengine.NewStore(boardDir)
-		err = store.Load()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		tasks := store.Tasks()
-		if len(tasks) != 1 {
-			t.Fatalf("expected 1 task, got %d", len(tasks))
-		}
-
-		// Verify DependsOn is normalized to an empty slice, not nil
-		if tasks[0].DependsOn == nil {
-			t.Errorf("expected empty slice for DependsOn, got nil")
-		}
-		if len(tasks[0].DependsOn) != 0 {
-			t.Errorf("expected empty DependsOn, got %v", tasks[0].DependsOn)
-		}
-	})
-
-	t.Run("TestLoadMissingFileReturnsEmpty", func(t *testing.T) {
-		// Do not create the file; test that Load handles missing file gracefully
-		store := boardengine.NewStore(t.TempDir())
-		err := store.Load()
-		if err != nil {
-			t.Fatalf("expected no error for missing file, got %v", err)
-		}
-
-		tasks := store.Tasks()
-		if len(tasks) != 0 {
-			t.Errorf("expected empty task list for missing file, got %d tasks", len(tasks))
-		}
-	})
-}
-
-// TestLoadNilLabelsNormalization verifies that Load gives an entry stored with a kind and no labels key an empty labels list, not nil.
-func TestLoadNilLabelsNormalization(t *testing.T) {
-	boardDir := t.TempDir()
-	body := `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"note"}]}`
-	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
-	}
-
-	store := boardengine.NewStore(boardDir)
-	if err := store.Load(); err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	tasks := store.Tasks()
-	if len(tasks) != 1 || tasks[0].Labels == nil || len(tasks[0].Labels) != 0 {
-		t.Errorf("want one entry with an empty non-nil labels list, got %+v", tasks)
-	}
-}
-
-// TestLoadFromBoardJSON verifies that Load reads the version-1 shape and a Save round-trips it.
-func TestLoadFromBoardJSON(t *testing.T) {
-	boardDir := t.TempDir()
-	body := `{"version":1,"entries":[{"id":4,"slug":"a","title":"A","kind":"task","labels":["bug"],"depends_on":[]}],"legacy_done":["old"]}`
-	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
-	}
-
-	store := boardengine.NewStore(boardDir)
-	if err := store.Load(); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	tasks := store.Tasks()
-	if len(tasks) != 1 || tasks[0].Slug != "a" || tasks[0].Kind != boardengine.KindTask || len(tasks[0].Labels) != 1 || tasks[0].Labels[0] != "bug" {
-		t.Fatalf("loaded %+v; want entry a as a task labelled bug", tasks)
-	}
-
-	if err := store.Save(); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
-	if err != nil {
-		t.Fatalf("read board.json: %v", err)
-	}
-	if !stringContains(string(raw), `"legacy_done"`) {
-		t.Errorf("Save dropped legacy_done: %s", raw)
-	}
-}
-
-// TestLoadOldShapeRoundTrip verifies an old-shape board.json converts on Load and persists with kind and labels and without tier or type after Save.
-func TestLoadOldShapeRoundTrip(t *testing.T) {
-	boardDir := t.TempDir()
-	body := `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","tier":1,"type":"bug","brief":"[infra] fix it","depends_on":[]}]}`
-	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(body), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
-	}
-
-	store := boardengine.NewStore(boardDir)
-	if err := store.Load(); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	tasks := store.Tasks()
-	if len(tasks) != 1 || tasks[0].Kind != boardengine.KindTask || strings.Join(tasks[0].Labels, ",") != "bug,infra" || tasks[0].Brief != "fix it" {
-		t.Fatalf("loaded %+v; want a task labelled bug, infra with the stripped brief", tasks)
-	}
-
-	if err := store.Save(); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
-	if err != nil {
-		t.Fatalf("read board.json: %v", err)
-	}
-	if !stringContains(string(raw), `"kind": "task"`) && !stringContains(string(raw), `"kind":"task"`) {
-		t.Errorf("Save did not write kind: %s", raw)
-	}
-	if !stringContains(string(raw), `"labels"`) || stringContains(string(raw), `"tier"`) || stringContains(string(raw), `"type"`) {
-		t.Errorf("Save must write labels and no tier or type: %s", raw)
-	}
-}
-
-// TestLoadUnknownVersionRefused verifies a board.json version other than 1 refuses the load, naming the version.
-func TestLoadUnknownVersionRefused(t *testing.T) {
-	boardDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{"version":2,"entries":[]}`), 0o644); err != nil {
-		t.Fatalf("write board.json: %v", err)
-	}
-
-	err := boardengine.NewStore(boardDir).Load()
-	if err == nil {
-		t.Fatalf("expected an error for version 2")
-	}
-	if !stringContains(err.Error(), "version 2") {
-		t.Errorf("error %q does not name version 2", err)
-	}
-}
-
-// TestLoadCorruptBoardJSON verifies that Load surfaces a corrupt board.json as an error instead of
-// silently producing an empty task list.
-func TestLoadCorruptBoardJSON(t *testing.T) {
-	boardDir := t.TempDir()
-
-	// Write syntactically corrupt JSON
-	err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(`{this is not valid json`), 0o644)
-	if err != nil {
-		t.Fatalf("failed to write corrupt test file: %v", err)
-	}
-
-	store := boardengine.NewStore(boardDir)
-	err = store.Load()
-	if err == nil {
-		t.Fatalf("expected error for corrupt board.json, got nil")
-	}
-
-	// Verify the error message indicates a load error
-	errMsg := err.Error()
-	if !stringContains(errMsg, "load store") {
-		t.Errorf("expected 'load store' in error, got: %v", err)
+			if !tt.save {
+				return
+			}
+			if err := store.Save(); err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(boardDir, "board.json"))
+			if err != nil {
+				t.Fatalf("read board.json: %v", err)
+			}
+			compact := strings.Join(strings.Fields(string(raw)), "")
+			for _, want := range tt.saveContains {
+				if !strings.Contains(compact, want) {
+					t.Errorf("Save output lacks %s: %s", want, raw)
+				}
+			}
+			for _, absent := range tt.saveAbsent {
+				if strings.Contains(compact, absent) {
+					t.Errorf("Save output must not contain %s: %s", absent, raw)
+				}
+			}
+		})
 	}
 }
 

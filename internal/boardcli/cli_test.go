@@ -6,7 +6,7 @@
 // subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success,
 // 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
-// Board data dir strategy: seedCwd initialises a git repo (git init) in the cwd
+// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd
 // so that PersistentPreRunE can call lyxcwd.Resolve without error. The board data
 // dir is then Hub/_board where Hub = filepath.Dir(cwd). This is the production
 // code path; no --board-path injection is used for operational tests.
@@ -29,8 +29,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
-// template keys (readme, design_prefix; path: is not a template key),
+// defaultHubBoardConfig is the hub board.yaml every step starts from.
+const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
+
+// seedCwd creates a temp directory with the default hub board.yaml,
 // initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that
 // directory, and returns the cwd path. The board data dir is Hub/_board where
 // Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
@@ -44,8 +46,7 @@ func seedCwd(t *testing.T) string {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	// Write the hub's board config with all template keys; path: is no longer a template key.
-	seedHubBoardConfig(t, filepath.Dir(cwd), "readme: Home.md\ndesign_prefix: proposal-\n")
+	seedHubBoardConfig(t, filepath.Dir(cwd), defaultHubBoardConfig)
 
 	t.Chdir(cwd)
 	return cwd
@@ -63,14 +64,76 @@ func seedHubBoardConfig(t *testing.T, hub, content string) {
 	}
 }
 
-// TestCLIContract tests the JSON envelope shape and exit code behavior for each happy-path verb:
+// cliFixture is the one seeded repository the steps of TestCLI share.
+type cliFixture struct {
+	cwd string
+}
+
+// reset empties the fixture's board, restores the default hub board.yaml, drops any worktree copy of the board config, and returns the cwd.
+func (f *cliFixture) reset(t *testing.T) string {
+	t.Helper()
+	hub := filepath.Dir(f.cwd)
+	if err := os.RemoveAll(fabricengine.BoardDir(hub)); err != nil {
+		t.Fatalf("remove hub board dir: %v", err)
+	}
+	if err := os.RemoveAll(configengine.ConfigDir(f.cwd)); err != nil {
+		t.Fatalf("remove worktree board config: %v", err)
+	}
+	seedHubBoardConfig(t, hub, defaultHubBoardConfig)
+	return f.cwd
+}
+
+// TestCLI runs every board CLI contract against one seeded repository, in the order below.
+// Each step starts from an empty board with the default board.yaml, so a step relies on no earlier step's state;
+// the fixed order only lets a failing step stop the run.
+// It calls no t.Parallel, and neither does a step, because t.Setenv, t.Chdir and the os.Stdin swap of pipeStdin are process-global state.
+func TestCLI(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	fixture := &cliFixture{cwd: seedCwd(t)}
+
+	steps := []struct {
+		name string
+		run  func(t *testing.T, f *cliFixture)
+	}{
+		{"Contract", stepContract},
+		{"ErrorAndEdgeCases", stepErrorAndEdgeCases},
+		{"StrictPayloadShapes", stepStrictPayloadShapes},
+		{"LookupContract", stepLookupContract},
+		{"LoadsHubBoardConfig", stepLoadsHubBoardConfig},
+		{"BoardPathResolution", stepBoardPathResolution},
+		{"Promote", stepPromote},
+		{"Promote_Refusals", stepPromote_Refusals},
+		{"Prune", stepPrune},
+		{"Find", stepFind},
+		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
+		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},
+		{"ListAndFindText", stepListAndFindText},
+		{"RetireLegacy", stepRetireLegacy},
+		{"GetAndRemoveByID", stepGetAndRemoveByID},
+		{"UpsertBodyFile", stepUpsertBodyFile},
+		{"MergeBodyFile", stepMergeBodyFile},
+		{"GetBody", stepGetBody},
+		{"GetBodyRoundTrip", stepGetBodyRoundTrip},
+		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
+		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
+	}
+	for _, step := range steps {
+		if !t.Run(step.name, func(t *testing.T) {
+			fixture.reset(t)
+			step.run(t, fixture)
+		}) {
+			return
+		}
+	}
+}
+
+// stepContract tests the JSON envelope shape and exit code behavior for each happy-path verb:
 // upsert, list, get, set-status, rerender.
 // Each case asserts exit 0 + ok=true + the verb's distinctive field.
 //
 // Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase, TestCLIRerender (as
 // subtests preserving original names)
-func TestCLIContract(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+func stepContract(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
 		name              string
@@ -85,7 +148,7 @@ func TestCLIContract(t *testing.T) {
 		{
 			name: "TestCLIUpsertTask",
 			setup: func(t *testing.T) string {
-				return seedCwd(t)
+				return f.reset(t)
 			},
 			verb:           "upsert",
 			payload:        `{"slug":"foo","title":"Foo task","labels":["bug"]}`,
@@ -96,7 +159,7 @@ func TestCLIContract(t *testing.T) {
 		{
 			name: "TestCLIListTasks",
 			setup: func(t *testing.T) string {
-				cwd := seedCwd(t)
+				cwd := f.reset(t)
 				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
@@ -127,7 +190,7 @@ func TestCLIContract(t *testing.T) {
 		{
 			name: "TestCLIGetTask",
 			setup: func(t *testing.T) string {
-				cwd := seedCwd(t)
+				cwd := f.reset(t)
 				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
@@ -141,7 +204,7 @@ func TestCLIContract(t *testing.T) {
 		{
 			name: "TestCLISetPhase",
 			setup: func(t *testing.T) string {
-				cwd := seedCwd(t)
+				cwd := f.reset(t)
 				// First upsert a task
 				runCLI(t, "upsert", `{"slug":"foo","title":"Foo task","labels":["bug"]}`)
 				return cwd
@@ -155,7 +218,7 @@ func TestCLIContract(t *testing.T) {
 		{
 			name: "TestCLIRerender",
 			setup: func(t *testing.T) string {
-				return seedCwd(t)
+				return f.reset(t)
 			},
 			verb:           "rerender",
 			payload:        "",
@@ -163,7 +226,7 @@ func TestCLIContract(t *testing.T) {
 			wantOK:         true,
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
-				// seedCwd initialised a git repo at cwd; Hub = filepath.Dir(cwd);
+				// The fixture initialised a git repo at cwd; Hub = filepath.Dir(cwd);
 				// lyxcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
 				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
@@ -208,13 +271,12 @@ func TestCLIContract(t *testing.T) {
 	}
 }
 
-// TestCLIErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error
+// stepErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error
 // for nonexistent remove.
-// The not-initialized refusal is covered by TestCLILoadsHubBoardConfig.
+// The not-initialized refusal is covered by the LoadsHubBoardConfig step.
 //
 // Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error)
-func TestCLIErrorAndEdgeCases(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+func stepErrorAndEdgeCases(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
 		name         string
@@ -229,7 +291,7 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 		{
 			name: "TestCLIGetNonexistentTask",
 			setup: func(t *testing.T) string {
-				return seedCwd(t)
+				return f.reset(t)
 			},
 			verb:         "get",
 			payload:      `{"slug":"nonexistent"}`,
@@ -245,7 +307,7 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 		{
 			name: "TestCLIRemoveNonexistentTask",
 			setup: func(t *testing.T) string {
-				return seedCwd(t)
+				return f.reset(t)
 			},
 			verb:         "remove",
 			payload:      `{"slug":"nonexistent"}`,
@@ -294,10 +356,9 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 	}
 }
 
-// TestCLIStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps,
+// stepStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps,
 // upsert-batch, and merge (top-level and inner set_status object).
-func TestCLIStrictPayloadShapes(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
 		name         string
@@ -313,7 +374,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "set_deps_unknown_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-deps",
@@ -326,7 +387,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "set_deps_absent_depends_on_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-deps",
@@ -339,7 +400,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "set_deps_empty_array_clears",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 				runCLI(t, "upsert", `{"slug":"task-b","title":"B","labels":["bug"]}`)
 				runCLI(t, "set-deps", `{"slug":"task-b","depends_on":["task-a"]}`)
@@ -365,7 +426,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "upsert_batch_typo_wrapper_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "upsert-batch",
 			payload:      `{"taks":[{"slug":"task-a","title":"A","labels":["bug"]}]}`,
@@ -377,7 +438,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "upsert_batch_absent_tasks_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "upsert-batch",
 			payload:      `{}`,
@@ -389,7 +450,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "upsert_batch_empty_tasks_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "upsert-batch",
 			payload:      `{"tasks":[]}`,
@@ -401,7 +462,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_stale_set_phase_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "merge",
 			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_phase":["task-a","done"]}`,
@@ -413,7 +474,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_set_status_unknown_inner_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "merge",
 			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_status":{"slug":"task-a","phase":"done"}}`,
@@ -425,7 +486,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_set_status_missing_status_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "merge",
 			payload:      `{"upsert":{"slug":"task-a","title":"A","labels":["bug"]},"set_status":{"slug":"task-a"}}`,
@@ -437,7 +498,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_with_set_status_succeeds",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"old-task","title":"Old","labels":["bug"]}`)
 			},
 			verb:         "merge",
@@ -464,7 +525,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_numeric_upsert_slug_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "merge",
 			payload:      `{"upsert":{"slug":123,"title":"num"}}`,
@@ -476,7 +537,7 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 		{
 			name: "merge_set_status_missing_target_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "merge",
 			payload:      `{"upsert":{"slug":"new-task","title":"New","labels":["bug"]},"set_status":{"slug":"ghost","status":"done"}}`,
@@ -518,14 +579,13 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 	}
 }
 
-// TestCLILookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both
+// stepLookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both
 // key forms succeed;
 // id=0 resolves the first-created task;
 // neither key and both keys error;
 // unknown keys (e.g.
 // old id_or_slug) error.
-func TestCLILookupContract(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
+func stepLookupContract(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
 		name         string
@@ -540,7 +600,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_by_slug",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "get",
@@ -560,7 +620,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_by_id",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				// The first upserted task gets id=0.
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
@@ -583,7 +643,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_neither_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "get",
 			payload:      `{}`,
@@ -594,7 +654,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_both_keys_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "get",
 			payload:      `{"slug":"x","id":1}`,
@@ -605,7 +665,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_fractional_id_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 				runCLI(t, "upsert", `{"slug":"task-b","title":"B","labels":["bug"]}`)
 			},
@@ -619,7 +679,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "get_unknown_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "get",
 			payload:      `{"id_or_slug":"x"}`,
@@ -630,7 +690,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "remove_by_slug",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "remove",
@@ -641,7 +701,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "remove_by_id",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "remove",
@@ -652,7 +712,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_by_slug",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
@@ -663,7 +723,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_by_id",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
@@ -675,7 +735,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_absent_status_key_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 			},
 			verb:         "set-status",
@@ -687,7 +747,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_null_status_clears",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"task-a","title":"A","labels":["bug"]}`)
 				runCLI(t, "set-status", `{"slug":"task-a","status":"active"}`)
 			},
@@ -715,7 +775,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_missing_target_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 			},
 			verb:         "set-status",
 			payload:      `{"slug":"nonexistent","status":"active"}`,
@@ -728,7 +788,7 @@ func TestCLILookupContract(t *testing.T) {
 		{
 			name: "set_status_stray_phase_errors",
 			setup: func(t *testing.T) {
-				seedCwd(t)
+				f.reset(t)
 				runCLI(t, "upsert", `{"slug":"x","title":"X","labels":["bug"]}`)
 			},
 			verb:         "set-status",
@@ -771,11 +831,9 @@ func TestCLILookupContract(t *testing.T) {
 	}
 }
 
-// TestCLILoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds:
+// stepLoadsHubBoardConfig verifies the board config is the hub's board.yaml, whatever the worktree's own copy holds:
 // a hub-declared type and label are accepted and rendered, and without the hub file the verb refuses naming `lyx fabric reconcile`.
-func TestCLILoadsHubBoardConfig(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
+func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 	tests := []struct {
 		name         string
 		hubConfig    string
@@ -797,25 +855,20 @@ func TestCLILoadsHubBoardConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hub := t.TempDir()
-			worktree := filepath.Join(hub, "worktree")
-			if err := os.MkdirAll(worktree, 0o755); err != nil {
-				t.Fatalf("mkdir worktree: %v", err)
-			}
-			if out, err := exec.Command("git", "-C", worktree, "init").CombinedOutput(); err != nil {
-				t.Fatalf("git init: %v\n%s", err, out)
-			}
-			if err := os.MkdirAll(configengine.ConfigDir(worktree), 0o755); err != nil {
+			f.reset(t)
+			hub := filepath.Dir(f.cwd)
+			if err := os.MkdirAll(configengine.ConfigDir(f.cwd), 0o755); err != nil {
 				t.Fatalf("mkdir worktree config: %v", err)
 			}
 			worktreeConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
-			if err := os.WriteFile(configengine.ConfigFile(worktree, "board"), []byte(worktreeConfig), 0o644); err != nil {
+			if err := os.WriteFile(configengine.ConfigFile(f.cwd, "board"), []byte(worktreeConfig), 0o644); err != nil {
 				t.Fatalf("write worktree board.yaml: %v", err)
 			}
 			if tt.hubConfig != "" {
 				seedHubBoardConfig(t, hub, tt.hubConfig)
+			} else if err := os.Remove(configengine.ConfigFile(fabricengine.BoardDir(hub), "board")); err != nil {
+				t.Fatalf("remove hub board.yaml: %v", err)
 			}
-			t.Chdir(worktree)
 
 			exitCode, stdout := runCLI(t, "upsert", `{"slug":"n","title":"N","kind":"note","labels":["feature","area"]}`)
 			if exitCode != tt.wantExitCode {
@@ -837,30 +890,15 @@ func TestCLILoadsHubBoardConfig(t *testing.T) {
 	}
 }
 
-// TestCLIBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE:
+// stepBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE:
 // without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lyxcwd.Resolve;
 // with --board-path the supplied path takes precedence.
-// This test initialises a real git repo so that lyxcwd.Resolve succeeds.
-func TestCLIBoardPathResolution(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-
-	// Build a two-level fixture: topDir is the Hub; worktree is a git repo inside it.
+// The fixture's real git repo lets lyxcwd.Resolve succeed.
+func stepBoardPathResolution(t *testing.T, f *cliFixture) {
+	// The fixture's repository is the worktree and its parent is the hub:
 	// lyxcwd.Resolve(worktree) derives Hub = topDir, so
 	// fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
-	topDir := t.TempDir()
-	worktree := filepath.Join(topDir, "worktree")
-	if err := os.MkdirAll(worktree, 0o755); err != nil {
-		t.Fatalf("mkdir worktree: %v", err)
-	}
-	if out, err := exec.Command("git", "-C", worktree, "init").CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
-
-	// Seed the hub's board.yaml without path: (not a template key).
-	seedHubBoardConfig(t, topDir, "readme: Home.md\ndesign_prefix: proposal-\n")
-
-	// Change to the worktree so lyxcwd.Getwd() in the CLI returns it.
-	t.Chdir(worktree)
+	topDir := filepath.Dir(f.cwd)
 
 	expectedBoardDir := fabricengine.BoardDir(topDir)
 

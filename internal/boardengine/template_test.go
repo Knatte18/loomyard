@@ -1,7 +1,7 @@
 // template_test.go — tests for the boardengine ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with correct schema and resolves to the correct
-// defaults when the environment is empty.
+// Covers: ConfigTemplate parses as YAML and resolves to the correct defaults, every required key
+// present, when the environment is empty.
 
 package boardengine
 
@@ -13,36 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestConfigTemplate_ValidYAML asserts ConfigTemplate returns valid YAML.
-func TestConfigTemplate_ValidYAML(t *testing.T) {
-	got := ConfigTemplate()
-	var result map[string]any
-	if err := yaml.Unmarshal([]byte(got), &result); err != nil {
-		t.Errorf("ConfigTemplate() is not valid YAML: %v", err)
-	}
-}
-
-// TestConfigTemplate_HasRequiredKeys asserts the template contains required keys (readme,
-// design_prefix).
-// The geometry key path is intentionally absent — fabricengine.BoardDir now owns the data dir.
-func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
-	got := ConfigTemplate()
-	var result map[string]any
-	if err := yaml.Unmarshal([]byte(got), &result); err != nil {
-		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
-	}
-
-	expectedKeys := []string{"readme", "design_prefix", "types", "labels"}
-	for _, key := range expectedKeys {
-		if _, ok := result[key]; !ok {
-			t.Errorf("ConfigTemplate() missing expected key: %s", key)
-		}
-	}
-}
-
 // TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with
 // empty environment.
 func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
+	t.Parallel()
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)
 	if err != nil {

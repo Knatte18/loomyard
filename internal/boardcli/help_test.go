@@ -29,7 +29,12 @@ func runHelp(t *testing.T, args ...string) string {
 // TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the
 // documented field names for the post-batch-1 schema and does not contain any removed token
 // (id_or_slug, phase, group).
+// Every slug-taking verb's help also states the limit formatted from boardengine.MaxSlugLength,
+// so the sentence cannot drift from validation.
+//
+//testtiming:keep pins every leaf command's documented field names, removed tokens and slug-limit sentence in --help, which its covering test does not assert
 func TestHelpSchema_LeafCommands(t *testing.T) {
+	t.Parallel()
 	// removedTokens are field names that were present in the old schema and must
 	// not appear in any --help output after the batch-1 rename.
 	removedTokens := []string{"id_or_slug", "phase", "group"}
@@ -119,11 +124,25 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 			args:        []string{"prune"},
 			mustContain: []string{"done", "depends_on"},
 		},
+		{
+			name: "intake import",
+			args: []string{"intake", "import"},
+		},
+	}
+	slugLimit := fmt.Sprintf("A slug is at most %d characters.", boardengine.MaxSlugLength)
+	statesSlugLimit := map[string]bool{
+		"get": true, "upsert": true, "upsert-batch": true, "set-status": true, "remove": true,
+		"merge": true, "promote": true, "set-deps": true, "intake import": true,
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			helpText := runHelp(t, tt.args...)
+
+			if statesSlugLimit[tt.name] && !strings.Contains(helpText, slugLimit) {
+				t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s", tt.args, slugLimit, helpText)
+			}
 
 			// Each listed field name must appear somewhere in the help output.
 			for _, token := range tt.mustContain {
@@ -139,30 +158,6 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",
 						tt.args, bad, helpText)
 				}
-			}
-		})
-	}
-}
-
-// TestHelpStatesSlugLimit asserts every slug-taking verb's --help states the limit formatted from boardengine.MaxSlugLength,
-// so the sentence cannot drift from validation.
-func TestHelpStatesSlugLimit(t *testing.T) {
-	want := fmt.Sprintf("A slug is at most %d characters.", boardengine.MaxSlugLength)
-	verbs := [][]string{
-		{"get"},
-		{"upsert"},
-		{"upsert-batch"},
-		{"set-status"},
-		{"remove"},
-		{"merge"},
-		{"promote"},
-		{"set-deps"},
-		{"intake", "import"},
-	}
-	for _, args := range verbs {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			if helpText := runHelp(t, args...); !strings.Contains(helpText, want) {
-				t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s", args, want, helpText)
 			}
 		})
 	}

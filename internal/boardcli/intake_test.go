@@ -1,5 +1,6 @@
 // intake_test.go covers the intake handlers against an httptest server through the selfreportengine.NewGitHubClient seam and a Board over a temp dir with SkipGit.
 // No test reaches real token resolution or the network, and every refusal asserts that board.json is unchanged.
+// No test calls t.Parallel: each swaps the package-level selfreportengine.NewGitHubClient.
 
 package boardcli
 
