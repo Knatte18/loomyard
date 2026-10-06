@@ -1,6 +1,5 @@
 // bouncer_replay_test.go covers Bouncer.Call's replay mode, focus synthesis over a malformed file,
-// the pointer-discipline table stated in _mill/discussion.md's "Cancellation and the output
-// pointer" section, and cancellation.
+// and cancellation.
 // The seed call, the re-bounce, the judge call's happy paths and degradations, harvest, and debris
 // handling are covered by bouncer_seed_test.go (batch 3) and bouncer_judge_test.go (this batch's
 // first file).
@@ -10,8 +9,8 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,28 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-func TestBouncer_Replay_Approved(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("CONVERGED"),
-		ledger:  bouncerLedgerContent(1),
-	}})
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty (the seed path this clear falls through to reports an empty pointer)", ptr)
-	}
-	if !shuttle.Called {
-		t.Error("Call() did not invoke the shuttle seam; want the seed spawn the clear falls through to")
-	}
-	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); !os.IsNotExist(err) {
-		t.Errorf("round 1's verdict file still exists in the recreated run dir: %v", err)
-	}
-}
-
+// TestBouncer_Replay_Blocking also pins that judged(N) does not treat an absent next-round focus file as debris: the CONTINUE verdict replays rather than re-judging.
+//
+//testtiming:keep pins the replay's warning log and that the verdict and ledger are left byte-identical, which the tests that reach a replay do not check
 func TestBouncer_Replay_Blocking(t *testing.T) {
 	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -94,337 +74,169 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 	}
 }
 
-// TestBouncer_Judged_IgnoresFocusFile proves judged(N) does not treat an absent round-2-focus.md as debris:
-// its fixture deliberately carries a CONTINUE verdict, not a CONVERGED one,
-// so this test's subject (judged's focus-file exclusion) is isolated from the clear trigger card 10 adds, which fires only on a CONVERGED verdict and would otherwise collide with what this test proves.
-func TestBouncer_Judged_IgnoresFocusFile(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("CONTINUE"),
-		ledger:  bouncerLedgerContent(1),
-	}})
-	// round-2-focus.md is deliberately absent: judged(N) must not treat that as debris.
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-	}
-	if shuttle.Called {
-		t.Error("Call() invoked the shuttle seam despite judged(N) holding; the absent focus file must not force a re-judge")
-	}
-}
-
+// TestBouncer_FocusSynthesis_OverUnparseableFile covers an unparseable focus file standing at the
+// path the call is about to write: it is archived byte-identical beside the original and a
+// well-formed, empty focus file for the round replaces it, on the judge's replay (round 2's file)
+// and on the seed path (round 1's).
+//
+//testtiming:keep pins that an unparseable focus file is archived byte-identical and replaced by a well-formed empty one, on both the replay and the seed path
 func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
-	t.Run("JudgeBlockingReplay", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round:   1,
-			report:  bouncerReport(1),
-			verdict: bouncerVerdictContent("CONTINUE"),
-			ledger:  bouncerLedgerContent(1),
-		}})
-		malformed := "garbage, not frontmatter (malformed round-2 focus)"
-		if err := os.WriteFile(focusPath(cfg.RunDir, 2), []byte(malformed), 0o644); err != nil {
-			t.Fatalf("WriteFile(malformed focus) = %v; want nil", err)
-		}
-
-		shedfake.CallOK(t, b)
-
-		archived := archivedSiblingPath(focusPath(cfg.RunDir, 2), bouncerJudgeTestClock)
-		got, err := os.ReadFile(archived)
-		if err != nil {
-			t.Fatalf("ReadFile(archived sibling %q) = %v; want nil", archived, err)
-		}
-		if string(got) != malformed {
-			t.Errorf("archived sibling content = %q; want %q (the malformed content survives)", got, malformed)
-		}
-
-		synthRaw, err := os.ReadFile(focusPath(cfg.RunDir, 2))
-		if err != nil {
-			t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
-		}
-		synth, err := parseFocus(synthRaw)
-		if err != nil {
-			t.Fatalf("parseFocus(...) error = %v; want nil", err)
-		}
-		if synth.Round != 2 {
-			t.Errorf("synthetic focus Round = %d; want 2", synth.Round)
-		}
-		if len(synth.ExcludeLenses) != 0 {
-			t.Errorf("synthetic focus ExcludeLenses = %v; want empty", synth.ExcludeLenses)
-		}
-		if len(synth.Focus) != 0 {
-			t.Errorf("synthetic focus Focus = %v; want empty", synth.Focus)
-		}
-	})
-
-	t.Run("SeedPath", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		malformed := "garbage, not frontmatter (malformed round-1 focus)"
-		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(malformed), 0o644); err != nil {
-			t.Fatalf("WriteFile(malformed focus) = %v; want nil", err)
-		}
-
-		shedfake.CallOK(t, b)
-
-		archived := archivedSiblingPath(focusPath(cfg.RunDir, 1), bouncerJudgeTestClock)
-		got, err := os.ReadFile(archived)
-		if err != nil {
-			t.Fatalf("ReadFile(archived sibling %q) = %v; want nil", archived, err)
-		}
-		if string(got) != malformed {
-			t.Errorf("archived sibling content = %q; want %q (the malformed content survives)", got, malformed)
-		}
-
-		synthRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
-		if err != nil {
-			t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
-		}
-		synth, err := parseFocus(synthRaw)
-		if err != nil {
-			t.Fatalf("parseFocus(...) error = %v; want nil", err)
-		}
-		if synth.Round != 1 {
-			t.Errorf("synthetic focus Round = %d; want 1", synth.Round)
-		}
-		if len(synth.ExcludeLenses) != 0 {
-			t.Errorf("synthetic focus ExcludeLenses = %v; want empty", synth.ExcludeLenses)
-		}
-		if len(synth.Focus) != 0 {
-			t.Errorf("synthetic focus Focus = %v; want empty", synth.Focus)
-		}
-	})
-}
-
-func TestBouncer_PointerDiscipline(t *testing.T) {
-	t.Run("JudgeCall_Approved", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-		if _, err := os.Stat(ptr.Path); err != nil {
-			t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
-		}
-	})
-
-	t.Run("JudgeCall_Blocking", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if _, err := os.Stat(ptr.Path); err != nil {
-			t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
-		}
-	})
-
-	t.Run("Harvest_Approved", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-		if _, err := os.Stat(ptr.Path); err != nil {
-			t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
-		}
-	})
-
-	t.Run("Replay_Blocking", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-			round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
-		}})
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if _, err := os.Stat(ptr.Path); err != nil {
-			t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
-		}
-	})
-
-	t.Run("SeedCall_EmptyPointer", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if ptr != (shedengine.OutputPointer{}) {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
-		}
-	})
-
-	t.Run("ReBounce_EmptyPointer", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
-		if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
-			t.Fatalf("WriteFile(...) = %v; want nil", err)
-		}
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if ptr.Path != "" || ptr.GateAttempts != nil {
-			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
-		}
-	})
-
-	t.Run("DegradedJudgePath_EmptyPointer", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		if err := os.WriteFile(filepath.Join(cfg.RunDir, cfg.ReportName(1)), []byte(""), 0o644); err != nil {
-			t.Fatalf("WriteFile(empty report) = %v; want nil", err)
-		}
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if ptr.Path != "" || ptr.GateAttempts != nil {
-			t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
-		}
-	})
-
-	t.Run("ErrorReturn_EmptyPointer", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		outcome, ptr, err := b.Call(ctx)
-		if err == nil {
-			t.Fatal("Call() error = nil; want non-nil")
-		}
-		if outcome != "" {
-			t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
-		}
-		if ptr != (shedengine.OutputPointer{}) {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
-		}
-	})
-}
-
-func TestBouncer_Cancellation_AlreadyCancelled(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, _, err := b.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
+	tests := []struct {
+		name string
+		// replay is whether round 1 is already judged CONTINUE, so the call replays and
+		// synthesizes round 2's focus; otherwise the call seeds round 1.
+		replay bool
+	}{
+		{"JudgeBlockingReplay", true},
+		{"SeedPath", false},
 	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-	}
-	if shuttle.Called {
-		t.Error("Call() invoked the shuttle seam with an already-cancelled context")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			round := 1
+			if tt.replay {
+				round = 2
+				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+					round:   1,
+					report:  bouncerReport(1),
+					verdict: bouncerVerdictContent("CONTINUE"),
+					ledger:  bouncerLedgerContent(1),
+				}})
+			}
+			malformed := fmt.Sprintf("garbage, not frontmatter (malformed round-%d focus)", round)
+			if err := os.WriteFile(focusPath(cfg.RunDir, round), []byte(malformed), 0o644); err != nil {
+				t.Fatalf("WriteFile(malformed focus) = %v; want nil", err)
+			}
+
+			shedfake.CallOK(t, b)
+
+			archived := archivedSiblingPath(focusPath(cfg.RunDir, round), bouncerJudgeTestClock)
+			got, err := os.ReadFile(archived)
+			if err != nil {
+				t.Fatalf("ReadFile(archived sibling %q) = %v; want nil", archived, err)
+			}
+			if string(got) != malformed {
+				t.Errorf("archived sibling content = %q; want %q (the malformed content survives)", got, malformed)
+			}
+
+			synthRaw, err := os.ReadFile(focusPath(cfg.RunDir, round))
+			if err != nil {
+				t.Fatalf("ReadFile(round-%d-focus.md) = %v; want nil", round, err)
+			}
+			synth, err := parseFocus(synthRaw)
+			if err != nil {
+				t.Fatalf("parseFocus(...) error = %v; want nil", err)
+			}
+			if synth.Round != round {
+				t.Errorf("synthetic focus Round = %d; want %d", synth.Round, round)
+			}
+			if len(synth.ExcludeLenses) != 0 {
+				t.Errorf("synthetic focus ExcludeLenses = %v; want empty", synth.ExcludeLenses)
+			}
+			if len(synth.Focus) != 0 {
+				t.Errorf("synthetic focus Focus = %v; want empty", synth.Focus)
+			}
+		})
 	}
 }
 
-func TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives(t *testing.T) {
-	t.Run("Approved", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+// TestBouncer_Cancellation_ParsedVerdictSurvives pins that a verdict the judge genuinely wrote
+// survives a cancellation that arrives during the run: the call returns the verdict's outcome with
+// the ledger as pointer, never the cancellation error.
+//
+//testtiming:keep pins that a verdict the judge wrote survives a cancellation during the run, for both an approving and a blocking verdict
+func TestBouncer_Cancellation_ParsedVerdictSurvives(t *testing.T) {
+	tests := []struct {
+		name        string
+		verdict     string
+		wantOutcome shedengine.Outcome
+	}{
+		{"Approved", "CONVERGED", shedengine.Done},
+		{"Blocking", "CONTINUE", shedengine.Stuck},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-		ctx, cancel := context.WithCancel(context.Background())
-		shuttle.DuringRun = func() {
-			outputs := shuttle.GotSpec.OutputFiles
-			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("CONVERGED")), 0o644)
-			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
-			_ = os.WriteFile(outputs[2], []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
-			cancel()
-		}
+			ctx, cancel := context.WithCancel(context.Background())
+			shuttle.DuringRun = func() {
+				outputs := shuttle.GotSpec.OutputFiles
+				_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent(tt.verdict)), 0o644)
+				_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
+				_ = os.WriteFile(outputs[2], []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
+				cancel()
+			}
 
-		outcome, ptr, err := b.Call(ctx)
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil (a genuinely parsed verdict survives cancellation)", err)
-		}
-		if outcome != shedengine.Done {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-		}
-		wantPointer := ledgerPath(cfg.RunDir, 1)
-		if ptr.Path != wantPointer {
-			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-		}
-	})
-
-	t.Run("Blocking", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-		ctx, cancel := context.WithCancel(context.Background())
-		shuttle.DuringRun = func() {
-			outputs := shuttle.GotSpec.OutputFiles
-			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("CONTINUE")), 0o644)
-			_ = os.WriteFile(outputs[1], []byte(bouncerLedgerContent(1)), 0o644)
-			_ = os.WriteFile(outputs[2], []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
-			cancel()
-		}
-
-		outcome, ptr, err := b.Call(ctx)
-		if err != nil {
-			t.Fatalf("Call() error = %v; want nil (a genuinely parsed verdict survives cancellation)", err)
-		}
-		if outcome != shedengine.Stuck {
-			t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Stuck)
-		}
-		wantPointer := ledgerPath(cfg.RunDir, 1)
-		if ptr.Path != wantPointer {
-			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-		}
-	})
+			outcome, ptr, err := b.Call(ctx)
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil (a genuinely parsed verdict survives cancellation)", err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("Call() outcome = %q; want %q", outcome, tt.wantOutcome)
+			}
+			wantPointer := ledgerPath(cfg.RunDir, 1)
+			if ptr.Path != wantPointer {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+			}
+		})
+	}
 }
 
-func TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError(t *testing.T) {
-	t.Run("SeedCall", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		ctx, cancel := context.WithCancel(context.Background())
-		shuttle.DuringRun = cancel
+// TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer covers every cancellation that is not a
+// parsed verdict surviving: an already-cancelled context never spawns, and a cancellation during
+// the seed run or a degrading judge run returns the context error with no outcome and an empty
+// pointer.
+func TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer(t *testing.T) {
+	tests := []struct {
+		name string
+		// alreadyCancelled cancels the context before the call; otherwise the run's DuringRun
+		// hook cancels it.
+		alreadyCancelled bool
+		// judge lays out a round-1 report so the call is a judge call; otherwise it seeds.
+		judge bool
+	}{
+		{name: "AlreadyCancelled", alreadyCancelled: true},
+		{name: "DuringRun_SeedCall"},
+		// DuringRun cancels without writing anything usable, so judged(1) stays false and the run's
+		// own outcome (OutcomeDone with no verdict/ledger written) degrades.
+		{name: "DuringRun_DegradedJudgePath", judge: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			if tt.judge {
+				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			if tt.alreadyCancelled {
+				cancel()
+			} else {
+				shuttle.DuringRun = cancel
+			}
 
-		outcome, ptr, err := b.Call(ctx)
-		if err == nil {
-			t.Fatal("Call() error = nil; want non-nil")
-		}
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-		}
-		if outcome != "" {
-			t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
-		}
-		if ptr != (shedengine.OutputPointer{}) {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
-		}
-	})
-
-	t.Run("DegradedJudgePath", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-		ctx, cancel := context.WithCancel(context.Background())
-		// DuringRun cancels without writing anything usable, so judged(1) stays false and the
-		// run's own outcome (OutcomeDone with no verdict/ledger written) degrades.
-		shuttle.DuringRun = cancel
-
-		outcome, ptr, err := b.Call(ctx)
-		if err == nil {
-			t.Fatal("Call() error = nil; want non-nil")
-		}
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-		}
-		if outcome != "" {
-			t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
-		}
-		if ptr != (shedengine.OutputPointer{}) {
-			t.Errorf("Call() pointer = %+v; want empty", ptr)
-		}
-		if !strings.Contains(err.Error(), "gate") {
-			t.Errorf("Call() error %q does not name the producer", err.Error())
-		}
-	})
+			outcome, ptr, err := b.Call(ctx)
+			if err == nil {
+				t.Fatal("Call() error = nil; want non-nil")
+			}
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+			}
+			if outcome != "" {
+				t.Errorf("Call() outcome = %q; want empty alongside a non-nil error", outcome)
+			}
+			if ptr != (shedengine.OutputPointer{}) {
+				t.Errorf("Call() pointer = %+v; want empty", ptr)
+			}
+			if !strings.Contains(err.Error(), "gate") {
+				t.Errorf("Call() error %q does not name the producer", err.Error())
+			}
+			if tt.alreadyCancelled && shuttle.Called {
+				t.Error("Call() invoked the shuttle seam with an already-cancelled context")
+			}
+		})
+	}
 }

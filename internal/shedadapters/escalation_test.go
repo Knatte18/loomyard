@@ -9,65 +9,61 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins the escalation record's round trip: cause, notice, brief body, an empty brief, and no notice file for an empty notice
 func TestEscalation_RoundTrip(t *testing.T) {
-	for _, cause := range []EscalationCause{EscalationCircling, EscalationBudget} {
-		dir := t.TempDir()
-		if err := writeEscalation(dir, 3, cause, "the brief body\n", "parent: read the brief"); err != nil {
-			t.Fatalf("writeEscalation(%q) = %v; want nil", cause, err)
-		}
+	t.Parallel()
+	tests := []struct {
+		name   string
+		cause  EscalationCause
+		brief  string
+		notice string
+		// wantBody is the brief after the frontmatter is stripped.
+		wantBody string
+	}{
+		{"circling", EscalationCircling, "the brief body\n", "parent: read the brief", "the brief body"},
+		{"budget", EscalationBudget, "the brief body\n", "parent: read the brief", "the brief body"},
+		{"empty brief stays readable", EscalationBudget, "", "notice", ""},
+		{"empty notice writes no notice file", EscalationCircling, "brief", "", "brief"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if err := writeEscalation(dir, 3, tt.cause, tt.brief, tt.notice); err != nil {
+				t.Fatalf("writeEscalation(%q) = %v; want nil", tt.cause, err)
+			}
 
-		gotCause, gotNotice, exists, err := readEscalation(dir, 3)
-		if err != nil {
-			t.Fatalf("readEscalation(%q) error = %v; want nil", cause, err)
-		}
-		if !exists {
-			t.Errorf("readEscalation(%q) exists = false; want true", cause)
-		}
-		if gotCause != cause {
-			t.Errorf("readEscalation cause = %q; want %q", gotCause, cause)
-		}
-		if gotNotice != "parent: read the brief" {
-			t.Errorf("readEscalation notice = %q; want %q", gotNotice, "parent: read the brief")
-		}
+			gotCause, gotNotice, exists, err := readEscalation(dir, 3)
+			if err != nil {
+				t.Fatalf("readEscalation(%q) error = %v; want nil", tt.cause, err)
+			}
+			if !exists {
+				t.Errorf("readEscalation(%q) exists = false; want true", tt.cause)
+			}
+			if gotCause != tt.cause {
+				t.Errorf("readEscalation cause = %q; want %q", gotCause, tt.cause)
+			}
+			if gotNotice != tt.notice {
+				t.Errorf("readEscalation notice = %q; want %q", gotNotice, tt.notice)
+			}
 
-		raw, err := os.ReadFile(escalationPath(dir, 3))
-		if err != nil {
-			t.Fatalf("ReadFile(escalation) = %v; want nil", err)
-		}
-		if got := frontmatterProse(raw); got != "the brief body" {
-			t.Errorf("escalation body = %q; want %q", got, "the brief body")
-		}
+			raw, err := os.ReadFile(escalationPath(dir, 3))
+			if err != nil {
+				t.Fatalf("ReadFile(escalation) = %v; want nil", err)
+			}
+			if got := frontmatterProse(raw); got != tt.wantBody {
+				t.Errorf("escalation body = %q; want %q", got, tt.wantBody)
+			}
+			if tt.notice == "" {
+				if _, err := os.Stat(parentNoticePath(dir, 3)); !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("Stat(parent notice) error = %v; want fs.ErrNotExist", err)
+				}
+			}
+		})
 	}
 }
 
-func TestEscalation_EmptyBriefStillReadable(t *testing.T) {
-	dir := t.TempDir()
-	if err := writeEscalation(dir, 2, EscalationBudget, "", "notice"); err != nil {
-		t.Fatalf("writeEscalation = %v; want nil", err)
-	}
-	cause, _, exists, err := readEscalation(dir, 2)
-	if err != nil {
-		t.Fatalf("readEscalation error = %v; want nil", err)
-	}
-	if !exists || cause != EscalationBudget {
-		t.Errorf("readEscalation = (%q, exists %v); want (%q, true)", cause, exists, EscalationBudget)
-	}
-}
-
-func TestEscalation_EmptyNoticeWritesNoNoticeFile(t *testing.T) {
-	dir := t.TempDir()
-	if err := writeEscalation(dir, 1, EscalationCircling, "brief", ""); err != nil {
-		t.Fatalf("writeEscalation = %v; want nil", err)
-	}
-	if _, err := os.Stat(parentNoticePath(dir, 1)); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Stat(parent notice) error = %v; want fs.ErrNotExist", err)
-	}
-	_, notice, exists, err := readEscalation(dir, 1)
-	if err != nil || !exists || notice != "" {
-		t.Errorf("readEscalation = (notice %q, exists %v, err %v); want (\"\", true, nil)", notice, exists, err)
-	}
-}
-
+//testtiming:keep pins that an absent escalation record reads as absent with no error
 func TestEscalation_AbsentRecord(t *testing.T) {
 	cause, notice, exists, err := readEscalation(t.TempDir(), 1)
 	if err != nil {

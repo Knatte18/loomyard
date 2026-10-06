@@ -3553,188 +3553,74 @@ No coverage:
 
 ## internal/shedadapters
 
-261 tests, wall 0.32s, serial 0.10s.
+151 tests, wall 0.22s, serial 0.14s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestArchiveStaleOutputs_RenamesExistingFile` | `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
-| `TestArchiveStaleOutputs_CollisionTakesNumericSuffix` | `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
-| `TestArchiveStaleOutputs_AbsentEntryIsNoOp` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestArchiveRunDir_MovesEveryEntryAndRecreatesEmpty` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
-| `TestArchiveRunDir_CollisionTakesNumericSuffix` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
-| `TestArchiveRunDir_RenameFailureReturnsError` | `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestArchiveStaleOutputs_MixedListArchivesOnlyExisting` | `TestBouncer_SeedCall_SpawnProducedNothingUsable` | yes |
-| `TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts` | `TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue` | yes |
-| `TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore` | `TestBurlerProducer_RoundScan` | yes |
-| `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | yes |
-| `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing` | `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`, `TestBouncer_CirclingGuard`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying` | `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`, `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles` | `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_SeedCall_NoLiveRunArchivesThenSpawns` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
-| `TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs` | `TestBouncer_CirclingGuard`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestBouncer_Circling_EmptySlugOmitsTheArgument` | `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
-| `TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestBouncer_Clear_ApprovedRunDirClearsAndReseeds` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Clear_CollisionTakesNumericSuffix` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck`, `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
-| `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning`, `TestBouncer_ReBounceProbesForALiveSeed`, `TestBurlerProducer_RoundScan` | yes |
-| `TestBouncer_Clear_HarvestApprovedDoesNotClear` | `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Clear_EndToEndSequence` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Commit_ApprovedCallsExactlyOnce` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError` | yes |
-| `TestBouncer_Commit_BlockingNeverCalls` | `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_Commit_NilIsNotAnError` | `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_Commit_FailingCommitIsAnError` | `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears` | no |
-| `TestBouncer_Commit_CancelledContextStillCommits` | `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_Approve_CalledBeforeCommit` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestBouncer_Approve_NilStillCommits` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError` | yes |
-| `TestBouncer_Approve_BlockingNeverCalls` | `TestBouncer_CirclingGuard` | yes |
-| `TestNewBouncer_EmptyModelEffortVersionAccepted` | `TestNewBouncer_RubricProbe` | yes |
-| `TestNewBouncer_NilNowDefaultsToNonNilClock` | `TestNewBouncer_RubricProbe` | yes |
-| `TestNewBouncer_ArtifactPathNeedNotExist` | `TestNewBouncer_RubricProbe` | yes |
-| `TestBouncer_Escalation_SpentBudgetContinueAwaitsWithCauseBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestBouncer_Escalation_SpentBudgetOverCirclingIsBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestBouncer_Escalation_BelowBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam` | no |
-| `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears` | no |
-| `TestBouncer_Escalation_ReCallLeavesTheRecordUntouched` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
-| `TestBouncer_JudgeCall_SkillAndParentDirective` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
-| `TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir` | `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_JudgeCall_Approved` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_JudgeCall_Blocking` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger` | `TestBouncer_JudgeCall_PreviousLedgerHandling` | yes |
-| `TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_JudgeCall_ReviewWithoutClassStillSpawnsJudge` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue` | `TestBouncer_JudgeCall_Degradations`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_JudgeCall_Harvest` | `TestBouncer_PointerDiscipline`, `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`, `TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue` | no |
-| `TestBouncer_JudgeCall_DebrisIsNotJudged` | `TestBouncer_JudgeCall_PreviousLedgerHandling`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations`, `TestBurlerProducer_RoundScan` | yes |
-| `TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn` | `TestBouncer_JudgeCall_PreviousLedgerHandling`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations` | yes |
-| `TestBouncer_Replay_Approved` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Replay_Blocking` | `TestBouncer_CirclingGuard`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Judged_IgnoresFocusFile` | `TestBouncer_CirclingGuard` | yes |
-| `TestBouncer_FocusSynthesis_OverUnparseableFile` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
-| `TestBouncer_PointerDiscipline` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning`, `TestBouncer_ReBounceProbesForALiveSeed`, `TestBurlerProducer_RoundScan`, `TestBouncer_Cancellation_AlreadyCancelled` | yes |
-| `TestBouncer_Cancellation_AlreadyCancelled` | `TestBouncer_PointerDiscipline` | no |
-| `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_SeedCall_ComposedPromptStatesSpecsDir` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
-| `TestBouncer_SeedCall_SkillAndParentDirective` | `TestBouncer_PointerDiscipline`, `TestBouncer_JudgeCall_SkillAndParentDirective` | no |
-| `TestBouncer_SeedCall_HappyPath` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_SkillAndParentDirective`, `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
-| `TestBouncer_SeedDiscriminator_ParsesRatherThanStats` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
-| `TestBouncer_SeedSideHarvest_SurvivesLateRunError` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
-| `TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
-| `TestBouncer_ReBounce` | `TestBouncer_ReBounceProbesForALiveSeed` | yes |
-| `TestBouncer_StampLeakRegression_BothTemplates` | `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
-| `TestBouncer_SpecIdentity_RoleAndRound` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
-| `TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
-| `TestBouncer_Skip_FalseSeedsRoundOne` | `TestBouncer_Skip_ErrorFallsBackToReview` | yes |
-| `TestParseVerdict_Vocabulary` | `TestParseRecordedVerdict_AliasesLegacyWords` | yes |
-| `TestHarvestedVerdict_RefusesLegacyWords` | `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | yes |
-| `TestBouncer_Verdict_LegacyApprovedAtEntryClearsAndReseeds` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Verdict_LegacyBlockingAtEntryReplaysAsStuck` | `TestBouncer_CirclingGuard`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestParseRecordedVerdict_AliasesLegacyWords` | yes |
-| `TestBouncer_Verdict_SpawnedJudgeWritingLegacyWordIsRejudged` | `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | `TestBouncer_Verdict_SpawnedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning` | no |
-| `TestBouncer_Verdict_ConvergedApprovesCommitsAndNextCallClears` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Approve_FailingApproveSkipsCommit`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
-| `TestBouncer_Verdict_ContinueReturnsStuckWithLedgerPointer` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
-| `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`, `TestBouncer_Clear_EndToEndSequence`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard`, `TestBouncer_Escalation_ReCallLeavesTheRecordUntouched`, `TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason`, `TestWriteRoundFacts_IsDeterministic` | no |
-| `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning`, `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying` | no |
-| `TestComputeRoundFacts_NoRecurringKeysSaysSo` | `TestComputeRoundFacts_CountsAndRecurringKeys`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
-| `TestComputeRoundFacts_MediumDesignCountsAsGating` | `TestComputeRoundFacts_CountsAndRecurringKeys` | yes |
-| `TestComputeRoundFacts_BlockingScopeIsNotGating` | `TestComputeRoundFacts_CountsAndRecurringKeys` | yes |
-| `TestWriteRoundFacts_IsDeterministic` | `TestComputeRoundFacts_CountsAndRecurringKeys`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
-| `TestFactsPath_IsNotAJudgeOutput` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestParseVerdictProseAndUnknownKey` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestParseLedgerProseAndUnknownKey` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestParseFocusCommonRules` | `TestReadRoundFocus_DegradesToTheZeroDirective`, `TestParseLedgerCommonRules` | yes |
-| `TestParseFocusProseAndUnknownKey` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
-| `TestParseFocusSpecific` | `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestReadRoundFocus_DegradesToTheZeroDirective` | yes |
-| `TestRenderFocus_RoundTripsThroughParseFocus` | `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile`, `TestBurlerProducer_Hydration`, `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething` | no |
-| `TestWriteFocus_WritesReadableFile` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
-| `TestFocusSchemaMarkers_BothStencilsBothModes` | `TestBouncer_Approve_FailingApproveSkipsCommit`, `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
-| `TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint` | `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts` | no |
-| `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
-| `TestNewBurlerProducer_ValidCallSucceedsWithNoError` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestBurlerProducer_Hydration` | `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestReadRoundFocus_DegradesToTheZeroDirective`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
-| `TestBurlerProducer_StalePreexistingRoundFileArchivedBeforeInvocation` | `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestBurlerProducer_Call_DoneReturnsStuckNeverDone` | `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_ProfileCarriesDerivedFields` | `TestBurlerProducer_Hydration`, `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile` | no |
-| `TestBurlerProducer_Call_RunOptsCarriesRoundToken` | `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_RunOptsCarriesNoteID` | `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry` | `TestBurlerProducer_Call_ArchiveOnExit`, `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestBurlerProducer_Call_AskingIsHardErrorOnFirstOccurrence` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_AlreadyCancelledContext` | `TestBurlerProducer_RoundScan` | yes |
-| `TestBurlerProducer_Call_CancelledBetweenAttempts` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday` | `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | yes |
-| `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | `TestBurlerProducer_Call_ArchiveOnExit`, `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry` | no |
-| `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry` | `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer`, `TestBurlerProducer_Call_ArchiveOnExit` | yes |
-| `TestRecordCirclingDecision_WritesPendingFile` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
-| `TestRecordCirclingDecision_BudgetEscalationOverContinueVerdict` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestRecordCirclingDecision_CircledEscalationRecord` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestReadCirclingDecision_LegacyFileReadsAsCircling` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestReadCirclingDecision_MalformedIsAnError` | yes |
-| `TestSettleCirclingAccept_SettlesPendingAccept` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestReadCirclingDecision_AbsentFile` | `TestBouncer_CirclingGuard` | yes |
-| `TestEntryErr_HealthyContext` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestCancelErr_HealthyContext` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
-| `TestEntryErr_CancelledContext` | `TestBouncer_Cancellation_AlreadyCancelled` | yes |
-| `TestCancelErr_CancelledContext` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError` | yes |
-| `TestEntryErr_DeadlineExceeded` | `TestBouncer_Cancellation_AlreadyCancelled` | yes |
-| `TestCancelErr_DeadlineExceeded` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError` | yes |
-| `TestEntryErrAndCancelErr_MessagesDiffer` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBurlerProducer_RoundScan` | yes |
-| `TestEscalation_RoundTrip` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestEscalation_EmptyBriefStillReadable` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestEscalation_EmptyNoticeWritesNoNoticeFile` | `TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
-| `TestEscalation_AbsentRecord` | `TestBouncer_CirclingGuard` | yes |
-| `TestReadRoundFocus_ReadsTheFileTheBouncerWrites` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
-| `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
-| `TestReadRoundFocus_ResolvesFilenameByTargetRound` | `TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue` | yes |
-| `TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename`, `TestBurlerProducer_Call_ClusterExcludeDropWarning` | yes |
-| `TestGateFailedReason_NamesAttemptsAndFindingsPath` | `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | yes |
-| `TestResolveRound_EmptyRunDirReturnsZero` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestResolveRound_OnlyRoundOnePresent` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestResolveRound_RoundsOneThroughThreePresent` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestResolveRound_GapStopsScanBeforeLaterRounds` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestResolveRound_BothDerivedReadings` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestRoundPathHelpers_PinExactFilenameSpellings` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_SubstitutesTheSpecsDir` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_StripsTheStampBanner` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_MarkerlessRubricRendersUnchanged` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_EmptySpecsDirIsAnError` | `TestReadRubric_EmptyStencilsDirIsAnError` | yes |
-| `TestReadRubric_UnreadableRubricIsAnError` | `TestBouncer_JudgeCall_Degradations` | yes |
-| `TestReadRubric_SubstitutesTheStencilsDir` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_SubstitutesBothMarkers` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
-| `TestReadRubric_EmptyStencilsDirIsAnError` | `TestReadRubric_EmptySpecsDirIsAnError` | no |
-| `TestSingleLLMProducer_OutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestSingleLLMProducer_ArchivesPreexistingOutput` | `TestSingleLLMProducer_ArchiveCollisionSuffix`, `TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn` | yes |
-| `TestSingleLLMProducer_ArchiveCollisionSuffix` | `TestSingleLLMProducer_ArchivesPreexistingOutput`, `TestBouncer_Clear_CollisionTakesNumericSuffix` | no |
-| `TestSingleLLMProducer_MissingOutputFileIsNoOp` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestSingleLLMProducer_AlreadyCancelledContext` | `TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted` | yes |
-| `TestSingleLLMProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | `TestSingleLLMProducer_ArchiveCollisionSuffix`, `TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn` | yes |
-| `TestSingleLLMProducer_NoBridgeInstalled` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestSingleLLMProducer_ProbeNotFound_ArchivesAndRuns` | `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
-| `TestSingleLLMProducer_ProbeFound_NoArchiveNoRun` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestSingleLLMProducer_AttachedOutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestSingleLLMProducer_AttachedOutcomeAsking` | `TestSingleLLMProducer_OutcomeAsking`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout` | `TestSingleLLMProducer_NotStartedWrapsErrNotStarted`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted` | `TestSingleLLMProducer_AlreadyCancelledContext` | no |
-| `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | no |
-| `TestSingleLLMProducer_Gate_PassingGateReachesDone` | `TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer` | no |
-| `TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer` | `TestSingleLLMProducer_Gate_TerminalReasonReachesStuck`, `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically` | yes |
-| `TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer` | `TestSingleLLMProducer_OutcomeAsking` | yes |
-| `TestSingleLLMProducer_Gate_AttachPathIsGatedToo` | `TestSingleLLMProducer_Gate_PassingGateReachesDone`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically` | yes |
-| `TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer` | `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
-| `TestWebsterProducer_OutcomeDone` | `TestWebsterProducer_OutcomeStuck`, `TestWebsterProducer_OutcomePaused` | yes |
-| `TestWebsterProducer_MasterAskingError` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs` | yes |
-| `TestNewWebsterProducer_ReentryStepNamesTheRow` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
-| `TestWebsterProducer_PendingAuditFindingsIsStuck` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
-| `TestWebsterProducer_MasterAskingMatchedViaErrorsIs` | `TestWebsterProducer_MasterAskingError` | no |
-| `TestWebsterProducer_FreshIsAlwaysFalse` | `TestWebsterProducer_OutcomePaused`, `TestWebsterProducer_OutcomeStuck` | yes |
-| `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | `TestWebsterProducer_OutcomePaused` | yes |
+No candidates.
+
+Kept:
+
+- `TestArchiveStaleOutputs`: pins the stamped archive name, the numeric collision suffix and that an absent entry in the list is skipped, none of which the callers' tests assert
+- `TestArchiveRunDir`: pins that the run dir moves whole to a stamped sibling and is recreated empty, the numeric collision suffix, and that an absent run dir is an error
+- `TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore`: pins the probe's matched artifact pair and timeout, and that a not-found probe falls through to exactly one spawn
+- `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning`: pins that the judge pass attaches to a live judge without archiving its declared outputs out from under it
+- `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying`: pins that a live judge behind an already-written verdict is attached to before the clear or replay branch acts, and its own output is neither archived nor overwritten
+- `TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles`: pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
+- `TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs`: pins the awaiting reason a circling round with no decision writes: both verbs, each with the slug argument or without it
+- `TestBouncer_Circling_RecordedDecision`: pins settling a decision recorded on a CIRCLING round that never wrote an escalation record, which the escalation tests never reach
+- `TestBouncer_Clear_ApprovedRunDirClearsAndReseeds`: pins that the whole approved generation moves to one archived sibling, the recreated run dir holds only the seed's focus file, the log line and the collision suffix
+- `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`: pins that none of the non-triggering states archives the run dir, which the outcome assertions of the tests that reach them do not check
+- `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears`: pins the commit-failure then re-entry sequence: the failed commit leaves the directory CONVERGED and the next Call clears it instead of retrying the commit
+- `TestBouncer_Clear_EndToEndSequence`: pins the whole seed, judge, approve and re-entry sequence on one Bouncer value across calls, which no single-call test chains
+- `TestBouncer_ConvergedSettle_CallsApproveThenCommit`: pins that each non-nil seam runs exactly once, Approve strictly before Commit, and that a nil seam is not an error
+- `TestBouncer_BlockingNeverCallsApproveOrCommit`: pins that a CONTINUE verdict calls neither the Approve nor the Commit seam
+- `TestBouncer_Commit_CancelledContextStillCommits`: pins that an already-cancelled context still commits an approved verdict, which no Call-driven test can reach
+- `TestNewBouncer_AcceptedConfigs`: pins the config shapes NewBouncer accepts: an empty Model, Effort and Version, a nil clock that defaults, and an artifact path that does not exist yet
+- `TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched`: pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks and that a re-call leaves the record untouched
+- `TestBouncer_Escalation_RecordedDecision`: pins how a recorded decision settles an escalation of either cause: continue is exempt from the budget only for a budget cause, and accept approves, commits and clears
+- `TestBouncer_JudgeCall_Verdicts`: pins the judge call's outcome and ledger pointer per verdict, the three declared outputs and the well-formed empty next-round focus file
+- `TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts`: pins the judge prompt's inputs: the facts and review paths, never the artifacts or the fixer report, and the two guard sentences
+- `TestBouncer_JudgeCall_Harvest`: pins that the harvest is keyed on judged(N): a written verdict settles the round whatever the run reported, and a non-completion with nothing written degrades
+- `TestBouncer_JudgeCall_DebrisIsNotJudged`: pins that stale or half-written judge outputs are archived byte-identical before the spawn and never mistaken for a judged round
+- `TestBouncer_Replay_Blocking`: pins the replay's warning log and that the verdict and ledger are left byte-identical, which the tests that reach a replay do not check
+- `TestBouncer_FocusSynthesis_OverUnparseableFile`: pins that an unparseable focus file is archived byte-identical and replaced by a well-formed empty one, on both the replay and the seed path
+- `TestBouncer_Cancellation_ParsedVerdictSurvives`: pins that a verdict the judge wrote survives a cancellation during the run, for both an approving and a blocking verdict
+- `TestBouncer_SeedCall_HappyPath`: pins the seed call's spec, pointer and focus file, and that it writes no verdict or ledger
+- `TestBouncer_SeedDiscriminator_ParsesRatherThanStats`: pins that a present but unparseable focus file is archived and re-seeded rather than treated as a re-bounce
+- `TestBouncer_SeedSideHarvest_SurvivesALateFailure`: pins that a focus file the seed agent wrote survives a late run error or a non-Done outcome byte-identical
+- `TestHarvestedVerdict_RefusesLegacyWords`: pins the function-level split on a legacy word: the harvest refuses it while the recorded read aliases it
+- `TestBouncer_Verdict_LegacyWordAtEntry`: pins how a legacy verdict word on disk at Call entry is read: APPROVED clears and re-seeds, BLOCKING replays as a Stuck over the ledger
+- `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`: pins that a CIRCLING verdict returns Awaiting naming the round and cause, and that a fresh Bouncer over the same run dir replays it without spawning
+- `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`: pins that a CIRCLING verdict with a live judge attaches to it, never respawns, and keeps the judge's own next-round focus file
+- `TestComputeRoundFacts_GatingRule`: pins the gating rule of the round facts: MEDIUM design findings are gating, a BLOCKING scope finding is counted but not gating
+- `TestWriteRoundFacts_IsDeterministic`: pins that two writes of the facts file are byte-identical and the no-recurring-key line, which the judge-call tests do not assert
+- `TestFactsPath_IsNotAJudgeOutput`: pins the facts file's name and that it is an input the judge reads, not an output a stale-output archive would move
+- `TestParseProseAndUnknownKey`: pins that each file contract tolerates an unknown frontmatter key and normalises CRLF prose to LF
+- `TestParseFocusSpecific`: pins the focus frontmatter's accept and reject rows (round bounds, scalar focus, absent exclude_lenses), which the bouncer tests reach only through well-formed files
+- `TestRenderFocus_RoundTripsThroughParseFocus`: pins the render and parse round trip for shapes the bouncer tests never write: nil lists, YAML metacharacters in a lens name, and prose
+- `TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint`: pins the decision rule's text: both non-circling verdicts are always offered and the rising-count caveat comes with CIRCLING
+- `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint`: pins that the checkpoint round configured on the Bouncer reaches the judge prompt's decision rule
+- `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts`: pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set
+- `TestBurlerProducer_Hydration`: pins which prior reviews, fixer reports and focus directive the round's profile carries: the told prefix, orphan and stamped-sibling exclusion, and the focus path only when the file says something
+- `TestBurlerProducer_Call_DoneReturnsStuckNeverDone`: pins that a successful round, approved or blocking and gate-passed or not, is a routine Stuck hand-off with the review as pointer and no reason, never Done
+- `TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID`: pins the round token, the note id and the opts template the runner receives, which the round-scan tests do not read off the recorded opts
+- `TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry`: pins the retry after a died attempt: the second attempt's round token is "1b", over the same review path, and the review it writes survives
+- `TestBurlerProducer_Call_CancelledBeforeAnAttempt`: pins that a cancelled context spawns no attempt and a cancellation during attempt 1 spawns no attempt 2
+- `TestRecordCirclingDecision_WritesPendingFile`: pins the decision file RecordCirclingDecision writes per decision, escalation record and cause, and its round and cause return values
+- `TestEntryErrAndCancelErr`: pins that the entry and cancel errors name the producer and engine, wrap the context error and read differently
+- `TestEscalation_RoundTrip`: pins the escalation record's round trip: cause, notice, brief body, an empty brief, and no notice file for an empty notice
+- `TestEscalation_AbsentRecord`: pins that an absent escalation record reads as absent with no error
+- `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething`: pins the focus reader against the file the writer produces: the directive path only when the file says something, the exclude lenses, and the target round's filename
+- `TestGateFailedReason_NamesAttemptsAndFindingsPath`: pins that the attempt count and the findings path are both interpolated into the gate-failed reason
+- `TestResolveRound`: pins the round scan: the highest present round, zero for an empty run dir, and that a gap stops the scan
+- `TestRoundPathHelpers_PinExactFilenameSpellings`: pins the on-disk filename spellings the producers and stencils name, which no behavior test asserts byte for byte
+- `TestReadRubric`: pins the rubric fill and strip: both markers substituted, the stamp banner removed, a markerless rubric unchanged, and the errors for an empty specs dir or an unreadable rubric
+- `TestReadRubric_EmptyStencilsDirIsAnError`: pins that an empty stencils dir is an error naming stencils_dir, which needs the cwd changed and so cannot join the parallel table
+- `TestSingleLLMProducer_OutcomeDone`: pins the completed run's pointer, the recorded spec, the gate attempt count on the pointer and that a success survives a cancellation during the run
+- `TestSingleLLMProducer_ArchivesPreexistingOutput`: pins that a pre-existing output is archived to a stamped sibling before the seam runs, and that a same-second collision takes a numeric suffix
+- `TestSingleLLMProducer_AttachedRun`: pins the outcome mapping of an attached live run, that it is never respawned and that its output file is left unarchived with its content intact
+- `TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer`: pins that a failed gate is a Stuck whose pointer is the artifact, never empty, with the attempt count and findings in the reason
+- `TestWebsterProducer_OutcomeDone`: pins that a done run returns the summary as pointer, is never asked for a fresh start, and survives a cancellation during the run
+- `TestWebsterProducer_PendingAuditFindingsIsStuck`: pins the pending-audit refusal's reason, which is the refusal's own text, and the re-entry step the run is handed
 
 No test lacks coverage.
 
