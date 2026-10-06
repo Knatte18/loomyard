@@ -110,6 +110,10 @@ type RunState struct {
 	// the field. Attach compares it against the events file's current size: growth past it means the
 	// strand kept working after the ask, so the run is attachable rather than respawn-eligible.
 	AskingOffset *int64 `json:"askingOffset,omitempty"`
+	// PromptOffset is the events-file byte offset past the skill-load turns Start ran before sending the prompt,
+	// zero when Start loaded no skills or for a record that predates the field.
+	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.
+	PromptOffset int64 `json:"promptOffset,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

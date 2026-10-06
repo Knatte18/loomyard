@@ -1089,6 +1089,14 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			if run.offset != info.Size() || run.offset == 0 {
 				t.Errorf("offset = %d; want the events file's size %d", run.offset, info.Size())
 			}
+			// run.json carries the same offset, so a reader that never Waits on this Run starts past the load turns too.
+			persisted, _, err := loadRunState(run.runDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.PromptOffset != run.offset {
+				t.Errorf("persisted PromptOffset = %d; want %d", persisted.PromptOffset, run.offset)
+			}
 		})
 	}
 }

@@ -268,6 +268,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		StrandGUID:      run.StrandGUID(),
 		ShuttleRunDir:   runDir,
 		EventsPath:      runState.EventsPath,
+		EventsOffset:    runState.PromptOffset,
 	}, nil
 }
 
@@ -520,7 +521,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEnded(bs.EventsPath, deps.Engine)
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine)
 		if err != nil {
 			return Digest{}, false, err
 		}

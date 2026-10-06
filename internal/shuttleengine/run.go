@@ -481,6 +481,14 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			return run.abandonStartup(OutcomeDied)
 		}
 	}
+	if run.offset > 0 {
+		// Persisted before the prompt is sent, so a reader of the events file that never Waits on this Run
+		// (an Attach, webster's recovery classification) starts past the load turns too.
+		run.state.PromptOffset = run.offset
+		if err := saveRunState(run.runDir, run.state); err != nil {
+			return run.identity(), fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err)
+		}
+	}
 	if err := sendVerified(run.runner.reed, run.runner.engine, guid, promptLine); err != nil {
 		return run.identity(), fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err)
 	}
