@@ -550,8 +550,8 @@ func TestSmokeOrch_Adopt(t *testing.T) {
 	}
 
 	// A manual cycle completes on the adopted session.
-	if out, code := smokeRun(t, f.exe, f.prime, 30*time.Second, "orch", "cycle"); code != 0 {
-		t.Fatalf("orch cycle exited %d: %s", code, out)
+	if out, code := smokeRun(t, f.exe, f.prime, 30*time.Second, "orch", "refresh"); code != 0 {
+		t.Fatalf("orch refresh exited %d: %s", code, out)
 	}
 	waitForDiag(t, 600, "cycle_count 1 in phase idle", func() bool {
 		env := smokeStatus(t, f.exe, f.prime)

@@ -13,7 +13,7 @@
 //     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
-//   - cycle: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
+//   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
 //   - distill: the same for a compact cycle: a note, then `/compact`, whatever `cycle_mode` says.
 //     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
@@ -61,7 +61,7 @@
 //
 // `cycle_mode` in orch.yaml is `compact` or `clear`, and an absent or empty value is `compact`; any other value is a load error naming both.
 // `compact` keeps the session id and the Remote Control link; `clear` runs the handoff, `/clear` and resume cycle.
-// `cycle_mode` picks the mode of an automatic (hard or soft) cycle; an operator request carries its own mode, `cycle` for clear and `distill` for compact, recorded in State.CycleMode.
+// `cycle_mode` picks the mode of an automatic (hard or soft) cycle; an operator request carries its own mode, `refresh` for clear and `distill` for compact, recorded in State.CycleMode.
 // Both modes write the note first, and neither clears or compacts before the note gate has passed.
 // The trigger selection, gates and re-read under "Idle rules" are shared; the two machines follow under "The four-phase cycle (clear mode)" and "The compact cycle (compact mode)".
 //
@@ -96,6 +96,7 @@
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
 //   - That event was first read at least the idle grace ago.
 //     The arrival time is held in memory, so a watcher restart restarts the grace.
+//     A requested cycle waits no grace: the operator chose the moment, and the idle probe below still guards the pane.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
 // Every idle probe goes through one watcher helper.
@@ -177,17 +178,32 @@
 //
 // # The reload sequence
 //
-// A clear, a compaction and an auto-compaction each lose the session's skills and role, so the resuming phase restores them: it types each orch skill in order, as its own turn, and then the one-line pointer.
+// A clear, a compaction and an auto-compaction each lose the session's skills and role,
+// so the resuming phase restores them: a skills step loads the whole orch skill list in one turn,
+// an optional retry step loads what that turn left missing,
+// and the one-line pointer follows.
 // `start` and `--adopt` load the same skills through the launch spec.
-// The step index, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+// The step, the skills the retry step loads, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+// `reload_step` is 0 for the skills step and -1 for the retry step.
+// Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry`.
 //
-//   - A skill step types its load only when the idle probe passed on the same tick.
-//     A turn end read after it was typed confirms it.
-//     It is skipped, with a log entry naming the skill and the cause, when the provider reports it unknown or when the handoff timeout, measured from its first typing, passes.
-//     Confirming and skipping both advance the persisted step, so a restarted watcher never types a confirmed or skipped skill again and never gives it a fresh timeout.
+//   - The skills step types one provider-built message asking the model to load every skill, only when the idle probe passed on the same tick.
+//     Its first turn end after the typing is classified against the transcript.
+//     A skill the provider does not know is skipped, with a log entry naming the skill and the cause `unknown`.
+//     A turn whose transcript cannot be read is confirmed unverified, with one `skill load unverified` entry listing the skills,
+//     and the pointer follows.
+//     A skill the provider knows but the model did not load moves the sequence to the retry step.
+//     When the handoff timeout, measured from the first typing, passes with no turn end, every skill is skipped with the cause `timeout` and no retry follows.
+//     An empty skill list starts the sequence at the pointer step.
+//   - The retry step types the same message for the missing skills only, and classifies its turn end the same way:
+//     a skill still missing is skipped with the cause `not loaded`,
+//     and there is no second retry.
+//     The move into it persists the step and `reload_retry` in one save,
+//     so a restart before the move reads the same turn end again and a restart after it never retries twice.
 //   - The pointer step types State.PendingResume under the same rule and ends the phase at its first turn end.
 //     Its timeout runs from its first typing and returns to idle with `resume timed out`.
-//   - A step typed before a restart and not confirmed is typed again once the idle probe passes; loading a skill twice costs one turn and changes nothing.
+//   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
+//     Loading a skill twice costs one turn and changes nothing.
 //
 // The sequence has three entry points, each entered only on a tick whose idle probe passed:
 //
@@ -207,7 +223,7 @@
 //   - state.json and state.json.lock: the persisted State and its lock.
 //   - watch.lock: held for the watcher's life.
 //   - start.lock: serializes `start`.
-//   - cycle-request: the JSON marker `cycle` and `distill` write and the watcher consumes.
+//   - cycle-request: the JSON marker `refresh` and `distill` write and the watcher consumes.
 //   - watch.log: the detached watcher's stdout and stderr.
 //   - handoffs/: one timestamped handoff file per cycle, all kept.
 //   - notices/: one file per queued notice, removed on delivery.

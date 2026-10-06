@@ -45,10 +45,10 @@ type Session interface {
 	ClearSession(guid string) error
 	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
 	CompactSession(guid, focus string) error
-	// LoadSkill types the provider's load command for skill into the session.
-	LoadSkill(guid, skill string) error
-	// SkillUnknown reports whether the session's pane shows skill as unknown to the provider.
-	SkillUnknown(guid, skill string) (bool, error)
+	// LoadSkills types the provider's one-turn load message for skills into the session.
+	LoadSkills(guid string, skills []string) error
+	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended.
+	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
 	// CompactedSince returns the time of the newest compaction boundary after since in the transcript turnEnd names.
 	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error)
 }
@@ -64,7 +64,7 @@ type Watcher struct {
 	cfg         Config
 	paths       Paths
 	stencilsDir string
-	skills      []string // Skills the reload sequence types, in order, before the pointer.
+	skills      []string // Skills the reload sequence's skills step loads in one turn, before the pointer.
 	clock       Clock
 
 	// compactedAt is the time of an auto-compaction boundary read at a turn end and not yet reloaded from; zero when none.
@@ -273,7 +273,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
-	st.ReloadStep, st.ReloadTypedAt = 0, time.Time{}
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = ReloadStepSkills, time.Time{}, nil
 	st.Stuck = ""
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
@@ -410,6 +410,10 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	deferralHolds := !st.LastDeferral.IsZero() && now.Sub(st.LastDeferral) < w.cfg.SoftIdle()
 	quiet := w.cfg.IdleGrace()
+	if trigger == TriggerRequested {
+		// The operator asked for this cycle at a moment of their choosing; the idle probe alone guards the pane.
+		quiet = 0
+	}
 	if trigger == TriggerSoft {
 		quiet = w.cfg.SoftIdle()
 		if deferralHolds {
@@ -630,7 +634,7 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 // startReload enters the resuming phase at its first step and types it.
 // The caller must have seen the session idle on this tick and set st.PendingResume to the pointer line.
 func (w *Watcher) startReload(st State, now time.Time) error {
-	st.ReloadStep, st.ReloadTypedAt = 0, time.Time{}
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = ReloadStepSkills, time.Time{}, nil
 	st, err := w.enter(st, PhaseResuming, now)
 	if err != nil {
 		return err
@@ -639,7 +643,19 @@ func (w *Watcher) startReload(st State, now time.Time) error {
 	return w.typeReloadStep(st, now)
 }
 
-// typeReloadStep types the current step, a skill load or the pointer: the caller must have seen the session idle on this tick.
+// reloadStep returns the step st is in, normalised: an empty skill list has no skills step, a retry step with nothing to retry has no retry,
+// and any value that is neither is the pointer step.
+func (w *Watcher) reloadStep(st State) int {
+	switch {
+	case st.ReloadStep == ReloadStepSkills && len(w.skills) > 0:
+		return ReloadStepSkills
+	case st.ReloadStep == ReloadStepRetry && len(st.ReloadRetry) > 0:
+		return ReloadStepRetry
+	}
+	return ReloadStepPointer
+}
+
+// typeReloadStep types the current step, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
 // The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
 // A re-typing after a restart keeps both, so the step's timeout never restarts.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
@@ -653,9 +669,12 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 		}
 	}
 	var err error
-	if st.ReloadStep < len(w.skills) {
-		err = w.session.LoadSkill(st.Strand, w.skills[st.ReloadStep])
-	} else {
+	switch w.reloadStep(st) {
+	case ReloadStepSkills:
+		err = w.session.LoadSkills(st.Strand, w.skills)
+	case ReloadStepRetry:
+		err = w.session.LoadSkills(st.Strand, st.ReloadRetry)
+	default:
 		err = w.session.Send(st.Strand, st.PendingResume)
 	}
 	if err != nil {
@@ -664,9 +683,9 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	return w.confirm(st)
 }
 
-// advanceReload persists the move to the next step, with its offset taken at the cursor, and goes on to type it when the idle probe passes.
-func (w *Watcher) advanceReload(st State, now time.Time) error {
-	st.ReloadStep++
+// advanceReload persists the move to step, with retry as the skills its retry step loads and its offset taken at the cursor, and goes on to type it when the idle probe passes.
+func (w *Watcher) advanceReload(st State, now time.Time, step int, retry []string) error {
+	st.ReloadStep, st.ReloadRetry = step, retry
 	st.ReloadTypedAt = time.Time{}
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
@@ -677,34 +696,58 @@ func (w *Watcher) advanceReload(st State, now time.Time) error {
 	return w.tickResuming(st, now)
 }
 
-// skipSkill logs the skipped skill and its cause, then advances.
-func (w *Watcher) skipSkill(st State, now time.Time, skill, cause string) error {
+// skipSkill logs the skipped skill and its cause.
+func (w *Watcher) skipSkill(st State, skill, cause string) {
 	logger.Warn("orch: skill skipped", "skill", skill, "cause", cause, "strandGUID", st.Strand)
-	return w.advanceReload(st, now)
 }
 
-// tickResuming walks the reload sequence one step at a time: each skill in order, then the pointer.
-// A skill step is confirmed by a turn end read after it was typed, and skipped when the provider reports it unknown or its timeout, from its first typing, passes.
+// settleSkillTurn classifies the load turn of skills that the step's first turn end ended, logs what is skipped and moves on:
+// to the retry step when the skills step left skills missing, else to the pointer.
+// An unreadable turn is confirmed unverified, with no retry.
+func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []string) error {
+	report, err := w.session.ClassifySkillLoad(w.seen.firstTurnEnd, skills)
+	if err != nil {
+		return err
+	}
+	if !report.Verified {
+		logger.Warn("orch: skill load unverified", "skills", skills, "strandGUID", st.Strand)
+		return w.advanceReload(st, now, ReloadStepPointer, nil)
+	}
+	for _, skill := range report.Unknown {
+		w.skipSkill(st, skill, "unknown")
+	}
+	if step == ReloadStepSkills && len(report.Missing) > 0 {
+		return w.advanceReload(st, now, ReloadStepRetry, report.Missing)
+	}
+	for _, skill := range report.Missing {
+		w.skipSkill(st, skill, "not loaded")
+	}
+	return w.advanceReload(st, now, ReloadStepPointer, nil)
+}
+
+// tickResuming walks the reload sequence: the skills step, the retry step when skills were left missing, then the pointer.
+// A skills or retry step is confirmed by a turn end read after it was typed, and settled from that turn.
+// Past its timeout, from its first typing, every skill it loads is skipped with no retry.
 // The pointer step ends the phase at its first turn end and times out the same way.
 // Nothing is typed unless the idle probe passed on the same tick, and a step typed before a restart is typed again until confirmed.
 func (w *Watcher) tickResuming(st State, now time.Time) error {
 	typed := !st.ReloadTypedAt.IsZero()
 	timedOut := typed && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout()
-	if st.ReloadStep < len(w.skills) {
-		skill := w.skills[st.ReloadStep]
+	step := w.reloadStep(st)
+	if step != ReloadStepPointer {
+		skills := w.skills
+		if step == ReloadStepRetry {
+			skills = st.ReloadRetry
+		}
 		if typed {
 			if w.seen.turnEnd {
-				return w.advanceReload(st, now)
-			}
-			unknown, err := w.session.SkillUnknown(st.Strand, skill)
-			if err != nil {
-				return err
-			}
-			if unknown {
-				return w.skipSkill(st, now, skill, "unknown to the provider")
+				return w.settleSkillTurn(st, now, step, skills)
 			}
 			if timedOut {
-				return w.skipSkill(st, now, skill, "load timed out")
+				for _, skill := range skills {
+					w.skipSkill(st, skill, "timeout")
+				}
+				return w.advanceReload(st, now, ReloadStepPointer, nil)
 			}
 			if st.PhaseInjected {
 				return nil

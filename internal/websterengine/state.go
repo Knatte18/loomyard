@@ -271,6 +271,9 @@ type BatchState struct {
 	// EventsPath is the run dir's events.jsonl path, consumed by
 	// recover-batch's Stop-event detection for the dead/asking classification.
 	EventsPath string `json:"eventsPath,omitempty"`
+	// EventsOffset is where the recovery's own events begin in EventsPath, past the skill-load turns shuttle ran at start;
+	// zero for a record written before it existed.
+	EventsOffset int64 `json:"eventsOffset,omitempty"`
 }
 
 // LoadState reads <websterDir>/state.json, locked against

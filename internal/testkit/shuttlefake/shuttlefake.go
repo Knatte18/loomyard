@@ -9,6 +9,7 @@ package shuttlefake
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,8 +47,8 @@ type Engine struct {
 	TrustDismissSequenceFn  func(capture string) []shuttleengine.PaneInput
 	ComposeSendFn           func(text string) []shuttleengine.PaneInput
 	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
-	SkillLoadSequenceFn     func(skill string) []shuttleengine.PaneInput
-	SkillUnknownFn          func(capture, skill string) bool
+	SkillLoadMessageFn      func(skills []string) string
+	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
 	AuditForksIncrementalFn func(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error)
 }
@@ -119,20 +120,20 @@ func (e *Engine) ComposeSend(text string) []shuttleengine.PaneInput {
 	return nil
 }
 
-// SkillLoadSequence answers SkillLoadSequenceFn, else no inputs.
-func (e *Engine) SkillLoadSequence(skill string) []shuttleengine.PaneInput {
-	if e.SkillLoadSequenceFn != nil {
-		return e.SkillLoadSequenceFn(skill)
+// SkillLoadMessage answers SkillLoadMessageFn, else the skills joined by commas.
+func (e *Engine) SkillLoadMessage(skills []string) string {
+	if e.SkillLoadMessageFn != nil {
+		return e.SkillLoadMessageFn(skills)
 	}
-	return nil
+	return strings.Join(skills, ",")
 }
 
-// SkillUnknown answers SkillUnknownFn, else false.
-func (e *Engine) SkillUnknown(capture, skill string) bool {
-	if e.SkillUnknownFn != nil {
-		return e.SkillUnknownFn(capture, skill)
+// ClassifySkillLoad answers ClassifySkillLoadFn, else a verified report with every skill loaded.
+func (e *Engine) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
+	if e.ClassifySkillLoadFn != nil {
+		return e.ClassifySkillLoadFn(turnEnd, skills)
 	}
-	return false
+	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}
 }
 
 // DefaultSkillLoadTimeout answers a bound of one second.

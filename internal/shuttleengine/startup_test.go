@@ -853,9 +853,9 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 	}
 }
 
-// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine, with endsTurn and unknown scripting each skill's reaction.
+// skillStartFixture starts a run whose launch defers its prompt, over a skillReed and skillFakeEngine, with reports scripting each load turn's classification and hangs and dies naming the load turns, counted from zero, that never end or kill the pane.
 // It returns the started run (nil with the error on a refused start), the reed double and the virtual time Start took.
-func skillStartFixture(t *testing.T, spec Spec, endsTurn, unknown []string) (*Run, *skillReed, time.Duration, error) {
+func skillStartFixture(t *testing.T, spec Spec, reports []SkillLoadReport, hangs, dies []int) (*Run, *skillReed, time.Duration, error) {
 	t.Helper()
 	base := &fakeReed{
 		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
@@ -867,13 +867,14 @@ func skillStartFixture(t *testing.T, spec Spec, endsTurn, unknown []string) (*Ru
 			StartupScript: []StartupState{StartupReady},
 		},
 		Timeout: time.Minute,
+		Reports: reports,
 	}
-	reed := &skillReed{fakeReed: base, EndsTurn: map[string]bool{}, Unknown: map[string]bool{}}
-	for _, s := range endsTurn {
-		reed.EndsTurn[s] = true
+	reed := &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}}
+	for _, turn := range hangs {
+		reed.Hangs[turn] = true
 	}
-	for _, s := range unknown {
-		reed.Unknown[s] = true
+	for _, turn := range dies {
+		reed.Dies[turn] = true
 	}
 	fc := newFakeClock(time.Now())
 	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc))
@@ -894,29 +895,7 @@ func typedTexts(reed *skillReed) []string {
 	return texts
 }
 
-//testtiming:keep skills-in-one-turn rewrites skill loading and its tests; pins that skills load in order before the prompt and that the run's offset lies past their turn ends
-func TestStartup_SkillsLoadInOrderBeforePrompt(t *testing.T) {
-	run, reed, _, err := skillStartFixture(t, Spec{Skills: []string{"a", "b"}}, []string{"a", "b"}, nil)
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if got, want := strings.Join(typedTexts(reed), "|"), "LOAD:a|LOAD:b|do the task"; got != want {
-		t.Errorf("typed = %q; want %q", got, want)
-	}
-	// Both skill-load turn ends lie behind the run's own read offset, so Wait never classifies them.
-	info, err := os.Stat(run.state.EventsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if run.offset != info.Size() || run.offset == 0 {
-		t.Errorf("offset = %d; want the events file's size %d", run.offset, info.Size())
-	}
-	if data, _, err := readEventsFrom(run.state.EventsPath, run.offset); err != nil || len(data) != 0 {
-		t.Errorf("events past the offset = %q, %v; want none", data, err)
-	}
-}
-
-//testtiming:keep skills-in-one-turn rewrites skill loading and its tests; pins that a launch with no skills and no deferred prompt line types nothing
+//testtiming:keep pins that a launch with no skills and no deferred prompt line types nothing, which the skill-load table never reaches
 func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}
@@ -929,45 +908,120 @@ func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 	}
 }
 
-func TestStartup_SkillSkipCauses(t *testing.T) {
-	t.Parallel()
+// TestStartup_SkillLoadTurns does not call t.Parallel: it asserts on the logger output,
+// which is process-global.
+func TestStartup_SkillLoadTurns(t *testing.T) {
 	const (
 		atLeastTimeout = "atLeastTimeout"
 		zero           = "zero"
 	)
+	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
 	tests := []struct {
-		name      string
-		spec      Spec
-		endsTurn  []string
-		unknown   []string
-		wantTyped string
-		elapsed   string
+		name       string
+		spec       Spec
+		reports    []SkillLoadReport
+		hangs      []int
+		dies       []int
+		wantTyped  string
+		wantSkips  int
+		wantLogs   []string
+		wantDied   bool
+		wantOffset bool
+		elapsed    string
 	}{
 		{
-			name:      "skill without a turn end is skipped at the timeout",
+			name:       "every skill loads in one turn before the prompt",
+			spec:       Spec{Skills: []string{"a", "b"}},
+			reports:    []SkillLoadReport{loaded("a", "b")},
+			wantTyped:  "LOAD:a,b|do the task",
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:       "unknown skill is skipped at once with no retry",
+			spec:       Spec{Skills: []string{"ghost", "b"}},
+			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"b"}, Unknown: []string{"ghost"}}},
+			wantTyped:  "LOAD:ghost,b|do the task",
+			wantSkips:  1,
+			wantLogs:   []string{"skill=ghost", "cause=unknown"},
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:       "missing skill is retried once, naming only it",
+			spec:       Spec{Skills: []string{"a", "b"}},
+			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, loaded("b")},
+			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:       "skill still missing after the retry is skipped",
+			spec:       Spec{Skills: []string{"a", "b"}},
+			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, {Verified: true, Missing: []string{"b"}}},
+			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantSkips:  1,
+			wantLogs:   []string{"skill=b", "cause=\"not loaded\""},
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:       "unverified first turn confirms with no retry",
+			spec:       Spec{Skills: []string{"a", "b"}},
+			reports:    []SkillLoadReport{{}},
+			wantTyped:  "LOAD:a,b|do the task",
+			wantLogs:   []string{"skill load unverified"},
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:       "unverified retry confirms with no further turn",
+			spec:       Spec{Skills: []string{"a", "b"}},
+			reports:    []SkillLoadReport{{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}, {}},
+			wantTyped:  "LOAD:a,b|LOAD:b|do the task",
+			wantLogs:   []string{"skill load unverified"},
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:      "first turn that never ends is skipped at the timeout with no retry",
 			spec:      Spec{Skills: []string{"slow", "b"}, SkillLoadTimeout: 50 * time.Millisecond},
-			endsTurn:  []string{"b"},
-			wantTyped: "LOAD:slow|LOAD:b|do the task",
+			hangs:     []int{0},
+			wantTyped: "LOAD:slow,b|do the task",
+			wantSkips: 2,
+			wantLogs:  []string{"cause=timeout"},
 			elapsed:   atLeastTimeout,
 		},
 		{
-			name:      "unknown skill is skipped at once",
-			spec:      Spec{Skills: []string{"ghost", "b"}},
-			endsTurn:  []string{"b"},
-			unknown:   []string{"ghost"},
-			wantTyped: "LOAD:ghost|LOAD:b|do the task",
+			name:      "pane that dies during a load turn is a died startup",
+			spec:      Spec{Skills: []string{"a", "b"}},
+			dies:      []int{0},
+			wantTyped: "LOAD:a,b",
+			wantDied:  true,
 			elapsed:   zero,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			_, reed, elapsed, err := skillStartFixture(t, tt.spec, tt.endsTurn, tt.unknown)
-			if err != nil {
+			buf := logcapture.Capture(t)
+			run, reed, elapsed, err := skillStartFixture(t, tt.spec, tt.reports, tt.hangs, tt.dies)
+			if tt.wantDied {
+				if !errors.Is(err, ErrNotStarted) {
+					t.Fatalf("Start() error = %v; want one wrapping ErrNotStarted", err)
+				}
+			} else if err != nil {
 				t.Fatalf("Start() error = %v", err)
 			}
 			if got := strings.Join(typedTexts(reed), "|"); got != tt.wantTyped {
 				t.Errorf("typed = %q; want %q", got, tt.wantTyped)
+			}
+			if got := strings.Count(buf.String(), "skill skipped"); got != tt.wantSkips {
+				t.Errorf("skill skipped warnings = %d; want %d; log:\n%s", got, tt.wantSkips, buf.String())
+			}
+			for _, want := range tt.wantLogs {
+				if !strings.Contains(buf.String(), want) {
+					t.Errorf("log lacks %q; log:\n%s", want, buf.String())
+				}
 			}
 			switch tt.elapsed {
 			case atLeastTimeout:
@@ -976,10 +1030,30 @@ func TestStartup_SkillSkipCauses(t *testing.T) {
 				}
 			case zero:
 				if elapsed != 0 {
-					t.Errorf("virtual elapsed = %s; want 0 — an unknown skill must not wait out the timeout", elapsed)
+					t.Errorf("virtual elapsed = %s; want 0 — a settled turn must not wait out the timeout", elapsed)
 				}
 			default:
 				t.Fatalf("elapsed expectation %q is not one of the declared constants", tt.elapsed)
+			}
+			if !tt.wantOffset {
+				return
+			}
+			// Every load turn end lies behind the run's own read offset,
+			// so Wait never classifies one.
+			info, err := os.Stat(run.state.EventsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run.offset != info.Size() || run.offset == 0 {
+				t.Errorf("offset = %d; want the events file's size %d", run.offset, info.Size())
+			}
+			// run.json carries the same offset, so a reader that never Waits on this Run starts past the load turns too.
+			persisted, _, err := loadRunState(run.runDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.PromptOffset != run.offset {
+				t.Errorf("persisted PromptOffset = %d; want %d", persisted.PromptOffset, run.offset)
 			}
 		})
 	}

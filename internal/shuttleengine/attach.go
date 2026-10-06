@@ -196,9 +196,9 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, gate GateSpec) (Result, bool, error) {
 	// A live asking candidate that kept working is reconstructed at its recorded offset, so the old
 	// asking Stop is not re-classified, and with its outcome reset to running so the run's own
-	// finalize records the new verdict. Every other candidate replays from 0.
+	// finalize records the new verdict. Every other candidate replays from its prompt offset, past the skill-load turns.
 	state := candidate.state
-	var startOffset int64
+	startOffset := state.PromptOffset
 	if state.Outcome == string(OutcomeAsking) && state.AskingOffset != nil {
 		startOffset = *state.AskingOffset
 		state.Outcome = runOutcomeRunning
@@ -214,7 +214,7 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		// StrandGUID, and SessionID.
 		runDir: candidate.runDir,
 		state:  state,
-		// offset starts at 0, deliberately replaying the whole events.jsonl: seeding at EOF would
+		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns: seeding at EOF would
 		// mean a terminal Stop that landed while the driver was down is never observed, converting a
 		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is
 		// correct in both AwaitOperator modes. The one exception is a candidate that recorded an
