@@ -8,6 +8,8 @@ import "testing"
 
 // TestBootstrapVerb_IsEmpty asserts BootstrapVerb -- the capability declaration under test -- is
 // exactly the empty string.
+//
+//testtiming:keep a guard that fires when BootstrapVerb is filled in, which no covering test asserts
 func TestBootstrapVerb_IsEmpty(t *testing.T) {
 	if BootstrapVerb != "" {
 		t.Errorf("BootstrapVerb = %q; want %q", BootstrapVerb, "")

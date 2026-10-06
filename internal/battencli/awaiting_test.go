@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-func TestBattenPreRun_AwaitingArmsWithoutRefusal(t *testing.T) {
+func TestAwaitingStatusArmsWithoutRefusal(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 	writeStatus(t, c, shedengine.Status{
 		CurrentProducer: battenrecipe.NameWorktreeTeardown,
@@ -21,14 +21,6 @@ func TestBattenPreRun_AwaitingArmsWithoutRefusal(t *testing.T) {
 	if err := c.battenPreRun(context.Background()); err != nil {
 		t.Errorf("battenPreRun() = %v; want nil for an awaiting status", err)
 	}
-}
-
-func TestBattenPreStep_AwaitingArmsWithoutRefusal(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: battenrecipe.NameWorktreeTeardown,
-		State:           shedengine.StateAwaiting,
-	})
 
 	kind, err := c.battenPreStep(context.Background())
 	if err != nil || kind != "" {

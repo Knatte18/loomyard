@@ -31,8 +31,7 @@ import (
 // archiveTipHexLen is how many leading hex digits of the records tip the archive tag name carries.
 const archiveTipHexLen = 12
 
-func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-records"
 	hubforge.AddPair(t, h, slug)
 
@@ -181,8 +180,7 @@ func TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunReco
 	}
 }
 
-func TestBattenIntegration_AwaitingRejectionResumesTheChildOnce(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func stepAwaitingRejectionResumesTheChildOnce(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-rejection"
 	hubforge.AddPair(t, h, slug)
 

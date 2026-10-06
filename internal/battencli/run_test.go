@@ -97,26 +97,64 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 	}
 }
 
-// TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed, and StatePaused:
-// each resumes silently from the persisted current producer, with every fake succeeding trivially,
-// so the whole run completes and the verb reports success.
+// TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each
+// resuming silently from the persisted current producer, and an absent status file, which is a fresh
+// start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb
+// reports success, with a history_length key matching the persisted history.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
-	for _, state := range []shedengine.State{shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed, shedengine.StatePaused} {
-		t.Run(string(state), func(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state shedengine.State
+	}{
+		{"running", shedengine.StateRunning},
+		{"blocked", shedengine.StateBlocked},
+		{"failed", shedengine.StateFailed},
+		{"paused", shedengine.StatePaused},
+		{"absent_status_file", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c := newFakeReceiver(t, nil)
-			writeStatus(t, c, shedengine.Status{
-				CurrentProducer: battenrecipe.NameWorktreeCreate,
-				State:           state,
-			})
+			if tt.state != "" {
+				writeStatus(t, c, shedengine.Status{
+					CurrentProducer: battenrecipe.NameWorktreeCreate,
+					State:           tt.state,
+				})
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
 
 			if exitCode != 0 {
-				t.Fatalf("run(%s) exit code = %d; want 0; output: %s", state, exitCode, out.String())
+				t.Fatalf("run(%s) exit code = %d; want 0; output: %s", tt.name, exitCode, out.String())
 			}
 			if !strings.Contains(out.String(), `"ok":true`) {
-				t.Errorf("run(%s) output missing ok:true envelope; got: %q", state, out.String())
+				t.Errorf("run(%s) output missing ok:true envelope; got: %q", tt.name, out.String())
+			}
+
+			// The envelope's history_length key, free from the generic body's own len(result.History),
+			// matches the run's own persisted history length.
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+			}
+			st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			if err != nil || !found {
+				t.Fatalf("read persisted status: found=%v err=%v", found, err)
+			}
+			if len(st.History) == 0 {
+				t.Fatal("persisted history is empty; want the run to have appended at least one entry")
+			}
+			gotLen, ok := envelope["history_length"].(float64)
+			if !ok {
+				t.Fatalf("envelope[\"history_length\"] = %v (%T); want a number", envelope["history_length"], envelope["history_length"])
+			}
+			if int(gotLen) != len(st.History) {
+				t.Errorf("envelope[\"history_length\"] = %v; want %d (the run's own persisted history length)", gotLen, len(st.History))
 			}
 		})
 	}
@@ -149,22 +187,6 @@ func TestRunCmd_StateDoneRefusesNamingTheRunDir(t *testing.T) {
 	// the torn-down pair left, locally and on the remote.
 	if !strings.Contains(out.String(), "locally and on the remote") {
 		t.Errorf("run() output = %q; want the remedy to name the leftover task branch, locally and on the remote", out.String())
-	}
-}
-
-// TestRunCmd_AbsentStatusFileStartsFresh asserts that no persisted status file at all is a fresh
-// start, not a refusal.
-func TestRunCmd_AbsentStatusFileStartsFresh(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
-
-	if exitCode != 0 {
-		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":true`) {
-		t.Errorf("run() output missing ok:true envelope; got: %q", out.String())
 	}
 }
 
@@ -237,73 +259,6 @@ func TestRunCmd_AbandonedSessionKey(t *testing.T) {
 	}
 }
 
-// TestRunCmd_HistoryLengthKey asserts the run envelope's history_length key -- new in this task,
-// free from the generic body's own len(result.History) -- matches the run's own persisted history
-// length, over a fresh run that completes end to end against the fakes.
-func TestRunCmd_HistoryLengthKey(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(battenVerbCommand(c, "run"), &out, []string{c.slug})
-	if exitCode != 0 {
-		t.Fatalf("run() exit code = %d; want 0; output: %s", exitCode, out.String())
-	}
-
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode envelope: %v; output: %s", err, out.String())
-	}
-
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-	if err != nil || !found {
-		t.Fatalf("read persisted status: found=%v err=%v", found, err)
-	}
-	if len(st.History) == 0 {
-		t.Fatal("persisted history is empty; want the fresh run to have appended at least one entry")
-	}
-
-	gotLen, ok := envelope["history_length"].(float64)
-	if !ok {
-		t.Fatalf("envelope[\"history_length\"] = %v (%T); want a number", envelope["history_length"], envelope["history_length"])
-	}
-	if int(gotLen) != len(st.History) {
-		t.Errorf("envelope[\"history_length\"] = %v; want %d (the run's own persisted history length)", gotLen, len(st.History))
-	}
-}
-
-// TestPauseCmd_SetsPauseRequestedAndEnvelope asserts pause -- new in this task -- sets
-// PauseRequested on a seeded status file and reports an envelope carrying exactly the single key
-// status_file.
-func TestPauseCmd_SetsPauseRequestedAndEnvelope(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: battenrecipe.NameWorktreeCreate,
-		State:           shedengine.StateBlocked,
-	})
-
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(battenVerbCommand(c, "pause"), &out, []string{c.slug})
-	if exitCode != 0 {
-		t.Fatalf("pause() exit code = %d; want 0; output: %s", exitCode, out.String())
-	}
-
-	var envelope map[string]any
-	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode envelope: %v; output: %s", err, out.String())
-	}
-	if len(envelope) != 2 || envelope["ok"] != true || envelope["status_file"] != c.shedPaths.StatusPath {
-		t.Errorf("pause() envelope = %v; want exactly ok and status_file=%q", envelope, c.shedPaths.StatusPath)
-	}
-
-	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
-	if err != nil || !found {
-		t.Fatalf("read persisted status: found=%v err=%v", found, err)
-	}
-	if !st.PauseRequested {
-		t.Error("PauseRequested = false after pause(); want true")
-	}
-}
-
 // TestPauseCmd_AbsentFileRefuses asserts pause refuses over a slug whose per-slug directory
 // exists but holds no status.json -- the absent-file precondition batten-absent-file-needs-an-
 // existing-directory requires, since pause reaches state.UpdateJSON directly.
@@ -346,21 +301,26 @@ func TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent(t *testing.T) {
 			if verb == "status" && !strings.Contains(out.String(), `"found":true`) {
 				t.Errorf("status() output = %q; want the durable status reported as found", out.String())
 			}
+			if verb != "pause" {
+				return
+			}
+
+			// pause reports an envelope carrying exactly ok and status_file, and sets PauseRequested.
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode envelope: %v; output: %s", err, out.String())
+			}
+			if len(envelope) != 2 || envelope["ok"] != true || envelope["status_file"] != c.shedPaths.StatusPath {
+				t.Errorf("pause() envelope = %v; want exactly ok and status_file=%q", envelope, c.shedPaths.StatusPath)
+			}
+			st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+			if err != nil || !found {
+				t.Fatalf("read persisted status: found=%v err=%v", found, err)
+			}
+			if !st.PauseRequested {
+				t.Error("PauseRequested = false after pause(); want true")
+			}
 		})
-	}
-}
-
-// TestStatusCmd_RegistersWatchAndIntervalFlags asserts status -- new in this task -- exposes
-// --watch and --interval, the two flags shedverbs' generic status body itself reads.
-func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-	cmd := battenVerbCommand(c, "status")
-
-	if cmd.Flags().Lookup("watch") == nil {
-		t.Error(`status command is missing the --watch flag`)
-	}
-	if cmd.Flags().Lookup("interval") == nil {
-		t.Error(`status command is missing the --interval flag`)
 	}
 }
 
@@ -372,6 +332,14 @@ func TestStatusCmd_RegistersWatchAndIntervalFlags(t *testing.T) {
 // t.TempDir() is that directory.
 func TestStatusCmd_WatchOverAbsentFileExitsImmediately(t *testing.T) {
 	c := newFakeReceiver(t, nil)
+
+	// status exposes --watch and --interval, the two flags shedverbs' generic status body itself reads.
+	statusCmd := battenVerbCommand(c, "status")
+	for _, flag := range []string{"watch", "interval"} {
+		if statusCmd.Flags().Lookup(flag) == nil {
+			t.Errorf("status command is missing the --%s flag", flag)
+		}
+	}
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(battenVerbCommand(c, "status"), &out, []string{"--watch", c.slug})

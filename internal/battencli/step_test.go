@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -27,6 +26,8 @@ import (
 // reads it. Without this, stepLocked's own read gate would hit an absent status and hard-error,
 // which shedverbs/step.go reports as kind: "producer" -- a driver would repair that round after
 // round, so an unseeded first step must not surface as a producer failure.
+//
+//testtiming:keep pins the seeded status's current producer and state, which the end-to-end step test never reads
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	c := newFakeReceiver(t, nil)
 
@@ -54,86 +55,77 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	}
 }
 
-// TestBattenPreStep_RunLockHeld_KindBusy asserts battenPreStep returns shedverbs.KindBusy, with a
-// non-nil error, when the run lock is already held.
-func TestBattenPreStep_RunLockHeld_KindBusy(t *testing.T) {
-	c := newFakeReceiver(t, nil)
+// TestBattenPreStep_RefusalKinds asserts each pre-producer failure maps to its own refusal kind,
+// with a non-nil error that is never transient: a held run lock is shedverbs.KindBusy, a status file
+// that exists but fails to decode is shedverbs.KindUnseeded, and a status already in StateDone --
+// "any other pre-producer failure" -- is shedverbs.KindBootstrap, whose remedy names the whole
+// abandon path.
+func TestBattenPreStep_RefusalKinds(t *testing.T) {
+	t.Parallel()
 
-	held, err := lock.AcquireWriteLock(c.shedPaths.LockPath)
-	if err != nil {
-		t.Fatalf("acquire run lock in test: %v", err)
+	tests := []struct {
+		name       string
+		arrange    func(t *testing.T, c *battenCLI)
+		wantKind   string
+		wantSubstr []string
+	}{
+		{
+			name: "RunLockHeldIsBusy",
+			arrange: func(t *testing.T, c *battenCLI) {
+				held, err := lock.AcquireWriteLock(c.shedPaths.LockPath)
+				if err != nil {
+					t.Fatalf("acquire run lock in test: %v", err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			},
+			wantKind: shedverbs.KindBusy,
+		},
+		{
+			name: "DecodeFailureIsUnseeded",
+			arrange: func(t *testing.T, c *battenCLI) {
+				if err := os.WriteFile(c.shedPaths.StatusPath, []byte("not valid json{{{"), 0o644); err != nil {
+					t.Fatalf("seed corrupt status file: %v", err)
+				}
+			},
+			wantKind: shedverbs.KindUnseeded,
+		},
+		{
+			// A torn-down pair keeps its task branch locally and on the remote, so deleting the run
+			// directory alone leads straight into the create row's leftover-branch refusal.
+			name: "DoneSlugIsBootstrap",
+			arrange: func(t *testing.T, c *battenCLI) {
+				writeStatus(t, c, shedengine.Status{
+					CurrentProducer: battenrecipe.NameWorktreeTeardown,
+					State:           shedengine.StateDone,
+				})
+			},
+			wantKind:   shedverbs.KindBootstrap,
+			wantSubstr: []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again"},
+		},
 	}
-	t.Cleanup(func() { _ = held.Release() })
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	kind, err := c.battenPreStep(context.Background())
-	if err == nil {
-		t.Fatal("battenPreStep() = nil error; want a refusal -- the run lock is already held")
-	}
-	if kind != shedverbs.KindBusy {
-		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindBusy)
-	}
-	if got := shedengine.TransientOf(err); got != "" {
-		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
-	}
-}
+			c := newFakeReceiver(t, nil)
+			tt.arrange(t, c)
 
-// TestBattenPreStep_DecodeFailure_KindUnseeded asserts battenPreStep returns
-// shedverbs.KindUnseeded when the status file exists but fails to decode.
-func TestBattenPreStep_DecodeFailure_KindUnseeded(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-
-	if err := os.WriteFile(c.shedPaths.StatusPath, []byte("not valid json{{{"), 0o644); err != nil {
-		t.Fatalf("seed corrupt status file: %v", err)
-	}
-
-	kind, err := c.battenPreStep(context.Background())
-	if err == nil {
-		t.Fatal("battenPreStep() = nil error; want a refusal -- the status file is corrupt")
-	}
-	if kind != shedverbs.KindUnseeded {
-		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindUnseeded)
-	}
-	if got := shedengine.TransientOf(err); got != "" {
-		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
-	}
-}
-
-// TestBattenPreStep_DoneSlug_KindBootstrap asserts battenPreStep returns shedverbs.KindBootstrap
-// for a status already in StateDone -- "any other pre-producer failure" in the batch's own
-// refusal-kind mapping, distinct from both KindBusy and KindUnseeded.
-func TestBattenPreStep_DoneSlug_KindBootstrap(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-	writeStatus(t, c, shedengine.Status{
-		CurrentProducer: battenrecipe.NameWorktreeTeardown,
-		State:           shedengine.StateDone,
-	})
-
-	kind, err := c.battenPreStep(context.Background())
-	if err == nil {
-		t.Fatal("battenPreStep() = nil error; want a refusal -- the slug has already completed")
-	}
-	if kind != shedverbs.KindBootstrap {
-		t.Errorf("battenPreStep() kind = %q; want %q", kind, shedverbs.KindBootstrap)
-	}
-	if got := shedengine.TransientOf(err); got != "" {
-		t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
-	}
-	// The remedy must be the whole abandon path: a torn-down pair keeps its task branch locally and
-	// on the remote, so deleting the run directory alone leads straight into the create row's
-	// leftover-branch refusal.
-	for _, want := range []string{"delete its run directory", "task branch", "locally and on the remote", "to run it again"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("battenPreStep() error = %q; want it to contain %q", err.Error(), want)
-		}
-	}
-}
-
-// TestSpecFor_StepBuildShedNonNil asserts c.specFor("step").BuildShed is non-nil, mirroring "run"'s
-// own fill.
-func TestSpecFor_StepBuildShedNonNil(t *testing.T) {
-	c := &battenCLI{}
-	if c.specFor("step").BuildShed == nil {
-		t.Error("specFor(\"step\").BuildShed = nil; want a non-nil constructor")
+			kind, err := c.battenPreStep(context.Background())
+			if err == nil {
+				t.Fatal("battenPreStep() = nil error; want a refusal")
+			}
+			if kind != tt.wantKind {
+				t.Errorf("battenPreStep() kind = %q; want %q", kind, tt.wantKind)
+			}
+			if got := shedengine.TransientOf(err); got != "" {
+				t.Errorf("TransientOf(battenPreStep error) = %q; want empty", got)
+			}
+			for _, want := range tt.wantSubstr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("battenPreStep() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
 	}
 }
 
@@ -156,19 +148,5 @@ func TestStepCmd_FreshSlugNeverSurfacesKindProducer(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"ok":true`) {
 		t.Errorf("step() output missing ok:true envelope; got: %q", out.String())
-	}
-}
-
-// TestSpecFor_ScratchDir asserts specFor tells the generic verbs the run's scratch directory and
-// leaves FrictionDir empty, since batten carries no agent friction directory.
-func TestSpecFor_ScratchDir(t *testing.T) {
-	c := newFakeReceiver(t, nil)
-
-	spec := c.specFor("step")
-	if want := shedrun.ScratchDir(c.location, c.slug); spec.ScratchDir != want {
-		t.Errorf("specFor(step).ScratchDir = %q; want %q", spec.ScratchDir, want)
-	}
-	if spec.FrictionDir != "" {
-		t.Errorf("specFor(step).FrictionDir = %q; want empty", spec.FrictionDir)
 	}
 }

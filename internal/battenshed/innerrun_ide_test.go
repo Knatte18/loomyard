@@ -86,48 +86,51 @@ func TestInnerRun_LaterSpawnsInSameRunDoNotReopen(t *testing.T) {
 	}
 }
 
-func TestInnerRun_ApprovedResumeAfterOpenDoesNotReopen(t *testing.T) {
-	scratchDir := t.TempDir()
-	if err := os.WriteFile(ideOpenedFile(scratchDir, "innerrun"), []byte("opened\n"), 0o644); err != nil {
-		t.Fatal(err)
+// TestInnerRun_OpensIDEOncePerRunAcrossAMarker asserts the once-marker gates the open: an approved
+// resume after an earlier open does not reopen, an approved resume with no marker opens once, and
+// a stale marker left from an earlier run does not suppress the open for a fresh child.
+//
+//testtiming:keep pins that the once-marker gates the IDE open, which the covering resume tests never count
+func TestInnerRun_OpensIDEOncePerRunAcrossAMarker(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		marker     bool
+		approved   bool
+		wantSpawns int
+		wantOpens  int
+	}{
+		{name: "ApprovedResumeAfterOpenDoesNotReopen", marker: true, approved: true, wantSpawns: 1, wantOpens: 0},
+		{name: "ApprovedResumeWithoutMarkerOpensOnce", marker: false, approved: true, wantSpawns: 1, wantOpens: 1},
+		{name: "StaleMarkerDoesNotSuppressFreshChildOpen", marker: true, approved: false, wantSpawns: 1, wantOpens: 1},
 	}
-	spawnCalls, deps := approvedDeps(t, nil)
-	opens := 0
-	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	shedfake.CallOK(t, producer)
-	if *spawnCalls != 1 || opens != 0 {
-		t.Errorf("Spawn calls = %d, OpenIDE calls = %d; want 1 and 0", *spawnCalls, opens)
-	}
-}
+			scratchDir := t.TempDir()
+			if tt.marker {
+				if err := os.WriteFile(ideOpenedFile(scratchDir, "innerrun"), []byte("opened\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var spawnCalls *int
+			var deps InnerRunDeps
+			if tt.approved {
+				spawnCalls, deps = approvedDeps(t, nil)
+			} else {
+				_, spawnCalls, deps = newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
+			}
+			opens := 0
+			deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-func TestInnerRun_ApprovedResumeWithoutMarkerOpensOnce(t *testing.T) {
-	scratchDir := t.TempDir()
-	_, deps := approvedDeps(t, nil)
-	opens := 0
-	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-
-	shedfake.CallOK(t, producer)
-	if opens != 1 {
-		t.Errorf("OpenIDE calls = %d; want 1", opens)
-	}
-}
-
-func TestInnerRun_StaleMarkerDoesNotSuppressFreshChildOpen(t *testing.T) {
-	scratchDir := t.TempDir()
-	if err := os.WriteFile(ideOpenedFile(scratchDir, "innerrun"), []byte("opened\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, _, deps := newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
-	opens := 0
-	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-
-	shedfake.CallOK(t, producer)
-	if opens != 1 {
-		t.Errorf("OpenIDE calls = %d; want 1", opens)
+			shedfake.CallOK(t, producer)
+			if *spawnCalls != tt.wantSpawns || opens != tt.wantOpens {
+				t.Errorf("Spawn calls = %d, OpenIDE calls = %d; want %d and %d", *spawnCalls, opens, tt.wantSpawns, tt.wantOpens)
+			}
+		})
 	}
 }
 

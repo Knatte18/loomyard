@@ -6,6 +6,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,98 +79,55 @@ func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.Out
 	return string(data)
 }
 
-func TestWorktreeCreate_HappyPath(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
+// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error
+// parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's
+// pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases
+// the prime lock.
+func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
+	t.Parallel()
 
-	called := false
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		called = true
-		return nil
-	}, lock, scratchDir)
-
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if !called {
-		t.Error("createWorktree was not called")
+	tests := []struct {
+		name       string
+		err        error
+		wantReason string
+	}{
+		{
+			name:       "UnderlyingFailure",
+			err:        errors.New("some underlying failure"),
+			wantReason: "some underlying failure",
+		},
+		{
+			name:       "PreExistingBranchRemedySurvivesVerbatim",
+			err:        errors.New(`branch "task-slug" already exists; switch a pair onto it with "lyx fabric checkout task-slug", or delete it first with "git branch -D task-slug" if it is a leftover from a removed pair`),
+			wantReason: "switch a pair onto it with",
+		},
+		{
+			name:       "DirtyDrivingWorktreePassesThrough",
+			err:        errors.New("source worktree has uncommitted changes"),
+			wantReason: "source worktree has uncommitted changes",
+		},
 	}
-	if !released {
-		t.Error("release was not invoked on the Done path")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestWorktreeCreate_CreateWorktreeError(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
+			scratchDir := t.TempDir()
+			var released bool
+			lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
 
-	wantErr := errors.New("some underlying failure")
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		return wantErr
-	}, lock, scratchDir)
+			producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+				return tt.err
+			}, lock, scratchDir)
 
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	if !released {
-		t.Error("release was not invoked on the createWorktree-error Stuck path")
-	}
-	reason := readStuckFile(t, scratchDir, "create", ptr)
-	if !strings.Contains(reason, wantErr.Error()) {
-		t.Errorf("stuck-reason file = %q; want it to contain %q verbatim", reason, wantErr.Error())
-	}
-}
-
-func TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-
-	fabricErr := errors.New(`branch "task-slug" already exists; switch a pair onto it with "lyx fabric checkout task-slug", or delete it first with "git branch -D task-slug" if it is a leftover from a removed pair`)
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		return fabricErr
-	}, lock, scratchDir)
-
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	reason := readStuckFile(t, scratchDir, "create", ptr)
-	if !strings.Contains(reason, "switch a pair onto it with") {
-		t.Errorf("stuck-reason file = %q; want fabric's own remedy wording preserved unreworded", reason)
-	}
-}
-
-func TestWorktreeCreate_DirtyDrivingWorktreePassesThroughVerbatim(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-
-	dirtyErr := errors.New("source worktree has uncommitted changes")
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		return dirtyErr
-	}, lock, scratchDir)
-
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	reason := readStuckFile(t, scratchDir, "create", ptr)
-	if !strings.Contains(reason, "source worktree has uncommitted changes") {
-		t.Errorf("stuck-reason file = %q; want the bare dirty-worktree string preserved verbatim", reason)
-	}
-}
-
-func TestWorktreeCreate_PrimeLockUnavailable(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/contended/path", false, nil, nil, &released)
-
-	called := false
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		called = true
-		return nil
-	}, lock, scratchDir)
-
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	if called {
-		t.Error("createWorktree was called despite lock contention")
-	}
-	reason := readStuckFile(t, scratchDir, "create", ptr)
-	if !strings.Contains(reason, "/lock/contended/path") {
-		t.Errorf("stuck-reason file = %q; want it to name the prime lock path", reason)
+			ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+			if !released {
+				t.Error("release was not invoked on the createWorktree-error Stuck path")
+			}
+			reason := readStuckFile(t, scratchDir, "create", ptr)
+			if !strings.Contains(reason, tt.wantReason) {
+				t.Errorf("stuck-reason file = %q; want it to contain %q verbatim", reason, tt.wantReason)
+			}
+		})
 	}
 }
 
@@ -265,27 +223,38 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	}
 }
 
-func TestWorktreeCreate_WaitsForContendedLockThenCreates(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	var sleeps int
-	lock := waitingPrimeLock("/lock/path", 3, nil, &released, &sleeps, nil)
+// TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done
+// whether the prime lock is free at once or contended for a few polls first, sleeping once per
+// contended poll, and releases the lock afterwards.
+func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
+	t.Parallel()
 
-	called := false
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
-		called = true
-		return nil
-	}, lock, scratchDir)
+	for _, contendedPolls := range []int{0, 3} {
+		t.Run(fmt.Sprintf("contended_polls=%d", contendedPolls), func(t *testing.T) {
+			t.Parallel()
 
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if !called {
-		t.Error("createWorktree was not called after the lock freed")
-	}
-	if sleeps != 3 {
-		t.Errorf("sleeps = %d; want 3", sleeps)
-	}
-	if !released {
-		t.Error("release was not invoked after the wait")
+			scratchDir := t.TempDir()
+			var released bool
+			var sleeps int
+			lock := waitingPrimeLock("/lock/path", contendedPolls, nil, &released, &sleeps, nil)
+
+			called := false
+			producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+				called = true
+				return nil
+			}, lock, scratchDir)
+
+			shedfake.RequireOutcome(t, producer, shedengine.Done)
+			if !called {
+				t.Error("createWorktree was not called after the lock freed")
+			}
+			if sleeps != contendedPolls {
+				t.Errorf("sleeps = %d; want %d", sleeps, contendedPolls)
+			}
+			if !released {
+				t.Error("release was not invoked on the Done path")
+			}
+		})
 	}
 }
 

@@ -7,6 +7,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -30,23 +31,6 @@ func (r *teardownCallRecorder) deps(shutdownErr error, abandonedSession string, 
 			r.calls = append(r.calls, "remove")
 			return removeErr
 		},
-	}
-}
-
-func TestWorktreeTeardown_HappyPathOrdering(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-
-	rec := &teardownCallRecorder{}
-	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
-
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
-		t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
-	}
-	if !released {
-		t.Error("release was not invoked on the Done path")
 	}
 }
 
@@ -75,6 +59,7 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the removal half and the shutdown-already-succeeded statement in the stuck reason, which the lock-disposition test never asserts
 func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	scratchDir := t.TempDir()
 	var released bool
@@ -95,33 +80,9 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 	if !strings.Contains(reason, "shutdown") || !strings.Contains(reason, "already succeeded") {
 		t.Errorf("stuck-reason file = %q; want it to state that shutdown already succeeded", reason)
 	}
-}
-
-func TestWorktreeTeardown_RemoveRefusalMergeInProgress(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-
-	removeErr := errors.New("refuse to remove: merge in progress")
-	rec := &teardownCallRecorder{}
-	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", removeErr), lock, scratchDir)
-
-	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	reason := readStuckFile(t, scratchDir, "teardown", ptr)
 	if !strings.Contains(reason, "merge in progress") {
 		t.Errorf("stuck-reason file = %q; want the merge-in-progress refusal text preserved", reason)
 	}
-}
-
-func TestWorktreeTeardown_AbandonedSessionOnOtherwiseDoneRow(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-
-	rec := &teardownCallRecorder{}
-	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "abandoned-session-1", nil), lock, scratchDir)
-
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
 func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
@@ -222,7 +183,10 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 }
 
 // TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a
-// session was abandoned and cleared when a later teardown abandoned none.
+// session was abandoned and cleared when a later teardown abandoned none, and that the producer's
+// own Done path writes it, not only the helper in isolation.
+//
+//testtiming:keep pins the record's write, its clearing of a stale record and its write from the Done path, which the covering teardown tests never read
 func TestRecordAbandonedSession(t *testing.T) {
 	scratchDir := t.TempDir()
 	path := AbandonedSessionFile(scratchDir)
@@ -243,21 +207,18 @@ func TestRecordAbandonedSession(t *testing.T) {
 
 	// Clearing an already-absent record is a no-op, never a reported failure.
 	recordAbandonedSession("Worktree-Teardown", "some-slug", "", scratchDir)
-}
 
-// TestTeardown_DoneRunRecordsTheAbandonedSession asserts the record is written from the producer's
-// own Done path, not only by the helper in isolation.
-func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
-	scratchDir := t.TempDir()
+	// The producer's own Done path writes the record.
+	producerScratchDir := t.TempDir()
 	deps := TeardownDeps{
 		Shutdown: func(ctx context.Context) (string, error) { return "lyx-abandoned", nil },
 		Remove:   func(ctx context.Context) error { return nil },
 	}
 	var released bool
-	producer := NewWorktreeTeardown("Worktree-Teardown", "some-slug", deps, fakePrimeLock("/lock/free/path", true, nil, nil, &released), scratchDir)
+	producer := NewWorktreeTeardown("Worktree-Teardown", "some-slug", deps, fakePrimeLock("/lock/free/path", true, nil, nil, &released), producerScratchDir)
 
 	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	data, err := os.ReadFile(AbandonedSessionFile(scratchDir))
+	data, err = os.ReadFile(AbandonedSessionFile(producerScratchDir))
 	if err != nil {
 		t.Fatalf("read abandoned-session record after a Done teardown: %v", err)
 	}
@@ -266,23 +227,34 @@ func TestTeardown_DoneRunRecordsTheAbandonedSession(t *testing.T) {
 	}
 }
 
-func TestWorktreeTeardown_WaitsForContendedLockThenTearsDown(t *testing.T) {
-	scratchDir := t.TempDir()
-	var released bool
-	var sleeps int
-	lock := waitingPrimeLock("/lock/path", 2, nil, &released, &sleeps, nil)
-	rec := &teardownCallRecorder{}
-	producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row runs Shutdown strictly
+// before Remove and reports Done whether the prime lock is free at once or contended for a few
+// polls first, sleeping once per contended poll, and releases the lock afterwards.
+func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
+	t.Parallel()
 
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
-		t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
-	}
-	if sleeps != 2 {
-		t.Errorf("sleeps = %d; want 2", sleeps)
-	}
-	if !released {
-		t.Error("release was not invoked after the wait")
+	for _, contendedPolls := range []int{0, 2} {
+		t.Run(fmt.Sprintf("contended_polls=%d", contendedPolls), func(t *testing.T) {
+			t.Parallel()
+
+			scratchDir := t.TempDir()
+			var released bool
+			var sleeps int
+			lock := waitingPrimeLock("/lock/path", contendedPolls, nil, &released, &sleeps, nil)
+			rec := &teardownCallRecorder{}
+			producer := NewWorktreeTeardown("teardown", "myslug", rec.deps(nil, "", nil), lock, scratchDir)
+
+			shedfake.RequireOutcome(t, producer, shedengine.Done)
+			if len(rec.calls) != 2 || rec.calls[0] != "shutdown" || rec.calls[1] != "remove" {
+				t.Errorf("call order = %v; want [shutdown remove]", rec.calls)
+			}
+			if sleeps != contendedPolls {
+				t.Errorf("sleeps = %d; want %d", sleeps, contendedPolls)
+			}
+			if !released {
+				t.Error("release was not invoked on the Done path")
+			}
+		})
 	}
 }
 
