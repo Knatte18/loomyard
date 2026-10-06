@@ -88,6 +88,35 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestRunAloneArgs(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name string
+		test string
+		want []string
+	}{
+		{
+			name: "plain name",
+			test: "TestPlain",
+			want: []string{"-test.run=^TestPlain$", "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
+		},
+		{
+			name: "regexp metacharacters are quoted",
+			test: "Test.Dot(a+b)",
+			want: []string{`-test.run=^Test\.Dot\(a\+b\)$`, "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
+		},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runAloneArgs(row.test, "/tmp/cover.out"); !reflect.DeepEqual(got, row.want) {
+				t.Fatalf("runAloneArgs = %q, want %q", got, row.want)
+			}
+		})
+	}
+}
+
 func TestParseProfile(t *testing.T) {
 	t.Parallel()
 

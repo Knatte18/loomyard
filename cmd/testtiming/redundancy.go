@@ -401,12 +401,23 @@ func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string)
 
 var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)$`)
 
+// runAloneArgs returns the coverage binary's arguments for running one top-level test alone.
+// Every flag is one `-flag=value` argument, the form `go test` passes:
+// a test that runs a cobra command without `SetArgs` reads the process's arguments, and a separate flag value would show up there as a positional argument.
+func runAloneArgs(name, profile string) []string {
+	return []string{
+		"-test.run=^" + regexp.QuoteMeta(name) + "$",
+		"-test.coverprofile=" + profile,
+		"-test.v=true",
+	}
+}
+
 // runAlone runs one top-level test under the coverage binary and reads its elapsed time, outcome and covered blocks.
 // A failing run is returned as such, never as an error.
 func runAlone(bin, dir, tmp, name string) (testRun, error) {
 	prof := filepath.Join(tmp, "cover.out")
 	os.Remove(prof)
-	cmd := exec.Command(bin, "-test.run", "^"+regexp.QuoteMeta(name)+"$", "-test.coverprofile", prof, "-test.v")
+	cmd := exec.Command(bin, runAloneArgs(name, prof)...)
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -423,7 +434,7 @@ func runAlone(bin, dir, tmp, name string) (testRun, error) {
 		}
 	}
 	if run.action == "fail" {
-		// A test that reads the process's own arguments fails under the binary's -test.* flags, so it is listed under "no coverage".
+		// A failing test has no coverage to judge and is listed as failed.
 		return run, nil
 	}
 	f, err := os.Open(prof)
