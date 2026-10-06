@@ -1,6 +1,10 @@
 package loomcli
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+)
 
 // TestDecideHandover pins step 7's decision table: the four handovers, and --no-attach winning over
 // each of them.
@@ -47,8 +51,18 @@ func TestNoAttachFields_HintKey(t *testing.T) {
 	if _, ok := without["hint"]; ok {
 		t.Errorf("noAttachFields with an empty hint carries a hint key: %v", without)
 	}
-	if len(without) != 5 || without["run_id"] != "slug" {
-		t.Errorf("noAttachFields without a hint = %v; want the five keys attached, driver, slug, run_id, status_file", without)
+	// The envelope `lyx loom start --no-attach` prints once the driver is up: before it, the verb
+	// returned exit 0 with no output at all, so a script could not tell a driver that came up from a
+	// silent failure.
+	wantWithout := map[string]any{
+		"attached":    false,
+		"driver":      "go",
+		"slug":        "slug",
+		"run_id":      "slug",
+		"status_file": "/s/status.json",
+	}
+	if diff := cmp.Diff(wantWithout, without); diff != "" {
+		t.Errorf("noAttachFields without a hint mismatch (-want +got):\n%s", diff)
 	}
 
 	with := noAttachFields("go", "slug", "slug", "/s/status.json", "attach from outside")

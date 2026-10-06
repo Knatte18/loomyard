@@ -20,6 +20,8 @@ import (
 )
 
 // TestDiscussionWriteRow_GateListIsDiscussionThenParentReview asserts the embedded recipe's Discussion-Write row lists the discussion gate, then a parent-review gate with attempts 1 and pass_on_cap: one scope review whose rewrite goes on to the perch.
+//
+//testtiming:keep pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 1 and pass_on_cap; no covering test reads the recipe's gate config
 func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +58,8 @@ func TestDiscussionWriteRow_GateListIsDiscussionThenParentReview(t *testing.T) {
 
 // TestNewParentReviewConfig_ReviewerFromResolver asserts the reviewer is the resolver's answer:
 // a pair whose origin names no parent worktree gives no reviewer, with or without a recorded shortname, and a nil ReviewerLive.
+//
+//testtiming:keep pins the parent-review config naming no reviewer when the pair's origin names no parent, with or without a recorded shortname, and carrying the store directories and wait bound; its covering tests wire the config without asserting those fields
 func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +103,8 @@ func TestNewParentReviewConfig_ReviewerFromResolver(t *testing.T) {
 
 // TestDiscussionCommitPathspec_IncludesParentReviewDir asserts the discussion commit carries the parent-review round directories once they hold a file,
 // and leaves them out while they are absent or hold only an empty round directory, since git refuses a pathspec that matches no file.
+//
+//testtiming:keep pins the discussion commit pathspec naming the parent-review directory only once a round holds a file, since git refuses a pathspec matching nothing; its covering tests never inspect the pathspec
 func TestDiscussionCommitPathspec_IncludesParentReviewDir(t *testing.T) {
 	t.Parallel()
 

@@ -81,37 +81,34 @@ func readDecisionRecord(t *testing.T, path string) string {
 	return string(data)
 }
 
+// TestDecisionVerb_AppendsAndCommits asserts an entry from the parent or the operator is appended after the prior record byte-identical and committed once, with no status file.
 func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
-	f := newDecisionFake(t)
-	var out bytes.Buffer
-	if code := decisionVerb(&out, "task-a", f.deps(), goodDecisionInput()); code != 0 {
-		t.Fatalf("exit = %d, out %s; want 0", code, out.String())
-	}
+	for _, by := range []string{"parent", "operator"} {
+		t.Run(by, func(t *testing.T) {
+			f := newDecisionFake(t)
+			input := goodDecisionInput()
+			input.by = by
+			var out bytes.Buffer
+			if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
+				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+			}
 
-	data := envelope.RequireOK(t, out.String()).Raw
-	wantHeading := "Added after Discussion (parent, 2026-03-04): Keep the cache"
-	if data["slug"] != "task-a" || data["record"] != f.path || data["heading"] != wantHeading {
-		t.Fatalf("envelope = %v; want the slug, the record path and heading %q", data, wantHeading)
-	}
-	got := readDecisionRecord(t, f.path)
-	if !strings.HasPrefix(got, decisionPriorRecord) || !strings.Contains(got, "### "+wantHeading) {
-		t.Fatalf("record = %q; want the prior text byte-identical, then the entry", got)
-	}
-	if f.commits != 1 {
-		t.Errorf("commits = %d; want exactly 1", f.commits)
-	}
-	if f.lastAdded.Date.Location() != time.UTC {
-		t.Errorf("entry date zone = %v; want UTC", f.lastAdded.Date.Location())
-	}
-}
-
-func TestDecisionVerb_AllowsOperatorAndNoStatusFile(t *testing.T) {
-	f := newDecisionFake(t)
-	input := goodDecisionInput()
-	input.by = "operator"
-	var out bytes.Buffer
-	if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
-		t.Fatalf("exit = %d, out %s; want 0 for --by operator with no status file", code, out.String())
+			data := envelope.RequireOK(t, out.String()).Raw
+			wantHeading := "Added after Discussion (" + by + ", 2026-03-04): Keep the cache"
+			if data["slug"] != "task-a" || data["record"] != f.path || data["heading"] != wantHeading {
+				t.Fatalf("envelope = %v; want the slug, the record path and heading %q", data, wantHeading)
+			}
+			got := readDecisionRecord(t, f.path)
+			if !strings.HasPrefix(got, decisionPriorRecord) || !strings.Contains(got, "### "+wantHeading) {
+				t.Fatalf("record = %q; want the prior text byte-identical, then the entry", got)
+			}
+			if f.commits != 1 {
+				t.Errorf("commits = %d; want exactly 1", f.commits)
+			}
+			if f.lastAdded.Date.Location() != time.UTC {
+				t.Errorf("entry date zone = %v; want UTC", f.lastAdded.Date.Location())
+			}
+		})
 	}
 }
 
@@ -120,6 +117,8 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		name  string
 		setup func(f *decisionFake, in *decisionInput)
 		want  []string
+		// inputRefusal marks a refusal of the input itself, which must not reach the append.
+		inputRefusal bool
 	}{
 		{
 			name:  "no decision record",
@@ -135,29 +134,34 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			want: []string{"loom: decision add:", "Discussion-Write is running", "way forward:", "message the Discussion-Write session"},
 		},
 		{
-			name:  "empty title",
-			setup: func(_ *decisionFake, in *decisionInput) { in.title = "  " },
-			want:  []string{"--title is empty", "way forward:", "pass --title"},
+			name:         "empty title",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.title = "  " },
+			inputRefusal: true,
+			want:         []string{"--title is empty", "way forward:", "pass --title"},
 		},
 		{
-			name:  "empty decision",
-			setup: func(_ *decisionFake, in *decisionInput) { in.decision = "" },
-			want:  []string{"--decision is empty", "way forward:", "pass --decision"},
+			name:         "empty decision",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.decision = "" },
+			inputRefusal: true,
+			want:         []string{"--decision is empty", "way forward:", "pass --decision"},
 		},
 		{
-			name:  "empty rationale",
-			setup: func(_ *decisionFake, in *decisionInput) { in.rationale = "" },
-			want:  []string{"--rationale is empty", "way forward:", "pass --rationale"},
+			name:         "empty rationale",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.rationale = "" },
+			inputRefusal: true,
+			want:         []string{"--rationale is empty", "way forward:", "pass --rationale"},
 		},
 		{
-			name:  "invalid by",
-			setup: func(_ *decisionFake, in *decisionInput) { in.by = "agent" },
-			want:  []string{`--by is "agent"`, "way forward:", "--by parent", "--by operator"},
+			name:         "invalid by",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.by = "agent" },
+			inputRefusal: true,
+			want:         []string{`--by is "agent"`, "way forward:", "--by parent", "--by operator"},
 		},
 		{
-			name:  "empty by",
-			setup: func(_ *decisionFake, in *decisionInput) { in.by = "" },
-			want:  []string{"--by is \"\"", "way forward:", "--by parent", "--by operator"},
+			name:         "empty by",
+			setup:        func(_ *decisionFake, in *decisionInput) { in.by = "" },
+			inputRefusal: true,
+			want:         []string{"--by is \"\"", "way forward:", "--by parent", "--by operator"},
 		},
 		{
 			name: "check finding after the append",
@@ -206,24 +210,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			if f.commits != 0 {
 				t.Errorf("commits = %d; want 0 after a refusal", f.commits)
 			}
-		})
-	}
-}
-
-func TestDecisionVerb_InputRefusalsAppendNothing(t *testing.T) {
-	for name, mutate := range map[string]func(*decisionInput){
-		"by":        func(in *decisionInput) { in.by = "agent" },
-		"title":     func(in *decisionInput) { in.title = "" },
-		"decision":  func(in *decisionInput) { in.decision = "" },
-		"rationale": func(in *decisionInput) { in.rationale = "" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			f := newDecisionFake(t)
-			input := goodDecisionInput()
-			mutate(&input)
-			var out bytes.Buffer
-			decisionVerb(&out, "task-a", f.deps(), input)
-			if f.appends != 0 {
+			if tc.inputRefusal && f.appends != 0 {
 				t.Errorf("appends = %d; want 0 for an input refusal", f.appends)
 			}
 		})

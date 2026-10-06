@@ -98,9 +98,13 @@ func TestReviewVerbs_Success(t *testing.T) {
 		if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
 			t.Fatalf("approve exit = %d, output %q", code, out.String())
 		}
+		// An ordinary approve ignores the run status: it reports no supersede and records a plain verdict.
+		if env := envelope.Decode(t, out.String()); env.Raw["superseded"] != nil {
+			t.Errorf("envelope = %v; an ordinary approve must not report superseded", env)
+		}
 		r, _, _ := s.Latest()
-		if r.Verdict == nil || r.Verdict.Kind != parentreview.VerdictApprove {
-			t.Errorf("Verdict = %+v; want approve", r.Verdict)
+		if r.Verdict == nil || r.Verdict.Kind != parentreview.VerdictApprove || r.Verdict.Superseding {
+			t.Errorf("Verdict = %+v; want a plain approve", r.Verdict)
 		}
 	})
 	t.Run("approve with review file", func(t *testing.T) {
@@ -381,20 +385,4 @@ func TestReviewApprove_SupersedeRefusals(t *testing.T) {
 			t.Errorf("error %q: way forward must say to re-run without --review", msg)
 		}
 	})
-}
-
-func TestReviewApprove_OrdinaryApproveIgnoresRunStatus(t *testing.T) {
-	s := newReviewStore(t)
-	openReviewRequest(t, s)
-	var out bytes.Buffer
-	if code := reviewApproveVerb(&out, s, "task", "", fakeRunStatus(shedengine.StateRunning)); code != 0 {
-		t.Fatalf("exit = %d, output %q", code, out.String())
-	}
-	if env := envelope.Decode(t, out.String()); env.Raw["superseded"] != nil {
-		t.Errorf("envelope = %v; an ordinary approve must not report superseded", env)
-	}
-	r, _, _ := s.Latest()
-	if r.Verdict == nil || r.Verdict.Kind != parentreview.VerdictApprove || r.Verdict.Superseding {
-		t.Errorf("verdict = %+v; want a plain approve", r.Verdict)
-	}
 }

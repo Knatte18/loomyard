@@ -19,68 +19,71 @@ func seededStencils(t *testing.T) string {
 	return dir
 }
 
-// TestDriverPrompt_CarriesEveryMarkerValue asserts the rendered prompt carries the run-id, the report path, the park command, the teardown command and the parent directive, and leaves no marker unfilled.
-func TestDriverPrompt_CarriesEveryMarkerValue(t *testing.T) {
+// TestDriverPrompt asserts the rendered prompt carries every marker value and the parent directive for the given parent name, leaves no marker unfilled, and that a missing driver stencil is refused rather than rendered empty.
+func TestDriverPrompt(t *testing.T) {
 	t.Parallel()
-	dir := seededStencils(t)
-	runID := "operator-surface"
-	reportPath := "/hub/wt/.lyx/shed/operator-surface/drive-report-20260920-120000-cafe.md"
+	const runID = "operator-surface"
+	const reportPath = "/hub/wt/.lyx/shed/operator-surface/drive-report-20260920-120000-cafe.md"
 
-	got, err := driverPrompt(dir, "hub:orch", runID, reportPath)
-	if err != nil {
-		t.Fatalf("driverPrompt() error = %v; want nil", err)
+	// The teardown joins commit and removal by ';', so a failed commit still ends the session.
+	if strings.Contains(driverTeardownCommand, "&&") {
+		t.Errorf("driverTeardownCommand = %q; want no '&&', so removal runs after a failed commit", driverTeardownCommand)
 	}
 
-	directive, err := parentdirective.Directive(dir, "hub:orch", false)
-	if err != nil {
-		t.Fatalf("parentdirective.Directive: %v", err)
+	cases := []struct {
+		name           string
+		parent         string
+		removeStencil  bool
+		wantStaticText map[string]string
+	}{
+		{
+			name:   "carries every marker value",
+			parent: "hub:orch",
+			wantStaticText: map[string]string{
+				"run-id":            "run `" + runID + "`",
+				"report path":       reportPath,
+				"park command":      driverParkCommand(reportPath),
+				"teardown command":  driverTeardownCommand,
+				"parent name":       "hub:orch",
+				"literal teardown":  "lyx loom commit-records; lyx reed remove --name driver --detach",
+				"literal park mark": `lyx loom commit-records --park "` + reportPath + `"`,
+			},
+		},
+		{name: "no parent renders the no-parent variant", parent: ""},
+		{name: "unreadable stencil is an error", removeStencil: true},
 	}
-	for name, want := range map[string]string{
-		"run-id":            "run `" + runID + "`",
-		"report path":       reportPath,
-		"park command":      driverParkCommand(reportPath),
-		"teardown command":  driverTeardownCommand,
-		"parent directive":  directive,
-		"parent name":       "hub:orch",
-		"literal teardown":  "lyx loom commit-records; lyx reed remove --name driver --detach",
-		"literal park mark": `lyx loom commit-records --park "` + reportPath + `"`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("driverPrompt() does not carry the %s %q", name, want)
-		}
-	}
-	if strings.Contains(got, "{{") {
-		t.Errorf("driverPrompt() left a marker unfilled")
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := seededStencils(t)
+			if tc.removeStencil {
+				stencilkit.Remove(t, dir, driverStencilName)
+				if _, err := driverPrompt(dir, tc.parent, runID, reportPath); err == nil {
+					t.Fatalf("driverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
+				}
+				return
+			}
 
-// TestDriverPrompt_NoParentRendersNoParentVariant asserts an empty parent name renders the directive's no-parent variant.
-func TestDriverPrompt_NoParentRendersNoParentVariant(t *testing.T) {
-	t.Parallel()
-	dir := seededStencils(t)
-
-	got, err := driverPrompt(dir, "", "run", "/hub/wt/report.md")
-	if err != nil {
-		t.Fatalf("driverPrompt() error = %v; want nil", err)
-	}
-
-	none, err := parentdirective.Directive(dir, "", false)
-	if err != nil {
-		t.Fatalf("parentdirective.Directive: %v", err)
-	}
-	if !strings.Contains(got, none) {
-		t.Errorf("driverPrompt() does not carry the no-parent directive %q", none)
-	}
-}
-
-// TestDriverPrompt_UnreadableStencilIsAnError asserts a missing driver stencil is refused rather than rendered empty.
-func TestDriverPrompt_UnreadableStencilIsAnError(t *testing.T) {
-	t.Parallel()
-	dir := seededStencils(t)
-	stencilkit.Remove(t, dir, driverStencilName)
-
-	if _, err := driverPrompt(dir, "", "run", "/hub/wt/report.md"); err == nil {
-		t.Fatalf("driverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
+			got, err := driverPrompt(dir, tc.parent, runID, reportPath)
+			if err != nil {
+				t.Fatalf("driverPrompt() error = %v; want nil", err)
+			}
+			directive, err := parentdirective.Directive(dir, tc.parent, false)
+			if err != nil {
+				t.Fatalf("parentdirective.Directive: %v", err)
+			}
+			if !strings.Contains(got, directive) {
+				t.Errorf("driverPrompt() does not carry the parent directive %q", directive)
+			}
+			for name, want := range tc.wantStaticText {
+				if !strings.Contains(got, want) {
+					t.Errorf("driverPrompt() does not carry the %s %q", name, want)
+				}
+			}
+			if strings.Contains(got, "{{") {
+				t.Errorf("driverPrompt() left a marker unfilled")
+			}
+		})
 	}
 }
 
@@ -96,20 +99,5 @@ func TestWriteParkMarker_CreatesDirAndHoldsReportPath(t *testing.T) {
 	}
 	if string(got) != "/hub/wt/report.md" {
 		t.Errorf("marker = %q; want %q", got, "/hub/wt/report.md")
-	}
-}
-
-// TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon asserts the records commit precedes the strand removal and the two are joined by `;`, so a failed commit still ends the session.
-func TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon(t *testing.T) {
-	commit := strings.Index(driverTeardownCommand, "lyx loom commit-records")
-	remove := strings.Index(driverTeardownCommand, "lyx reed remove")
-	if commit < 0 || remove < 0 || commit >= remove {
-		t.Fatalf("driverTeardownCommand = %q; want lyx loom commit-records before lyx reed remove", driverTeardownCommand)
-	}
-	if !strings.Contains(driverTeardownCommand, "lyx loom commit-records; lyx reed remove") {
-		t.Errorf("driverTeardownCommand = %q; want the two joined by ';'", driverTeardownCommand)
-	}
-	if strings.Contains(driverTeardownCommand, "&&") {
-		t.Errorf("driverTeardownCommand = %q; want no '&&', so removal runs after a failed commit", driverTeardownCommand)
 	}
 }

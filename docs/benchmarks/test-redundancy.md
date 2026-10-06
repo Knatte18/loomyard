@@ -2095,191 +2095,80 @@ No test lacks coverage.
 
 ## internal/loomcli
 
-278 tests, wall 79.26s, serial 79.68s.
+167 tests, wall 74.24s, serial 75.97s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestApproveVerb_AwaitingAndBlockedAtGate` | `TestApproveVerb_Refusals` | yes |
-| `TestApproveVerb_AwaitingAtOtherProducerRefused` | `TestApproveVerb_Refusals` | yes |
-| `TestApproveVerb_AwaitingAtPublishRefused` | `TestApproveVerb_Refusals` | yes |
-| `TestApproveCmd_HelpNamesAwaitingOrBlocked` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestApproveVerb_Success` | `TestApproveVerb_Refusals` | yes |
-| `TestApproveVerb_RemovesRejectionBeforeWritingApproval` | `TestApproveVerb_Refusals` | yes |
-| `TestResolveRunID_RefusesEachGenericVerbWhenNoSeed` | `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | yes |
-| `TestResolveRunID_NonGenericVerbsNeverRefuse` | `TestResolveRunID_RejectReviewFileIsNotARunID` | yes |
-| `TestResolveRunID_RejectReviewFileIsNotARunID` | `TestResolveRunID_NonGenericVerbsNeverRefuse` | no |
-| `TestResolveRunID_EmptyListingReadsAsOrdinary` | `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | yes |
-| `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | `TestResolveRunID_EmptyListingReadsAsOrdinary` | no |
-| `TestMustSpawnDriver` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
-| `TestResolveDriverStrandAction` | `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`, `TestResolveStatusStrandAction`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRemoveStatusStrands`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure` | yes |
-| `TestDriverStrandDisplayName_AddAndLookupAgree` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestDriverStrandDisplayName_DiffersFromOtherStrandNames` | `TestApproveVerb_Refusals` | yes |
-| `TestStartVerb_NoAttachFlag_DefaultsFalse` | `TestCirclingCLI_PreRunResolvesTarget`, `TestDecideHandover` | yes |
-| `TestNoAttachFields_PinsSuccessEnvelope` | `TestNoAttachFields_HintKey` | yes |
-| `TestAwaitRunLock_ReadyOnLaterIteration` | `TestAwaitRunLock_ChildDied`, `TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit` | no |
-| `TestAwaitRunLock_ChildDied` | `TestAwaitRunLock_ReadyOnLaterIteration`, `TestAwaitRunLock_HaltedCheckedAfterAliveCheck` | yes |
-| `TestAwaitRunLock_Deadline` | `TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline` | yes |
-| `TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit` | `TestAwaitRunLock_ReadyOnLaterIteration` | yes |
-| `TestAwaitRunLock_HaltedCheckedAfterAliveCheck` | `TestAwaitRunLock_ChildDied` | no |
-| `TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline` | `TestAwaitRunLock_Deadline` | no |
-| `TestFindStatusStrand` | `TestResolveStatusStrandAction`, `TestSmokeBootstrap_BringsUpSessionStrandAndDriver`, `TestRemoveStatusStrands` | yes |
-| `TestScanFileForDriverFieldReads_StampsTheEnclosingFunction` | `TestApproveVerb_Refusals` | yes |
-| `TestStatusStrandAddSpec` | `TestSmokeStart_LLMRunRemovesEveryStatusStrand` | yes |
-| `TestBootstrapVerb_IsExactlyStart` | `TestApproveVerb_Refusals` | yes |
-| `TestBootstrapVerb_MatchesStartCmdUse` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestCommand_StartVerb_RegistersNoAttachFlag` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestNewLoomCLI_SetsInjectedSeams` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestProductionFiles_LoomCLILiteralOnlyInFactory` | `TestApproveVerb_Refusals` | yes |
-| `TestSpecFor_ScratchAndFrictionDir` | `TestStepCmd_BusyRefusal_BeforeBootstrap`, `TestStatusCmd_EnvelopeKeySet` | yes |
-| `TestCommitRecordsVerb_OrdinaryPathCommitsThenPushes` | `TestCommitRecordsVerb_ErrorEnvelopes` | yes |
-| `TestDecisionVerb_AppendsAndCommits` | `TestDecisionVerb_CommitFailureNamesWayForward`, `TestCirclingVerb_Records`, `TestDecisionVerb_AllowsOperatorAndNoStatusFile` | no |
-| `TestDecisionVerb_AllowsOperatorAndNoStatusFile` | `TestDecisionVerb_AppendsAndCommits` | yes |
-| `TestDecisionVerb_InputRefusalsAppendNothing` | `TestDecisionVerb_Refusals` | yes |
-| `TestDriverPrompt_CarriesEveryMarkerValue` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverPrompt_NoParentRendersNoParentVariant` | `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
-| `TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon` | `TestApproveVerb_Refusals` | yes |
-| `TestDriverReportPath_FrozenClock_TwoCallsProduceDifferentPaths` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverReportPath_LandsUnderDriveReportsDir` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverReportPath_TimestampAheadOfRandomComponent` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverReportPath_FixedStubRandMakesPathDeterministic` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestNewDriverReportRand_ProducesFourHexChars` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestResumeParkedDriver_SendsOneLineAndRemovesMarker` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestResumeParkedDriver_WaitsThroughNotReadyPane` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`, `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker` | yes |
-| `TestResumeParkedDriver_NeverReadyExhaustsAttempts` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker` | yes |
-| `TestResumeParkedDriver_OtherErrorIsNeverRetried` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestDriverResumeLine_NamesRunIDReportPathBaselineAndBudget` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestDriverResumeLine_SingleLine` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestDriverSpec` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestEnsureFrictionDirAfterSeed_NilErrorClearsThenCreates` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
-| `TestEnsureFrictionDirAfterSeed_ErrSeedExistsLeavesNotesUntouched` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
-| `TestRunEnsuresAbsentFrictionDir` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
-| `TestReflectFriction_DepsValidationFailureReportsFailed` | `TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestReflectFriction_ReleasesTheLockForTheNextDriver` | `TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestReflectFrictionRow_SkipsWhenTierTwoOff` | `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestReflectFrictionRow_ReflectsWhenTierTwoOn` | `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle` | `TestLoomPostRun_HaltNotes`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects` | `TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes` | yes |
-| `TestLoomAfterStep_ProducerError_FailedStatusReflects` | `TestStep_ProducerErrorReflectsOnTheErrorEnvelope` | yes |
-| `TestLoomAfterStep_AwaitingAndPaused_WriteNothing` | `TestLoomAfterStep_Done_ReportsTheRowStatus` | yes |
-| `TestConsumeHandoffVoucher` | `TestObserveEntry_ConsumesHandoffVoucherIntoObservation` | yes |
-| `TestLandingDeps_EveryFieldPopulated` | `TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON` | yes |
-| `TestDiscussionWriteRow_GateListIsDiscussionThenParentReview` | `TestCirclingVerb_Records` | yes |
-| `TestNewParentReviewConfig_ReviewerFromResolver` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestWire_BouncerSlugAndSegmentBounces`, `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit` | yes |
-| `TestDiscussionCommitPathspec_IncludesParentReviewDir` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestWire_Real_ReworkRoundsArchiveGenerations` | yes |
-| `TestGenericVerbs_AcceptOptionalRunIDPositional` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestRejectVerb_SuccessAtAwaitingGate` | `TestRejectVerb_Refusals`, `TestRejectVerb_BlockedReworkReplacesRecordPastBudget` | no |
-| `TestRejectVerb_BlockedReworkReplacesRecordPastBudget` | `TestRejectVerb_SuccessAtAwaitingGate` | yes |
-| `TestReviewApprove_OrdinaryApproveIgnoresRunStatus` | `TestReviewVerbs_VerdictAlreadyRecorded`, `TestReviewApprove_SupersedesCapRejectOnBlockedRun`, `TestReviewVerbs_Success` | yes |
-| `TestReviewWaiting_AbsentDirIsEmpty` | `TestVerifyWaiting_NoMarkerNoReviewIsEmpty` | yes |
-| `TestReviewWaiting_OpenUndelivered` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
-| `TestReviewWaiting_SettledRoundsReportNothing` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestReviewApprove_SupersedesCapRejectOnBlockedRun`, `TestReviewApprove_OrdinaryApproveIgnoresRunStatus`, `TestReviewVerbs_Expired`, `TestReviewWaiting_LatestRoundOnly` | no |
-| `TestReviewWaiting_LatestRoundOnly` | `TestReviewWaiting_SettledRoundsReportNothing` | yes |
-| `TestVerifyWaiting_NoMarkerNoReviewIsEmpty` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestReviewWaiting_AbsentDirIsEmpty` | no |
-| `TestSpecFor_WaitingHookNilWithoutLocation` | `TestStatusCmd_EnvelopeKeySet` | yes |
-| `TestSeedSlug` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestBootstrapStage_ConstantsAreDistinctAndZeroValued` | `TestApproveVerb_Refusals` | yes |
-| `TestLoomSeedFor_RecipeAndParentParam` | `TestLoomSeedFor_WriteSeedIsIdempotent` | yes |
-| `TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig` | `TestResolveSeedDriver`, `TestLoomSeedFor_WriteSeedIsIdempotent` | yes |
-| `TestMustUseLLMDriverArm` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
-| `TestStartLLMDriverArm_ComposesAndStarts` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
-| `TestStartLLMDriverArm_AddressesRunBySlug` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
-| `TestStartLLMDriverArm_RemovesCorpseBeforeStart` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
-| `TestStartLLMDriverArm_NoCorpseRemovalWhenActionNone` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
-| `TestStartLLMDriverArm_StarterErrorPropagates` | `TestStartLLMDriverArm_AddressesRunBySlug`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart` | no |
-| `TestStartLLMDriverArm_RemoveCorpseErrorPropagates` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
-| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart`, `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns`, `TestStartLLMDriverArm_RemoveCorpseErrorPropagates` | no |
-| `TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced` | `TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing` | no |
-| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestStartLLMDriverArm_StarterErrorPropagates`, `TestStep_ProducerErrorReflectsOnTheErrorEnvelope`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure` | yes |
-| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestStartLLMDriverArm_StarterErrorPropagates`, `TestStep_ProducerErrorReflectsOnTheErrorEnvelope`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure` | yes |
-| `TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume` | yes |
-| `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp`, `TestResumeParkedDriver_SendsOneLineAndRemovesMarker` | no |
-| `TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing` | `TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced` | yes |
-| `TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably` | `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed` | yes |
-| `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp` | `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
-| `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns` | `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
-| `TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals` | yes |
-| `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed` | `TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably`, `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp` | no |
-| `TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses` | `TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses` | yes |
-| `TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume` | yes |
-| `TestIdentityOf_ChangesWithSizeAndMtime` | `TestIdentityOf_ResolvesSymlink` | yes |
-| `TestIdentityOf_ResolvesSymlink` | `TestIdentityOf_ChangesWithSizeAndMtime` | no |
-| `TestStepEnvelope_NextInterruptPolicyMatchesTable` | `TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes` | yes |
-| `TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed` | `TestGateParity_PlanGate` | yes |
-| `TestValidateDiscussionCmd` | `TestGateParity_DiscussionGate` | yes |
-| `TestValidatePlanCmd_QuarryUnavailableNamesQuarry` | `TestGateParity_PlanGate`, `TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive` | yes |
-| `TestValidatePlanCmd_RequireApprovedFlagRegistered` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
-| `TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch` | `TestGateParity_ReworkPlanGate` | yes |
-| `TestValidateDescriptionCmd` | `TestGateParity_DescriptionGate` | yes |
-| `TestNewCommitStatusSeam_OrdinaryPath` | `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion` | yes |
-| `TestWireLightweight_CommitStatusFilled` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
-| `TestWire_CommitStatusFilled` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestStatusCommitPathspec` | `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion` | yes |
-| `TestStatusCommitPathspec_RunRecords` | `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports` | yes |
-| `TestStatusCommitPathspec_PendingRejectionHoldsTheRound` | `TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound`, `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports` | yes |
-| `TestWire_PathFieldsMatchLoomengineAccessors` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_RunLockDiffersFromStatusLock` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_CwdIsToldToTheEnv` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_WebsterDepsFullyPopulated` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_WebsterParentBranchNonNil` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_RefMatcherIsRealScanner` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_LandingSeamFieldsPopulated` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_EnvShuttleIsTheRunner` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_DescriptionPathMatchesLandingDir` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_ReviewSegmentPathsAndClock` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWire_ReviewTripleMatchesLoadedConfig` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
-| `TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
-| `TestWire_FrictionDirFillsBurlerAndWebster` | `TestWire_DiscussionSpecEvaluatesToExpectedShape` | yes |
+No candidates.
+
+Kept:
+
+- `TestApproveCmd_HelpNamesAwaitingOrBlocked`: pins the approve command's Long help saying "awaiting or blocked at PR-Gate"; its covering tests build the command without asserting its help text
+- `TestApproveVerb_Success`: pins approval at the gate when the run is awaiting or blocked: one approval with the PR number, head SHA and timestamp, the resume envelope with the PR URL, and the rejection removed before the approval is written; the refusal test re-runs only the blocked success without checking the envelope or order
+- `TestMustSpawnDriver`: pins the spawn predicate over both the run lock and the live driver strand, including the two mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
+- `TestResolveDriverStrandAction`: pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
+- `TestStartVerb_NoAttachFlag_DefaultsFalse`: pins --no-attach registered on the start command with a false default that decideHandover turns into the attach path; its covering tests never read the flag's default
+- `TestFindStatusStrand`: pins the status strand lookup by exact name and by full agent name, and a name that is only a prefix not matching; its covering tests resolve the strand action without asserting the lookup
+- `TestScanFileForDriverFieldReads_StampsTheEnclosingFunction`: pins the driver-field scan telling two readers in one file apart by enclosing function, which the carve-out key relies on; the repo-wide scan asserts only that no reader sits outside
+- `TestBootstrapVerb`: pins BootstrapVerb being exactly start and equal to the Use of the command startCmd builds, so a rename cannot leave the constant behind; the covering test never reads the constant
+- `TestNewLoomCLI_SetsInjectedSeams`: pins newLoomCLI setting spawnWatchdog, midMerge and suppressWatchdogSpawn, fields neither constructor's callers expose; its covering tests build the CLI without asserting them
+- `TestProductionFiles_LoomCLILiteralOnlyInFactory`: scans the package's production files for a loomCLI composite literal outside newLoomCLI's file, a source-shape guard no behavior test reaches
+- `TestSpecFor_ScratchAndFrictionDir`: pins specFor's scratch directory from the location and run-id, the friction directory passed through, and a nil location giving no scratch directory; its covering tests run specFor without asserting those fields
+- `TestDriverReportPath`: pins the report path composed under the drive-reports directory with a timestamp ahead of the random part, differing across two calls under a frozen clock and deterministic under a fixed rand; the covering integration test only runs the composer
+- `TestNewDriverReportRand_ProducesFourHexChars`: pins the production random source returning four lowercase hex characters; its covering test passes a stub source instead
+- `TestResumeParkedDriver`: pins the resume send: one single-line message naming the drive-reports directory and the marker removed on success, waits through a not-ready pane, the attempt bound, and a non-readiness error never retried, with the marker kept on refusal; the covering tests assert the outcome of the resume, not each send
+- `TestDriverResumeLine`: pins the resume line naming the run-id, the report path, the baseline and budget instructions, and being a non-empty single line; the covering test sends the line without asserting its text
+- `TestDriverSpec`: pins every field of the driver launch spec: prompt, the scribe:prose skill, the report as its single output file, the resolved model, effort and version, the name override, role, display anchor and the zero-valued fields; it names Spec.Skills, so the skills-in-one-turn task owns it, and its covering test runs the spec without asserting the fields
+- `TestReflectFriction_DepsValidationFailureReportsFailed`: pins a malformed deps value reporting failed rather than an error or a filed status, and the reflection lock being released for the next call; the covering tests reflect through other paths
+- `TestReflectFrictionRow`: pins an empty friction directory never reflecting and a set one attempting the reflection, recorded on the receiver; the covering test waits on the lock rather than asserting the skip
+- `TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle`: pins the row reflecting through the reflection shuttle: one spawn whose prompt names the note, the note archived out of the friction directory and the status reported as reflected; the covering tests reflect over a deps failure that never spawns
+- `TestConsumeHandoffVoucher`: pins the voucher matching only on an equal history length and state, a grown history, a changed state or an absent voucher not matching, and the voucher being deleted on every read; the observe-entry test covers only the matching, one-shot case
+- `TestLandingDeps_EveryFieldPopulated`: drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
+- `TestDiscussionWriteRow_GateListIsDiscussionThenParentReview`: pins the embedded recipe's Discussion-Write row listing the discussion gate then a parent-review gate with attempts 1 and pass_on_cap; no covering test reads the recipe's gate config
+- `TestNewParentReviewConfig_ReviewerFromResolver`: pins the parent-review config naming no reviewer when the pair's origin names no parent, with or without a recorded shortname, and carrying the store directories and wait bound; its covering tests wire the config without asserting those fields
+- `TestDiscussionCommitPathspec_IncludesParentReviewDir`: pins the discussion commit pathspec naming the parent-review directory only once a round holds a file, since git refuses a pathspec matching nothing; its covering tests never inspect the pathspec
+- `TestGenericVerbs_AcceptOptionalRunIDPositional`: pins run, step, status, pause and goto each accepting zero or one positional run-id and refusing two; its covering test builds the tree without asserting argument counts
+- `TestSpecFor_WaitingHookNilWithoutLocation`: pins the status spec carrying no waiting hook when the CLI has no location; its covering tests build the spec without asserting its hooks
+- `TestSeedSlug`: pins seedSlug returning the worktree name unchanged and empty for an empty name; the covering test reaches it without asserting the result
+- `TestBootstrapStage_ConstantsAreDistinctAndZeroValued`: pins the bootstrap stage constants being distinct with bootstrapStageNone the zero value; no behavior test asserts the enumeration
+- `TestMustUseLLMDriverArm`: pins the go and empty driver values selecting the detached-spawn arm and the llm value the strand launch; its covering test runs the llm arm without asserting the switch
+- `TestStartLLMDriverArm`: pins the llm arm composing the started spec and addressing the run by slug, removing a dead corpse before the start, and propagating a starter or corpse-removal error without reaching the starter; the covering tests drive the arm through the whole bootstrap without asserting the spec
+- `TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake`: pins the llm arm never consulting the go arm's run-lock handshake, the deliberate asymmetry between the arms that a later unifying refactor would break; the covering test counts no handshake calls
+- `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`: pins a live parked driver being resumed with one line, its marker removed, no handoff voucher written and no refusal recorded, without spawning; the covering tests assert the refusal and spawn paths
+- `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns`: pins a dead driver strand with a stale park marker removing the marker and spawning a fresh driver with no resume line sent; the covering tests neither park a marker nor assert its removal
+- `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed`: pins a live working driver, running or halted at hand-back, never reaching the mid-merge probe; the covering test never counts probe calls
+- `TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds`: pins the mid-merge probe running exactly once on a clean pair before the starter is reached; its covering test uses a probe that counts nothing
+- `TestStepEnvelope_NextInterruptPolicyMatchesTable`: pins next_interrupt_policy against the interrupt-policy table over a reinvoke row, the handback row and an empty next; the covering step tests assert other envelope keys
+- `TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed`: pins loomcli's half of the fail-closed severity classification: the zero value and an unrecognized severity block, informational passes; the gate parity test compares verdicts over fixtures with recognized severities only
+- `TestValidateDiscussionCmd`: pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading and an unreadable decision record; the parity test compares verdicts alone
+- `TestValidatePlanCmd_QuarryUnavailableNamesQuarry`: pins a quarry-unavailable failure surfacing as an error envelope naming quarry rather than the plan; no other case makes quarry unavailable
+- `TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch`: pins the --rework verb printing the rework-first-card finding the rework gate returns when first_card differs from the told number; the parity test compares verdicts alone
+- `TestValidateDescriptionCmd`: pins validate-description's envelope: the description path on success and the Co-Authored-By finding with a non-zero exit; the parity test compares verdicts alone
+- `TestNewCommitStatusSeam_OrdinaryPath`: pins the seam with no board-status writer calling commit then push once each, in that order; the board-status test always installs a writer
+- `TestStatusCommitPathspec`: pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file, and a pending rejection holding the round out; the covering integration test commits one fixed layout
+- `TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig`: pins the lightweight wiring filling the status, lock and plan-validation paths and the commit-status seam with no config loaded and no engine built; the covering test runs the wiring without asserting its fields
+- `TestWire_FrictionDirFillsBurlerAndWebster`: pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when the friction key is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
 
 No coverage:
 
 - `TestCirclingCLI_PreRunResolvesTarget`: out of process
-- `TestCommitRecordsVerb_Real_CommitsAndPushesLateDriveReport`: unclassifiable call
-- `TestCommitRecordsVerb_Real_CleanTreeIsNoOpSuccess`: unclassifiable call
 - `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`: out of process
-- `TestLandingDeps_MarkTaskDone_SetsStatusDone`: unclassifiable call
-- `TestLandingDeps_MarkTaskDone_UnknownSlugIsError`: unclassifiable call
-- `TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON`: unclassifiable call
 - `TestParentReviewExchange_RejectThenFixGoesOnToPerch`: out of process
 - `TestReviewRange_ReworkBranchListsOnlyOwnCommitsAfterHead`: unclassifiable call
 - `TestBuildLoomShed_OutputShape`: skipped
 - `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning`: out of process
 - `TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone`: out of process
-- `TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem`: out of process
-- `TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus`: out of process
-- `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy`: out of process
+- `TestSmokeStepBootstrapWiring`: out of process
 - `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`: out of process
-- `TestSmokeStep_AddsNoStatusStrandOnEitherDriver`: out of process
-- `TestSmokeStep_LeavesAPreexistingStatusStrandUntouched`: out of process
-- `TestSmokeStep_FailedReedUpRefusesWithBootstrapKind`: out of process
-- `TestSmokeStart_LLMRunRemovesEveryStatusStrand`: out of process
-- `TestSmokeStart_FailedReedUpRefusesOnEitherDriver`: out of process
+- `TestSmokeStatusStrandAcrossDriverSeeds`: out of process
 - `TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact`: out of process
 - `TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough`: out of process
+- `TestLoomPreBootstrapPair`: out of process
+- `TestLoomStatusAndPauseOnNeverBootstrappedPair`: out of process
+- `TestLoomFailedReedUpRefuses`: out of process
 - `TestSmokeStart_AttachTailAddsNoOperatorStrand`: out of process
 - `TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon`: out of process
-- `TestSmokeBootstrap_BringsUpSessionStrandAndDriver`: out of process
-- `TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver`: out of process
-- `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed`: out of process
-- `TestSmokeRunStandalone_RefusesOnNeverSeededPair`: out of process
-- `TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog`: out of process
-- `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy`: out of process
-- `TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove`: out of process
-- `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit`: out of process
-- `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit`: out of process
-- `TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver`: out of process
-- `TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`: out of process
-- `TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes`: unclassifiable call
-- `TestCommitStatusSeam_Real_MidMergeSkipsWithoutTouchingTheMerge`: unclassifiable call
-- `TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting`: unclassifiable call
-- `TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays`: unclassifiable call
-- `TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo`: unclassifiable call
-- `TestCommitStatusSeam_Real_CommitsTheRoundRecord`: unclassifiable call
-- `TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus`: unclassifiable call
-- `TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus`: unclassifiable call
-- `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion`: unclassifiable call
-- `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports`: unclassifiable call
-- `TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion`: unclassifiable call
-- `TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound`: unclassifiable call
+- `TestSmokeRunStandalone`: out of process
+- `TestSmokeBootstrapLifecycle`: out of process
+- `TestCommitStatusSeam_Real`: unclassifiable call
 - `TestWire_WebsterParentBranchReadsPairOrigin`: unclassifiable call
 - `TestWire_Real_ReworkRoundsArchiveGenerations`: unclassifiable call
 - `TestWire_Real_PlanReviewSkipFollowsGenerationClass`: unclassifiable call

@@ -134,14 +134,9 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	return loc
 }
 
-// TestWire_PathFieldsMatchLoomengineAccessors asserts every path field of the assembled
-// shedrecipe.Env and shedbuild.ShedPaths equals the corresponding loomengine accessor's own output
-// for the same location.
-//
-// StatusPath and StatusLockPath are told twice -- once on c.env (read by loomPreflightEntry) and
-// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
-// loomengine accessor, per the deliberate duplication ShedPaths' own doc comment describes.
-func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
+// TestWire_DefaultConfig drives wire once over the default config and asserts the assembled receiver.
+// The steps read the one wired receiver and run in order; the last step writes a status file into the run directory the wired paths name, which no earlier step reads.
+func TestWire_DefaultConfig(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
@@ -152,215 +147,293 @@ func TestWire_PathFieldsMatchLoomengineAccessors(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
-	if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.shedPaths.StatusPath != want {
-		t.Errorf("c.shedPaths.StatusPath = %q; want %q", c.shedPaths.StatusPath, want)
-	}
-	if want := shedrun.RunLock(loc, shedrun.SelfRunID); c.shedPaths.LockPath != want {
-		t.Errorf("c.shedPaths.LockPath = %q; want %q", c.shedPaths.LockPath, want)
-	}
-	if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.shedPaths.StatusLockPath != want {
-		t.Errorf("c.shedPaths.StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, want)
-	}
-	if want := loc.AnchorPath(); c.env.AnchorPath != want {
-		t.Errorf("c.env.AnchorPath = %q; want %q", c.env.AnchorPath, want)
-	}
-	if want := loc.WorktreePath(); c.env.WorktreeRoot != want {
-		t.Errorf("c.env.WorktreeRoot = %q; want %q", c.env.WorktreeRoot, want)
-	}
-	if want := loomengine.DiscussionDecisionRecord(loc); c.env.DecisionRecordPath != want {
-		t.Errorf("c.env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, want)
-	}
-	if want := loomengine.DiscussionSupportLog(loc); c.env.SupportLogPath != want {
-		t.Errorf("c.env.SupportLogPath = %q; want %q", c.env.SupportLogPath, want)
-	}
-	if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.env.StatusPath != want {
-		t.Errorf("c.env.StatusPath = %q; want %q", c.env.StatusPath, want)
-	}
-	if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.env.StatusLockPath != want {
-		t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
-	}
-}
+	// Every path field of the assembled shedrecipe.Env and shedbuild.ShedPaths equals the corresponding
+	// accessor's own output for the same location.
+	// StatusPath and StatusLockPath are told twice -- once on c.env (read by loomPreflightEntry) and
+	// once on c.shedPaths (read by shedengine.Shed) -- so both copies are asserted against the same
+	// accessor, per the deliberate duplication ShedPaths' own doc comment describes.
+	t.Run("path fields match the accessors", func(t *testing.T) {
+		if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.shedPaths.StatusPath != want {
+			t.Errorf("c.shedPaths.StatusPath = %q; want %q", c.shedPaths.StatusPath, want)
+		}
+		if want := shedrun.RunLock(loc, shedrun.SelfRunID); c.shedPaths.LockPath != want {
+			t.Errorf("c.shedPaths.LockPath = %q; want %q", c.shedPaths.LockPath, want)
+		}
+		if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.shedPaths.StatusLockPath != want {
+			t.Errorf("c.shedPaths.StatusLockPath = %q; want %q", c.shedPaths.StatusLockPath, want)
+		}
+		if want := loc.AnchorPath(); c.env.AnchorPath != want {
+			t.Errorf("c.env.AnchorPath = %q; want %q", c.env.AnchorPath, want)
+		}
+		if want := loc.WorktreePath(); c.env.WorktreeRoot != want {
+			t.Errorf("c.env.WorktreeRoot = %q; want %q", c.env.WorktreeRoot, want)
+		}
+		if want := loomengine.DiscussionDecisionRecord(loc); c.env.DecisionRecordPath != want {
+			t.Errorf("c.env.DecisionRecordPath = %q; want %q", c.env.DecisionRecordPath, want)
+		}
+		if want := loomengine.DiscussionSupportLog(loc); c.env.SupportLogPath != want {
+			t.Errorf("c.env.SupportLogPath = %q; want %q", c.env.SupportLogPath, want)
+		}
+		if want := shedrun.StatusFile(loc, shedrun.SelfRunID); c.env.StatusPath != want {
+			t.Errorf("c.env.StatusPath = %q; want %q", c.env.StatusPath, want)
+		}
+		if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.env.StatusLockPath != want {
+			t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
+		}
+	})
 
-// TestWire_RunLockDiffersFromStatusLock asserts the run-lock path differs from the status-lock path,
-// the pair shedengine.Shed rejects outright when equal.
-func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
-	t.Parallel()
+	// The run-lock path differs from the status-lock path, the pair shedengine.Shed rejects outright when equal.
+	t.Run("run lock differs from the status lock", func(t *testing.T) {
+		if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
+			t.Errorf("c.shedPaths.LockPath == c.shedPaths.StatusLockPath == %q; want them distinct", c.shedPaths.LockPath)
+		}
+	})
 
-	loc := hubLocation(t, "pair", ".")
+	// c.env.Cwd is the only preflight-related property wire still owns: preflightEntry builds the
+	// Preflight row from Env.Cwd, and the row's engine name is pinned by the recipe-side coverage
+	// guard in internal/loomrecipe.
+	t.Run("cwd is told to the env", func(t *testing.T) {
+		if c.env.Cwd != cwd {
+			t.Errorf("c.env.Cwd = %q; want %q", c.env.Cwd, cwd)
+		}
+	})
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
+	t.Run("webster deps are fully populated", func(t *testing.T) {
+		deps := c.runDeps
+		if deps.Starter == nil {
+			t.Error("runDeps.Starter = nil; want the runnerMasterStarter adapter")
+		}
+		if deps.Reed == nil {
+			t.Error("runDeps.Reed = nil; want the constructed reed engine")
+		}
+		if deps.Engine == nil {
+			t.Error("runDeps.Engine = nil; want the constructed claude engine")
+		}
+		if deps.Roles == nil {
+			t.Error("runDeps.Roles = nil; want the resolved role map")
+		}
+		if deps.Batcher == nil {
+			t.Error("runDeps.Batcher = nil; want the active batchifier")
+		}
+		if deps.Geom.WebsterDir == "" {
+			t.Error("runDeps.Geom.WebsterDir = \"\"; want the told webster geometry")
+		}
+		if deps.RefMatcher == nil {
+			t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
+		}
 
-	if c.shedPaths.LockPath == c.shedPaths.StatusLockPath {
-		t.Errorf("c.shedPaths.LockPath == c.shedPaths.StatusLockPath == %q; want them distinct", c.shedPaths.LockPath)
-	}
-}
+		// The same value must also be embedded verbatim in c.env.WebsterDeps.
+		if c.env.WebsterDeps.Geom != deps.Geom {
+			t.Error("c.env.WebsterDeps is not the same value stored in c.runDeps")
+		}
+	})
 
-// TestWire_CwdIsToldToTheEnv asserts c.env.Cwd equals the cwd argument wire was called with -- the
-// only preflight-related property wire still owns.
-//
-// wire no longer builds the Preflight row itself: preflightEntry now builds it from Env.Cwd,
-// exactly the way loomshed.Deps.Preflight used to be built here. The old
-// TestWire_PreflightIsTheAdapter assertion ("row 1 is the preflightshed adapter, not a bare func")
-// moved with that construction -- it is now internal/shedrecipe's own entry test, and the row's
-// engine name is pinned by the recipe-side coverage guard in internal/loomrecipe.
-func TestWire_CwdIsToldToTheEnv(t *testing.T) {
-	t.Parallel()
+	// The wired RunDeps.ParentBranch is non-nil and is the same value the env's WebsterDeps carries.
+	// Its result is covered by TestWire_WebsterParentBranchReadsPairOrigin, which needs a git repository.
+	t.Run("webster parent branch is non-nil", func(t *testing.T) {
+		if c.runDeps.ParentBranch == nil {
+			t.Error("runDeps.ParentBranch = nil; want the origin-record reader")
+		}
+		if c.env.WebsterDeps.ParentBranch == nil {
+			t.Error("c.env.WebsterDeps.ParentBranch = nil; want the origin-record reader")
+		}
+	})
 
-	loc := hubLocation(t, "pair", ".")
-	cwd := loc.AnchorPath()
+	// The reference matcher is a *fabricengine.RefScanner and never websterengine.NeverMatches, the standalone-only stand-in: loom is hub-only.
+	t.Run("ref matcher is the real scanner", func(t *testing.T) {
+		if _, ok := c.runDeps.RefMatcher.(*fabricengine.RefScanner); !ok {
+			t.Errorf("runDeps.RefMatcher = %T; want *fabricengine.RefScanner", c.runDeps.RefMatcher)
+		}
+	})
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, cwd); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
+	// c.registry, c.runner and c.landingCfg are the three fields run.go passes to landingDeps.
+	// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a
+	// RequirePRToBase []string field, which makes the struct non-comparable.
+	t.Run("landing seam fields are populated", func(t *testing.T) {
+		if c.registry == nil {
+			t.Error("c.registry = nil; want the resolved model-spec registry")
+		}
+		if c.runner == nil {
+			t.Error("c.runner = nil; want the constructed shuttle runner")
+		}
 
-	if c.env.Cwd != cwd {
-		t.Errorf("c.env.Cwd = %q; want %q", c.env.Cwd, cwd)
-	}
-}
+		want, err := landingshed.LoadConfig(loc.AnchorPath(), "landing")
+		if err != nil {
+			t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", loc.AnchorPath(), err)
+		}
+		if !reflect.DeepEqual(c.landingCfg, want) {
+			t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
+		}
+	})
 
-// TestWire_WebsterDepsFullyPopulated asserts every field the webster hub wiring fills is non-zero in
-// the assembled websterengine.RunDeps.
-func TestWire_WebsterDepsFullyPopulated(t *testing.T) {
-	t.Parallel()
+	t.Run("env shuttle is the runner", func(t *testing.T) {
+		if c.env.Shuttle != c.runner {
+			t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
+		}
+	})
 
-	loc := hubLocation(t, "pair", ".")
+	t.Run("description path matches the landing dir", func(t *testing.T) {
+		if want := summaryparser.Path(loomengine.LandingDir(loc)); c.env.DescriptionPath != want {
+			t.Errorf("c.env.DescriptionPath = %q; want %q", c.env.DescriptionPath, want)
+		}
+	})
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
+	// The Env fields both review segments read -- shared by Discussion-Bouncer/Discussion-Burler and
+	// Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and RunRoot against their own
+	// loomengine/fabricengine accessor rather than a re-derived literal, and Now non-nil, which
+	// envkit.NilSeams skips as a documented default.
+	t.Run("review segment paths and clock", func(t *testing.T) {
+		if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
+			t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
+		}
+		if want := loomengine.LoomReviewsDir(loc); c.env.RunRoot != want {
+			t.Errorf("c.env.RunRoot = %q; want %q", c.env.RunRoot, want)
+		}
+		if c.env.Now == nil {
+			t.Error("c.env.Now = nil; want a non-nil clock")
+		}
+	})
 
-	deps := c.runDeps
-	if deps.Starter == nil {
-		t.Error("runDeps.Starter = nil; want the runnerMasterStarter adapter")
-	}
-	if deps.Reed == nil {
-		t.Error("runDeps.Reed = nil; want the constructed reed engine")
-	}
-	if deps.Engine == nil {
-		t.Error("runDeps.Engine = nil; want the constructed claude engine")
-	}
-	if deps.Roles == nil {
-		t.Error("runDeps.Roles = nil; want the resolved role map")
-	}
-	if deps.Batcher == nil {
-		t.Error("runDeps.Batcher = nil; want the active batchifier")
-	}
-	if deps.Geom.WebsterDir == "" {
-		t.Error("runDeps.Geom.WebsterDir = \"\"; want the told webster geometry")
-	}
-	if deps.RefMatcher == nil {
-		t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
-	}
+	// The review model, effort, version and timeout equal what loomengine.ResolveReview returns for the
+	// same loaded config and registry -- resolved here rather than hardcoded against the template's
+	// literal spec, so a later template edit does not silently break this assertion's meaning.
+	t.Run("review triple matches the loaded config", func(t *testing.T) {
+		registry, err := modelspec.LoadRegistry(loc.AnchorPath())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
+		}
+		want, err := loomengine.ResolveReview(c.cfg, registry)
+		if err != nil {
+			t.Fatalf("loomengine.ResolveReview(c.cfg, registry) = %v; want nil", err)
+		}
 
-	// The same value must also be embedded verbatim in c.env.WebsterDeps.
-	if c.env.WebsterDeps.Geom != deps.Geom {
-		t.Error("c.env.WebsterDeps is not the same value stored in c.runDeps")
-	}
-}
+		if c.env.ReviewModel != want.Model {
+			t.Errorf("c.env.ReviewModel = %q; want %q", c.env.ReviewModel, want.Model)
+		}
+		if c.env.ReviewEffort != want.Effort {
+			t.Errorf("c.env.ReviewEffort = %q; want %q", c.env.ReviewEffort, want.Effort)
+		}
+		if c.env.ReviewVersion != want.Version {
+			t.Errorf("c.env.ReviewVersion = %q; want %q", c.env.ReviewVersion, want.Version)
+		}
+		if c.env.ReviewTimeout != want.Timeout {
+			t.Errorf("c.env.ReviewTimeout = %s; want %s", c.env.ReviewTimeout, want.Timeout)
+		}
+	})
 
-// TestWire_WebsterParentBranchNonNil asserts the wired RunDeps.ParentBranch is non-nil and is the same value the env's WebsterDeps carries.
-// Its result is covered by TestWire_WebsterParentBranchReadsPairOrigin, which needs a git repository.
-func TestWire_WebsterParentBranchNonNil(t *testing.T) {
-	t.Parallel()
+	t.Run("plan spec evaluates to the expected shape", func(t *testing.T) {
+		spec, err := c.env.PlanSpec()
+		if err != nil {
+			t.Fatalf("c.env.PlanSpec() = %v; want nil", err)
+		}
 
-	loc := hubLocation(t, "pair", ".")
+		if spec.Interactive {
+			t.Error("spec.Interactive = true; want false (autonomous by design)")
+		}
+		if spec.Role != "plan" {
+			t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
+		}
+		if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(spec.Skills, want) {
+			t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
+		}
+		if !strings.Contains(spec.Prompt, "## Your parent") {
+			t.Error("spec.Prompt carries no parent directive; want one")
+		}
+		wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
+		if spec.Timeout != wantTimeout {
+			t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
+		}
+		if spec.Model == "" {
+			t.Error("spec.Model = \"\"; want non-empty")
+		}
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-	if c.runDeps.ParentBranch == nil {
-		t.Error("runDeps.ParentBranch = nil; want the origin-record reader")
-	}
-	if c.env.WebsterDeps.ParentBranch == nil {
-		t.Error("c.env.WebsterDeps.ParentBranch = nil; want the origin-record reader")
-	}
-}
+		wantOutputs := []string{planparser.PlanOverview(loc.AnchorPath())}
+		if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
+			t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
+		}
 
-// TestWire_RefMatcherIsRealScanner asserts the reference matcher is a non-nil *fabricengine.RefScanner and never websterengine.NeverMatches, the standalone-only stand-in -- loom is hub-only.
-func TestWire_RefMatcherIsRealScanner(t *testing.T) {
-	t.Parallel()
+		if spec.Prompt == "" {
+			t.Error("spec.Prompt = \"\"; want non-empty")
+		}
+		if strings.Contains(spec.Prompt, "{{") {
+			t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+		}
+	})
 
-	loc := hubLocation(t, "pair", ".")
+	t.Run("commit status seam is filled", func(t *testing.T) {
+		if c.shedPaths.CommitStatus == nil {
+			t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
+		}
+	})
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
+	// The wired Env carries the worktree's slug, and its SegmentBounces reads the status file on each call:
+	// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
+	t.Run("bouncer slug and segment bounces", func(t *testing.T) {
+		if want := seedSlug(loc.WorktreeName); c.env.Slug != want {
+			t.Errorf("c.env.Slug = %q; want %q", c.env.Slug, want)
+		}
+		if c.env.SegmentBounces == nil {
+			t.Fatal("c.env.SegmentBounces = nil; want a wired seam")
+		}
 
-	if _, ok := c.runDeps.RefMatcher.(*fabricengine.RefScanner); !ok {
-		t.Errorf("runDeps.RefMatcher = %T; want *fabricengine.RefScanner", c.runDeps.RefMatcher)
-	}
-}
+		const row = "Plan-Bouncer"
+		if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
+			t.Errorf("SegmentBounces(%q) over an absent status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
+		}
 
-// TestWire_LandingSeamFieldsPopulated asserts wire() populates c.registry, c.runner, and
-// c.landingCfg -- the three fields run.go passes to landingDeps.
-//
-// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a
-// RequirePRToBase []string field, which makes the struct non-comparable and would fail to compile
-// under a plain != the way TestWire_PathFieldsMatchLoomengineAccessors's plain-string field
-// comparisons do.
-func TestWire_LandingSeamFieldsPopulated(t *testing.T) {
-	t.Parallel()
+		for _, p := range []string{c.env.StatusPath, c.env.StatusLockPath} {
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(p), err)
+			}
+		}
+		if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
+			t.Errorf("SegmentBounces(%q) over a run directory with no status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
+		}
 
-	loc := hubLocation(t, "pair", ".")
+		history := []shedengine.HistoryEntry{
+			{Producer: row, Outcome: shedengine.Stuck},
+			{Producer: row, Outcome: shedengine.Stuck},
+		}
+		status := shedengine.Status{CurrentProducer: row, State: shedengine.StateRunning, History: history}
+		if err := state.WriteJSON(c.env.StatusPath, c.env.StatusLockPath, status); err != nil {
+			t.Fatalf("WriteJSON(status) = %v; want nil", err)
+		}
 
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
+		routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
+		if err != nil {
+			t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
+		}
+		wantCount, wantBudget, wantIn := routing.Bounces(row, history)
+		if !wantIn || wantCount == 0 {
+			t.Fatalf("Routing.Bounces(%q, history) = (%d, %d, %v); want a segment row with a non-zero count", row, wantCount, wantBudget, wantIn)
+		}
+		if wantBudget != c.cfg.ReviewMaxBounces {
+			t.Errorf("Routing.Bounces(%q, history) budget = %d; want the configured %d", row, wantBudget, c.cfg.ReviewMaxBounces)
+		}
 
-	if c.registry == nil {
-		t.Error("c.registry = nil; want the resolved model-spec registry")
-	}
-	if c.runner == nil {
-		t.Error("c.runner = nil; want the constructed shuttle runner")
-	}
+		// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
+		c.env.Landing = envkit.LandingDeps(t.TempDir())
+		shed, err := loomrecipe.New(c.env, c.shedPaths)
+		if err != nil {
+			t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)
+		}
+		for _, def := range shed.Producers {
+			if def.Name != row {
+				continue
+			}
+			if def.MaxBounces != wantBudget {
+				t.Errorf("built Shed row %q MaxBounces = %d; SegmentBounces reports budget %d; want equal", row, def.MaxBounces, wantBudget)
+			}
+		}
 
-	want, err := landingshed.LoadConfig(loc.AnchorPath(), "landing")
-	if err != nil {
-		t.Fatalf("landingshed.LoadConfig(%q, \"landing\") = %v; want nil", loc.AnchorPath(), err)
-	}
-	if !reflect.DeepEqual(c.landingCfg, want) {
-		t.Errorf("c.landingCfg = %+v; want %+v", c.landingCfg, want)
-	}
-}
-
-// TestWire_EnvShuttleIsTheRunner asserts c.env.Shuttle is the same *shuttleengine.Runner value c.runner holds.
-func TestWire_EnvShuttleIsTheRunner(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.env.Shuttle != c.runner {
-		t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
-	}
-}
-
-// TestWire_DescriptionPathMatchesLandingDir asserts DescriptionPath equals the accessor expression.
-func TestWire_DescriptionPathMatchesLandingDir(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if want := summaryparser.Path(loomengine.LandingDir(loc)); c.env.DescriptionPath != want {
-		t.Errorf("c.env.DescriptionPath = %q; want %q", c.env.DescriptionPath, want)
-	}
+		count, budget, inSegment, err := c.env.SegmentBounces(row)
+		if err != nil {
+			t.Fatalf("SegmentBounces(%q) error = %v; want nil", row, err)
+		}
+		if count != wantCount || budget != wantBudget || !inSegment {
+			t.Errorf("SegmentBounces(%q) = (%d, %d, %v); want (%d, %d, true)", row, count, budget, inSegment, wantCount, wantBudget)
+		}
+	})
 }
 
 // TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() for both
@@ -436,116 +509,6 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 	}
 }
 
-// TestWire_ReviewSegmentPathsAndClock asserts the Env fields both review segments read -- shared by Discussion-Bouncer/Discussion-Burler and Plan-Bouncer/Plan-Burler alike -- are told: StencilsDir and RunRoot against their own loomengine/fabricengine accessor rather than a re-derived literal, and Now non-nil, which envkit.NilSeams skips as a documented default.
-func TestWire_ReviewSegmentPathsAndClock(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if want := fabricengine.StencilsDir(loc.HubPath); c.env.StencilsDir != want {
-		t.Errorf("c.env.StencilsDir = %q; want %q", c.env.StencilsDir, want)
-	}
-	if want := loomengine.LoomReviewsDir(loc); c.env.RunRoot != want {
-		t.Errorf("c.env.RunRoot = %q; want %q", c.env.RunRoot, want)
-	}
-	if c.env.Now == nil {
-		t.Error("c.env.Now = nil; want a non-nil clock")
-	}
-}
-
-// TestWire_ReviewTripleMatchesLoadedConfig asserts c.env.ReviewModel, c.env.ReviewEffort,
-// c.env.ReviewVersion, and c.env.ReviewTimeout equal what loomengine.ResolveReview returns for the
-// same loaded config and registry -- resolved in the test rather than hardcoded against the
-// template's literal spec, so a later template edit does not silently break this assertion's
-// meaning.
-func TestWire_ReviewTripleMatchesLoadedConfig(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	registry, err := modelspec.LoadRegistry(loc.AnchorPath())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
-	}
-	want, err := loomengine.ResolveReview(c.cfg, registry)
-	if err != nil {
-		t.Fatalf("loomengine.ResolveReview(c.cfg, registry) = %v; want nil", err)
-	}
-
-	if c.env.ReviewModel != want.Model {
-		t.Errorf("c.env.ReviewModel = %q; want %q", c.env.ReviewModel, want.Model)
-	}
-	if c.env.ReviewEffort != want.Effort {
-		t.Errorf("c.env.ReviewEffort = %q; want %q", c.env.ReviewEffort, want.Effort)
-	}
-	if c.env.ReviewVersion != want.Version {
-		t.Errorf("c.env.ReviewVersion = %q; want %q", c.env.ReviewVersion, want.Version)
-	}
-	if c.env.ReviewTimeout != want.Timeout {
-		t.Errorf("c.env.ReviewTimeout = %s; want %s", c.env.ReviewTimeout, want.Timeout)
-	}
-}
-
-// TestWire_PlanSpecEvaluatesToExpectedShape evaluates c.env.PlanSpec() once and asserts on the
-// returned shuttleengine.Spec's shape.
-func TestWire_PlanSpecEvaluatesToExpectedShape(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	spec, err := c.env.PlanSpec()
-	if err != nil {
-		t.Fatalf("c.env.PlanSpec() = %v; want nil", err)
-	}
-
-	if spec.Interactive {
-		t.Error("spec.Interactive = true; want false (autonomous by design)")
-	}
-	if spec.Role != "plan" {
-		t.Errorf("spec.Role = %q; want %q", spec.Role, "plan")
-	}
-	if want := []string{"scribe:prose", "scribe:testing"}; !reflect.DeepEqual(spec.Skills, want) {
-		t.Errorf("spec.Skills = %v; want %v", spec.Skills, want)
-	}
-	if !strings.Contains(spec.Prompt, "## Your parent") {
-		t.Error("spec.Prompt carries no parent directive; want one")
-	}
-	wantTimeout := time.Duration(c.cfg.PlanTimeoutMin) * time.Minute
-	if spec.Timeout != wantTimeout {
-		t.Errorf("spec.Timeout = %s; want %s", spec.Timeout, wantTimeout)
-	}
-	if spec.Model == "" {
-		t.Error("spec.Model = \"\"; want non-empty")
-	}
-
-	wantOutputs := []string{planparser.PlanOverview(loc.AnchorPath())}
-	if !reflect.DeepEqual(spec.OutputFiles, wantOutputs) {
-		t.Errorf("spec.OutputFiles = %v; want %v", spec.OutputFiles, wantOutputs)
-	}
-
-	if spec.Prompt == "" {
-		t.Error("spec.Prompt = \"\"; want non-empty")
-	}
-	if strings.Contains(spec.Prompt, "{{") {
-		t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
-	}
-}
-
 // TestVerbUsesLightweightWiring pins the exact set of verbs that skip the full engine-stack
 // construction. Adding a verb here silently would be a real regression: a verb that builds or
 // drives producers needs wire()'s early config refusal, and getting that wrong moves the failure
@@ -587,6 +550,8 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 // same no-config-load path, rather than those two verbs staying on wire()'s full stack. The location
 // fixture here has no _lyx/config directory at all, which is the strongest form of "no config is
 // loaded".
+//
+//testtiming:keep pins the lightweight wiring filling the status, lock and plan-validation paths and the commit-status seam with no config loaded and no engine built; the covering test runs the wiring without asserting its fields
 func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	// Deliberately NOT hubLocation: this location's anchor has no _lyx/config directory at all, so
 	// a path that loaded any module config could not possibly succeed here.
@@ -624,6 +589,11 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 	if c.env.SupportLogPath != loomengine.DiscussionSupportLog(location) {
 		t.Errorf("env.SupportLogPath = %q; want %q", c.env.SupportLogPath, loomengine.DiscussionSupportLog(location))
 	}
+	// Every verb on this path is read-only and never invokes the commit-status seam; it is filled anyway,
+	// keeping the two ShedPaths literals structurally identical, per wiring.go's own comment at that site.
+	if c.shedPaths.CommitStatus == nil {
+		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
+	}
 	// validate-plan --rework reads the plan committed at HEAD through this seam.
 	if c.env.Rework.ReadCommitted == nil {
 		t.Error("env.Rework.ReadCommitted = nil; want the committed-file seam validate-plan --rework reads")
@@ -643,8 +613,10 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 // c.runDeps.FrictionDir -- when loom.yaml's friction key is non-empty, and fills the empty string
 // into both, and into c.frictionDir, when it is present-but-empty. Every non-empty assertion compares
 // against loomengine.LoomFrictionDir(loc)'s own return value, never a hand-built path literal, the
-// way TestWire_PathFieldsMatchLoomengineAccessors already compares RunRoot against
+// way TestWire_DefaultConfig already compares RunRoot against
 // loomengine.LoomReviewsDir(loc).
+//
+//testtiming:keep pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when the friction key is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
 func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	t.Parallel()
 
@@ -681,83 +653,5 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 				t.Errorf("c.env.WebsterDeps.FrictionDir = %q; want %q", c.env.WebsterDeps.FrictionDir, want)
 			}
 		})
-	}
-}
-
-// TestWire_BouncerSlugAndSegmentBounces asserts the wired Env carries the worktree's slug, and that its SegmentBounces reads the status file on each call:
-// a status fixture whose history holds Bouncer Stucks reports the count and budget loomrecipe.Routing computes over that history, and an absent status file reports not-in-segment.
-func TestWire_BouncerSlugAndSegmentBounces(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if want := seedSlug(loc.WorktreeName); c.env.Slug != want {
-		t.Errorf("c.env.Slug = %q; want %q", c.env.Slug, want)
-	}
-	if c.env.SegmentBounces == nil {
-		t.Fatal("c.env.SegmentBounces = nil; want a wired seam")
-	}
-
-	const row = "Plan-Bouncer"
-	if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
-		t.Errorf("SegmentBounces(%q) over an absent status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
-	}
-
-	for _, p := range []string{c.env.StatusPath, c.env.StatusLockPath} {
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(p), err)
-		}
-	}
-	if _, _, inSegment, err := c.env.SegmentBounces(row); err != nil || inSegment {
-		t.Errorf("SegmentBounces(%q) over a run directory with no status file = (inSegment %v, err %v); want not in segment and no error", row, inSegment, err)
-	}
-
-	history := []shedengine.HistoryEntry{
-		{Producer: row, Outcome: shedengine.Stuck},
-		{Producer: row, Outcome: shedengine.Stuck},
-	}
-	status := shedengine.Status{CurrentProducer: row, State: shedengine.StateRunning, History: history}
-	if err := state.WriteJSON(c.env.StatusPath, c.env.StatusLockPath, status); err != nil {
-		t.Fatalf("WriteJSON(status) = %v; want nil", err)
-	}
-
-	routing, err := loomrecipe.Routing(c.cfg.ReviewMaxBounces)
-	if err != nil {
-		t.Fatalf("loomrecipe.Routing(%d) = %v; want nil", c.cfg.ReviewMaxBounces, err)
-	}
-	wantCount, wantBudget, wantIn := routing.Bounces(row, history)
-	if !wantIn || wantCount == 0 {
-		t.Fatalf("Routing.Bounces(%q, history) = (%d, %d, %v); want a segment row with a non-zero count", row, wantCount, wantBudget, wantIn)
-	}
-	if wantBudget != c.cfg.ReviewMaxBounces {
-		t.Errorf("Routing.Bounces(%q, history) budget = %d; want the configured %d", row, wantBudget, c.cfg.ReviewMaxBounces)
-	}
-
-	// The landing deps are filled at arm time, after wire(); the Publish and Finalize rows refuse to build without them.
-	c.env.Landing = envkit.LandingDeps(t.TempDir())
-	shed, err := loomrecipe.New(c.env, c.shedPaths)
-	if err != nil {
-		t.Fatalf("loomrecipe.New(wired env) = %v; want nil", err)
-	}
-	for _, def := range shed.Producers {
-		if def.Name != row {
-			continue
-		}
-		if def.MaxBounces != wantBudget {
-			t.Errorf("built Shed row %q MaxBounces = %d; SegmentBounces reports budget %d; want equal", row, def.MaxBounces, wantBudget)
-		}
-	}
-
-	count, budget, inSegment, err := c.env.SegmentBounces(row)
-	if err != nil {
-		t.Fatalf("SegmentBounces(%q) error = %v; want nil", row, err)
-	}
-	if count != wantCount || budget != wantBudget || !inSegment {
-		t.Errorf("SegmentBounces(%q) = (%d, %d, %v); want (%d, %d, true)", row, count, budget, inSegment, wantCount, wantBudget)
 	}
 }

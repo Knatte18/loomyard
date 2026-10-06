@@ -26,6 +26,8 @@ import (
 // TestStepEnvelope_NextInterruptPolicyMatchesTable asserts next_interrupt_policy equals
 // loomshed.InterruptPolicyFor(res.Next), driven over a reinvoke row, the one handback row
 // (loomshed.NameWebster), and an empty res.Next.
+//
+//testtiming:keep pins next_interrupt_policy against the interrupt-policy table over a reinvoke row, the handback row and an empty next; the covering step tests assert other envelope keys
 func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 	tests := []struct {
 		name string
