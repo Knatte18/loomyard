@@ -38,6 +38,15 @@ A driver, webster or a review loop that cannot go on escalates to you, its paren
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 A driver that is still alive you also message by name, telling it to resume.
 
+## Investigating a stop
+
+Check a stop (a `[batten notice]`, a halted run or an escalation) with `lyx batten status <slug>` first; if that names the action, take it yourself without a fork.
+A stop whose cause takes reading to find goes to a one-shot fork.
+The fork reads what the stop left behind (the driver's stop report, the strand's pane, webster's status for a webster run, the run's logs) and reports back what happened and the one action it recommends.
+The fork changes nothing: you take the action yourself, after `lyx batten status <slug>` shows the run still in the state the fork read.
+A further notice for a run whose fork has not yet reported starts no second fork.
+Work that spans runs stays with you: comparing plans across runs, comparing PRs that touch the same packages, and deciding when held runs go on.
+
 ## PR-Gate
 
 At an awaiting Publish you approve or reject the PR yourself, never the operator.
