@@ -48,7 +48,8 @@ import (
 // The script prints claudeengine's own ready-marker fixture -- shuttle's own startup step blocks Start until this
 // (or the window closes), so a script that skipped it would make every call here time out at
 // startup_timeout_s instead of returning fast -- then reads typed lines:
-// the first is the load message, answered by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file, so shuttle confirms the load unverified at once,
+// the first is the load message, answered by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
+// so shuttle confirms the load unverified at once,
 // and the second is the pointer, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
 // It then sleeps settleDelay, giving the caller a window
 // to observe the run in flight, past readiness, before the report exists -- writes a one-line report

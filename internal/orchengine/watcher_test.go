@@ -914,7 +914,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 	tests := []struct {
 		name      string
 		loads     map[string]shuttleengine.SkillLoadReport
-		timeout   bool     // the skills turn never ends, so its timeout passes
+		timeout   bool     // the skills turn never ends and passes its timeout
 		endTurns  []string // turn ends read before the pointer's
 		wantSkill []string // the skills calls after the clear
 		wantSkips int      // the skill skipped warnings

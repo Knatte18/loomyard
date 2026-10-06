@@ -68,7 +68,8 @@ import (
 // startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
 // or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
 // needs a realistic stand-in, never the classification details behind it.
-// The driver spec names skills, and shuttle types one skill-load message before the prompt pointer, waiting until the turn ends.
+// The driver spec names skills,
+// and shuttle types one skill-load message before the prompt pointer, waiting until the turn ends.
 // The script answers that first line by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
 // so shuttle confirms the load unverified at once instead of waiting out the skill-load timeout,
 // and it starts the sleep at the second line, the pointer.
