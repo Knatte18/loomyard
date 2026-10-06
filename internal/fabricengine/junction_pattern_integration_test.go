@@ -75,6 +75,8 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 // checkout/reconcile-left-dangling shape), leaving a junction that resolves immediately, and a
 // second WireJunctions call on the same worktree must succeed rather than hard-erroring — the bug
 // this card fixes.
+//
+//testtiming:keep WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +123,8 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 // content — and the returned error names both the offending path and the re-run-`lyx fabric
 // reconcile` remedy this card's reworded message introduces, replacing the old "migrate via the
 // hub-creator" clause that pointed at a tool that does not address this case.
+//
+//testtiming:keep a real directory at the warp junction path being refused with the path and the reconcile remedy named; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -172,6 +176,8 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 // From card 15 onward WarpJunctions returns two entries (_lyx and a second, non-_lyx junction), so
 // this now runs against a genuinely two-junction world — the precondition batch 5's second junction
 // depends on this machinery already handling correctly.
+//
+//testtiming:keep unwiring reporting every junction in JunctionsRemoved and clearing every exclude line; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
@@ -264,6 +270,8 @@ func containsLine(lines []string, name string) bool {
 // pollution with an automated restore remedy (git rm --cached plus a reminder to restore the
 // junction/exclude entry) — every pollution class this scan reports now carries that remedy, since
 // there is no report-only class left.
+//
+//testtiming:keep a tracked _lyx path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +381,8 @@ func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 // delivers: a tracked path under _raddle in the warp index is no longer reported as pollution at
 // all, now that the _raddle classification branch is deleted and the scan's git-ls-files pathspec no
 // longer names "_raddle".
+//
+//testtiming:keep a tracked _raddle path no longer being reported as pollution; coverage of its blocks by other tests does not show an assertion of this
 func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	t.Parallel()
 
@@ -662,6 +672,8 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 // and it must not need to touch the already-healthy _lyx junction to succeed.
 // The mechanism this pins — a WireJunctions call adds only the missing optional junction and leaves
 // a healthy _lyx alone — stays live independent of any particular worktree's history.
+//
+//testtiming:keep a worktree with _lyx wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 

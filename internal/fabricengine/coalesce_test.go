@@ -17,6 +17,8 @@ import (
 // the number of true returns (the final, no-progress call that ends the loop), and a step that
 // reports no-progress on its very first call runs exactly once — proving the loop does not spin
 // depending on any external "still unpushed" signal, only on step's own return value.
+//
+//testtiming:keep coalescePush's loop-exit contract driven only by the step's own progressed return; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -72,6 +74,8 @@ func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 // TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its absorbing lock before
 // returning: a second, independent AcquireWriteLock on the same path must succeed without blocking
 // once coalescePush has returned.
+//
+//testtiming:keep coalescePush releasing its absorbing lock before it returns; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 

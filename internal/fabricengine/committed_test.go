@@ -10,6 +10,8 @@ import (
 )
 
 // TestCommitResult_Committed covers all four WarpCommitted/WeftCommitted combinations.
+//
+//testtiming:keep all four WarpCommitted and WeftCommitted combinations of Committed; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitResult_Committed(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -932,266 +932,175 @@ No coverage:
 
 ## internal/fabricengine
 
-698 tests, wall 20.37s, serial 113.27s.
+610 tests, wall 16.41s, serial 85.90s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestRefuseUncontainedPath` | `TestCrossProduct`, `TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal` | yes |
-| `TestPruneEmptyAncestors_RefusesEscapingIntermediate` | `TestCrossProduct` | yes |
-| `TestReachableAnchor_NewestReachable` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestReachableAnchor_SingleBack` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestReachableAnchor_MultiBack` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestReachableAnchor_NoneReachable` | `TestPull_NoSurvivingAnchorAborts` | yes |
-| `TestReachableAnchor_EmptySlice` | `TestPull_NoSurvivingAnchorAborts` | yes |
-| `TestClassifyPaths` | `TestCommitLock_ContendsAcrossSides`, `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing` | yes |
-| `TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated` | `TestCommitLock_ContendsAcrossSides`, `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing` | yes |
-| `TestResetHub_RefusesADirectoryThatIsNotAHub` | `TestVerbCases_CleanState`, `TestOwnership_FabricHubKind` | yes |
-| `TestResetHub_RemovesARealHub` | `TestVerbCases_CleanState`, `TestRemoveLaunchers_PreservesForeignContent`, `TestOwnership_FabricHubKind` | yes |
-| `TestCloneRepo_InvalidURLFails` | `TestCloneHub_StrictAbortRemovesHubOnFailure` | yes |
-| `TestCoalescePush_LoopsWhileProgressed` | `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst` | yes |
-| `TestCoalescePush_ReleasesLockOnReturn` | `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst` | yes |
-| `TestCommitWeftAt_CommitsDirtyWorktree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestCommitWeftAt_NoopOnCleanWorktree` | `TestVerbCases_CleanState` | yes |
-| `TestCommitWeftAt_SkipGitReturnsImmediately` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestBolt_SkipGit_ShortCircuits` | yes |
-| `TestWeftCommitPathspec` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestCommitWeftPaths_SkipGit` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestAdd_SkipGitWritesRecordWithoutCommit` | yes |
-| `TestCorrIndex_RecordReloadRoundTrip` | `TestDiff_MergesWarpAndWeftSides` | yes |
-| `TestCorrIndex_LoadMissingFileIsEmpty` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestCorrIndex_RecordUpsertOverwritesWeftSHA` | `TestDiff_MergesWarpAndWeftSides`, `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestCorrIndex_ExactHitAndMiss` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestCorrIndex_NearestAtOrBefore` | `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`, `TestDiff_NoWeftCorrespondence_BeforeFirstSync`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins` | `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite` | `TestDiff_MergesWarpAndWeftSides`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestCorrIndex_PersistenceIsAtomic` | `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestGate_CheckOrdering` | `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestVerbCases_CleanState` | yes |
-| `TestGate_Containment` | `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestVerbCases_CleanState` | yes |
-| `TestGate_Force` | `TestVerbCases_CleanState`, `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestCloneHub_AnchorAdoptPath` | yes |
-| `TestGate_DirtinessNAEmptyReason` | `TestGate_ZeroValueDeclarationsAreRefusals` | yes |
-| `TestGate_AbsentTargetIsNoOp` | `TestAddRollback_AdoptedWeftBranchSurvives`, `TestVerbCases_CleanState`, `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestCloneHub_AnchorAdoptPath`, `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
-| `TestGate_BestEffortPolicy` | `TestAddRollback_LeavesNoArchiveTag` | yes |
-| `TestGate_RecordOnlyOnObservedEffect` | `TestVerbCases_CleanState`, `TestCrossProduct`, `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemove_TearsDownNestedJunction`, `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort`, `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCloneHub_AnchorAdoptPath`, `TestGate_TokenRoundTrip` | yes |
-| `TestGate_PairWarpRequestShape` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestResetPairWarp_OwnershipRefusals`, `TestOwnership_RegisteredLinkedWorktreeKind` | yes |
-| `TestRemoveContainedPath_RefusesEscapingIntermediate` | `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink` | yes |
-| `TestRemoveContainedPath_RemovesLegitimateNested` | `TestVerbCases_CleanState` | yes |
-| `TestRemoveContainedPath_RemovesFinalLinkNotTarget` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestRemoveContainedPath_AbsentIsNoOp` | `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
-| `TestCreateExclusiveDir_RefusesLeafSymlink` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestGate_TokenRoundTrip` | yes |
-| `TestWorktreeDirty_ErrorNamesGitCommandOnce` | `TestAdd_WiresSlugValidation` | yes |
-| `TestHubWorkspacePathAndFolders` | `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
-| `TestParseTrailerScanRecord_MultipleTagsSplitOnNewline` | `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
-| `TestParseTrailerScanRecord` | `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
-| `TestWorktreePath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestUnseedJunctionRecords_EmptyIsNoOp` | `TestCrossProduct` | yes |
-| `TestUnseedJunctionRecords_RemovesEveryHealthyJunction` | `TestCrossProduct`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort` | yes |
-| `TestExcludePatternFor_AnchorsToRepoRoot` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestJunctionNames_NoFallbackOnLoadFailure` | `TestLoadConfig_NotInitialized`, `TestHealthy_ReasonCauses` | yes |
-| `TestBoardDir` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestHubPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestIsReservedHubName` | `TestAdd_WiresSlugValidation`, `TestCrossProduct`, `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk` | yes |
-| `TestWriteLaunchers_RunScriptContentAndFilename` | `TestAdd_ArchivedAncestorWeftLeftoverReplaced`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
-| `TestMergeErrors_PinnedStrings` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
-| `TestMergeErrors_ErrMergeInRequiredSourceNotInMessage` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
-| `TestMergeErrors_NoVocabularyLeakInReasons` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMergeErrors_NoVocabularyLeakInErrorStrings` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
-| `TestMergePaths_WeftPathVisibleUsesTheOSSeparator` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMergeState_LandedConcludeCommit` | `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate` | yes |
-| `TestMergeState_BothSidesAlreadyUpToDate` | `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate` | yes |
-| `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` | no |
-| `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` | `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | yes |
-| `TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMergeVocabulary_ErrorsAreSideFree` | `TestMergeErrors_NoVocabularyLeakInErrorStrings`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | no |
-| `TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMutations_AppendOrdering` | `TestMutations_Extend` | yes |
-| `TestMutations_AppendRef` | `TestAdd_DivergedArchivedWeftLeftoverReplaced` | yes |
-| `TestMutations_Entries_ReturnsCopy` | `TestAssertRecordMatchesDiff` | yes |
-| `TestMutations_Snapshot_Isolates` | `TestMutations_Extend` | yes |
-| `TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey` | `TestMergeCrucible_ConflictsIsEmptyNeverNil`, `TestMutations_MarshalJSON`, `TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked` | yes |
-| `TestMutations_NilReceiver_DoesNotPanic` | `TestMutations_NilReceiverLogsNothing` | no |
-| `TestMutations_Snapshot_NilReceiver` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken` | yes |
-| `TestMutations_EntriesAndLen_CallableOnNonAddressableValue` | `TestMutations_Extend` | yes |
-| `TestMutations_AppendLogsOneRecord` | `TestMutations_AppendRefLogsOneRecord`, `TestAssertRecordMatchesDiff` | yes |
-| `TestMutations_AppendRefLogsOneRecord` | `TestMutations_AppendLogsOneRecord`, `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | no |
-| `TestMutations_ExtendLogsNothing` | `TestMutations_Extend`, `TestMutations_AppendRefLogsOneRecord` | yes |
-| `TestMutations_NilReceiverLogsNothing` | `TestMutations_NilReceiver_DoesNotPanic`, `TestMutations_AppendRefLogsOneRecord` | yes |
-| `TestOrigin_JSONRoundTrip` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestOrigin_ParentWorktreeRoundTrip` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestOriginRecordPath_BothAnchors` | `TestAdd_RecordsParentWorktree`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
-| `TestOriginRecordPathFor_BothAnchors` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
-| `TestOriginRecordRel_IsTheSharedSuffix` | `TestAdd_RecordsParentWorktree`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
-| `TestPortalsDirAndLaunchersDir` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMirroredPortalLauncherMethods` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal` | yes |
-| `TestRemoveLaunchers_DirRemovalIsContained` | `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
-| `TestRemoveLaunchers_EmptyDirRemovedAndRecorded` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestRemove_FinishesPairWithBothWorktreesGone`, `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
-| `TestRemovePortal_LeavesAnchorDirectory` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
-| `TestCheck_RendersThreeSpellings` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestCheck_HasNoFourthMemberForForce` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal` | `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
-| `TestClassifyCorrespondence_ExactHit` | `TestDiff_MergesWarpAndWeftSides` | yes |
-| `TestClassifyCorrespondence_GapFallsBackToNearestOlder` | `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`, `TestDiff_MergesWarpAndWeftSides` | yes |
-| `TestClassifyCorrespondence_NoOlderEntryErrors` | `TestDiff_NoWeftCorrespondence_BeforeFirstSync` | yes |
-| `TestClassifyCorrespondence_EmptyIndexErrors` | `TestDiff_NoWeftCorrespondence_BeforeFirstSync` | yes |
-| `TestShortnameRecord_RoundTrip` | `TestCloneHub_BoundWeftWithoutRecord` | yes |
-| `TestValidateWorktreeSlug` | `TestCrossProduct`, `TestAdd_WiresSlugValidation`, `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk` | yes |
-| `TestSpecsDir` | `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
-| `TestSpecsDir_IsChildOfBoardDir` | `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
-| `TestSpecsDir_IsSiblingOfStencilsDir` | `TestCommitSeededStencils_EmptyInputIsNoOp`, `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
-| `TestStencilsDir` | `TestCommitSeededStencils_EmptyInputIsNoOp` | yes |
-| `TestStencilsDir_IsChildOfBoardDir` | `TestCommitSeededStencils_EmptyInputIsNoOp` | yes |
-| `TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory` | `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree` | yes |
-| `TestDeployedLyxPathspec_YieldsNoDuplicateLyx` | `TestCommitLock_ContendsAcrossSides`, `TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold` | yes |
-| `TestPathspecNames_ContainsLyxButNeverDotLyx` | `TestCommitLock_ContendsAcrossSides` | yes |
-| `TestWiredNames_ContainsDotLyxWhilePathspecNamesNeverDoes` | `TestCommitLock_ContendsAcrossSides` | yes |
-| `TestIsReservedHubName_RefusesDotLyxAsAWorktreeSlug` | `TestAdd_WiresSlugValidation` | yes |
-| `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold` | `TestDeployedLyxPathspec_YieldsNoDuplicateLyx` | no |
-| `TestConfigTemplate_ValidYAML` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestConfigTemplate_HasBothKeys` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestConfigTemplate_ResolvesToEmptyBranchPrefix` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestConfigTemplate_PathspecResolvesToEmpty` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestConfigTemplate_EmptyPathspecDegradesToStructuralSetsAlone` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
-| `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
-| `TestParseWarpSHATrailer_Absent` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
-| `TestParseWarpSHATrailer_MultipleTrailersLastWins` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
-| `TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
-| `TestAppendSnapshotTrailers_SingleTag` | `TestAppendSnapshotTrailers_MultipleTags` | no |
-| `TestAppendSnapshotTrailers_MultipleTags` | `TestAppendSnapshotTrailers_SingleTag`, `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError` | yes |
-| `TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer` | `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`, `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
-| `TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestAppendSnapshotTrailers_RejectsInvalidTags` | `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted` | yes |
-| `TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList` | `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted`, `TestAppendSnapshotTrailers_SingleTag` | yes |
-| `TestNormalizeWarpURL` | `TestWarpURLTransportIdentity` | yes |
-| `TestResolveEffectiveWarpURL` | `TestCloneHub_ConflictLeavesNoHub`, `TestVerbCases_CleanState`, `TestCloneHub_EmptyWeftRemoteTaxonomy`, `TestCloneHub_ResetInBothArgumentForms`, `TestWarpURLTransportIdentity` | yes |
-| `TestWarpLyxLinkMethods` | `TestAddRollback_UnwiresJunctionsOnPostWiringFailure`, `TestCheckout_JunctionFailureDeletesForkedWeftBranch` | yes |
-| `TestWarpJunctions` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestWarpJunctionsHere` | `TestHealthy_JunctionDriftShapes` | yes |
-| `TestWarpLayoutFor_FastPathCarriesEveryField` | `TestCrossProduct` | yes |
-| `TestWeftPathAccessors` | `TestHealthy_JunctionDriftShapes`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
-| `TestRemoveJunctionRecords_ContinuesPastFailure` | `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort`, `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
-| `TestRemoveJunctionRecords_EmptyIsNoOp` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestAdd_WiresJunctionsEagerly` | `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
-| `TestAdd_DropsParentRunRecords` | `TestCrossProduct`, `TestAdd_FromTaskPairDropsParentRunRecords`, `TestPull_LeavesWeftHistoryUntouched` | yes |
-| `TestAdd_DropsParentRunRecords_SubpathAnchor` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestAdd_SkipPushSkipsLeftoverProbes`, `TestCrossProduct`, `TestPull_LeavesWeftHistoryUntouched` | yes |
-| `TestAdd_NoRunRecordsToDrop` | `TestAdd_SkipPushSkipsLeftoverProbes`, `TestPull_LeavesWeftHistoryUntouched` | yes |
-| `TestAdd_AdoptKeepsRunRecords` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate`, `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestArchiveWeftTip_TagsAndPushesTip` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestCleanup_ApplyArchivesEachOrphanBeforeDeleting` | yes |
-| `TestArchiveWeftTip_NoOriginSkips` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestArchiveWeftTip_ClashingTagErrors`, `TestCleanup_NoOriginDeletesAndReportsArchiveSkip` | yes |
-| `TestArchiveWeftTip_UnreachableOriginErrors` | `TestCrossProduct`, `TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep` | yes |
-| `TestArchiveWeftTip_OriginOnlyBranch` | `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
-| `TestWeftBranchName` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestWeftBranchName_RoundTripsWithWeftWarpSlug` | `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
-| `TestCloneHub_AnchorTypoPathHardErrors` | `TestCloneHub_AnchorFileNotDirectoryHardErrors` | yes |
-| `TestCloneHub_AnchorFileNotDirectoryHardErrors` | `TestCloneHub_AnchorTypoPathHardErrors` | no |
-| `TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestCloneHub_NonEmptyWeftRemoteBranchUnchanged` | `TestCloneHub_BootstrapWritesBinding` | yes |
-| `TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock` | `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning` | yes |
-| `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline`, `TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit` | yes |
-| `TestCommitResult_Committed` | `TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit` | yes |
-| `TestWireJunctions_WiresEveryPassedName` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
-| `TestHealthy_NarrowPathspecIsHealthy` | `TestHealthy_JunctionDriftShapes`, `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig` | yes |
-| `TestLoadConfig_HappyPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestLoadConfig_EmptyBranchPrefix` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestLoadConfig_NotInitialized` | `TestJunctionNames_NoFallbackOnLoadFailure` | no |
-| `TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused` | `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`, `TestBranchOwnership_ManagedBranchKind`, `TestDeleteArchivedWeftBranch_PrimaryRefused` | yes |
-| `TestDeleteRemoteBranchGate_CheckedOutBranchRefused` | `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`, `TestCrossProduct`, `TestDeleteArchivedWeftBranch_PrimaryRefused`, `TestRemove_FailedWeftTeardownIsReported` | yes |
-| `TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestDeleteArchivedWeftBranch_PrimaryRefused` | yes |
-| `TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip` | `TestAdd_WeftReplaceLeaseRaceRefused`, `TestDeleteArchivedWeftBranch_EmptyLeaseRefused`, `TestCleanupRemoteWarp_MovedTipKeepsTheBranchWithAnError`, `TestMergeSiblings_Dispositions` | yes |
-| `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` | `TestCrossProduct` | yes |
-| `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub` | `TestCloneHub_OldOrderInvocationIsRefused` | no |
-| `TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles` | `TestRemoveWarpWorktreeDir_FallbackHonoursForce` | yes |
-| `TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
-| `TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestCrossProduct` | yes |
-| `TestDotLyxJunction_AdoptsPreExistingRealDotLyx` | `TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides` | yes |
-| `TestOpen_MissingWarpPath` | `TestMidMerge_UnopenablePair_Errors` | yes |
-| `TestOpen_MissingWeftPath` | `TestOpenParent_ParentSiblingMissing` | yes |
-| `TestNew_HappyPath` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
-| `TestScopedPathspec` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestInstallPostCheckoutHook_Idempotent` | `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight` | yes |
-| `TestInstallPostCheckoutHook_ChainIdempotent` | `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`, `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight` | no |
-| `TestInstallPostCheckoutHook_WeftResolution_Prime` | `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes` | yes |
-| `TestInstallPostCheckoutHook_WeftResolution_Child` | `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes` | yes |
-| `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable` | `TestInstallPostCheckoutHook_ChainIdempotent` | yes |
-| `TestInstallPostCheckoutHook_HonoursCoreHooksPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestHubReserved_BoardExcludedFromPathspecRoutes` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestHubScratchDir_IsBoardAnchored` | `TestCommitSeededStencils_EmptyInputIsNoOp` | yes |
-| `TestHubScratchDir_IgnoresAnchorRel` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestHubLogsDir_IsHubScratchDirLogsSubdir` | `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` | yes |
-| `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` | `TestHubLogsDir_IsHubScratchDirLogsSubdir` | no |
-| `TestWeftGitDir_ResolvesInsideWeftGitdir` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord` | yes |
-| `TestRecordAndLookupCorrespondence_RoundTrip` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection` | yes |
-| `TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence` | `TestWeftSHAForWarpSHA_StalenessSurvivesRebuild`, `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestRebuildIndex_ReproducesTrailerHistory` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestWireJunctions_MaterialisesMissingWeftTarget` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
-| `TestWireJunctions_RefusesRealWarpDirectory` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch` | yes |
-| `TestUnwireJunctions_ReportsAndClearsEveryJunction` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestRemove_TearsDownNestedJunction`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
-| `TestDetectWarpPollution_LyxTrackedAsRestorable` | `TestCrossProduct`, `TestUnwire_PreservesRepoWideRecords`, `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`, `TestMergeSiblings_Dispositions`, `TestStatus_DetectsWarpPollutionUnderSubpathAnchor` | no |
-| `TestDetectWarpPollution_RaddleNoLongerReported` | `TestMergeSiblings_Dispositions` | yes |
-| `TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestRemove_TearsDownNestedJunction` | yes |
-| `TestWireJunctions_RepointsWrongTargetJunction` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
-| `TestWireJunctions_RepointsWrongTargetJunction_Extra` | `TestWireJunctions_RepointsDanglingJunction_Extra` | no |
-| `TestWireJunctions_RepointsDanglingJunction` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCrossProduct`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
-| `TestWireJunctions_RepointsDanglingJunction_Extra` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCrossProduct` | yes |
-| `TestManifestWiredJunctionWalk` | `TestCrossProduct` | yes |
-| `TestVerbCases_StatesRestrictionIsWellFormed` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMatchParentBranch` | `TestOpenParent_PrunableParentDirRemoved`, `TestOpenParent_HappyPath` | no |
-| `TestMergeStageTracked_NoMergeInProgressRefuses` | `TestMergeStageTracked_ForeignMergeStateRefuses`, `TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting` | yes |
-| `TestMergeState_SaveLoadRoundtripPreservesEveryField` | `TestMergeAbort_AfterConflict` | yes |
-| `TestMergeState_AbsentRecord` | `TestCrossProduct` | yes |
-| `TestMergeState_DeleteRemovesAndToleratesSecondCall` | `TestMergeAbort_AfterConflict` | yes |
-| `TestMergeState_ResetMergeSides_WarpSideConflicted` | `TestMergeAbort_AfterConflict`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
-| `TestMergeState_ResetMergeSides_WeftSideConflicted` | `TestMergeAbort_AfterConflict`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
-| `TestMergeState_ResetMergeSides_WarpOnly` | `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
-| `TestMergeStateActive_CleanWeft_ReportsFalse` | `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue`, `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue` | `TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse`, `TestMergeContinue_ConcludeFailureThenRetryConcludes` | no |
-| `TestMergeStateActive_WeftConflictedSquashNoMergeHead_ReportsTrue` | `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue`, `TestMergeAbort_AfterConflict` | yes |
-| `TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse` | `TestMergeAbort_AfterConflict`, `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue` | yes |
-| `TestMidMerge_CleanPair_None` | `TestMidMerge_FabricParkedResolved_ParkedNoConflicts` | yes |
-| `TestOpen_HappyPath` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestOpen_MissingWarpWorktree` | `TestCheckout_RefreshesCorrespondenceIndex`, `TestOpenParent_ParentSiblingMissing`, `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
-| `TestOpen_MissingSiblingWorktree` | `TestOpenParent_ParentSiblingMissing` | yes |
-| `TestOpenParent_NoLivePairForBranch` | `TestOpenParent_PrunableParentDirRemoved`, `TestOpenParent_ResolveFailureNamesBranchAndPath` | no |
-| `TestOpenParent_PrunableParentDirRemoved` | `TestOpenParent_ResolveFailureNamesBranchAndPath`, `TestCrossProduct`, `TestOpenParent_NoLivePairForBranch`, `TestMatchParentBranch` | yes |
-| `TestAdd_RecordsNonDefaultParentBranch` | `TestAdd_RecordsParentWorktree`, `TestCleanup_DryRunMatchesApplyVerdict` | yes |
-| `TestAdd_RecordsParentBranch_SubpathAnchoredHub` | `TestAdd_RecordsParentWorktree`, `TestCrossProduct` | yes |
-| `TestAdd_CommitsOriginRecordOnWeftBranch` | `TestAdd_FromTaskPairDropsParentRunRecords` | yes |
-| `TestCommitWeftPaths_SerializesConcurrentCommits` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestPull_LeavesWeftHistoryUntouched` | yes |
-| `TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain` | `TestCrossProduct`, `TestCommitLock_PushFiresOnPartialFailure` | yes |
-| `TestPushAnchored_PushesAndRecordsBranchPush` | `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
-| `TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped` | `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`, `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`, `TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected` | yes |
-| `TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush` | `TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue`, `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
-| `TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue` | `TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush` | no |
-| `TestHealthy_RealDirNotAJunction` | `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`, `TestHealthy_JunctionDriftShapes` | yes |
-| `TestUnwire_PreservesUserSymlinkAtAnchor` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct` | yes |
-| `TestSnapshotWarpSHA_Miss` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_NewestTaggedCommitWins` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_TagIsolation` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_MultipleTagsOnOneCommit` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_UntaggedCommitsAreSkipped` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped` | `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCrossProduct` | yes |
-| `TestSnapshotWarpSHA_ByteExactMatching` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_PerBranchScoping` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline`, `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
-| `TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
-| `TestStatus_DetectsWarpPollutionUnderSubpathAnchor` | `TestDetectWarpPollution_LyxTrackedAsRestorable` | yes |
-| `TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt` | `TestDiff_MergesWarpAndWeftSides`, `TestStencilBaseByStamp_FindsOlderDefaultByStamp`, `TestMergeSiblings_Dispositions`, `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory`, `TestCrossProduct` | yes |
-| `TestStencilBaseByStamp_FindsOlderDefaultByStamp` | `TestStencilBaseByStamp_HashNormalisationAcrossCRLF` | no |
-| `TestStencilBaseByStamp_HashNormalisationAcrossCRLF` | `TestStencilBaseByStamp_FindsOlderDefaultByStamp` | yes |
-| `TestUnwire_RemovesOnDiskJunctionsIncludingStale` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
-| `TestUnwire_PreservesWeftLyxAndOptionalContent` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
-| `TestUnwireVerbResult_HasNoGitignoreField` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | `TestUnwire_PreservesRepoWideRecords`, `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct` | no |
-| `TestUnwire_PreservesRepoWideRecords` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
-| `TestCloneHub_UnboundWeftNamesTwoArgForm` | `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken`, `TestCloneHub_ConflictLeavesNoHub` | yes |
-| `TestCloneHub_OldOrderInvocationIsRefused` | `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub` | yes |
-| `TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree` | `TestCrossProduct`, `TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked` | yes |
-| `TestFabricWarp_ResetHardRefusesDirtyWarpCheckout` | `TestRefusedBefore`, `TestCrossProduct` | yes |
-| `TestWarpLayoutFor_FastPathMatchesResolveWorktree` | `TestCrossProduct`, `TestMergeSiblings_Dispositions` | yes |
-| `TestCommitWeft_UntrackedNewFileCountsAsMatch` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth` | yes |
-| `TestCommitWeft_IndexOnlyDeletionCountsAsMatch` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth` | yes |
-| `TestCommitWeft_ExcludeMagicPassesThroughUntouched` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing` | yes |
-| `TestResolvedDefaultRoutingNames_IsLyxAlone` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
-| `TestList_ParsesPrunable` | `TestCrossProduct`, `TestList` | yes |
-| `TestList_NotAGitRepo` | `TestOwnership_RegisteredLinkedWorktreeKind` | yes |
+No candidates.
+
+Kept:
+
+- `TestRefuseUncontainedPath`: the containment assertion shared by the portal and launcher teardown helpers refusing ".."-derived paths that once let `lyx fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
+- `TestPruneEmptyAncestors_RefusesEscapingIntermediate`: the empty-ancestor sweep refusing a symlinked intermediate that escapes the hub, with an empty out-of-container victim that survives; coverage of its blocks by other tests does not show an assertion of this
+- `TestReachableAnchor`: the reachableAnchor walk's outcomes (newest, nearest-older one and several steps back, none, empty index); coverage of its blocks by other tests does not show an assertion of this
+- `TestClassifyPaths`: classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
+- `TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated`: every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
+- `TestResetHub_RefusesADirectoryThatIsNotAHub`: resetHub refusing a directory named like a hub and leaving every byte of user content in place; coverage of its blocks by other tests does not show an assertion of this
+- `TestResetHub_RemovesARealHub`: resetHub still tearing down a directory carrying either structural hub mark, so --reset stays an idempotent re-clone; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneRepo_InvalidURLFails`: cloneRepo's error being composed from the attempted URL, destination and exit code rather than git's stderr; coverage of its blocks by other tests does not show an assertion of this
+- `TestCoalescePush_LoopsWhileProgressed`: coalescePush's loop-exit contract driven only by the step's own progressed return; coverage of its blocks by other tests does not show an assertion of this
+- `TestCoalescePush_ReleasesLockOnReturn`: coalescePush releasing its absorbing lock before it returns; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeftAt_CommitsDirtyWorktree`: commitWeftAt committing an untracked file with the message passed through verbatim and no Warp-SHA trailer; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeftAt_NoopOnCleanWorktree`: commitWeftAt reporting committed=false with a nil error twice on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeftAt_SkipGitReturnsImmediately`: opts.SkipGit short-circuiting commitWeftAt to ("", false, nil) before git spawns, leaving a dirty file untouched; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftCommitPathspec`: weftCommitPathspec staying positive-only and prefixing each entry by the anchor; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeftPaths_SkipGit`: CommitWeftPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
+- `TestCorrIndex_RecordReloadRoundTrip`: entries surviving a reload into a fresh handle and exact() missing a never-recorded warp SHA; coverage of its blocks by other tests does not show an assertion of this
+- `TestCorrIndex_RecordUpsertOverwritesWeftSHA`: recording a known warp SHA again overwriting its weft SHA instead of appending; coverage of its blocks by other tests does not show an assertion of this
+- `TestCorrIndex_NearestAtOrBefore`: the binary-search nearest-older lookup over an empty, below-range, exact, between and above-range index, and the last-recorded entry winning a shared seq; coverage of its blocks by other tests does not show an assertion of this
+- `TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite`: record() upserting against the freshly read on-disk base so a write landed after the handle loaded survives; coverage of its blocks by other tests does not show an assertion of this
+- `TestCorrIndex_PersistenceIsAtomic`: the index file parsing as complete JSON after every record() call; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_CheckOrdering`: the gate stopping at the first failing check, containment before ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_Containment`: containment refusing "..", a sibling via "..", the container itself, "." and an outside absolute path through the gate; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_Force`: force satisfying dirtiness and nothing else, neither containment nor ownership; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_DirtinessNAEmptyReason`: dirtinessNA("") being a refusal and not a pass; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_AbsentTargetIsNoOp`: an absent target being a no-op success for every ownership kind before any check runs; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_BestEffortPolicy`: surfaceRefusal matching a *destructiveRefusal always and an operational failure never; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_RecordOnlyOnObservedEffect`: the mutation record gaining an entry only when an effect was observed, over removePath, removeLink and createExclusiveDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestGate_PairWarpRequestShape`: the pair-warp ownership kind being declared rather than unset and refusing a non-linked target on ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveContainedPath_RefusesEscapingIntermediate`: a removal reachable only through an escaping symlink being refused with the outside file preserved; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveContainedPath_RemovesLegitimateNested`: a real nested entry being removed and recorded as a directory or single entry; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveContainedPath_RemovesFinalLinkNotTarget`: a final-component junction being removed as a link while its escaping target stays untouched; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveContainedPath_AbsentIsNoOp`: an already-absent target being an idempotent no-op; coverage of its blocks by other tests does not show an assertion of this
+- `TestCreateExclusiveDir_RefusesLeafSymlink`: createExclusiveDir refusing a symlink planted at the leaf as EEXIST so the gate never mints a token for a directory it did not create; coverage of its blocks by other tests does not show an assertion of this
+- `TestWorktreeDirty_ErrorNamesGitCommandOnce`: worktreeDirty's error rendering git's command once rather than twice; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubWorkspacePathAndFolders`: the workspace file path and folder geometry for a root and a nested anchor; coverage of its blocks by other tests does not show an assertion of this
+- `TestParseTrailerScanRecord_MultipleTagsSplitOnNewline`: a multi-line Snapshot value splitting into one tag per line; coverage of its blocks by other tests does not show an assertion of this
+- `TestParseTrailerScanRecord`: the record shapes of the trailer scan: no Snapshot field, one tag, a Warp-SHA-less record skipped, an empty record and newline trimming; coverage of its blocks by other tests does not show an assertion of this
+- `TestWorktreePath`: WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnseedJunctionRecords_RemovesEveryHealthyJunction`: every healthy junction being removed with each removed name reported, and an empty slice being a (nil, nil) no-op; coverage of its blocks by other tests does not show an assertion of this
+- `TestExcludePatternFor_AnchorsToRepoRoot`: the git-exclude pattern being slash-anchored at the repo root and carrying the anchor subpath, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
+- `TestJunctionNames_NoFallbackOnLoadFailure`: a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestBoardDir`: BoardDir joining the hub with BoardDirName; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubPath`: HubPath joining parent and name with HubSuffix, pinning the literal -LYXHUB suffix; coverage of its blocks by other tests does not show an assertion of this
+- `TestIsReservedHubName`: the reserved hub-entry predicate slug validation gates on, over every geometry-owned name and near-misses; coverage of its blocks by other tests does not show an assertion of this
+- `TestWriteLaunchers_RunScriptContentAndFilename`: the run launcher keeping its "run"+ext filename and a content that invokes "loom start"; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeErrors_PinnedStrings`: the exact Error() string of each named merge error and of MergeGuardError; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergePaths_WeftPathVisibleUsesTheOSSeparator`: weftPathVisible being wired to its separator-explicit form, by source inspection; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeState_LandedConcludeCommit`: the landed-conclude predicate over every landed combination; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeState_BothSidesAlreadyUpToDate`: both conjuncts of the AlreadyUpToDate predicate, with the mixed rows; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree`: every exported field name and JSON tag of MergeResult and MergeOptions being free of warp/weft and host phrases; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeVocabulary_ErrorsAreSideFree`: every named merge error rendering side-free and ErrMergeInRequired never echoing its Source; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree`: every member of the closed guard-reason set being side-free and path-free; coverage of its blocks by other tests does not show an assertion of this
+- `TestMutations_AppendRef`: AppendRef recording its ref verbatim with a hubRoot set; coverage of its blocks by other tests does not show an assertion of this
+- `TestMutations_EntriesAndSnapshotAreCopies`: Entries() and Snapshot() returning copies, an empty record returning a non-nil slice, and value-receiver callability; coverage of its blocks by other tests does not show an assertion of this
+- `TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey`: an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
+- `TestOrigin_JSONRoundTrip`: Origin's parent_branch and parent_worktree wire keys round-tripping and a legacy record decoding with an empty ParentWorktree; coverage of its blocks by other tests does not show an assertion of this
+- `TestOriginRecordPaths`: OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
+- `TestPortalsDirAndLaunchersDir`: PortalsDir, launchersDir and portalTarget joining the hub, slug, anchor and _lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestMirroredPortalLauncherMethods`: the AnchorRel-mirrored portal and launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveLaunchers_DirRemovalIsContained`: launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveLaunchers_EmptyDirRemovedAndRecorded`: an empty launcher directory being removed and recorded exactly once with a silent second call; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemovePortal_LeavesAnchorDirectory`: removing the last pair's portal keeping _portals/<AnchorRel> in place and empty so a later pair lands under it; coverage of its blocks by other tests does not show an assertion of this
+- `TestCheck_RendersThreeSpellings`: the three Check constants' exact spellings the live-state harness copy and the refusal message depend on; coverage of its blocks by other tests does not show an assertion of this
+- `TestCheck_HasNoFourthMemberForForce`: Check having exactly three members and no force check; coverage of its blocks by other tests does not show an assertion of this
+- `TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal`: an absent weft worktree passing the dirty-weft gate; coverage of its blocks by other tests does not show an assertion of this
+- `TestClassifyCorrespondence`: an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
+- `TestShortnameRecord_RoundTrip`: the shortname record round-tripping through its file; coverage of its blocks by other tests does not show an assertion of this
+- `TestValidateWorktreeSlug`: every slug validation rule over a table of accepted and refused slugs; coverage of its blocks by other tests does not show an assertion of this
+- `TestSpecsDir`: SpecsDir deriving _board/_lyx/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestStencilsDir`: StencilsDir deriving _board/_lyx/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory`: _lyx always wired and routed, .lyx wired but never routed, .lyx refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeployedLyxPathspec_YieldsNoDuplicateLyx`: a deployed "_lyx _pattern" pathspec yielding exactly one _lyx in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens`: HubReservedNames returning exactly the three hub tokens without .lyx; coverage of its blocks by other tests does not show an assertion of this
+- `TestConfigTemplate`: the config template being valid YAML with both keys, resolving to an empty branch prefix and an empty pathspec, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
+- `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock`: a single-line message, even one shaped like a trailer, getting its Warp-SHA trailer in a new paragraph; coverage of its blocks by other tests does not show an assertion of this
+- `TestParseWarpSHATrailer`: parseWarpSHATrailer returning ok=false when absent, the last trailer winning, and whitespace being tolerated; coverage of its blocks by other tests does not show an assertion of this
+- `TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer`: Snapshot trailers joining an existing Warp-SHA trailer block and both parsing back; coverage of its blocks by other tests does not show an assertion of this
+- `TestAppendSnapshotTrailers_RejectsInvalidTags`: out-of-charset tags, and a valid tag before an invalid one, being rejected with *ErrInvalidSnapshotTag and an empty message; coverage of its blocks by other tests does not show an assertion of this
+- `TestNormalizeWarpURL`: normalizeWarpURL's trailing-slash and .git stripping and host lowercasing while local paths and scp forms keep their case; coverage of its blocks by other tests does not show an assertion of this
+- `TestResolveEffectiveWarpURL`: every row of the warp-binding conflict rule; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpLyxLinkMethods`: WarpLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpJunctions`: WarpJunctions returning one record per name in input order with the Link and Target composed from the worktree, weft sibling and anchor; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpJunctionsHere`: the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpLayoutFor_FastPathCarriesEveryField`: the fast-path warp layout carrying every field; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftPathAccessors`: WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveJunctionRecords_ContinuesPastFailure`: the removal loop continuing past a per-junction failure and an empty slice being a no-op; coverage of its blocks by other tests does not show an assertion of this
+- `TestAdd_WiresJunctionsEagerly`: a successful Add leaving the new worktree's junctions wired at once, with _lyx and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
+- `TestAdd_DropsParentRunRecords_SubpathAnchor`: the run-records drop at a subpath anchor joining the root under AnchorRel for both the index drop and the first weft commit; coverage of its blocks by other tests does not show an assertion of this
+- `TestArchiveWeftTip_NoOriginSkips`: a weft repo with no origin giving a skip reason, no tag and no error; coverage of its blocks by other tests does not show an assertion of this
+- `TestArchiveWeftTip_UnreachableOriginErrors`: a configured but unreachable origin giving an error naming the tag and no tag on the real remote; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftBranchName`: the <warp>/<warp>-weft scheme for the primary branch, a prefixed task branch and an empty-prefix slug; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftBranchName_RoundTripsWithWeftWarpSlug`: WeftWarpSlug recovering the warp branch from every WeftBranchName output; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn`: a clone against an empty weft remote leaving the suffixed primary branch a real ref so Add works; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneHub_NonEmptyWeftRemoteBranchUnchanged`: the ordinary clone path pairing the suffixed branch with the cloned HEAD without an extra empty commit; coverage of its blocks by other tests does not show an assertion of this
+- `TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock`: both sides advancing and no push lock being left at the warp root; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit`: CommitWeft called directly with a pathspec matching nothing and one tag landing the empty commit as its own contract; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitResult_Committed`: all four WarpCommitted and WeftCommitted combinations of Committed; coverage of its blocks by other tests does not show an assertion of this
+- `TestWireJunctions_WiresEveryPassedName`: WireJunctions and UnwireJunctions wiring exactly the name set they are given, including names outside the default pathspec; coverage of its blocks by other tests does not show an assertion of this
+- `TestHealthy_NarrowPathspecIsHealthy`: a redundant narrow pathspec reading healthy; coverage of its blocks by other tests does not show an assertion of this
+- `TestLoadConfig`: LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused`: the remote-branch gate refusing the primary weft branch on ownership, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeleteRemoteBranchGate_CheckedOutBranchRefused`: the remote-branch gate refusing a checked-out weft branch on ownership rather than dirtiness, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted`: the pair's own checked-out weft branch being deleted from origin under a valid tag and a tip lease with one recorded entry; coverage of its blocks by other tests does not show an assertion of this
+- `TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip`: a lease behind an advanced origin failing without a gate refusal, recording nothing and leaving the advanced tip; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwireJunctions_RefusesLinkOutsideItsWorktree`: the junction-removal executor refusing a link that escapes the worktree and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub`: teardownHub removing a half-built hub on the token it minted though neither side exists yet; coverage of its blocks by other tests does not show an assertion of this
+- `TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles`: the directory-removal fallback refusing a registered worktree with untracked files and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires`: wiring creating the .lyx junction to the weft, seeding the warp and weft excludes and unwiring removing them; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite`: the weft exclude being seeded before the first write so .lyx never shows as untracked dirt; coverage of its blocks by other tests does not show an assertion of this
+- `TestDotLyxJunction_AdoptsPreExistingRealDotLyx`: a pre-existing real .lyx directory being moved into the weft target and replaced by a junction with a no-op second wiring; coverage of its blocks by other tests does not show an assertion of this
+- `TestOpen`: Open returning *ErrMissingPath naming the warp path first, then the weft path, and a non-nil handle when both exist; coverage of its blocks by other tests does not show an assertion of this
+- `TestNew_HappyPath`: newPaired yielding a non-nil warp and weft when both paths exist as directories, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
+- `TestScopedPathspec`: ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
+- `TestInstallPostCheckoutHook_Idempotent`: a second InstallPostCheckoutHook call leaving the script content unchanged and unduplicated; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestInstallPostCheckoutHook_ChainIdempotent`: an existing user hook being backed up to post-checkout.user, chained and left alone by a second install; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestInstallPostCheckoutHook_WeftResolution_Prime`: the installed hook resolving the <PrimeName>-weft sibling for a prime worktree under the suffixed branch scheme, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestInstallPostCheckoutHook_WeftResolution_Child`: the installed hook resolving the <slug>-weft sibling for a child worktree, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`: the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestInstallPostCheckoutHook_HonoursCoreHooksPath`: the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
+- `TestHubReserved_BoardExcludedFromPathspecRoutes`: _board appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubScratchAndLogsDir`: HubScratchDir being board-anchored, a sibling of the stencils _lyx tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx`: the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
+- `TestWireJunctions_MaterialisesMissingWeftTarget`: WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this
+- `TestWireJunctions_RefusesRealWarpDirectory`: a real directory at the warp junction path being refused with the path and the reconcile remedy named; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwireJunctions_ReportsAndClearsEveryJunction`: unwiring reporting every junction in JunctionsRemoved and clearing every exclude line; coverage of its blocks by other tests does not show an assertion of this
+- `TestDetectWarpPollution_LyxTrackedAsRestorable`: a tracked _lyx path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
+- `TestDetectWarpPollution_RaddleNoLongerReported`: a tracked _raddle path no longer being reported as pollution; coverage of its blocks by other tests does not show an assertion of this
+- `TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth`: a worktree with _lyx wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
+- `TestManifestWiredJunctionWalk`: a path reachable only through a wired junction being recorded once under the weft sibling's path; coverage of its blocks by other tests does not show an assertion of this
+- `TestVerbCases_StatesRestrictionIsWellFormed`: hostile-input and CloneHub{Reset} cases restricting States to clean and ordinary verbs inheriting the full matrix; coverage of its blocks by other tests does not show an assertion of this
+- `TestMatchParentBranch`: matchParentBranch's matching, skipping and normalization over hand-built entries; coverage of its blocks by other tests does not show an assertion of this
+- `TestMergeStageTracked_NoMergeInProgressRefuses`: the verb refusing and staging nothing when no fabric merge record exists; coverage of its blocks by other tests does not show an assertion of this
+- `TestMidMerge_CleanPair_None`: a clean pair reporting no mid-merge state; coverage of its blocks by other tests does not show an assertion of this
+- `TestOpenParent_NoLivePairForBranch`: OpenParent naming the branch when it has no live worktree at all; coverage of its blocks by other tests does not show an assertion of this
+- `TestOpenParent_PrunableParentDirRemoved`: a deleted but unpruned pair reporting "no live pair" naming the branch and never an *ErrMissingPath; coverage of its blocks by other tests does not show an assertion of this
+- `TestAdd_RecordsParentBranch_SubpathAnchoredHub`: the origin record landing at the anchor-relative path and not at the weft root, with parent_branch main; coverage of its blocks by other tests does not show an assertion of this
+- `TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain`: git's "did not match any files" text surviving gitrepo.StageAndCommit's error chain, which the pathspec tolerance matches on; coverage of its blocks by other tests does not show an assertion of this
+- `TestPushAnchored_PushesAndRecordsBranchPush`: a successful weft push advancing the bare remote and recording exactly one KindBranchPushed entry; coverage of its blocks by other tests does not show an assertion of this
+- `TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped`: a diverged weft remote returning gitrepo.ErrPushRejected unwrapped; coverage of its blocks by other tests does not show an assertion of this
+- `TestHealthy_RealDirNotAJunction`: a real directory where the _lyx junction belongs reporting "warp _lyx is not a junction"; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_PreservesUserSymlinkAtAnchor`: Unwire leaving a hand-authored symlink at the anchor in place; coverage of its blocks by other tests does not show an assertion of this
+- `TestSnapshotWarpSHA_PerBranchScoping`: snapshotWarpSHA scanning only the weft worktree's current branch, so a tag on another branch reads absent; coverage of its blocks by other tests does not show an assertion of this
+- `TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate`: a back-dated side commit merged back resolving to the topologically newest baseline, with RebuildIndex agreeing with the incremental index; coverage of its blocks by other tests does not show an assertion of this
+- `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins`: a warp SHA recorded by a content commit and a tags-only commit resolving to the newer empty commit with identical trees and an agreeing rebuild; coverage of its blocks by other tests does not show an assertion of this
+- `TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse`: a recorded Warp-SHA whose warp commit was rewritten away being returned raw with SHAExists false; coverage of its blocks by other tests does not show an assertion of this
+- `TestStatus_DetectsWarpPollutionUnderSubpathAnchor`: Status reporting a tracked <anchor>/_lyx file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt`: a scoped commit confined to the stencils subtree, leaving unrelated board dirt untouched, recording file_written and commit_created and never pushing; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_RemovesOnDiskJunctionsIncludingStale`: Unwire removing every on-disk fabric junction including one absent from the pathspec; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_PreservesWeftLyxAndOptionalContent`: weft-side _lyx and .lyx surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwireVerbResult_HasNoGitignoreField`: UnwireVerbResult carrying no Gitignore field so the CLI envelope never gains a gitignore key; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_NeverWiredWarpIsIdempotentNoOp`: a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
+- `TestUnwire_PreservesRepoWideRecords`: the repo-wide weft:main records surviving a worktree's Unwire so a later reconcile can re-wire; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneHub_UnboundWeftNamesTwoArgForm`: a one-argument clone against an unbound weft failing with the unbound condition and the two-argument remedy named and no hub created; coverage of its blocks by other tests does not show an assertion of this
+- `TestCloneHub_OldOrderInvocationIsRefused`: the pre-change argument order being refused with no hub created and the rejected repo untouched; coverage of its blocks by other tests does not show an assertion of this
+- `TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree`: ResetHard discarding a later commit and landing HEAD at the older sha on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
+- `TestFabricWarp_ResetHardRefusesDirtyWarpCheckout`: ResetHard refusing a dirty tracked checkout and leaving the commit and the change on disk; coverage of its blocks by other tests does not show an assertion of this
+- `TestWarpLayoutFor_FastPathMatchesResolveWorktree`: the fast-path layout equalling the resolved worktree layout; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeft_UntrackedNewFileCountsAsMatch`: an untracked new directory counting as a pathspec match while a nonexistent first entry is dropped; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeft_IndexOnlyDeletionCountsAsMatch`: an index-only deletion counting as a pathspec match so Unwire's deletion commit lands; coverage of its blocks by other tests does not show an assertion of this
+- `TestCommitWeft_ExcludeMagicPassesThroughUntouched`: an :(exclude) pathspec entry passing through untouched while a positive entry still commits and the excluded artifact stays unstaged; coverage of its blocks by other tests does not show an assertion of this
+- `TestResolvedDefaultRoutingNames_IsLyxAlone`: the resolved default routing set being _lyx alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
+- `TestList_ParsesPrunable`: List reporting a deleted-but-unpruned worktree as Prunable and the prime as not; coverage of its blocks by other tests does not show an assertion of this
+- `TestList_NotAGitRepo`: List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this
 
 No coverage:
 
@@ -1241,8 +1150,8 @@ No coverage:
 - `TestAddRollback_RefusedWarpBranchDeletionLogsWarn`: unclassifiable call
 - `TestAddRollback_UnwiresJunctionsOnPostWiringFailure`: unclassifiable call
 - `TestAdd_GitFailureCarriesGitsOwnReason`: unclassifiable call
-- `TestAdd_FromTaskPairDropsParentRunRecords`: unclassifiable call
-- `TestAdd_DropRollsBackFully`: unclassifiable call
+- `TestAdd_RunRecords`: unclassifiable call
+- `TestArchiveWeftTip`: unclassifiable call
 - `TestCheckout_RefreshesCorrespondenceIndex`: unclassifiable call
 - `TestCheckout_JunctionFailureRollsBackBothSides`: unclassifiable call
 - `TestCheckout_JunctionFailureDeletesForkedWeftBranch`: unclassifiable call
@@ -1267,6 +1176,7 @@ No coverage:
 - `TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote`: unclassifiable call
 - `TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch`: unclassifiable call
 - `TestCloneHub_AnchorCreatePath`: unclassifiable call
+- `TestCloneHub_AnchorGuardHardErrors`: unclassifiable call
 - `TestCloneHub_AnchorRootDefaultPath`: unclassifiable call
 - `TestCloneHub_AnchorAdoptPath`: unclassifiable call
 - `TestCloneHub_RejectsUnusableSubpath`: unclassifiable call
@@ -1294,6 +1204,7 @@ No coverage:
 - `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted`: unclassifiable call
 - `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`: unclassifiable call
 - `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing`: unclassifiable call
+- `TestCommittedAnchoredFile`: unclassifiable call
 - `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`: unclassifiable call
 - `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`: unclassifiable call
 - `TestRemoveWarpWorktreeDir_FallbackHonoursForce`: unclassifiable call
@@ -1314,9 +1225,10 @@ No coverage:
 - `TestHubContainment_ReconcileWiresNoBoardJunction`: unclassifiable call
 - `TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning`: unclassifiable call
 - `TestCloneHub_BoardStageAllCommitNeverStagesHubScratch`: unclassifiable call
-- `TestWriteHubWorkspace`: unclassifiable call
+- `TestCorrespondenceIndex`: unclassifiable call
 - `TestHealthy_JunctionDriftShapes`: unclassifiable call
 - `TestReconcile_RepairsOptionalJunctionOnlyDrift`: unclassifiable call
+- `TestWireJunctions_RepairsCorruptedJunctions`: unclassifiable call
 - `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`: unclassifiable call
 - `TestManifestRoundTrip`: unclassifiable call
 - `TestManifestGitAllowlist`: unclassifiable call
@@ -1405,7 +1317,10 @@ No coverage:
 - `TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion`: unclassifiable call
 - `TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed`: unclassifiable call
 - `TestMergeStageTracked_ForeignMergeStateRefuses`: unclassifiable call
+- `TestMergeState_Record`: unclassifiable call
 - `TestMergeState_ForeignMergeStatePresent`: unclassifiable call
+- `TestMergeState_ResetMergeSides`: unclassifiable call
+- `TestMergeStateActive`: unclassifiable call
 - `TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged`: unclassifiable call
 - `TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged`: unclassifiable call
 - `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes`: unclassifiable call
@@ -1416,7 +1331,7 @@ No coverage:
 - `TestMidMerge_ForeignState_EverySideAndShape`: unclassifiable call
 - `TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing`: unclassifiable call
 - `TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction`: unclassifiable call
-- `TestAdd_RecordsParentWorktree`: unclassifiable call
+- `TestAdd_OriginRecord`: unclassifiable call
 - `TestAddRollback_CreatedPathLeavesNoOriginRecord`: unclassifiable call
 - `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`: unclassifiable call
 - `TestAdd_OriginRecordMutationEntries`: unclassifiable call
@@ -1511,6 +1426,8 @@ No coverage:
 - `TestResetPairWarp_OwnershipRefusals`: unclassifiable call
 - `TestCloneHub_ShortnameRecordLifecycle`: unclassifiable call
 - `TestCloneHub_BoundWeftWithoutRecord`: unclassifiable call
+- `TestSnapshotWarpSHA_Lookup`: unclassifiable call
+- `TestStencilBaseByStamp`: unclassifiable call
 - `TestRebuildIndex_EqualsIncrementallyBuiltIndex`: unclassifiable call
 - `TestCloneHub_BootstrapWritesBinding`: unclassifiable call
 - `TestCloneHub_DerivesWarpFromBinding`: unclassifiable call

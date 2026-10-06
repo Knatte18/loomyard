@@ -83,6 +83,8 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 }
 
 // TestMergeStageTracked_NoMergeInProgressRefuses asserts the verb refuses, staging nothing, when no fabric merge record exists.
+//
+//testtiming:keep the verb refusing and staging nothing when no fabric merge record exists; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeStageTracked_NoMergeInProgressRefuses(t *testing.T) {
 	t.Parallel()
 

@@ -20,6 +20,8 @@ import (
 
 // TestResetHub_RefusesADirectoryThatIsNotAHub parks user content in a directory named like a hub
 // and asserts resetHub refuses it and leaves every byte in place.
+//
+//testtiming:keep resetHub refusing a directory named like a hub and leaving every byte of user content in place; coverage of its blocks by other tests does not show an assertion of this
 func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 	t.Parallel()
 
@@ -54,6 +56,8 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 // TestResetHub_RemovesARealHub is the guard's counter-test: a directory carrying either structural
 // mark of a hub must still be torn down, so --reset stays an idempotent re-clone rather than being
 // disabled outright.
+//
+//testtiming:keep resetHub still tearing down a directory carrying either structural hub mark, so --reset stays an idempotent re-clone; coverage of its blocks by other tests does not show an assertion of this
 func TestResetHub_RemovesARealHub(t *testing.T) {
 	t.Parallel()
 

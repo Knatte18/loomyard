@@ -215,6 +215,8 @@ func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 // usable.
 // Asserts both the repo-wide default junctions (_lyx and _extra) resolve to their paired weft
 // directories.
+//
+//testtiming:keep a successful Add leaving the new worktree's junctions wired at once, with _lyx and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
 

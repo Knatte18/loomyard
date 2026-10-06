@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep the shortname record round-tripping through its file; coverage of its blocks by other tests does not show an assertion of this
 func TestShortnameRecord_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	if err := WriteShortname(dir, "lx"); err != nil {

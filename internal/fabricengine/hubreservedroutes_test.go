@@ -21,6 +21,8 @@ import (
 // two routes that respectively drive junction wiring and the weft commit pathspec.
 // junctionnames_test.go's TestFilterHubReserved covers filterHubReserved itself at unit level; this
 // case is the half that exercises it through a loaded config.
+//
+//testtiming:keep _board appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {
 	t.Parallel()
 

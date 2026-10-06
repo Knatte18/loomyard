@@ -18,12 +18,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// TestHubScratchDir_IsBoardAnchored asserts that fabricengine.HubScratchDir(hub) equals
-// filepath.Join(fabricengine.BoardDir(hub), lyxdirs.DotLyxDirName), and that it is a sibling of
-// fabricengine.StencilsDir(hub)'s `_lyx` component rather than nested under it — the ephemeral
-// `.lyx` tree and the durable `_lyx` tree sit side by side inside `_board`, never one inside the
-// other.
-func TestHubScratchDir_IsBoardAnchored(t *testing.T) {
+// TestHubScratchAndLogsDir covers the hub scratch geometry:
+// HubScratchDir(hub) equals filepath.Join(BoardDir(hub), lyxdirs.DotLyxDirName) and is a sibling of
+// StencilsDir(hub)'s `_lyx` component rather than nested under it — the ephemeral `.lyx` tree and
+// the durable `_lyx` tree sit side by side inside `_board`, never one inside the other;
+// HubScratchDir's value is byte-identical for a subpath-anchored hub, because it takes a bare hub
+// string and must never pick up AnchorRel, the board's `_lyx`/`.lyx` trees being flat;
+// and HubLogsDir(hub) equals filepath.Join(HubScratchDir(hub), "logs") — the derivation HubLogsDir's
+// own doc comment states.
+//
+//testtiming:keep HubScratchDir being board-anchored, a sibling of the stencils _lyx tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
+func TestHubScratchAndLogsDir(t *testing.T) {
+	t.Parallel()
+
 	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
 
 	got := fabricengine.HubScratchDir(hub)
@@ -36,33 +43,16 @@ func TestHubScratchDir_IsBoardAnchored(t *testing.T) {
 	if filepath.Dir(got) != filepath.Dir(filepath.Dir(stencils)) {
 		t.Errorf("HubScratchDir(%q) = %q; want a sibling of StencilsDir(%q) = %q's _lyx component, not nested under it", hub, got, hub, stencils)
 	}
-}
 
-// TestHubScratchDir_IgnoresAnchorRel asserts that HubScratchDir's value is byte-identical for a
-// subpath-anchored hub: HubScratchDir takes a bare hub string and must never pick up AnchorRel,
-// because the board's `_lyx`/`.lyx` trees are flat.
-func TestHubScratchDir_IgnoresAnchorRel(t *testing.T) {
-	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
-
-	unanchored := fabricengine.HubScratchDir(hub)
 	l := &lyxcwd.Location{HubPath: hub, AnchorRel: "backend"}
-	subpathAnchored := fabricengine.HubScratchDir(l.HubPath)
-
-	if unanchored != subpathAnchored {
-		t.Errorf("HubScratchDir(%q) = %q; want byte-identical result %q regardless of AnchorRel", hub, subpathAnchored, unanchored)
+	if subpathAnchored := fabricengine.HubScratchDir(l.HubPath); subpathAnchored != got {
+		t.Errorf("HubScratchDir(%q) = %q; want byte-identical result %q regardless of AnchorRel", hub, subpathAnchored, got)
 	}
-}
 
-// TestHubLogsDir_IsHubScratchDirLogsSubdir asserts that fabricengine.HubLogsDir(hub) equals
-// filepath.Join(fabricengine.HubScratchDir(hub), "logs") for a synthetic hub path — the derivation
-// HubLogsDir's own doc comment states.
-func TestHubLogsDir_IsHubScratchDirLogsSubdir(t *testing.T) {
-	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYXHUB")
-
-	got := fabricengine.HubLogsDir(hub)
-	want := filepath.Join(fabricengine.HubScratchDir(hub), "logs")
-	if got != want {
-		t.Errorf("HubLogsDir(%q) = %q; want %q", hub, got, want)
+	gotLogs := fabricengine.HubLogsDir(hub)
+	wantLogs := filepath.Join(got, "logs")
+	if gotLogs != wantLogs {
+		t.Errorf("HubLogsDir(%q) = %q; want %q", hub, gotLogs, wantLogs)
 	}
 }
 
@@ -73,6 +63,8 @@ func TestHubLogsDir_IsHubScratchDirLogsSubdir(t *testing.T) {
 // produces at <hub>/_board/.lyx.
 // Moved verbatim from clone_test.go except that the pre-created directory is
 // fabricengine.HubScratchDir(hubPath) instead of the old bare <hub>/.lyx join.
+//
+//testtiming:keep the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
 func TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx(t *testing.T) {
 	hubPath := t.TempDir()
 	if err := os.MkdirAll(fabricengine.HubScratchDir(hubPath), 0o755); err != nil {

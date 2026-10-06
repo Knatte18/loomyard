@@ -35,87 +35,163 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 	return out
 }
 
-// TestAdd_RecordsNonDefaultParentBranch proves that Add records the acting warp worktree's actual
-// current branch as parent_branch, not always the hub's default branch: the prime warp worktree is
-// checked out onto a fresh non-default branch, with a matching weft-side branch pre-created for
-// createWeftWorktree to fork from, before Add runs.
-func TestAdd_RecordsNonDefaultParentBranch(t *testing.T) {
+// TestAdd_OriginRecord builds one hub and runs Add against it, in this order:
+// the origin record is committed on the new pair's weft branch — present in that branch's tree, not
+// merely sitting on disk in the working copy;
+// Add records the acting worktree's name as parent_worktree, the prime's name for a pair added from
+// the prime and the first pair's slug for a pair added from inside that pair;
+// two concurrent CommitWeftPaths calls against the same weft worktree serialize on the weft write
+// lock rather than racing unlocked: both land, neither corrupts the other's index, and the resulting
+// weft history is linear — driven the way TestCommitLock_WarpOnlySerializesConcurrentCommits drives
+// its own contention case, since CommitWeftPaths and ensureWeftLockDirAt's lock path are unexported
+// and this package cannot import hubforge from inside package fabricengine to reuse that test's own
+// fixture directly;
+// and Add records the acting warp worktree's actual current branch as parent_branch, not always the
+// hub's default branch.
+// The last step checks the prime warp worktree out onto a non-default branch, so it runs last.
+func TestAdd_OriginRecord(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	const parentBranch = "feature-parent"
-	const slug = "non-default-parent"
 
-	// Give the weft side a branch to fork from before the warp side ever leaves "main": the weft-side
-	// branch existing is what createWeftWorktree's fork-from-parent-weft-branch step needs, and
-	// creating it here (rather than via a checkout) needs no worktree of its own.
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(parentBranch), fabricengine.WeftBranchName("main"))
+	t.Run("record is committed on the weft branch", func(t *testing.T) {
+		const slug = "record-committed"
 
-	// Move the prime warp worktree onto the non-default branch Add will read via rev-parse
-	// --abbrev-ref HEAD.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", parentBranch)
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		weftBranch := fabricengine.WeftBranchName(slug)
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		gitRelPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))
 
-	// Resolve a Location at the new pair's own warp worktree — the acting worktree ReadOrigin reads
-	// through, mirroring how an operator who cd's into the new pair would read it back.
-	pairLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
-	}
-	origin, ok, err := fabricengine.ReadOrigin(pairLayout)
-	if err != nil {
-		t.Fatalf("ReadOrigin() error = %v", err)
-	}
-	if !ok {
-		t.Fatalf("ReadOrigin() ok = false; want a record written by Add")
-	}
-	if origin.ParentBranch != parentBranch {
-		t.Errorf("ReadOrigin().ParentBranch = %q; want %q", origin.ParentBranch, parentBranch)
-	}
-}
+		shown := gitShow(t, weftPath, weftBranch, gitRelPath)
+		if !strings.Contains(shown, `"parent_branch": "main"`) {
+			t.Errorf("git show %s:%s = %q; want it to contain the committed parent_branch content", weftBranch, gitRelPath, shown)
+		}
+	})
 
-// TestAdd_RecordsParentWorktree proves that Add records the acting worktree's name as parent_worktree:
-// the prime's name for a pair added from the prime, and the first pair's slug for a pair added from inside that pair.
-func TestAdd_RecordsParentWorktree(t *testing.T) {
-	t.Parallel()
+	t.Run("parent worktree is the acting worktree's name", func(t *testing.T) {
+		const first = "first-pair"
+		const second = "second-pair"
 
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	const first = "first-pair"
-	const second = "second-pair"
-
-	hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
-	firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
-	}
-	if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q) from the first pair: %v", second, err)
-	}
-
-	for _, tc := range []struct{ slug, want string }{
-		{first, l.WorktreeName},
-		{second, first},
-	} {
-		layout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, tc.slug))
+		hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
+		firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
 		if err != nil {
-			t.Fatalf("lyxcwd.Resolve(%q): %v", tc.slug, err)
+			t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
 		}
-		origin, ok, err := fabricengine.ReadOrigin(layout)
-		if err != nil || !ok {
-			t.Fatalf("ReadOrigin(%q) = ok %v, err %v; want a record", tc.slug, ok, err)
+		if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
+			t.Fatalf("Add(%q) from the first pair: %v", second, err)
 		}
-		if origin.ParentWorktree != tc.want {
-			t.Errorf("%q ParentWorktree = %q; want %q", tc.slug, origin.ParentWorktree, tc.want)
+
+		for _, tc := range []struct{ slug, want string }{
+			{first, l.WorktreeName},
+			{second, first},
+		} {
+			layout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, tc.slug))
+			if err != nil {
+				t.Fatalf("lyxcwd.Resolve(%q): %v", tc.slug, err)
+			}
+			origin, ok, err := fabricengine.ReadOrigin(layout)
+			if err != nil || !ok {
+				t.Fatalf("ReadOrigin(%q) = ok %v, err %v; want a record", tc.slug, ok, err)
+			}
+			if origin.ParentWorktree != tc.want {
+				t.Errorf("%q ParentWorktree = %q; want %q", tc.slug, origin.ParentWorktree, tc.want)
+			}
 		}
-	}
+	})
+
+	t.Run("concurrent CommitWeftPaths calls serialize", func(t *testing.T) {
+		const slug = "commit-lock-race"
+
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		before := gitkit.RevListCount(t, weftPath, "HEAD")
+
+		names := [2]string{"race-a.txt", "race-b.txt"}
+		for _, name := range names {
+			if err := os.WriteFile(filepath.Join(weftPath, l.AnchorRel, name), []byte("race\n"), 0o644); err != nil {
+				t.Fatalf("seed %s: %v", name, err)
+			}
+		}
+
+		type outcome struct {
+			committed bool
+			err       error
+		}
+		outcomes := make(chan outcome, len(names))
+		for _, name := range names {
+			name := name
+			go func() {
+				rec := fabricengine.NewMutations(l.HubPath)
+				_, committed, err := fabricengine.CommitWeftPaths(rec, weftPath, l.AnchorRel, []string{name}, "concurrent commit "+name, fabricengine.SyncOptions{})
+				outcomes <- outcome{committed: committed, err: err}
+			}()
+		}
+
+		landed := 0
+		for range names {
+			got := <-outcomes
+			if got.err != nil {
+				t.Fatalf("CommitWeftPaths() error = %v", got.err)
+			}
+			if got.committed {
+				landed++
+			}
+		}
+		if landed != len(names) {
+			t.Errorf("landed commit count = %d; want %d (both concurrent CommitWeftPaths calls should land, serialized rather than raced away)", landed, len(names))
+		}
+
+		after := gitkit.RevListCount(t, weftPath, "HEAD")
+		if after != before+len(names) {
+			t.Errorf("weft commit count after = %d; want %d (%d before plus %d landed)", after, before+len(names), before, len(names))
+		}
+		merges := gitkit.RevListCount(t, weftPath, "--merges", "HEAD")
+		if merges != 0 {
+			t.Errorf("weft merge commit count = %d; want 0 (concurrent CommitWeftPaths calls should serialize into a linear history, never race into a merge)", merges)
+		}
+	})
+
+	t.Run("parent branch is the acting worktree's current branch", func(t *testing.T) {
+		const parentBranch = "feature-parent"
+		const slug = "non-default-parent"
+
+		// Give the weft side a branch to fork from before the warp side ever leaves "main": the weft-side
+		// branch existing is what createWeftWorktree's fork-from-parent-weft-branch step needs, and
+		// creating it here (rather than via a checkout) needs no worktree of its own.
+		gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(parentBranch), fabricengine.WeftBranchName("main"))
+
+		// Move the prime warp worktree onto the non-default branch Add will read via rev-parse
+		// --abbrev-ref HEAD.
+		gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", parentBranch)
+
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+
+		// Resolve a Location at the new pair's own warp worktree — the acting worktree ReadOrigin reads
+		// through, mirroring how an operator who cd's into the new pair would read it back.
+		pairLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+		if err != nil {
+			t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
+		}
+		origin, ok, err := fabricengine.ReadOrigin(pairLayout)
+		if err != nil {
+			t.Fatalf("ReadOrigin() error = %v", err)
+		}
+		if !ok {
+			t.Fatalf("ReadOrigin() ok = false; want a record written by Add")
+		}
+		if origin.ParentBranch != parentBranch {
+			t.Errorf("ReadOrigin().ParentBranch = %q; want %q", origin.ParentBranch, parentBranch)
+		}
+	})
 }
 
 // TestAdd_RecordsParentBranch_SubpathAnchoredHub proves the record lands at the anchor-relative path
 // inside the new pair's weft worktree, not at the weft worktree root — the case a "." anchor cannot
 // distinguish.
+//
+//testtiming:keep the origin record landing at the anchor-relative path and not at the weft root, with parent_branch main; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 	t.Parallel()
 
@@ -148,89 +224,6 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 	}
 	if origin.ParentBranch != "main" {
 		t.Errorf("ReadOrigin().ParentBranch = %q; want %q", origin.ParentBranch, "main")
-	}
-}
-
-// TestAdd_CommitsOriginRecordOnWeftBranch proves the record is committed on the new pair's weft
-// branch — present in that branch's tree, not merely sitting on disk in the working copy.
-func TestAdd_CommitsOriginRecordOnWeftBranch(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	const slug = "record-committed"
-
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-
-	weftBranch := fabricengine.WeftBranchName(slug)
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	gitRelPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))
-
-	shown := gitShow(t, weftPath, weftBranch, gitRelPath)
-	if !strings.Contains(shown, `"parent_branch": "main"`) {
-		t.Errorf("git show %s:%s = %q; want it to contain the committed parent_branch content", weftBranch, gitRelPath, shown)
-	}
-}
-
-// TestCommitWeftPaths_SerializesConcurrentCommits asserts that two concurrent CommitWeftPaths calls
-// against the same weft worktree serialize on the weft write lock rather than racing unlocked: both
-// land, neither corrupts the other's index, and the resulting weft history is linear.
-// Driven the way TestCommitLock_WarpOnlySerializesConcurrentCommits drives its own contention case,
-// since CommitWeftPaths and ensureWeftLockDirAt's lock path are unexported and this package cannot
-// import hubforge from inside package fabricengine to reuse that test's own fixture directly.
-func TestCommitWeftPaths_SerializesConcurrentCommits(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-	const slug = "commit-lock-race"
-
-	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	before := gitkit.RevListCount(t, weftPath, "HEAD")
-
-	names := [2]string{"race-a.txt", "race-b.txt"}
-	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(weftPath, l.AnchorRel, name), []byte("race\n"), 0o644); err != nil {
-			t.Fatalf("seed %s: %v", name, err)
-		}
-	}
-
-	type outcome struct {
-		committed bool
-		err       error
-	}
-	outcomes := make(chan outcome, len(names))
-	for _, name := range names {
-		name := name
-		go func() {
-			rec := fabricengine.NewMutations(l.HubPath)
-			_, committed, err := fabricengine.CommitWeftPaths(rec, weftPath, l.AnchorRel, []string{name}, "concurrent commit "+name, fabricengine.SyncOptions{})
-			outcomes <- outcome{committed: committed, err: err}
-		}()
-	}
-
-	landed := 0
-	for range names {
-		got := <-outcomes
-		if got.err != nil {
-			t.Fatalf("CommitWeftPaths() error = %v", got.err)
-		}
-		if got.committed {
-			landed++
-		}
-	}
-	if landed != len(names) {
-		t.Errorf("landed commit count = %d; want %d (both concurrent CommitWeftPaths calls should land, serialized rather than raced away)", landed, len(names))
-	}
-
-	after := gitkit.RevListCount(t, weftPath, "HEAD")
-	if after != before+len(names) {
-		t.Errorf("weft commit count after = %d; want %d (%d before plus %d landed)", after, before+len(names), before, len(names))
-	}
-	merges := gitkit.RevListCount(t, weftPath, "--merges", "HEAD")
-	if merges != 0 {
-		t.Errorf("weft merge commit count = %d; want 0 (concurrent CommitWeftPaths calls should serialize into a linear history, never race into a merge)", merges)
 	}
 }
 

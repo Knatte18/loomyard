@@ -36,6 +36,8 @@ import (
 // Unwire removes every fabric junction present on disk for the worktree, including a junction
 // (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left
 // behind.
+//
+//testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
@@ -90,6 +92,8 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 // commit — the last is asserted by inspecting the weft log, not by counting commits, since an
 // unrelated commit landing on the weft branch during setup would otherwise make a bare commit-count
 // assertion fragile.
+//
+//testtiming:keep weft-side _lyx and .lyx surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
@@ -182,6 +186,8 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 // TestUnwireVerbResult_HasNoGitignoreField asserts, via reflection, that UnwireVerbResult carries no
 // Gitignore field — the CLI envelope (internal/fabriccli/unwire.go's output.Ok map, built directly
 // from this struct's fields) can then never carry a "gitignore" key.
+//
+//testtiming:keep UnwireVerbResult carrying no Gitignore field so the CLI envelope never gains a gitignore key; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 	t.Parallel()
 
@@ -197,6 +203,8 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 // plain-repo fixture, which had no weft sibling and no junctions at all — the shape
 // initengine.Undo's TestUndo_NoWeftPairing coverage mirrored), so the FIRST Unwire call below does
 // real teardown work rather than observing a no-op; only the second call is the no-op.
+//
+//testtiming:keep a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")
@@ -230,6 +238,8 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 // TestUnwire_PreservesRepoWideRecords proves Unwire's per-worktree scope: the repo-wide weft:main
 // records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml) survive a worktree's Unwire untouched,
 // so a later `lyx fabric reconcile` can still re-wire it.
+//
+//testtiming:keep the repo-wide weft:main records surviving a worktree's Unwire so a later reconcile can re-wire; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("WEFT_SKIP_PUSH", "1")

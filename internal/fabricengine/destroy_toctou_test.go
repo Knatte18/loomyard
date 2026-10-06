@@ -22,6 +22,8 @@ import (
 
 // TestRemoveContainedPath_RefusesEscapingIntermediate asserts that a removal whose target is reachable
 // only by traversing a symlink that escapes the container is refused, with the outside file preserved.
+//
+//testtiming:keep a removal reachable only through an escaping symlink being refused with the outside file preserved; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
 	base := t.TempDir()
 	container := filepath.Join(base, "container")
@@ -60,6 +62,8 @@ func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
 
 // TestRemoveContainedPath_RemovesLegitimateNested asserts a real nested entry is removed and recorded
 // as a directory or single entry correctly.
+//
+//testtiming:keep a real nested entry being removed and recorded as a directory or single entry; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
@@ -94,6 +98,8 @@ func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
 
 // TestRemoveContainedPath_RemovesFinalLinkNotTarget asserts a final-component link (a junction) is
 // removed as a link, leaving the escaping target it pointed at untouched.
+//
+//testtiming:keep a final-component junction being removed as a link while its escaping target stays untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesFinalLinkNotTarget(t *testing.T) {
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
@@ -130,6 +136,8 @@ func TestRemoveContainedPath_RemovesFinalLinkNotTarget(t *testing.T) {
 }
 
 // TestRemoveContainedPath_AbsentIsNoOp asserts an already-absent target is an idempotent no-op.
+//
+//testtiming:keep an already-absent target being an idempotent no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
@@ -151,6 +159,8 @@ func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
 // gate never mints a createdToken for a directory it did not itself bring into being. This is the leaf
 // property CloneHub's hub bootstrap relies on; the intermediate-ancestor case is documented as NOT
 // refused (os.OpenRoot resolves the parent), so this test deliberately pins only the leaf guarantee.
+//
+//testtiming:keep createExclusiveDir refusing a symlink planted at the leaf as EEXIST so the gate never mints a token for a directory it did not create; coverage of its blocks by other tests does not show an assertion of this
 func TestCreateExclusiveDir_RefusesLeafSymlink(t *testing.T) {
 	base := t.TempDir()
 	container := filepath.Join(base, "container")

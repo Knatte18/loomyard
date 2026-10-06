@@ -45,6 +45,8 @@ func escapeFabricConfigYAML(escapeName string) string {
 // This test builds exactly that escaped link by hand (WireJunctions has no containment check of its
 // own either, and is not the code path under test here) and asserts the gate refuses to remove it
 // and leaves it on disk.
+//
+//testtiming:keep the junction-removal executor refusing a link that escapes the worktree and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +149,8 @@ func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 // that early point (hub directory created and nothing else — no warp clone, no weft clone, no board
 // worktree, so no hub scratch tree yet either), so this drives the scenario end to end through the
 // exported entry point.
+//
+//testtiming:keep teardownHub removing a half-built hub on the token it minted though neither side exists yet; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 	t.Parallel()
 
@@ -182,6 +186,8 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 // Asserting the error alone would pass against the pre-fix code too (an ungated fallback still
 // returns whatever os.RemoveAll or the surrounding plumbing reports), so the on-disk assertion is
 // what actually proves the gap closed.
+//
+//testtiming:keep the directory-removal fallback refusing a registered worktree with untracked files and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles(t *testing.T) {
 	t.Parallel()
 

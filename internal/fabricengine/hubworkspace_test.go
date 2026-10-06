@@ -18,6 +18,8 @@ func mkdirAll(t *testing.T, dir string) {
 }
 
 // TestHubWorkspacePathAndFolders pins the workspace file path and folder geometry for a root anchor and a nested one.
+//
+//testtiming:keep the workspace file path and folder geometry for a root and a nested anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestHubWorkspacePathAndFolders(t *testing.T) {
 	t.Parallel()
 

@@ -14,11 +14,17 @@ import (
 )
 
 // TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues removing junctions
-// after a per-junction failure.
+// after a per-junction failure, and that an empty junctions slice is a no-op.
+//
+//testtiming:keep the removal loop continuing past a per-junction failure and an empty slice being a no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+
+	if err := removeJunctionRecords(NewMutations(""), root, nil); err != nil {
+		t.Errorf("removeJunctionRecords(root, nil) = %v; want nil", err)
+	}
 
 	firstLink := filepath.Join(root, "first-link")
 	firstTarget := filepath.Join(root, "first-target")
@@ -56,16 +62,5 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 
 	if info, statErr := os.Stat(middleLink); statErr != nil || !info.IsDir() {
 		t.Errorf("middle warp dir %s not left in place: stat err=%v", middleLink, statErr)
-	}
-}
-
-// TestRemoveJunctionRecords_EmptyIsNoOp asserts that an empty junctions slice is a no-op.
-func TestRemoveJunctionRecords_EmptyIsNoOp(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-
-	if err := removeJunctionRecords(NewMutations(""), root, nil); err != nil {
-		t.Errorf("removeJunctionRecords(root, nil) = %v; want nil", err)
 	}
 }

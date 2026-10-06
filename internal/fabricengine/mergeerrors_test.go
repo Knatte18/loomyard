@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep the exact Error() string of each named merge error and of MergeGuardError; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeErrors_PinnedStrings(t *testing.T) {
 	tests := []struct {
 		name string
@@ -60,13 +61,6 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 	}
 }
 
-func TestMergeErrors_ErrMergeInRequiredSourceNotInMessage(t *testing.T) {
-	err := &ErrMergeInRequired{Source: "the-offending-branch"}
-	if strings.Contains(err.Error(), "the-offending-branch") {
-		t.Errorf("ErrMergeInRequired.Error() = %q; must not interpolate Source", err.Error())
-	}
-}
-
 func TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -109,31 +103,6 @@ func TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates(t *testing.T) {
 // vocabulary, and any "host " phrase is a git-internal spelling neither belongs on the public
 // error surface.
 var mergeVocabularyLeakTokens = []string{"warp", "weft", "host "}
-
-func TestMergeErrors_NoVocabularyLeakInReasons(t *testing.T) {
-	// pinnedMergeReasons (mergevocab_test.go) is the whole closed set, proven equal to the real
-	// const block by TestMergeVocabulary_GuardReasonSetMatchesConstBlock -- iterating it here means
-	// a newly added member can never sit outside this leak check, the drift a hand-copied subset
-	// already suffered once (two of nine members were missing).
-	for name, reason := range pinnedMergeReasons {
-		assertNoVocabularyLeak(t, name, reason)
-	}
-}
-
-func TestMergeErrors_NoVocabularyLeakInErrorStrings(t *testing.T) {
-	errs := map[string]error{
-		"MergeGuardError":      &MergeGuardError{Reasons: []string{mergeReasonWorktreeDirty}},
-		"ErrMergeInRequired":   &ErrMergeInRequired{Source: "warp-branch-name"},
-		"ErrForeignMergeState": &ErrForeignMergeState{},
-		"ErrNoMergeInProgress": &ErrNoMergeInProgress{},
-		"ErrMergeIncomplete":   &ErrMergeIncomplete{},
-		"ErrUnmergeableState":  &ErrUnmergeableState{},
-		"ErrMergeInProgress":   &ErrMergeInProgress{},
-	}
-	for name, err := range errs {
-		assertNoVocabularyLeak(t, name, err.Error())
-	}
-}
 
 // assertNoVocabularyLeak fails the test if s contains any token in mergeVocabularyLeakTokens,
 // case-insensitively.

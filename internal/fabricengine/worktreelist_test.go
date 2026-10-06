@@ -122,6 +122,8 @@ func TestList(t *testing.T) {
 // TestList_ParsesPrunable covers parseWorktreePorcelain's Prunable branch through the public List
 // entry point: a worktree deleted without `git worktree prune` reports Prunable == true, while the
 // hub's own prime entry — never deleted — reports Prunable == false.
+//
+//testtiming:keep List reporting a deleted-but-unpruned worktree as Prunable and the prime as not; coverage of its blocks by other tests does not show an assertion of this
 func TestList_ParsesPrunable(t *testing.T) {
 	t.Parallel()
 
@@ -167,6 +169,8 @@ func TestList_ParsesPrunable(t *testing.T) {
 // nineteen other RunGit sites in this same package already printed stderr. Local context alone is
 // not a diagnosis;
 // the context is what tells the operator WHERE, and git's stderr is what tells them WHY.
+//
+//testtiming:keep List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this
 func TestList_NotAGitRepo(t *testing.T) {
 	t.Parallel()
 

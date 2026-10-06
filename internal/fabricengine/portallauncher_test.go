@@ -29,6 +29,8 @@ func wantMenuLauncherName() string {
 // TestPortalsDirAndLaunchersDir verifies that PortalsDir and launchersDir join the hub with their
 // respective directory names,
 // and that portalTarget joins the hub, slug, AnchorRel and _lyx.
+//
+//testtiming:keep PortalsDir, launchersDir and portalTarget joining the hub, slug, anchor and _lyx; coverage of its blocks by other tests does not show an assertion of this
 func TestPortalsDirAndLaunchersDir(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +58,8 @@ func TestPortalsDirAndLaunchersDir(t *testing.T) {
 // TestMirroredPortalLauncherMethods tests the AnchorRel-mirrored geometry accessors: PortalLink,
 // LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel, both at the anchor root and
 // at a nested subpath, plus a no-collision check between two distinct subpaths.
+//
+//testtiming:keep the AnchorRel-mirrored portal and launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
 func TestMirroredPortalLauncherMethods(t *testing.T) {
 	t.Parallel()
 
@@ -315,6 +319,8 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 // out-of-container victim must survive. The routing itself is separately guarded mechanically —
 // launchers.go is no longer on cmd/lyx/destructiveguard_test.go's allowlist, so reintroducing a raw
 // os.Remove( there fails TestNoDestructiveBypass_FabricengineProductionSource.
+//
+//testtiming:keep launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 	t.Parallel()
 
@@ -354,6 +360,8 @@ func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 // call is a silent, unrecorded no-op. removeContainedPath reports removed=false for an absent target,
 // which is what keeps the idempotence every teardown caller relies on — the raw os.Remove this
 // replaced relied on an os.IsNotExist check to get the same answer.
+//
+//testtiming:keep an empty launcher directory being removed and recorded exactly once with a silent second call; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -390,6 +398,8 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 
 // TestRemovePortal_LeavesAnchorDirectory pins that removing the last pair's portal keeps _portals/<AnchorRel>
 // in place and empty, and that a pair added afterwards lands under it.
+//
+//testtiming:keep removing the last pair's portal keeping _portals/<AnchorRel> in place and empty so a later pair lands under it; coverage of its blocks by other tests does not show an assertion of this
 func TestRemovePortal_LeavesAnchorDirectory(t *testing.T) {
 	t.Parallel()
 
