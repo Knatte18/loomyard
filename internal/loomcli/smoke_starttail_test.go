@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
 // the attach tail's strand set -- on the unseeded fixture, which resolveSeedDriver seeds llm, it adds neither a loom-operator strand nor a status strand -- and the watchdog spawn's gate position -- that it fires even under --no-attach, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.

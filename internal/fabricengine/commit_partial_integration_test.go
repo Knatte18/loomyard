@@ -26,6 +26,7 @@ import (
 // The warp commit must stay, the returned error must be a *PartialCommitError naming the warp SHA
 // with weftCommitted=false, and the durable warp commit must still be pushed.
 func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	recorder := swapPushRecorder(t)
 
@@ -75,6 +76,7 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 // Nothing must land on weft, an error must be returned, and the push recorder must not be called —
 // Fabric.Commit returns before the push step on a warp-commit failure.
 func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	recorder := swapPushRecorder(t)
 
@@ -124,6 +126,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 // (ErrNoCorrespondence), whose one-shot rebuild only fires on a stale HIT — see WeftSHAForWarpSHA's
 // doc comment.
 func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
+	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	recorder := swapPushRecorder(t)
 

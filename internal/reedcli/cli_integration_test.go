@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // cli_integration_test.go holds the reedcli tests that build a real fixture hub (hubforge.NewHub)
 // with reed config resolution against a real fixture hub, so this file is integration-tagged per
@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestRunCLI_ResolvesLayoutAndConfig builds a real fixture hub and verifies reed config resolution
@@ -67,6 +68,9 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
+	// Registered here, before the calling test's own teardown cleanups, so it runs after them:
+	// whichever server the test boots for this hub is killed and its socket file removed.
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, reedengine.ServerName(h.Path))
 }
 
 // TestRunCLI_AddNotUp_SelfHealsAndSucceeds verifies that running `add` before `up` no longer refuses

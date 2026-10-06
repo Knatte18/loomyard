@@ -894,12 +894,26 @@ const processExitPoll = 50 * time.Millisecond
 
 // ensureServerGoneLocked guarantees no tmux process remains on this engine's
 // socket after kill-server. Force-reaps if needed; waits for async teardown.
+// Once no process remains it removes that server's socket file, on both the graceful and the force-reap path.
 func (e *Engine) ensureServerGoneLocked(serverPID int) error {
 	_ = waitProcessExit(serverPID, reapExitTimeout)
 	if len(e.serverProcessesOnSocket()) == 0 {
+		e.removeSocketFile()
 		return nil
 	}
-	return e.reapSocketProcesses()
+	if err := e.reapSocketProcesses(); err != nil {
+		return err
+	}
+	e.removeSocketFile()
+	return nil
+}
+
+// removeSocketFile removes the socket file the just-killed server left behind.
+// A failure is logged and never fails the teardown.
+func (e *Engine) removeSocketFile() {
+	if err := removeStaleSocket(socketDirFromEnv(), e.Socket()); err != nil {
+		logger.Debug("reed: could not remove the torn-down server's socket file", "socket", e.Socket(), "err", err)
+	}
 }
 
 // reapPaneChildren waits for pane child processes to exit, force-killing

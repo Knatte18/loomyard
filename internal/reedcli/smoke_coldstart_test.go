@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed
 // attach`, run against a worktree that was never brought up and carries no persisted state file at
@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // runReedCLINoFatal runs the built lyx binary with args in dir and returns its combined
@@ -76,6 +77,7 @@ func TestSmokeColdAddBootsAndAddsInOneCall(t *testing.T) {
 	addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "cold-headline")
 
 	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	if !sessionAlive(tmuxPath, socket, session) {
 		t.Errorf("session %s not alive on socket %s after a cold add; want the boot to have deposited it", session, socket)
@@ -100,6 +102,7 @@ func TestSmokeColdAddYieldsTheSameSubstrateAsAnExplicitBoot(t *testing.T) {
 	addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "cold-substrate")
 
 	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	panes := listPaneLines(t, tmuxPath, socket, session)
 	if len(panes) != 2 {
@@ -136,6 +139,7 @@ func TestSmokeColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession(t *tes
 	}
 
 	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	if !sessionAlive(tmuxPath, socket, session) {
 		t.Errorf("session %s not alive on socket %s after a cold attach; want the boot to have deposited it even though the handover then failed", session, socket)
@@ -257,6 +261,7 @@ func TestSmokeColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted
 	// own behaviour, so a corrupt reed.json leaves a bare session behind rather than refusing
 	// pre-boot.
 	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	if !sessionAlive(tmuxPath, socket, session) {
 		t.Errorf("session %s not alive on socket %s after a cold add on an unreadable state file; want the boot's residue left behind, matching up's own accepted behaviour", session, socket)

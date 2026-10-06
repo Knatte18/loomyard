@@ -28,6 +28,8 @@ import (
 // ConflictedFiles() lists the conflict, so the partition routed that path straight to `git add -A`
 // and staged into a merge fabric had no record of and no lock over.
 func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "other", "plain-conflict.txt")
@@ -61,6 +63,8 @@ func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T)
 // index — MergeStageResolved with exactly the conflicted paths clears both sides' ConflictedFiles(),
 // and a subsequent MergeContinue then succeeds.
 func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
@@ -99,6 +103,8 @@ func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testin
 // TestMergeStageResolved_PathNotConflictedOnEitherSide covers the caller-bug guard: a path listed by
 // neither side's ConflictedFiles() is an error naming that path, never a silent skip.
 func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
@@ -125,6 +131,8 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 // identically here and rewriting `add -A --` to `add --` keeps this test green. The `-A` is a version
 // pin whose correctness no test on a modern git can demonstrate — see StageResolved's own godoc.
 func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	const filename = "delete-modify.txt"
@@ -186,6 +194,8 @@ func commitOnBranchDeleting(t *testing.T, dir, branch, filename string) {
 // TestMergeStageResolved_EmptyPathsIsNoOp covers the empty-slice call: a nil error and an empty
 // mutation record, with nothing staged.
 func TestMergeStageResolved_EmptyPathsIsNoOp(t *testing.T) {
+	t.Parallel()
+
 	_, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	res, err := f.MergeStageResolved(nil)

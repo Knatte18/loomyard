@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_parentreview_test.go is the live-substrate guard for the parent-review notice: the one hop no untagged or integration test reaches,
 // because the wait loop's send must type the delivery prompt into a real pane and the pane must read it back.
@@ -9,7 +9,7 @@
 // the stub cannot, so it records the text it received in a notice file, which is what the test waits on.
 // The notice must name the brief path, which is all a real parent needs to review and submit.
 //
-// Its compile gate (`go vet -tags smoke ./...`) is the only automatic guard; an operator runs this test by hand against a real substrate.
+// Its compile gate (`go vet -tags tmux ./...`) is the only automatic guard; an operator runs this test by hand against a real substrate.
 
 package loomcli
 

@@ -1,12 +1,12 @@
 # Running the tests
 
-How to run Loomyard's Go test suite, what the two tiers mean,
+How to run Loomyard's Go test suite, what the four tiers mean,
 and the timing harness that produces the tables in [test-suite-timing.md](test-suite-timing.md).
 For the recorded numbers themselves, see that file — this one is the "how", not the "how fast".
 
-## The two tiers
+## The four tiers
 
-The suite is split into two tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
+The suite is split into four tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
 "Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, and real cross-compilation.
 A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in Tier 1.
 
@@ -15,7 +15,7 @@ A test that is merely slow — a big table-driven case, a large in-memory fixtur
   Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
   Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
   This is what you run constantly and what must stay fast.
-- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, or real external-binary spawn.
+- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to Tier 3 instead.
   It is slow **by design** — it does far more work.
   Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
   Numbers across machines and operating systems: [test-suite-timing.md](test-suite-timing.md#all-environments).
@@ -23,10 +23,18 @@ A test that is merely slow — a big table-driven case, a large in-memory fixtur
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (Tier 1 vs Tier 2 are not comparable — Tier 2 is the superset).
 
-One further opt-in tag exists alongside `integration`, gating a distinct kind of live substrate rather than widening `integration` itself:
+Two further opt-in tags exist alongside `integration`, each gating a distinct kind of live substrate rather than widening `integration` itself:
 
-- **`smoke`** (`go test -tags smoke ./...`): a pre-existing opt-in tag, distinct from `integration`.
-  It requires a real logged-in `claude` session on `$PATH` and exercises live agent-session behavior no hermetic test can cover.
+- **Tier 3 — `tmux`** (`go test -tags tmux ./...`): tests that start a real tmux server and drive real panes.
+  It needs `tmux` on `$PATH` and spends no tokens.
+  A test that only probes `tmux has-session` stays in `integration`.
+- **Tier 4 — `llm`** (`go vet -tags llm ./...` to compile; `go test -tags llm -run <Test> <package>` by hand to run): tests that spawn a real `claude` session.
+  It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
+  No gate ever runs `llm`; the plan verify and the card gates only compile it.
+
+The tags do not nest: `-tags integration` does not include `tmux` or `llm`, and a run that wants several names them all (`-tags integration,tmux`).
+`cmd/lyx/tierpurity_test.go` holds the untagged tier to its premise and `cmd/lyx/llmtier_test.go` keeps LLM spawns inside `llm`.
+The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which this page does not restate.
 
 ## Commands
 
@@ -37,6 +45,13 @@ go test ./... -count=1
 
 # Tier 2 — gated integration loop. Real worktrees, commits, pushes, junctions.
 go test -tags integration ./... -count=1
+
+# Tier 3 — real tmux servers, no tokens.
+go test -tags tmux ./... -count=1
+
+# Tier 4 — real LLM sessions: compile only; run one test by hand, never in a gate.
+go vet -tags llm ./...
+go test -tags llm -run <TestName> ./internal/<package> -count=1
 
 # Per-test timing, structured (parse Elapsed from the JSON stream).
 go test ./... -count=1 -json
@@ -65,10 +80,15 @@ go run ./cmd/testtiming -full
 
 # Show more (or fewer) of the slowest tests (default 15).
 go run ./cmd/testtiming -full -top 30
+
+# Any tag set, e.g. the tmux tier (refused together with -full).
+go run ./cmd/testtiming -tags tmux
 ```
 
 It shells out to `go test ./... -json -count=1` (adding `-tags integration` in full mode), so it needs nothing beyond a working Go toolchain.
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
+
+`go run ./cmd/testtiming -redundancy` writes the per-test coverage redundancy report; the committed report is [test-redundancy.md](test-redundancy.md).
 
 Example (Tier 1):
 

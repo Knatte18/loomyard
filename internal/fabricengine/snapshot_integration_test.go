@@ -465,6 +465,8 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 // commit's tree is byte-identical to the content commit's, so resolving through the overwritten
 // entry restores exactly the same weft state either commit would have.
 func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
@@ -536,6 +538,8 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 // reports false, demonstrating the "read, then check SHAExists" consumer idiom snapshotWarpSHA's
 // own doc comment describes, in executable form.
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())

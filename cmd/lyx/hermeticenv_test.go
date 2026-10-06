@@ -4,7 +4,7 @@
 // reason.
 // This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the
 // two-layer hermetic mechanism otherwise relies on every new package remembering to do.
-// See `PATTERN-hermetic-git-tests`.
+// See `PATTERN-test-isolation`.
 
 package main
 
@@ -152,7 +152,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	exemptPackages.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-hermetic-git-tests` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-test-isolation` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

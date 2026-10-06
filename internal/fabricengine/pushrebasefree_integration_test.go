@@ -23,6 +23,8 @@ import (
 // checkout with a commit ahead of its bare origin pushes it, the bare remote advances to the local
 // HEAD, and the returned record contains a KindBranchPushed entry.
 func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -53,6 +55,8 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 // TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-
 // circuit to an empty result and a nil error, leaving the bare remote unadvanced.
 func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		opts fabricengine.SyncOptions
@@ -89,6 +93,8 @@ func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 // exists to guarantee: after a successful push, no gitrepo.PushLockFileName file is left behind at
 // the warp worktree root.
 func TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)

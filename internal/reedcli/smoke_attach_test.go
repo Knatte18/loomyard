@@ -1,17 +1,16 @@
-//go:build smoke
+//go:build tmux
 
 package reedcli
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestSmokeAttachRendersInsideHarnessPane drives the interactive terminal handover of `lyx reed
@@ -36,7 +35,7 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	addStrand(t, smokeMarkerLaunchCmd("ATTACH-MARKER-ALPHA"), "--name", "amarker")
 	reedSocket, session := socketAndSession(t)
 
-	harness := fmt.Sprintf("lyx-attach-harness-%d", os.Getpid())
+	harness := tmuxkit.Socket(t, tmuxPath)
 	if err := exec.Command(tmuxPath, "-L", harness, "new-session", "-d", "-s", "h", "-x", "140", "-y", "42",
 		shellPath).Run(); err != nil {
 		t.Fatalf("boot harness server: %v", err)

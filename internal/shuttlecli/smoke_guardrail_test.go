@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail
 // path the hooks research flagged as unprobed
@@ -8,7 +8,7 @@
 // instruction rather than stalling or aborting the turn, and a REAL claude
 // asked to pose a question surfaces it as the run loop's classified
 // "asking" outcome. Follows the same conventions as smoke_run_test.go,
-// whose helpers (claudeBinaryPath, deferHubRelease, reedStatusStrand) this
+// whose helpers (deferHubRelease, reedStatusStrand) this
 // file reuses.
 
 package shuttlecli
@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
 // TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this round closes from the
@@ -36,7 +37,7 @@ import (
 // AND the steer redirected the work in-session, rather than the turn stalling or the agent giving
 // up once its preferred tool was refused.
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
@@ -94,7 +95,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 // directory must survive for the operator to answer into — the same live state the sandbox suite's
 // S2 operator-assisted scenario depends on.
 func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
-	claudeBinaryPath(t)
+	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)

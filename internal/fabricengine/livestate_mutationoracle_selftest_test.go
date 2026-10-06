@@ -94,6 +94,8 @@ func removedChange(path string, kind Kind) Change {
 // TestAssertRecordMatchesDiff drives AssertRecordMatchesDiff against hand-built Mutations/Change
 // values through failureRecorder, one case per rule the oracle carries.
 func TestAssertRecordMatchesDiff(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		rec        fabricengine.Mutations

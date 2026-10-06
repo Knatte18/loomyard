@@ -1,7 +1,8 @@
 // Package tmuxkit gives each test package one isolated tmux socket directory.
 //
 // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
-// Socket hands a single test a unique `-L` key and kills its server when the test ends.
+// Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
+// KillOnCleanup does the same for a key the test did not mint.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
 // The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys.
@@ -13,12 +14,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"testing"
+	"time"
 )
 
 const (
@@ -29,6 +32,11 @@ const (
 	maxKeyBytes = 61
 
 	dirPrefix = "lyx"
+
+	// deadSocketWait bounds how long removeDeadSocket waits for a killed server to stop accepting connections.
+	deadSocketWait = 2 * time.Second
+
+	deadSocketPoll = 10 * time.Millisecond
 )
 
 // Main runs m inside an isolated tmux socket directory and returns the run's exit code.
@@ -67,10 +75,11 @@ func sweep(dir string, uid int) {
 	}
 	for _, sock := range listSockets(dir, uid) {
 		_ = exec.Command(tmux, "-S", sock, "kill-server").Run()
+		removeDeadSocket(sock, deadSocketWait)
 	}
 }
 
-// Socket returns a unique `-L` key for one test and registers a `kill-server` on it in t.Cleanup.
+// Socket returns a unique `-L` key for one test and registers its teardown in t.Cleanup through KillOnCleanup.
 // tmux is the binary to run.
 func Socket(t *testing.T, tmux string) string {
 	t.Helper()
@@ -79,10 +88,53 @@ func Socket(t *testing.T, tmux string) string {
 		t.Fatalf("tmuxkit: random socket key: %v", err)
 	}
 	key := "lyxtest-" + hex.EncodeToString(b[:])
+	KillOnCleanup(t, tmux, key)
+	return key
+}
+
+// KillOnCleanup registers in t.Cleanup a `kill-server` on the `-L` key key, then the removal of that key's socket file.
+// It is the helper for a key a test did not mint itself, such as a `reedengine.ServerName` key of a fixture hub.
+// It removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob, and only a socket that no longer accepts connections.
+// tmux is the binary to run.
+func KillOnCleanup(t *testing.T, tmux, key string) {
+	t.Helper()
 	t.Cleanup(func() {
 		_ = exec.Command(tmux, "-L", key, "kill-server").Run()
+		removeDeadSocket(socketPath(key), deadSocketWait)
 	})
-	return key
+}
+
+// socketPath is the socket file tmux creates for the `-L` key key, resolving the directory from `TMUX_TMPDIR` as tmux does.
+func socketPath(key string) string {
+	base := os.Getenv("TMUX_TMPDIR")
+	if base == "" {
+		base = "/tmp"
+	}
+	return filepath.Join(socketDir(base, os.Getuid()), key)
+}
+
+// removeDeadSocket removes path when it is a socket that refuses connections, and leaves anything else alone.
+// A live server's socket accepts the probe connection and stays.
+// A server that `kill-server` was just sent to keeps listening for a moment, so a refusal is awaited for up to wait.
+func removeDeadSocket(path string, wait time.Duration) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSocket == 0 {
+		return
+	}
+	for deadline := time.Now().Add(wait); ; time.Sleep(deadSocketPoll) {
+		conn, err := net.Dial("unix", path)
+		if err != nil {
+			_ = os.Remove(path)
+			return
+		}
+		conn.Close()
+		if time.Now().After(deadline) {
+			return
+		}
+	}
 }
 
 // socketDir is the directory tmux puts its sockets in under a `TMUX_TMPDIR` of dir.

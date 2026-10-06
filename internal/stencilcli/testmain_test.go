@@ -1,7 +1,7 @@
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so stencilcli's git-spawning fixtures (the
 // integration-tagged hub fixture, and this package's own direct board-history commits) never
-// inherit the operator's global gitconfig (see PATTERN-hermetic-git-tests).
+// inherit the operator's global gitconfig (see PATTERN-test-isolation).
 
 package stencilcli
 

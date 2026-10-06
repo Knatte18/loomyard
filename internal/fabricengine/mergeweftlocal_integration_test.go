@@ -27,6 +27,8 @@ import (
 // alternative way (per the plan) of pinning that the merge record's WeftOutcome was written as
 // up_to_date, since the record itself is deleted by the time a successful call returns.
 func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged(t *testing.T) {
+	t.Parallel()
+
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
@@ -66,6 +68,8 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 // content is unchanged after the merge — proving the target's own divergence is never reconciled
 // against the source's, since there is no merge between them to reconcile it.
 func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) {
+	t.Parallel()
+
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 	if err := os.MkdirAll(filepath.Join(h.PrimeWeft(), "_lyx", "loom"), 0o755); err != nil {
@@ -108,6 +112,8 @@ func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) 
 // would conflict. It must now complete and report Committed true, since the weft is not a merge
 // participant and there is nothing left on that side to conflict.
 func TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes(t *testing.T) {
+	t.Parallel()
+
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
@@ -136,6 +142,8 @@ func TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes(t *testing
 // opposite direction — a parent branch's _lyx/ content never reaches the child's weft worktree, and
 // the child's own live _lyx/ content is unchanged.
 func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
+	t.Parallel()
+
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 
 	const childContent = "child content\n"
@@ -177,6 +185,8 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 // warp-side conflict still reaches unifyConflictPaths. MergeIn returns a non-empty Conflicts list
 // naming the warp path, leaving the pair mid-merge for MergeContinue.
 func TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")

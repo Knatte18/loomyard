@@ -31,6 +31,11 @@ const waitDelay = 10 * time.Second
 // A cancelled ctx returns (-1, err) with err wrapping ctx.Err().
 // A shell that could not start returns (-1, err) naming the command.
 func Run(ctx context.Context, command, dir string, out io.Writer) (int, error) {
+	return run(ctx, command, dir, out, waitDelay)
+}
+
+// run is Run with the wait delay as a parameter, so a test can shorten the wait for a lingering pipe holder.
+func run(ctx context.Context, command, dir string, out io.Writer, delay time.Duration) (int, error) {
 	shellName, flag := "sh", "-c"
 	if runtime.GOOS == "windows" {
 		shellName, flag = "cmd", "/C"
@@ -38,7 +43,7 @@ func Run(ctx context.Context, command, dir string, out io.Writer) (int, error) {
 
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
 	cmd.Dir = dir
-	cmd.WaitDelay = waitDelay
+	cmd.WaitDelay = delay
 	if out != io.Discard {
 		cmd.Stdout = out
 		cmd.Stderr = out

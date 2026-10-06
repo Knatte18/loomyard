@@ -122,6 +122,8 @@ func TestVerbCases_CleanState(t *testing.T) {
 // full ten-state matrix) — a case that got this backwards would either vanish from the cross product
 // entirely or explode it with cells that were never derived.
 func TestVerbCases_StatesRestrictionIsWellFormed(t *testing.T) {
+	t.Parallel()
+
 	ordinary := map[string]bool{
 		"Add": true, "Remove": true, "Prune": true, "Cleanup": true,
 		"Checkout": true, "Reconcile": true, "UnwireJunctions": true, "Pull": true,

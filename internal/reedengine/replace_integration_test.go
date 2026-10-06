@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 // replace_integration_test.go proves ReplaceStrand against a real tmux: replacing the top strand of a
 // three-strand stack leaves the replacement on top at collapsed_rows, with the other strands' panes

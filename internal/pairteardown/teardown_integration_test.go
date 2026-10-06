@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tmux && !windows
 
 // teardown_integration_test.go drives the composite on a real hub pair with a real reed session and a stub driver strand.
 
@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -185,6 +186,11 @@ func TestRun_TaskWorktreeRemovedByHandEndsTheSessionByName(t *testing.T) {
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(p.h.Location, p.slug)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("<hub>/<slug> after Run: stat err = %v, want not-exist", err)
+	}
+	// Ending the last session by name kills the hub's server, and its socket file must go with it.
+	socketPath := filepath.Join(os.Getenv("TMUX_TMPDIR"), "tmux-"+strconv.Itoa(os.Getuid()), p.socky)
+	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("socket file %s after ending the last session by name: lstat err = %v, want not-exist", socketPath, err)
 	}
 }
 

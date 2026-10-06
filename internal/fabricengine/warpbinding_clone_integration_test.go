@@ -65,6 +65,8 @@ func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...st
 // no recorded binding, run with ForceBootstrap, writes the record at the board root with the supplied
 // URL and tracks it on the board worktree.
 func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "bootstrap-warp")
@@ -104,6 +106,8 @@ func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
 // carries a record produces the same geometry as the two-argument form, deriving the hub name and
 // warp from the recorded binding alone.
 func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "derive-warp")
@@ -149,6 +153,8 @@ func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
 // byte-identical to the recorded binding succeeds and leaves the record's bytes unchanged, both on
 // disk and as committed.
 func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "match-warp")
@@ -189,6 +195,8 @@ func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
 // TestCloneHub_NormalizedBindingMatch asserts that a supplied URL differing from the record only by a
 // trailing .git is still treated as matching: the clone succeeds and the record is unchanged.
 func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "normalize-warp")
@@ -228,6 +236,8 @@ func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
 // — the property the pre-hub probe buys — leaves no hub directory or probe residue behind for either
 // URL's derived name.
 func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	recordedWarpBare := makeBareRemote(t, fixtures, "conflict-recorded-warp")
@@ -261,6 +271,8 @@ func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 // recorded binding fails naming both the unbound condition and the two-argument remedy, and creates
 // no hub.
 func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	weftBare := makeBareRemote(t, fixtures, "unbound-weft")
@@ -293,6 +305,8 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 // two-argument form bootstraps successfully and writes the record, preserving today's orphan-create
 // path through ensureBoardWorktree.
 func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("OneArgumentReportsUnbound", func(t *testing.T) {
 		fixtures := t.TempDir()
 		weftBare := makeEmptyBareRemote(t, fixtures, "empty-unbound-weft")
@@ -339,6 +353,8 @@ func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 // exist fails in both argument forms with an error carrying the "probe weft " prefix, never reports
 // "unbound", and never bootstraps.
 func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	nonExistentWeft := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
 
@@ -396,6 +412,8 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 // error), while a weft whose HEAD object is unreadable is a hard error — the property that justifies
 // the ls-tree discriminator existing at all.
 func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.T) {
+	t.Parallel()
+
 	t.Run("MissingRecordReportsUnbound", func(t *testing.T) {
 		fixtures := t.TempDir()
 		weftBare := makeBareRemote(t, fixtures, "absent-weft")
@@ -454,6 +472,8 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 // WarpBindingRecorded == true given an explicit warp URL, with no ForceBootstrap: the anchor alone
 // satisfies the old-order guard.
 func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "backfill-warp")
@@ -484,6 +504,8 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 // pre-change argument order — with ForceBootstrap left false must be refused, must create no hub, and
 // must leave the rejected repo completely untouched.
 func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	ordinarySourceBare := makeBareRemote(t, fixtures, "old-order-source")
@@ -526,6 +548,8 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 // This setup overlaps TestCloneHub_BackfillsBindingOnPreBindingHub, but is kept as its own test so a
 // guard regression names itself rather than hiding behind the backfill assertion.
 func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpBare := makeBareRemote(t, fixtures, "guard-pass-warp")
@@ -547,6 +571,8 @@ func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 // TestCloneHub_OldOrderInvocationIsRefused rejects succeeds when ForceBootstrap is set, and writes the
 // record — together the two tests establish that the flag is the only way through the guard.
 func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	ordinarySourceBare := makeBareRemote(t, fixtures, "force-override-source")
@@ -579,6 +605,8 @@ func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
 // with only the weft URL and Reset true must tear the hub down, re-create it, and still derive the
 // warp from the recorded binding.
 func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
+	t.Parallel()
+
 	t.Run("TwoArgument", func(t *testing.T) {
 		fixtures := t.TempDir()
 		warpBare := makeBareRemote(t, fixtures, "reset-two-warp")
@@ -664,6 +692,8 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 // precedes the hub-exists check (the hub name is unknowable until the binding is read), and that
 // asymmetry is deliberate — a future reader should not "fix" it into matching the two-argument order.
 func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 	warpBare := makeBareRemote(t, fixtures, "precedes-warp")
 	weftBare := makeBareRemote(t, fixtures, "precedes-weft")

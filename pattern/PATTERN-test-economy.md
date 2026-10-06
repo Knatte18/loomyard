@@ -2,6 +2,7 @@
 
 A test exists for a behavior, not for a symbol, and no two tests cover the same behavior.
 Enforcement is review discipline, not a test.
+The general rules live in `scribe:testing` and `scribe:golang-testing`; this entry keeps only what is project-specific or stricter here.
 
 - A test targets behavior and contract at a module's public surface (exported API, CLI verb, file contract), not each helper; an unexported helper is tested through the surface that uses it.
 - A behavior testable with a fake or an in-memory fixture is tested untagged that way, never through a real hub, so integration tests stay the exception.
@@ -11,3 +12,7 @@ Enforcement is review discipline, not a test.
 - A review fix adds a test only when the finding is a coverage gap; for any other finding it corrects the existing test that asserted the wrong thing.
 - A redundant test is a finding exactly as a missing one is.
   The finding names the existing test that already covers the behavior, so it stays grounded and fixable by folding or deleting.
+- `go run ./cmd/testtiming -redundancy` writes the per-test coverage report, `docs/benchmarks/test-redundancy.md`.
+  A candidate in it is evidence, not a verdict: coverage blocks do not see assertions, so a candidate whose assertions differ from its covering tests is kept or folded.
+  A prune finding names the covering test from the report, and only the removable set may be deleted together: deleting a candidate outside it can leave a block uncovered once its partner is gone.
+  A test in the "no coverage" list is outside the report's judgment, not exempt from the rules above.

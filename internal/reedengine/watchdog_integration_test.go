@@ -1,4 +1,4 @@
-//go:build integration && linux
+//go:build tmux && linux
 
 // watchdog_integration_test.go is the live reproduction of the M7 resize defect: it drives a real
 // pty client's terminal size against a real tmux session and proves, from outside the pty, that the

@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux || llm
 
 // smoke_procalive_linux.go answers "is this pid still running" on Linux via
 // signal 0 (syscall.Kill with sig=0 checks existence/permission without

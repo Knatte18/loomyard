@@ -42,6 +42,8 @@ func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.Chan
 // and diffing since the first must report both sides' changes made in the second round, correctly
 // side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
@@ -85,6 +87,8 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 // weft commit made ahead of that baseline showing up in the weft-side result, rather than the weft
 // side coming back empty (which is what a strictly exact-only anchor would produce).
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
@@ -129,6 +133,8 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 // older than the first weft commit — no entry exists at or before it — must not be an error;
 // it must report warp entries, empty weft entries, and NoWeftCorrespondence = true.
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	initialWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
 	weftFixture := hubforge.NewHub(t, ".")
@@ -169,6 +175,8 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // The push lock file is created explicitly here because CommitWeft never writes it — only
 // PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
+	t.Parallel()
+
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())

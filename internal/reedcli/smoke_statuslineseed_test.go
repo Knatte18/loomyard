@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_statuslineseed_test.go pins noise class 3's suppression directly:
 // TestSmokeStatuslineDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lyx's root

@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build tmux
 
 // smoke_ifabsent_test.go smokes the real repeated-reopen sequence --if-absent exists for: a live
 // match no-ops, a dead match relaunches under the same guid, and status never grows a second strand

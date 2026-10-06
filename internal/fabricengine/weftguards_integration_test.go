@@ -23,6 +23,8 @@ import (
 // weft worktree carrying uncommitted tracked changes no longer refuses a MergeIn the warp alone can
 // complete, while a dirty warp worktree still refuses with mergeReasonWorktreeDirty.
 func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
+	t.Parallel()
+
 	h1, f1, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h1.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
 	branchAtCurrentHEAD(t, h1.PrimeWeft(), "feature-weft")
@@ -62,6 +64,8 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 // guard: a weft checkout on a detached HEAD no longer refuses, while a detached warp HEAD still
 // refuses with mergeReasonDetachedHead.
 func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T) {
+	t.Parallel()
+
 	h1, f1, commitOnWarpBranch1, commitOnWeftBranch1, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch1("feature", "feature.txt", "feature\n", "feature: warp")
 	commitOnWeftBranch1("feature-weft", "feature.txt", "feature\n", "feature: weft")
@@ -93,6 +97,8 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 // Second, and separately, a source resolvable on NEITHER side still reports mergeReasonSourceNotFound
 // alone, from the warp arm — the one reason resolveMergeSources can still produce.
 func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	// Deliberately no "-weft" counterpart branch anywhere, locally or on origin.
@@ -130,6 +136,8 @@ func TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly(t *testin
 // run. Here the weft is simultaneously on a detached HEAD, carrying uncommitted tracked changes, and
 // sitting on a branch with no upstream, while the warp side is clean.
 func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
 	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
@@ -165,6 +173,8 @@ func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 // place, and a MergeContinue over that record must refuse on the conflicts alone, never on
 // mergeReasonAttemptIncomplete.
 func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
@@ -202,6 +212,8 @@ func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
 // side) is reset to WarpStart on the warp side alone, leaving the weft HEAD — and the commits it
 // carries — exactly where MergeAbort found them.
 func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T) {
+	t.Parallel()
+
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
 	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")

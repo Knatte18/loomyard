@@ -76,14 +76,18 @@ const watchdogOrphanGoneCycles = 3
 // watchdogDefaultTiming. This deliberately mirrors the shape internal/reedengine/watchloop.go
 // already uses for its own watchTiming/watchDefaultTiming pair, so the repo carries one idiom for
 // loop-timing injection rather than two.
+//
+// ReapTimeout bounds the reap's graceful wait before it force-kills.
+// Zero selects reedengine's own 15s reap budget, which is what production runs.
 type watchdogTiming struct {
 	DiscoveryCycle   time.Duration
 	IdleCycles       int
 	OrphanGoneCycles int
+	ReapTimeout      time.Duration
 }
 
-// watchdogDefaultTiming returns the daemon's production timings, sourced from the package's fixed
-// watchdog* constants and nothing else.
+// watchdogDefaultTiming returns the daemon's production timings, sourced from the package's fixed watchdog* constants and nothing else.
+// ReapTimeout stays zero, selecting reedengine's reap budget.
 func watchdogDefaultTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
@@ -296,11 +300,11 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 //
 // This goroutine never touches the in-flight map, the gone-counter map, or the known map: all
 // three stay single-threaded on the loop goroutine, and reapDone is the only channel between them.
-func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPath, sessionName string) {
+func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPath, sessionName string, reapTimeout time.Duration) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := reedengine.ReapSession(tmuxPath, shellPath, reedengine.ServerName(hub), sessionName); err != nil {
+		if err := reedengine.ReapSession(tmuxPath, shellPath, reedengine.ServerName(hub), sessionName, reapTimeout); err != nil {
 			// A destructive unattended action's failure is what the operator needs in the hub's
 			// durable log.
 			logger.Warn("reed: watchdog could not reap orphaned session", "hub", hub, "session", sessionName, "err", err)
@@ -348,11 +352,9 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // with sessions — a hub going genuinely quiet afterwards is observed by the following cycles
 // through the existing path.
 //
-// The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this
-// loop: reapPaneChildren waits up to reapExitTimeout (15s) and then up to forceKillExitGrace (5s)
-// per straggler, so an inline reap would stall one tick for ~20s — breaking the confirmation rule's
-// quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done()
-// unread for the whole stall.
+// The reap itself runs off-loop, in the goroutine dispatchReap starts, rather than inline in this loop:
+// reapPaneChildren waits up to timing.ReapTimeout (default 15s) and then up to forceKillExitGrace (5s) per straggler,
+// so an inline reap would stall one tick for ~20s — breaking the confirmation rule's quoted cadence, delaying entry into a newly-appeared healthy session, and leaving ctx.Done() unread for the whole stall.
 //
 // Teardown on departure is not optional: Engine.Watch never returns while its context is live, so
 // without cancelling a departed entry's goroutine, a worktree whose session goes away while
@@ -436,7 +438,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 			}
 			inFlight[name] = true
 			logger.Warn("reed: watchdog reaping orphaned session", "hub", hub, "session", name)
-			dispatchReap(&wg, reapDone, hub, tmuxPath, shellPath, name)
+			dispatchReap(&wg, reapDone, hub, tmuxPath, shellPath, name, timing.ReapTimeout)
 		}
 
 		appeared, departed := planSessionDiff(remaining, known)
@@ -587,7 +589,11 @@ Example:
 			}
 			defer fl.Release()
 
-			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, watchdogDefaultTiming()); err != nil {
+			timing := watchdogDefaultTiming()
+			if c.watchdogTiming != nil {
+				timing = *c.watchdogTiming
+			}
+			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing); err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
 			}
 			return nil

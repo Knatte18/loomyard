@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tmux
 
 package tmuxkit
 
@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 )
 
@@ -29,19 +30,40 @@ func hasServer(tmux, key string) bool {
 func TestSocket_KillsServerAtCleanup(t *testing.T) {
 	tmux := requireTmux(t)
 
-	var key string
-	t.Run("owner", func(t *testing.T) {
-		key = Socket(t, tmux)
-		if out, err := exec.Command(tmux, "-L", key, "new-session", "-d", "-s", "kit").CombinedOutput(); err != nil {
-			t.Fatalf("start server: %v\n%s", err, out)
-		}
-		if !hasServer(tmux, key) {
-			t.Fatal("server not running after new-session")
-		}
-	})
+	tests := []struct {
+		name string
+		key  func(t *testing.T) string
+	}{
+		{"minted by Socket", func(t *testing.T) string { return Socket(t, tmux) }},
+		{"chosen by the test", func(t *testing.T) string {
+			key := "lyxchosen-" + strconv.Itoa(os.Getpid())
+			KillOnCleanup(t, tmux, key)
+			return key
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var key string
+			t.Run("owner", func(t *testing.T) {
+				key = tt.key(t)
+				if out, err := exec.Command(tmux, "-L", key, "new-session", "-d", "-s", "kit").CombinedOutput(); err != nil {
+					t.Fatalf("start server: %v\n%s", err, out)
+				}
+				if !hasServer(tmux, key) {
+					t.Fatal("server not running after new-session")
+				}
+				if _, err := os.Stat(socketPath(key)); err != nil {
+					t.Fatalf("socket file missing while the server runs: %v", err)
+				}
+			})
 
-	if hasServer(tmux, key) {
-		t.Errorf("server on key %q survived the owning test's cleanup", key)
+			if hasServer(tmux, key) {
+				t.Errorf("server on key %q survived the owning test's cleanup", key)
+			}
+			if _, err := os.Lstat(socketPath(key)); !os.IsNotExist(err) {
+				t.Errorf("socket file of key %q survived the owning test's cleanup: %v", key, err)
+			}
+		})
 	}
 }
 
@@ -100,5 +122,11 @@ func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
 	}
 	if !hasServer(tmux, other) {
 		t.Error("the sweep killed a server outside its own directory")
+	}
+	if _, err := os.Lstat(filepath.Join(socketDir(dir, os.Getuid()), "swept")); !os.IsNotExist(err) {
+		t.Errorf("socket file under the swept directory survived the sweep: %v", err)
+	}
+	if _, err := os.Lstat(socketPath(other)); err != nil {
+		t.Errorf("the sweep removed a socket file outside its own directory: %v", err)
 	}
 }

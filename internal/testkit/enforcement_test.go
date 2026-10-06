@@ -14,6 +14,7 @@ const (
 	testkitImport = modulePath + "internal/testkit"
 	lyxbinImport  = testkitImport + "/lyxbin"
 	tmuxkitImport = testkitImport + "/tmuxkit"
+	llmkitImport  = testkitImport + "/llmkit"
 )
 
 // kitDeniedImports are the imports no kit's non-test file may carry.
@@ -24,6 +25,7 @@ var kitDeniedImports = []string{
 	modulePath + "internal/hubforge",
 	lyxbinImport,
 	tmuxkitImport,
+	llmkitImport,
 }
 
 func isTestkitPath(p string) bool {
@@ -55,7 +57,7 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 			if isCLIImport(ip) {
 				cliFailures = append(cliFailures, f.Rel+": "+ip)
 			}
-			if slices.Contains(kitDeniedImports, ip) && !(ip == "os/exec" && (kit == "lyxbin" || kit == "tmuxkit")) {
+			if slices.Contains(kitDeniedImports, ip) && !(ip == "os/exec" && (kit == "lyxbin" || kit == "tmuxkit" || kit == "llmkit")) {
 				spawnFailures = append(spawnFailures, f.Rel+": "+ip)
 			}
 		}

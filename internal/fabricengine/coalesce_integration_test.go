@@ -59,6 +59,8 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 // and the no-warp-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path
 // never leaves a .gitrepo-push.lock at the warp worktree root.
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -90,6 +92,8 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 // CoalescePushBothAt must return nil (not an error), leave the warp bare's HEAD unadvanced by this
 // call, mutate no warp working-tree file, and return promptly rather than spinning.
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
+	t.Parallel()
+
 	fixtures := t.TempDir()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -150,6 +154,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 // weft push ever ran) because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via
 // filepath.Abs and found no .git there.
 func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
+	// Serial: os.Chdir changes the process-global cwd.
 	unrelatedCwd := t.TempDir()
 
 	origCwd, err := os.Getwd()

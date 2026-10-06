@@ -119,20 +119,20 @@ State the **merge bar** so the reviewer calibrates: correctness in the NORMAL si
 the N×-concurrent suite is a diagnostic amplifier, not a merge blocker.
 
 ## Live-substrate cost declaration (BLOCKING — fill in before instantiating for a new module)
-Before writing the "Live smoke" commands below, the person instantiating this template MUST check every `//go:build smoke` test in the target module and answer: **does any of them spawn a real LLM subprocess (a real `claude`/provider session), not just a real tmux/pty?**
+Before writing the "Live smoke" commands below, the person instantiating this template MUST check every live test (`//go:build tmux` or `//go:build llm`) in the target module and answer: **does any of them spawn a real LLM subprocess (a real `claude`/provider session), not just a real tmux/pty?**
 A module whose smoke tests only drive real tmux (e.g. reed) is cheap — a stray pane costs nothing.
 A module whose smoke tests drive a real LLM round (e.g. burler, loom) is expensive — ONE test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), each costing real RAM, tokens, and wall-clock.
 Confusing the two classes is what caused a real incident: a generic `-run Smoke` pattern matched (and ran) every smoke test in a package, including expensive cluster-fan tests never intended for that round, spawning enough simultaneous real `claude` processes to exhaust the host's RAM.
 
 `<LLM-DRIVING: yes/no — fill in for this module>`.
 If **yes**:
-- List every `//go:build smoke` test function by name and, for each, how many real LLM subprocesses ONE invocation spawns (check any fan/cluster config it resolves).
+- List every `//go:build llm` test function by name and, for each, how many real LLM subprocesses ONE invocation spawns (check any fan/cluster config it resolves).
 - The "Live smoke" commands below MUST each name exactly ONE test function via `-run <ExactTestName>` — a bare `-run Smoke` or any pattern matching more than one test function is BANNED for this module, full stop, no exceptions for "extra confidence" or "if there's time."
 - Any test function that spawns more than one real LLM subprocess per invocation (a fan/cluster test) MUST be named explicitly in an "EXECUTION BAN" list unless this round's own mission is specifically to test that fan/cluster path.
-  Shape to reuse for that list: a bold **EXECUTION BAN** heading, then one bullet per banned test naming the exact `//go:build smoke` function, how many real provider subprocesses ONE invocation of it spawns,
+  Shape to reuse for that list: a bold **EXECUTION BAN** heading, then one bullet per banned test naming the exact `//go:build llm` function, how many real provider subprocesses ONE invocation of it spawns,
   and the flat rule "do NOT run this test this round — not for extra confidence, not if there's time."
   Close the list with the one-line reason the ban exists: simultaneous real provider sessions exhaust the host's RAM.
-- Never run more than one live-substrate (`-tags smoke`) invocation at a time, in parallel, or backgrounded — one process, foreground, waited on to completion.
+- Never run more than one live-substrate (`-tags tmux` or `-tags llm`) invocation at a time, in parallel, or backgrounded — one process, foreground, waited on to completion.
 - The generic "N× CONCURRENT full smoke suites" gate in `orchestrator-prompt.md`/README.md's verification protocol does NOT apply to an LLM-driving module as written — running N concurrent copies of a real-LLM-spawning suite multiplies real subprocess count by N. Do not run that gate for this module without first working out, on paper, the actual process count it would produce, and getting the operator to confirm that count is acceptable.
 
 **GitHub self-report hazard (BLOCKING — check this whenever live driving spawns a real `loom` campaign, directly or as a downstream child of the module under test).** loom's Tier-1 anomaly self-report primitive (`internal/selfreportengine`) defaults to `selfreport: true` with its target repo hardcoded to this repo's own real upstream — a real loom campaign that hits a genuine anomaly (bounce-budget-exhausted, crash-resume, escalation-to-human, a recurring finding) files a REAL GitHub issue there, test campaign or not. **There is a SECOND, independent mechanism with the same blast radius: loom's Tier 2 "reflection pass" (`internal/frictionengine`, gated by loom.yaml's `friction` key — present-but-empty means Tier 2 is off).** A Tier 2 reflection agent reads every Burler/implementer friction note from a run and decides on its own judgement whether to `lyx selfreport create` an issue about *procedural* friction (ambiguous instructions, contradictory rules) — this runs on ANY loom campaign with `friction` set to a non-empty model-spec, is driven entirely by an LLM's own judgement (not a fixed anomaly taxonomy), and **`selfreport: false` does NOT suppress it** — that config key only gates Tier 1's automatic detection path; the CLI command Tier 2 invokes (`lyx selfreport create`) has no config gate of its own, by design, since a human is expected to be able to run it manually regardless. Before creating ANY Board task or the FIRST `Worktree-Create` of the round — not merely before the one slug you intend to drive end-to-end — commit a `loom.yaml` override onto the fixture hub's own prime records with **both** `selfreport: false` **and** `friction: ""`. Every later slug's own records branch forks from whatever prime's records branch carries AT THAT SLUG'S OWN CREATE TIME, so an override committed after some slugs already exist does not protect them. This was discovered live during the batten campaign (6 real issues filed via Tier 1 by test/orphaned fixture hubs before anyone caught it, then 2 more via Tier 2 in a later round after the Tier-1-only fix was already in place) — do not repeat either half of it for any other module.
@@ -145,9 +145,9 @@ Hermetic (must stay green throughout):
 - `go vet <MODULE PACKAGE PATHS>`
 - `go test <MODULE PACKAGE PATHS> ./cmd/lyx/...` — stress timing/concurrency tests with `-count=5`.
 
-Live smoke (real substrate, behind the `smoke` build tag):
-- For a module that is NOT LLM-driving (per the cost declaration above): `go test -tags smoke <MODULE CLI PACKAGE> -run Smoke -v -count=1` is fine as written — a bare tmux/pty pane is cheap regardless of how many match.
-- For an LLM-driving module: `go test -tags smoke <MODULE CLI PACKAGE> -run <ExactTestName> -v -count=1` — never the bare `Smoke` pattern (see the cost declaration above).
+Live smoke (real substrate, behind the `tmux` or `llm` build tag):
+- For a module that is NOT LLM-driving (per the cost declaration above): `go test -tags tmux <MODULE CLI PACKAGE> -run Smoke -v -count=1` is fine as written — a bare tmux/pty pane is cheap regardless of how many match.
+- For an LLM-driving module: `go test -tags llm <MODULE CLI PACKAGE> -run <ExactTestName> -v -count=1` — never the bare `Smoke` pattern (see the cost declaration above).
 - `<substrate binary/tool locations + any absolute-path footgun>`.
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
@@ -200,7 +200,7 @@ Small and low-severity findings are usually the CHEAPEST to fix, not a reason to
   Prefer surgical edits;
   match existing style and the file-level doc-comment convention.
 - For every bug you fix, add or extend a test that would have caught it.
-  For a live-only defect, add a `//go:build smoke` test that walks the failing scenario against the real substrate (the existing smoke test file shows the pattern, incl. a skip when the substrate is absent).
+  For a live-only defect, add a live test (`//go:build tmux`, or `//go:build llm` when it spawns a real LLM) that walks the failing scenario against the real substrate (the existing smoke test file shows the pattern, incl. a skip when the substrate is absent).
   A hermetic unit test for the pure helper is good;
   a smoke test for the composed behavior is what protects the recovery paths.
 - MAKE SMOKE TESTS DETERMINISTIC.

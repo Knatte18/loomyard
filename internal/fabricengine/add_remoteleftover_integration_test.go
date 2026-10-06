@@ -301,6 +301,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 // TestAdd_WeftReplaceLeaseRaceRefused covers origin's weft branch moving between the pre-flight and the replacement.
 // It sets a package hook, so it must not run in parallel.
 func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
+	// Serial: SetAddBeforeWeftReplaceHookForTest sets the package-level addBeforeWeftReplaceHook.
 	const slug = "leftover-race"
 	weftBranch := fabricengine.WeftBranchName(slug)
 	h := removedPair(t, slug)

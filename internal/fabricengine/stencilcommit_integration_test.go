@@ -22,6 +22,8 @@ import (
 // TestCommitSeededStencils_EmptyInputIsNoOp asserts an empty writtenRelPaths list takes no lock,
 // commits nothing, and leaves the record empty.
 func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 	rec := fabricengine.NewMutations(filepath.Dir(hub.Path))
 
@@ -42,6 +44,8 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 // (including a seeded .gitattributes), leaves an unrelated dirty board file untouched, records
 // file_written and commit_created entries, and never pushes.
 func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 	board := gitrepo.New(hub.BoardDir())
 
@@ -150,6 +154,8 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 // regression that would result from generalising the pathspec half of the function while leaving the
 // mutation-record half pointed at the stencils directory.
 func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *testing.T) {
+	t.Parallel()
+
 	hub := hubforge.NewHub(t, ".")
 
 	specsDir := fabricengine.SpecsDir(hub.Path)

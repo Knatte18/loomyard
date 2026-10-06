@@ -1,4 +1,4 @@
-//go:build smoke
+//go:build llm
 
 // smoke_test.go walks the live-only webster behaviors the hermetic tests can
 // never exercise, against the REAL substrate (a real logged-in `claude`): the
@@ -31,18 +31,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// smokeClaudeBin returns the claude binary path, skipping the test if not on PATH.
-func smokeClaudeBin(t *testing.T) string {
-	t.Helper()
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("claude not found on PATH; skipping live webster smoke test")
-	}
-	return path
-}
 
 // realForkSettingsPath composes the production settings.json a Master spawn would use via claudeengine.Prepare.
 func realForkSettingsPath(t *testing.T) string {
@@ -181,7 +172,7 @@ func mintSessionID(t *testing.T) string {
 }
 
 func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
-	bin := smokeClaudeBin(t)
+	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
 	forkControl := filepath.Join(dir, "fork_control")
@@ -212,7 +203,7 @@ func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
 }
 
 func TestSmoke_ForkTranscriptAuditCountsOneNoNestedAgent(t *testing.T) {
-	bin := smokeClaudeBin(t)
+	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
 	sessionID := mintSessionID(t)
@@ -277,7 +268,7 @@ func smokeGitRepo(t *testing.T, dir string) string {
 }
 
 func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
-	bin := smokeClaudeBin(t)
+	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
 	startSHA := smokeGitRepo(t, dir)
@@ -360,7 +351,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 }
 
 func TestSmoke_AwaitBatchSeesForkWrittenReport(t *testing.T) {
-	bin := smokeClaudeBin(t)
+	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
 	reportsDir := filepath.Join(dir, "reports")
