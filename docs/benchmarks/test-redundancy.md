@@ -932,7 +932,7 @@ No coverage:
 
 ## internal/fabricengine
 
-610 tests, wall 16.41s, serial 85.90s.
+610 tests, wall 21.12s, serial 112.27s.
 
 No candidates.
 
@@ -2012,7 +2012,7 @@ No test lacks coverage.
 
 ## internal/loomcli
 
-167 tests, wall 74.24s, serial 75.97s.
+167 tests, wall 74.78s, serial 76.34s.
 
 No candidates.
 
@@ -3033,7 +3033,7 @@ No coverage:
 
 ## internal/reedengine
 
-212 tests, wall 13.54s, serial 13.49s.
+212 tests, wall 15.04s, serial 14.94s.
 
 No candidates.
 
@@ -3243,7 +3243,7 @@ No coverage:
 
 ## internal/shedadapters
 
-151 tests, wall 0.22s, serial 0.14s.
+151 tests, wall 0.45s, serial 0.44s.
 
 No candidates.
 
@@ -3807,7 +3807,7 @@ No test lacks coverage.
 
 ## internal/shuttleengine
 
-129 tests, wall 0.35s, serial 0.30s.
+129 tests, wall 0.38s, serial 0.31s.
 
 No candidates.
 
@@ -4532,7 +4532,7 @@ No coverage:
 
 ## internal/websterengine
 
-175 tests, wall 1.31s, serial 2.73s.
+175 tests, wall 1.63s, serial 3.75s.
 
 No candidates.
 

@@ -49,4 +49,58 @@ The per-run wall times, in seconds:
 
 ## After
 
-The final card (`measure-after`) fills this section with the same table and loads, measured the same way, and names each statement block the prune lost.
+Measured commit: `b536cd6579e2ac32b985cb2a9fb3f440d6b41389`, after cards 1–16, on the same machine with the same commands as the before section.
+The `.scratch/after/` directory kept the raw timing and coverage output uncommitted.
+
+| Package | Tests | Wall (s) | Serial (s) | Coverage |
+|---|---|---|---|---|
+| `internal/fabricengine` | 610 | 29.27 | 108.25 | 81.9% |
+| `internal/websterengine` | 175 | 2.48 | 6.25 | 86.3% |
+| `internal/reedengine` | 212 | 18.96 | 18.84 | 82.4% |
+| `internal/shuttleengine` | 129 | 0.43 | 0.33 | 90.6% |
+| `internal/loomcli` | 167 | 77.30 | 78.82 | 63.4% |
+| `internal/shedadapters` | 151 | 0.86 | 0.78 | 91.6% |
+
+### Delta against before
+
+| Package | Tests | Wall (s) | Serial (s) | Coverage |
+|---|---|---|---|---|
+| `internal/fabricengine` | -88 | -14.32 | -7.38 | 0.0 |
+| `internal/websterengine` | -281 | -8.18 | -5.97 | +0.1 |
+| `internal/reedengine` | -118 | -5.77 | -5.65 | 0.0 |
+| `internal/shuttleengine` | -89 | -0.04 | -0.01 | 0.0 |
+| `internal/loomcli` | -111 | -11.70 | -10.54 | 0.0 |
+| `internal/shedadapters` | -110 | -0.33 | -0.30 | +0.1 |
+
+No package's wall time rose, so no scenario merge needs naming against a slowdown.
+
+The per-run wall times, in seconds:
+
+| Package | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| `internal/fabricengine` | 29.24 | 30.13 | 29.27 |
+| `internal/websterengine` | 2.35 | 2.48 | 2.70 |
+| `internal/reedengine` | 18.50 | 19.68 | 18.96 |
+| `internal/shuttleengine` | 0.43 | 0.49 | 0.42 |
+| `internal/loomcli` | 77.19 | 77.67 | 77.30 |
+| `internal/shedadapters` | 0.95 | 0.86 | 0.70 |
+
+Timing run 1 reported `internal/reedengine` as FAIL under full-suite contention; its test name was not captured, and the package passed in timing runs 2 and 3, in `-count=3` alone and alongside the heaviest tmux packages.
+The failure did not reproduce, so it is recorded here and not diagnosed.
+
+### Load average at the start of each run
+
+| Run | 1 min | 5 min | 15 min |
+|---|---|---|---|
+| Timing 1 | 1.78 | 3.90 | 3.83 |
+| Timing 2 | 3.45 | 3.58 | 2.99 |
+| Timing 3 | 2.18 | 3.85 | 3.36 |
+| Coverage | 1.77 | 3.88 | 3.62 |
+
+The after runs started at lower and steadier load than the before runs, which started at 2.58, 7.25 and 11.60 on the 1-minute average, so part of each wall-time delta is quieter load rather than the prune; serial time carries less of that.
+
+### Lost coverage
+
+No statement block covered before is uncovered after.
+The coverage percentages are equal or higher for every package, and for the five packages other than `internal/websterengine`, matching blocks by position finds no block covered in the before profile and uncovered in the after profile.
+For `internal/websterengine`, production code changed since the measured commit, so block positions shifted; matching blocks by source text instead of position finds none covered before and uncovered after, and 52 blocks of the before profile that no longer exist in the production code.
