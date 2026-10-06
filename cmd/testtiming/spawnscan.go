@@ -2,32 +2,36 @@ package main
 
 import (
 	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
-// spawnVerdict is the static spawn classification of one test.
+// spawnVerdict is the static classification of one test for the redundancy mode.
 // A test whose verdict has either field set is never a redundancy candidate:
-// its in-process coverage does not see what the subprocess ran (D2).
+// its in-process coverage does not see the module code another process ran.
 type spawnVerdict struct {
-	spawns     bool // references a spawn primitive, directly or through a followed call
-	unresolved bool // calls something the scan cannot resolve to source
+	outOfProcess bool // may run this module's code in another process, directly or through a followed call, or sits in a tmux-tier file
+	unresolved   bool // calls something the scan cannot resolve to source
 }
 
 func (v *spawnVerdict) merge(o spawnVerdict) {
-	v.spawns = v.spawns || o.spawns
+	v.outOfProcess = v.outOfProcess || o.outOfProcess
 	v.unresolved = v.unresolved || o.unresolved
 }
 
-// funcInfo is one declared function or method with the imports of its file.
+// funcInfo is one declared function or method with the imports and build tier of its file.
 type funcInfo struct {
-	decl    *ast.FuncDecl
-	imports map[string]string // file-level import name -> import path
-	isTest  bool              // declared in a _test.go file
+	decl     *ast.FuncDecl
+	imports  map[string]string // file-level import name -> import path
+	isTest   bool              // declared in a _test.go file
+	tmuxTier bool              // the file's //go:build line mentions the tmux tag
+	tagged   bool              // the file's //go:build line mentions the integration, tmux or llm tag
 }
 
 // pkgSource indexes the declarations of one directory's Go sources.
@@ -69,10 +73,11 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || (isTest && !withTests) {
 			continue
 		}
-		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution|parser.ParseComments)
 		if err != nil {
 			return nil, err
 		}
+		tagged, tmuxTier := fileTier(file)
 		imports := map[string]string{}
 		for _, imp := range file.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
@@ -87,7 +92,7 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				fi := &funcInfo{decl: d, imports: imports, isTest: isTest}
+				fi := &funcInfo{decl: d, imports: imports, isTest: isTest, tmuxTier: tmuxTier, tagged: tagged}
 				if d.Recv != nil {
 					src.methods[d.Name.Name] = append(src.methods[d.Name.Name], fi)
 				} else {
@@ -99,6 +104,49 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 		}
 	}
 	return src, nil
+}
+
+// fileTier reads the file's //go:build line and reports whether it mentions a tier tag at all and the tmux tag in particular.
+// A constraint such as `tmux && linux` or `tmux && !windows` mentions tmux; a file without a //go:build line mentions nothing.
+func fileTier(file *ast.File) (tagged, tmuxTier bool) {
+	for _, group := range file.Comments {
+		if group.Pos() >= file.Package {
+			break
+		}
+		for _, c := range group.List {
+			if !constraint.IsGoBuild(c.Text) {
+				continue
+			}
+			expr, err := constraint.Parse(c.Text)
+			if err != nil {
+				continue
+			}
+			for _, tag := range mentionedTags(expr) {
+				switch tag {
+				case "tmux":
+					tmuxTier, tagged = true, true
+				case "integration", "llm":
+					tagged = true
+				}
+			}
+		}
+	}
+	return tagged, tmuxTier
+}
+
+// mentionedTags returns every build tag the expression names, whatever its polarity.
+func mentionedTags(expr constraint.Expr) []string {
+	switch x := expr.(type) {
+	case *constraint.TagExpr:
+		return []string{x.Tag}
+	case *constraint.NotExpr:
+		return mentionedTags(x.X)
+	case *constraint.AndExpr:
+		return append(mentionedTags(x.X), mentionedTags(x.Y)...)
+	case *constraint.OrExpr:
+		return append(mentionedTags(x.X), mentionedTags(x.Y)...)
+	}
+	return nil
 }
 
 func (src *pkgSource) indexGenDecl(d *ast.GenDecl) {
@@ -139,7 +187,9 @@ type spawnScanner struct {
 	kits    map[string]map[string]bool
 }
 
-// scanSpawns returns the spawn verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
+// scanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
+// A test in a file without a tier tag is always judged, because an untagged test spawns nothing;
+// a test in a tmux-tier file is always out of process, because reed panes run lyx.
 func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)
 	if err != nil {
@@ -151,8 +201,15 @@ func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error)
 	for name, fns := range src.funcs {
 		for _, fn := range fns {
 			if fn.isTest && isTestEntry(name) {
+				found := s.analyze(src, fn, memo)
+				switch {
+				case !fn.tagged:
+					found = spawnVerdict{}
+				case fn.tmuxTier:
+					found.outOfProcess = true
+				}
 				v := out[name]
-				v.merge(s.analyze(src, fn, memo))
+				v.merge(found)
 				out[name] = v
 			}
 		}
@@ -181,10 +238,17 @@ func (s *spawnScanner) analyze(src *pkgSource, fn *funcInfo, memo map[*funcInfo]
 		case *ast.SelectorExpr:
 			if id, ok := x.X.(*ast.Ident); ok {
 				if p, isImport := fn.imports[id.Name]; isImport && !locals[id.Name] && s.spawnRef(p, x.Sel.Name) {
-					v.spawns = true
+					v.outOfProcess = true
 				}
 			}
+		case *ast.IndexExpr:
+			if readsOSArgsProgram(fn, x, locals) {
+				v.outOfProcess = true
+			}
 		case *ast.CallExpr:
+			if runsGoCommand(fn, x, locals) {
+				v.outOfProcess = true
+			}
 			v.merge(s.analyzeCall(src, fn, x, locals, localTypes, memo))
 		}
 		return true
@@ -295,22 +359,18 @@ func collectLocals(decl *ast.FuncDecl) (locals, types map[string]bool) {
 	return locals, types
 }
 
-// spawnRef reports whether importPath.name is a spawn primitive.
+// spawnRef reports whether importPath.name may run this module's code in another process:
+// the lyxbin kit, os.Executable, or a testkit function that reaches one of those.
 func (s *spawnScanner) spawnRef(importPath, name string) bool {
-	if importPath == "os/exec" {
-		return true
+	if importPath == "os" {
+		return name == "Executable"
 	}
 	rel, ok := strings.CutPrefix(importPath, s.module+"/")
 	if !ok {
 		return false
 	}
-	switch rel {
-	case "internal/testkit/lyxbin", "internal/hubforge":
+	if rel == "internal/testkit/lyxbin" {
 		return true
-	case "internal/testkit/tmuxkit":
-		return name != "Main"
-	case "internal/gitkit":
-		return name != "HermeticGitEnv"
 	}
 	if kit, ok := strings.CutPrefix(rel, "internal/testkit/"); ok && !strings.Contains(kit, "/") {
 		return s.kitSpawns(importPath, kit)[name]
@@ -318,7 +378,51 @@ func (s *spawnScanner) spawnRef(importPath, name string) bool {
 	return false
 }
 
-// kitSpawns returns, per exported function of a testkit, whether the same scan marks it as spawning or unresolvable.
+// readsOSArgsProgram reports whether x is os.Args[0], the running binary's own path.
+// A read of any other index or a slice of os.Args does not count.
+func readsOSArgsProgram(fn *funcInfo, x *ast.IndexExpr, locals map[string]bool) bool {
+	sel, ok := x.X.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Args" {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	if !ok || fn.imports[id.Name] != "os" || locals[id.Name] {
+		return false
+	}
+	index, ok := x.Index.(*ast.BasicLit)
+	return ok && index.Kind == token.INT && index.Value == "0"
+}
+
+// runsGoCommand reports whether call is exec.Command or exec.CommandContext with the program "go", which builds and runs module code.
+func runsGoCommand(fn *funcInfo, call *ast.CallExpr, locals map[string]bool) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	if !ok || fn.imports[id.Name] != "os/exec" || locals[id.Name] {
+		return false
+	}
+	programIndex := 0
+	switch sel.Sel.Name {
+	case "Command":
+	case "CommandContext":
+		programIndex = 1
+	default:
+		return false
+	}
+	if len(call.Args) <= programIndex {
+		return false
+	}
+	program, ok := call.Args[programIndex].(*ast.BasicLit)
+	if !ok || program.Kind != token.STRING {
+		return false
+	}
+	value, err := strconv.Unquote(program.Value)
+	return err == nil && value == "go"
+}
+
+// kitSpawns returns, per exported function of a testkit, whether the same scan marks it as out of process or unresolvable.
 func (s *spawnScanner) kitSpawns(importPath, kit string) map[string]bool {
 	if funcs, ok := s.kits[importPath]; ok {
 		return funcs
@@ -332,7 +436,7 @@ func (s *spawnScanner) kitSpawns(importPath, kit string) map[string]bool {
 	memo := map[*funcInfo]*spawnVerdict{}
 	for name, fns := range src.funcs {
 		for _, fn := range fns {
-			if v := s.analyze(src, fn, memo); v.spawns || v.unresolved {
+			if v := s.analyze(src, fn, memo); v.outOfProcess || v.unresolved {
 				funcs[name] = true
 			}
 		}

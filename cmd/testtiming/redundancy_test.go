@@ -23,8 +23,8 @@ func TestClassify(t *testing.T) {
 
 	skipped := passRun("Skipped", 0, "b1")
 	skipped.action = "skip"
-	spawning := passRun("Spawns", 1, "b1")
-	spawning.spawn = spawnVerdict{spawns: true}
+	spawning := passRun("OutOfProcess", 1, "b1")
+	spawning.spawn = spawnVerdict{outOfProcess: true}
 	unresolved := passRun("Unresolved", 1, "b1")
 	unresolved.spawn = spawnVerdict{unresolved: true}
 
@@ -64,14 +64,14 @@ func TestClassify(t *testing.T) {
 			},
 		},
 		{
-			name: "no blocks, skipped, spawning and unresolved tests are never candidates",
+			name: "no blocks, skipped, out-of-process and unresolved tests are never candidates",
 			runs: []testRun{
 				passRun("Empty", 1), skipped, spawning, unresolved, passRun("Base", 1, "b1", "b2"),
 			},
 			want: []verdict{
 				{name: "Empty", reason: reasonNoBlocks},
 				{name: "Skipped", reason: reasonSkipped},
-				{name: "Spawns", reason: reasonSpawns},
+				{name: "OutOfProcess", reason: reasonOutOfProcess},
 				{name: "Unresolved", reason: reasonUnresolved},
 				{name: "Base"},
 			},

@@ -21,7 +21,10 @@
 //	go run ./cmd/testtiming -redundancy [-pkg ./internal/x] [-out report.md] [-tags t]
 //
 // -tags defaults to integration,tmux in this mode, every tier but llm.
-// For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or spawning a subprocess, which the static scan in spawnscan.go decides).
+// For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or possibly running this module's code in another process).
+// The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lyxbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
+// A test in a file with no tier tag is always judged, and a tier-tagged test with a call the scan cannot resolve is excluded as an unclassifiable call.
+// The scan does not see a hook, alias or helper that a test installs so that git runs module code; reading each candidate before deleting it is the backstop.
 // It exits 1 after writing the report if any package reported an error.
 package main
 

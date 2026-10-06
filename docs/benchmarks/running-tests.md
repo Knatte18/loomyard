@@ -89,6 +89,7 @@ It shells out to `go test ./... -json -count=1` (adding `-tags integration` in f
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
 
 `go run ./cmd/testtiming -redundancy` writes the per-test coverage redundancy report; the committed report is [test-redundancy.md](test-redundancy.md).
+The report judges a test unless it may run this module's code in another process; what that excludes, and the hand check that backs up the static scan, are in `pattern/PATTERN-test-economy.md`.
 
 Example (Tier 1):
 

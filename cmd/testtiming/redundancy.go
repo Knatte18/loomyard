@@ -23,11 +23,11 @@ const (
 
 // Reasons a test is listed under "no coverage" rather than judged for redundancy.
 const (
-	reasonSkipped    = "skipped"
-	reasonSpawns     = "spawns"
-	reasonUnresolved = "unclassifiable call"
-	reasonNoBlocks   = "no blocks"
-	reasonFailed     = "failed"
+	reasonSkipped      = "skipped"
+	reasonOutOfProcess = "out of process"
+	reasonUnresolved   = "unclassifiable call"
+	reasonNoBlocks     = "no blocks"
+	reasonFailed       = "failed"
 )
 
 // testRun is one top-level test run alone under the coverage binary.
@@ -101,7 +101,7 @@ func parseProfile(r io.Reader) (map[string]struct{}, error) {
 // classify judges every run.
 // A candidate is covered block for block by the other tests.
 // The removable set is a greedy pass over the candidates, slowest first, that re-checks each against the tests still kept.
-// A test that is skipped, failed, spawns, cannot be classified or covers nothing is never a candidate.
+// A test that is skipped, failed, runs module code out of process, cannot be classified or covers nothing is never a candidate.
 func classify(runs []testRun) []verdict {
 	counts := map[string]int{}
 	for _, r := range runs {
@@ -164,8 +164,8 @@ func noCoverageReason(r testRun) string {
 		return reasonSkipped
 	case r.action != "pass":
 		return reasonFailed
-	case r.spawn.spawns:
-		return reasonSpawns
+	case r.spawn.outOfProcess:
+		return reasonOutOfProcess
 	case r.spawn.unresolved:
 		return reasonUnresolved
 	case len(r.blocks) == 0:
