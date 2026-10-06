@@ -932,47 +932,98 @@ No coverage:
 
 ## internal/fabricengine
 
-697 tests, wall 29.04s, serial 104.75s.
+698 tests, wall 20.37s, serial 113.27s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated` | `TestClassifyPaths` | yes |
+| `TestRefuseUncontainedPath` | `TestCrossProduct`, `TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal` | yes |
+| `TestPruneEmptyAncestors_RefusesEscapingIntermediate` | `TestCrossProduct` | yes |
+| `TestReachableAnchor_NewestReachable` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
+| `TestReachableAnchor_SingleBack` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
+| `TestReachableAnchor_MultiBack` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
+| `TestReachableAnchor_NoneReachable` | `TestPull_NoSurvivingAnchorAborts` | yes |
+| `TestReachableAnchor_EmptySlice` | `TestPull_NoSurvivingAnchorAborts` | yes |
+| `TestClassifyPaths` | `TestCommitLock_ContendsAcrossSides`, `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing` | yes |
+| `TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated` | `TestCommitLock_ContendsAcrossSides`, `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing` | yes |
+| `TestResetHub_RefusesADirectoryThatIsNotAHub` | `TestVerbCases_CleanState`, `TestOwnership_FabricHubKind` | yes |
+| `TestResetHub_RemovesARealHub` | `TestVerbCases_CleanState`, `TestRemoveLaunchers_PreservesForeignContent`, `TestOwnership_FabricHubKind` | yes |
 | `TestCloneRepo_InvalidURLFails` | `TestCloneHub_StrictAbortRemovesHubOnFailure` | yes |
+| `TestCoalescePush_LoopsWhileProgressed` | `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst` | yes |
+| `TestCoalescePush_ReleasesLockOnReturn` | `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst` | yes |
+| `TestCommitWeftAt_CommitsDirtyWorktree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestCommitWeftAt_NoopOnCleanWorktree` | `TestVerbCases_CleanState` | yes |
+| `TestCommitWeftAt_SkipGitReturnsImmediately` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestBolt_SkipGit_ShortCircuits` | yes |
+| `TestWeftCommitPathspec` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestCommitWeftPaths_SkipGit` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestAdd_SkipGitWritesRecordWithoutCommit` | yes |
 | `TestCorrIndex_RecordReloadRoundTrip` | `TestDiff_MergesWarpAndWeftSides` | yes |
 | `TestCorrIndex_LoadMissingFileIsEmpty` | `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
-| `TestCorrIndex_RecordUpsertOverwritesWeftSHA` | `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins` | yes |
+| `TestCorrIndex_RecordUpsertOverwritesWeftSHA` | `TestDiff_MergesWarpAndWeftSides`, `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
 | `TestCorrIndex_ExactHitAndMiss` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
 | `TestCorrIndex_NearestAtOrBefore` | `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`, `TestDiff_NoWeftCorrespondence_BeforeFirstSync`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
 | `TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins` | `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
 | `TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite` | `TestDiff_MergesWarpAndWeftSides`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
 | `TestCorrIndex_PersistenceIsAtomic` | `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestGate_CheckOrdering` | `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestVerbCases_CleanState` | yes |
+| `TestGate_Containment` | `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestVerbCases_CleanState` | yes |
+| `TestGate_Force` | `TestVerbCases_CleanState`, `TestGate_ContainmentResolvesSymlinkedAncestors`, `TestCloneHub_AnchorAdoptPath` | yes |
 | `TestGate_DirtinessNAEmptyReason` | `TestGate_ZeroValueDeclarationsAreRefusals` | yes |
+| `TestGate_AbsentTargetIsNoOp` | `TestAddRollback_AdoptedWeftBranchSurvives`, `TestVerbCases_CleanState`, `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestCloneHub_AnchorAdoptPath`, `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
+| `TestGate_BestEffortPolicy` | `TestAddRollback_LeavesNoArchiveTag` | yes |
+| `TestGate_RecordOnlyOnObservedEffect` | `TestVerbCases_CleanState`, `TestCrossProduct`, `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemove_TearsDownNestedJunction`, `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort`, `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCloneHub_AnchorAdoptPath`, `TestGate_TokenRoundTrip` | yes |
 | `TestGate_PairWarpRequestShape` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestResetPairWarp_OwnershipRefusals`, `TestOwnership_RegisteredLinkedWorktreeKind` | yes |
-| `TestCreateExclusiveDir_RefusesLeafSymlink` | `TestGate_RecordOnlyOnObservedEffect` | yes |
+| `TestRemoveContainedPath_RefusesEscapingIntermediate` | `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink` | yes |
+| `TestRemoveContainedPath_RemovesLegitimateNested` | `TestVerbCases_CleanState` | yes |
+| `TestRemoveContainedPath_RemovesFinalLinkNotTarget` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestRemoveContainedPath_AbsentIsNoOp` | `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
+| `TestCreateExclusiveDir_RefusesLeafSymlink` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestGate_TokenRoundTrip` | yes |
 | `TestWorktreeDirty_ErrorNamesGitCommandOnce` | `TestAdd_WiresSlugValidation` | yes |
+| `TestHubWorkspacePathAndFolders` | `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
 | `TestParseTrailerScanRecord_MultipleTagsSplitOnNewline` | `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
+| `TestParseTrailerScanRecord` | `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
 | `TestWorktreePath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestUnseedJunctionRecords_EmptyIsNoOp` | `TestCrossProduct` | yes |
+| `TestUnseedJunctionRecords_RemovesEveryHealthyJunction` | `TestCrossProduct`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort` | yes |
+| `TestExcludePatternFor_AnchorsToRepoRoot` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestJunctionNames_NoFallbackOnLoadFailure` | `TestLoadConfig_NotInitialized`, `TestHealthy_ReasonCauses` | yes |
-| `TestWriteLaunchers_RunScriptContentAndFilename` | `TestAdd_ArchivedAncestorWeftLeftoverReplaced`, `TestRemoveLaunchers_EmptyDirRemovedAndRecorded` | yes |
-| `TestMergeErrors_ErrMergeInRequiredSourceNotInMessage` | `TestMergeErrors_PinnedStrings` | yes |
+| `TestBoardDir` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestHubPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestIsReservedHubName` | `TestAdd_WiresSlugValidation`, `TestCrossProduct`, `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk` | yes |
+| `TestWriteLaunchers_RunScriptContentAndFilename` | `TestAdd_ArchivedAncestorWeftLeftoverReplaced`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
+| `TestMergeErrors_PinnedStrings` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
+| `TestMergeErrors_ErrMergeInRequiredSourceNotInMessage` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
 | `TestMergeErrors_NoVocabularyLeakInReasons` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMergeErrors_NoVocabularyLeakInErrorStrings` | `TestMergeErrors_PinnedStrings` | yes |
+| `TestMergeErrors_NoVocabularyLeakInErrorStrings` | `TestMergeVocabulary_ErrorsAreSideFree` | yes |
 | `TestMergePaths_WeftPathVisibleUsesTheOSSeparator` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestMergeState_LandedConcludeCommit` | `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate` | yes |
+| `TestMergeState_BothSidesAlreadyUpToDate` | `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate` | yes |
+| `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` | no |
+| `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` | `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | yes |
 | `TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestMergeVocabulary_ErrorsAreSideFree` | `TestMergeErrors_PinnedStrings`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
+| `TestMergeVocabulary_ErrorsAreSideFree` | `TestMergeErrors_NoVocabularyLeakInErrorStrings`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | no |
 | `TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestMutations_AppendOrdering` | `TestMutations_Extend` | yes |
 | `TestMutations_AppendRef` | `TestAdd_DivergedArchivedWeftLeftoverReplaced` | yes |
 | `TestMutations_Entries_ReturnsCopy` | `TestAssertRecordMatchesDiff` | yes |
 | `TestMutations_Snapshot_Isolates` | `TestMutations_Extend` | yes |
 | `TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey` | `TestMergeCrucible_ConflictsIsEmptyNeverNil`, `TestMutations_MarshalJSON`, `TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked` | yes |
-| `TestMutations_NilReceiver_DoesNotPanic` | `TestMutations_NilReceiverLogsNothing` | yes |
+| `TestMutations_NilReceiver_DoesNotPanic` | `TestMutations_NilReceiverLogsNothing` | no |
 | `TestMutations_Snapshot_NilReceiver` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken` | yes |
 | `TestMutations_EntriesAndLen_CallableOnNonAddressableValue` | `TestMutations_Extend` | yes |
+| `TestMutations_AppendLogsOneRecord` | `TestMutations_AppendRefLogsOneRecord`, `TestAssertRecordMatchesDiff` | yes |
+| `TestMutations_AppendRefLogsOneRecord` | `TestMutations_AppendLogsOneRecord`, `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | no |
+| `TestMutations_ExtendLogsNothing` | `TestMutations_Extend`, `TestMutations_AppendRefLogsOneRecord` | yes |
+| `TestMutations_NilReceiverLogsNothing` | `TestMutations_NilReceiver_DoesNotPanic`, `TestMutations_AppendRefLogsOneRecord` | yes |
 | `TestOrigin_JSONRoundTrip` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestOrigin_ParentWorktreeRoundTrip` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
-| `TestOriginRecordRel_IsTheSharedSuffix` | `TestAdd_RecordsNonDefaultParentBranch`, `TestOriginRecordPathFor_BothAnchors` | yes |
+| `TestOriginRecordPath_BothAnchors` | `TestAdd_RecordsParentWorktree`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
+| `TestOriginRecordPathFor_BothAnchors` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
+| `TestOriginRecordRel_IsTheSharedSuffix` | `TestAdd_RecordsParentWorktree`, `TestHubWorkspaceFolders_OmitsMissingDirectories` | yes |
 | `TestPortalsDirAndLaunchersDir` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestMirroredPortalLauncherMethods` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal` | yes |
+| `TestRemoveLaunchers_DirRemovalIsContained` | `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
+| `TestRemoveLaunchers_EmptyDirRemovedAndRecorded` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`, `TestRemove_FinishesPairWithBothWorktreesGone`, `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
+| `TestRemovePortal_LeavesAnchorDirectory` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`, `TestRemoveLaunchers_PreservesForeignContent` | yes |
+| `TestCheck_RendersThreeSpellings` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestCheck_HasNoFourthMemberForForce` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal` | `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
 | `TestClassifyCorrespondence_ExactHit` | `TestDiff_MergesWarpAndWeftSides` | yes |
@@ -980,6 +1031,7 @@ No coverage:
 | `TestClassifyCorrespondence_NoOlderEntryErrors` | `TestDiff_NoWeftCorrespondence_BeforeFirstSync` | yes |
 | `TestClassifyCorrespondence_EmptyIndexErrors` | `TestDiff_NoWeftCorrespondence_BeforeFirstSync` | yes |
 | `TestShortnameRecord_RoundTrip` | `TestCloneHub_BoundWeftWithoutRecord` | yes |
+| `TestValidateWorktreeSlug` | `TestCrossProduct`, `TestAdd_WiresSlugValidation`, `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk` | yes |
 | `TestSpecsDir` | `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
 | `TestSpecsDir_IsChildOfBoardDir` | `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
 | `TestSpecsDir_IsSiblingOfStencilsDir` | `TestCommitSeededStencils_EmptyInputIsNoOp`, `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory` | yes |
@@ -997,226 +1049,231 @@ No coverage:
 | `TestConfigTemplate_ResolvesToEmptyBranchPrefix` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestConfigTemplate_PathspecResolvesToEmpty` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestConfigTemplate_EmptyPathspecDegradesToStructuralSetsAlone` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
+| `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
 | `TestParseWarpSHATrailer_Absent` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
 | `TestParseWarpSHATrailer_MultipleTrailersLastWins` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
 | `TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace` | `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
 | `TestAppendSnapshotTrailers_SingleTag` | `TestAppendSnapshotTrailers_MultipleTags` | no |
-| `TestAppendSnapshotTrailers_MultipleTags` | `TestAppendSnapshotTrailers_SingleTag`, `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit` | yes |
-| `TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer` | `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit`, `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
+| `TestAppendSnapshotTrailers_MultipleTags` | `TestAppendSnapshotTrailers_SingleTag`, `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError` | yes |
+| `TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer` | `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`, `TestAppendParseWarpSHATrailer_RoundTrip` | yes |
 | `TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
-| `TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList` | `TestAppendSnapshotTrailers_RejectsInvalidTags`, `TestAppendSnapshotTrailers_SingleTag` | yes |
+| `TestAppendSnapshotTrailers_RejectsInvalidTags` | `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted` | yes |
+| `TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList` | `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted`, `TestAppendSnapshotTrailers_SingleTag` | yes |
+| `TestNormalizeWarpURL` | `TestWarpURLTransportIdentity` | yes |
+| `TestResolveEffectiveWarpURL` | `TestCloneHub_ConflictLeavesNoHub`, `TestVerbCases_CleanState`, `TestCloneHub_EmptyWeftRemoteTaxonomy`, `TestCloneHub_ResetInBothArgumentForms`, `TestWarpURLTransportIdentity` | yes |
+| `TestWarpLyxLinkMethods` | `TestAddRollback_UnwiresJunctionsOnPostWiringFailure`, `TestCheckout_JunctionFailureDeletesForkedWeftBranch` | yes |
+| `TestWarpJunctions` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestWarpJunctionsHere` | `TestHealthy_JunctionDriftShapes` | yes |
 | `TestWarpLayoutFor_FastPathCarriesEveryField` | `TestCrossProduct` | yes |
+| `TestWeftPathAccessors` | `TestHealthy_JunctionDriftShapes`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
+| `TestRemoveJunctionRecords_ContinuesPastFailure` | `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`, `TestUnseedJunctionRecords_AccumulatesBeforeAbort`, `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
+| `TestRemoveJunctionRecords_EmptyIsNoOp` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestAdd_WiresJunctionsEagerly` | `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
+| `TestAdd_DropsParentRunRecords` | `TestCrossProduct`, `TestAdd_FromTaskPairDropsParentRunRecords`, `TestPull_LeavesWeftHistoryUntouched` | yes |
+| `TestAdd_DropsParentRunRecords_SubpathAnchor` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestAdd_SkipPushSkipsLeftoverProbes`, `TestCrossProduct`, `TestPull_LeavesWeftHistoryUntouched` | yes |
+| `TestAdd_NoRunRecordsToDrop` | `TestAdd_SkipPushSkipsLeftoverProbes`, `TestPull_LeavesWeftHistoryUntouched` | yes |
+| `TestAdd_AdoptKeepsRunRecords` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate`, `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestArchiveWeftTip_TagsAndPushesTip` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestCleanup_ApplyArchivesEachOrphanBeforeDeleting` | yes |
+| `TestArchiveWeftTip_NoOriginSkips` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestArchiveWeftTip_ClashingTagErrors`, `TestCleanup_NoOriginDeletesAndReportsArchiveSkip` | yes |
+| `TestArchiveWeftTip_UnreachableOriginErrors` | `TestCrossProduct`, `TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep` | yes |
+| `TestArchiveWeftTip_OriginOnlyBranch` | `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
+| `TestWeftBranchName` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestWeftBranchName_RoundTripsWithWeftWarpSlug` | `TestAddRollback_AdoptedWeftBranchSurvives` | yes |
+| `TestCloneHub_AnchorTypoPathHardErrors` | `TestCloneHub_AnchorFileNotDirectoryHardErrors` | yes |
+| `TestCloneHub_AnchorFileNotDirectoryHardErrors` | `TestCloneHub_AnchorTypoPathHardErrors` | no |
+| `TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestCloneHub_NonEmptyWeftRemoteBranchUnchanged` | `TestCloneHub_BootstrapWritesBinding` | yes |
+| `TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock` | `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning` | yes |
+| `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline`, `TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit` | yes |
+| `TestCommitResult_Committed` | `TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit` | yes |
+| `TestWireJunctions_WiresEveryPassedName` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
+| `TestHealthy_NarrowPathspecIsHealthy` | `TestHealthy_JunctionDriftShapes`, `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig` | yes |
 | `TestLoadConfig_HappyPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestLoadConfig_EmptyBranchPrefix` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestLoadConfig_NotInitialized` | `TestJunctionNames_NoFallbackOnLoadFailure` | no |
+| `TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused` | `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`, `TestBranchOwnership_ManagedBranchKind`, `TestDeleteArchivedWeftBranch_PrimaryRefused` | yes |
+| `TestDeleteRemoteBranchGate_CheckedOutBranchRefused` | `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`, `TestCrossProduct`, `TestDeleteArchivedWeftBranch_PrimaryRefused`, `TestRemove_FailedWeftTeardownIsReported` | yes |
+| `TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted` | `TestAdd_DivergedArchivedWeftLeftoverReplaced`, `TestDeleteArchivedWeftBranch_PrimaryRefused` | yes |
+| `TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip` | `TestAdd_WeftReplaceLeaseRaceRefused`, `TestDeleteArchivedWeftBranch_EmptyLeaseRefused`, `TestCleanupRemoteWarp_MovedTipKeepsTheBranchWithAnError`, `TestMergeSiblings_Dispositions` | yes |
+| `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` | `TestCrossProduct` | yes |
+| `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub` | `TestCloneHub_OldOrderInvocationIsRefused` | no |
+| `TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles` | `TestRemoveWarpWorktreeDir_FallbackHonoursForce` | yes |
+| `TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
+| `TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestCrossProduct` | yes |
+| `TestDotLyxJunction_AdoptsPreExistingRealDotLyx` | `TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides` | yes |
 | `TestOpen_MissingWarpPath` | `TestMidMerge_UnopenablePair_Errors` | yes |
 | `TestOpen_MissingWeftPath` | `TestOpenParent_ParentSiblingMissing` | yes |
 | `TestNew_HappyPath` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
+| `TestScopedPathspec` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestInstallPostCheckoutHook_Idempotent` | `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight` | yes |
+| `TestInstallPostCheckoutHook_ChainIdempotent` | `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`, `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight` | no |
+| `TestInstallPostCheckoutHook_WeftResolution_Prime` | `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes` | yes |
+| `TestInstallPostCheckoutHook_WeftResolution_Child` | `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes` | yes |
+| `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable` | `TestInstallPostCheckoutHook_ChainIdempotent` | yes |
+| `TestInstallPostCheckoutHook_HonoursCoreHooksPath` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestHubReserved_BoardExcludedFromPathspecRoutes` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestHubScratchDir_IsBoardAnchored` | `TestCommitSeededStencils_EmptyInputIsNoOp` | yes |
 | `TestHubScratchDir_IgnoresAnchorRel` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
 | `TestHubLogsDir_IsHubScratchDirLogsSubdir` | `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` | yes |
 | `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` | `TestHubLogsDir_IsHubScratchDirLogsSubdir` | no |
+| `TestWeftGitDir_ResolvesInsideWeftGitdir` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord` | yes |
+| `TestRecordAndLookupCorrespondence_RoundTrip` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection` | yes |
+| `TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence` | `TestWeftSHAForWarpSHA_StalenessSurvivesRebuild`, `TestCheckout_RefreshesCorrespondenceIndex` | yes |
+| `TestRebuildIndex_ReproducesTrailerHistory` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestPull_DetectsDriftUnreachableUnprunedObject` | yes |
+| `TestWireJunctions_MaterialisesMissingWeftTarget` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
+| `TestWireJunctions_RefusesRealWarpDirectory` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch` | yes |
+| `TestUnwireJunctions_ReportsAndClearsEveryJunction` | `TestCrossProduct`, `TestDetectWarpPollution_LyxTrackedAsRestorable`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestRemove_TearsDownNestedJunction`, `TestHubContainment_ReconcileWiresNoBoardJunction` | yes |
+| `TestDetectWarpPollution_LyxTrackedAsRestorable` | `TestCrossProduct`, `TestUnwire_PreservesRepoWideRecords`, `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`, `TestMergeSiblings_Dispositions`, `TestStatus_DetectsWarpPollutionUnderSubpathAnchor` | no |
+| `TestDetectWarpPollution_RaddleNoLongerReported` | `TestMergeSiblings_Dispositions` | yes |
+| `TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth` | `TestCheckout_JunctionFailureDeletesForkedWeftBranch`, `TestRemove_TearsDownNestedJunction` | yes |
+| `TestWireJunctions_RepointsWrongTargetJunction` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
+| `TestWireJunctions_RepointsWrongTargetJunction_Extra` | `TestWireJunctions_RepointsDanglingJunction_Extra` | no |
+| `TestWireJunctions_RepointsDanglingJunction` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCrossProduct`, `TestRemove_TearsDownNestedJunction`, `TestUnwire_LeavesSiblingWorktreeUndirtied` | yes |
+| `TestWireJunctions_RepointsDanglingJunction_Extra` | `TestWireJunctions_RepointsWrongTargetJunction_Extra`, `TestCrossProduct` | yes |
+| `TestManifestWiredJunctionWalk` | `TestCrossProduct` | yes |
 | `TestVerbCases_StatesRestrictionIsWellFormed` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestMatchParentBranch` | `TestOpenParent_PrunableParentDirRemoved`, `TestOpenParent_HappyPath` | no |
+| `TestMergeStageTracked_NoMergeInProgressRefuses` | `TestMergeStageTracked_ForeignMergeStateRefuses`, `TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting` | yes |
+| `TestMergeState_SaveLoadRoundtripPreservesEveryField` | `TestMergeAbort_AfterConflict` | yes |
+| `TestMergeState_AbsentRecord` | `TestCrossProduct` | yes |
+| `TestMergeState_DeleteRemovesAndToleratesSecondCall` | `TestMergeAbort_AfterConflict` | yes |
+| `TestMergeState_ResetMergeSides_WarpSideConflicted` | `TestMergeAbort_AfterConflict`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
+| `TestMergeState_ResetMergeSides_WeftSideConflicted` | `TestMergeAbort_AfterConflict`, `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
+| `TestMergeState_ResetMergeSides_WarpOnly` | `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted` | yes |
+| `TestMergeStateActive_CleanWeft_ReportsFalse` | `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue`, `TestCheckout_RefreshesCorrespondenceIndex` | yes |
+| `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue` | `TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse`, `TestMergeContinue_ConcludeFailureThenRetryConcludes` | no |
+| `TestMergeStateActive_WeftConflictedSquashNoMergeHead_ReportsTrue` | `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue`, `TestMergeAbort_AfterConflict` | yes |
+| `TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse` | `TestMergeAbort_AfterConflict`, `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue` | yes |
+| `TestMidMerge_CleanPair_None` | `TestMidMerge_FabricParkedResolved_ParkedNoConflicts` | yes |
+| `TestOpen_HappyPath` | `TestCheckout_RefreshesCorrespondenceIndex` | yes |
+| `TestOpen_MissingWarpWorktree` | `TestCheckout_RefreshesCorrespondenceIndex`, `TestOpenParent_ParentSiblingMissing`, `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin` | yes |
+| `TestOpen_MissingSiblingWorktree` | `TestOpenParent_ParentSiblingMissing` | yes |
+| `TestOpenParent_NoLivePairForBranch` | `TestOpenParent_PrunableParentDirRemoved`, `TestOpenParent_ResolveFailureNamesBranchAndPath` | no |
+| `TestOpenParent_PrunableParentDirRemoved` | `TestOpenParent_ResolveFailureNamesBranchAndPath`, `TestCrossProduct`, `TestOpenParent_NoLivePairForBranch`, `TestMatchParentBranch` | yes |
+| `TestAdd_RecordsNonDefaultParentBranch` | `TestAdd_RecordsParentWorktree`, `TestCleanup_DryRunMatchesApplyVerdict` | yes |
+| `TestAdd_RecordsParentBranch_SubpathAnchoredHub` | `TestAdd_RecordsParentWorktree`, `TestCrossProduct` | yes |
+| `TestAdd_CommitsOriginRecordOnWeftBranch` | `TestAdd_FromTaskPairDropsParentRunRecords` | yes |
+| `TestCommitWeftPaths_SerializesConcurrentCommits` | `TestAdd_FromTaskPairDropsParentRunRecords`, `TestPull_LeavesWeftHistoryUntouched` | yes |
+| `TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain` | `TestCrossProduct`, `TestCommitLock_PushFiresOnPartialFailure` | yes |
+| `TestPushAnchored_PushesAndRecordsBranchPush` | `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
+| `TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped` | `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`, `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`, `TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected` | yes |
+| `TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush` | `TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue`, `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`, `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses` | yes |
+| `TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue` | `TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush` | no |
+| `TestHealthy_RealDirNotAJunction` | `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`, `TestHealthy_JunctionDriftShapes` | yes |
+| `TestUnwire_PreservesUserSymlinkAtAnchor` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct` | yes |
+| `TestSnapshotWarpSHA_Miss` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_NewestTaggedCommitWins` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_TagIsolation` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_MultipleTagsOnOneCommit` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_UntaggedCommitsAreSkipped` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped` | `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCrossProduct` | yes |
+| `TestSnapshotWarpSHA_ByteExactMatching` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_PerBranchScoping` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins` | `TestPull_DetectsDriftUnreachableUnprunedObject`, `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline`, `TestCommit_TagsOnly_LandsEmptyWeftCommit` | yes |
+| `TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse` | `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`, `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`, `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline` | yes |
+| `TestStatus_DetectsWarpPollutionUnderSubpathAnchor` | `TestDetectWarpPollution_LyxTrackedAsRestorable` | yes |
+| `TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt` | `TestDiff_MergesWarpAndWeftSides`, `TestStencilBaseByStamp_FindsOlderDefaultByStamp`, `TestMergeSiblings_Dispositions`, `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory`, `TestCrossProduct` | yes |
+| `TestStencilBaseByStamp_FindsOlderDefaultByStamp` | `TestStencilBaseByStamp_HashNormalisationAcrossCRLF` | no |
+| `TestStencilBaseByStamp_HashNormalisationAcrossCRLF` | `TestStencilBaseByStamp_FindsOlderDefaultByStamp` | yes |
+| `TestUnwire_RemovesOnDiskJunctionsIncludingStale` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
+| `TestUnwire_PreservesWeftLyxAndOptionalContent` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
 | `TestUnwireVerbResult_HasNoGitignoreField` | `TestAddRollback_AdoptedPathPreservesOriginRecordCommit` | yes |
+| `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | `TestUnwire_PreservesRepoWideRecords`, `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct` | no |
+| `TestUnwire_PreservesRepoWideRecords` | `TestUnwire_LeavesSiblingWorktreeUndirtied`, `TestCrossProduct`, `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`, `TestUnwire_NeverWiredWarpIsIdempotentNoOp` | yes |
+| `TestCloneHub_UnboundWeftNamesTwoArgForm` | `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken`, `TestCloneHub_ConflictLeavesNoHub` | yes |
+| `TestCloneHub_OldOrderInvocationIsRefused` | `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub` | yes |
+| `TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree` | `TestCrossProduct`, `TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked` | yes |
+| `TestFabricWarp_ResetHardRefusesDirtyWarpCheckout` | `TestRefusedBefore`, `TestCrossProduct` | yes |
+| `TestWarpLayoutFor_FastPathMatchesResolveWorktree` | `TestCrossProduct`, `TestMergeSiblings_Dispositions` | yes |
+| `TestCommitWeft_UntrackedNewFileCountsAsMatch` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth` | yes |
+| `TestCommitWeft_IndexOnlyDeletionCountsAsMatch` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth` | yes |
+| `TestCommitWeft_ExcludeMagicPassesThroughUntouched` | `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`, `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth`, `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing` | yes |
 | `TestResolvedDefaultRoutingNames_IsLyxAlone` | `TestAdd_AdoptedWeftDivergedRefusedAtPreflight` | yes |
+| `TestList_ParsesPrunable` | `TestCrossProduct`, `TestList` | yes |
 | `TestList_NotAGitRepo` | `TestOwnership_RegisteredLinkedWorktreeKind` | yes |
 
 No coverage:
 
-- `TestPruneEmptyAncestors`: unclassifiable call
-- `TestRefuseUncontainedPath`: unclassifiable call
-- `TestPruneEmptyAncestors_RefusesEscapingIntermediate`: unclassifiable call
-- `TestReachableAnchor_NewestReachable`: unclassifiable call
-- `TestReachableAnchor_SingleBack`: unclassifiable call
-- `TestReachableAnchor_MultiBack`: unclassifiable call
-- `TestReachableAnchor_NoneReachable`: unclassifiable call
-- `TestReachableAnchor_EmptySlice`: unclassifiable call
-- `TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk`: unclassifiable call
-- `TestBolt_DirtyRepo_CommitsAndPushes`: spawns
-- `TestBolt_CleanRepo_CommitAndPushAreNoOps`: spawns
-- `TestBolt_SkipGit_ShortCircuits`: spawns
-- `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst`: spawns
-- `TestClassifyPaths`: unclassifiable call
-- `TestCloneHub_CreatesHubScratchDir`: spawns
-- `TestResetHub_RefusesADirectoryThatIsNotAHub`: unclassifiable call
-- `TestResetHub_RemovesARealHub`: unclassifiable call
-- `TestResetHub_AbsentPathIsANoop`: unclassifiable call
-- `TestDeriveWarpName`: unclassifiable call
-- `TestCoalescePush_LoopsWhileProgressed`: unclassifiable call
-- `TestCoalescePush_StepErrorAbortsImmediately`: unclassifiable call
-- `TestCoalescePush_ReleasesLockOnReturn`: unclassifiable call
-- `TestCommit_SkipGit_TwoSided`: spawns
-- `TestCommit_SkipGit_WarpOnly`: spawns
-- `TestCommit_TwoSided_NormalOpts_ControlCase`: spawns
-- `TestCommitLock_WarpOnlySerializesConcurrentCommits`: spawns
-- `TestCommitLock_ContendsAcrossSides`: spawns
-- `TestCommitLock_ReleasedBeforePush`: spawns
-- `TestCommitLock_PushFiresOnPartialFailure`: spawns
-- `TestCommit_PartialFailure_WarpLandsWeftCommitFails`: spawns
-- `TestCommit_PartialFailure_WarpCommitFails`: spawns
-- `TestCommit_PartialFailure_CommittedButUnrecorded`: spawns
-- `TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit`: spawns
-- `TestCommitWeftAt_CommitsDirtyWorktree`: spawns
-- `TestCommitWeftAt_NoopOnCleanWorktree`: spawns
-- `TestCommitWeftAt_SkipGitReturnsImmediately`: spawns
-- `TestWeftCommitPathspec`: unclassifiable call
-- `TestCommitWeftPaths_SkipGit`: unclassifiable call
-- `TestCommitWeftPaths_EmptyPaths`: unclassifiable call
-- `TestContainedWorktreeAdd_RefusesSymlinkedTarget`: spawns
-- `TestContainedWorktreeAdd_PlacesWorktreeAtTarget`: spawns
-- `TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap`: spawns
-- `TestLandedWork_PushedBranchPasses`: spawns
-- `TestLandedWork_SquashLandedBranchPasses`: spawns
-- `TestLandedWork_UnlandedBranchRefusedEvenWithForce`: spawns
-- `TestLandedWork_CheckedOutBranchRefused`: spawns
-- `TestGate_CheckOrdering`: unclassifiable call
-- `TestGate_Containment`: unclassifiable call
-- `TestGate_ContainmentResolvesSymlinkedAncestors`: unclassifiable call
-- `TestGate_SlugValidation`: unclassifiable call
-- `TestGate_Force`: unclassifiable call
-- `TestGate_ZeroValueDeclarationsAreRefusals`: unclassifiable call
-- `TestGate_AbsentTargetIsNoOp`: unclassifiable call
-- `TestGate_LinkKinds`: unclassifiable call
-- `TestGate_BestEffortPolicy`: unclassifiable call
-- `TestGate_RecordOnlyOnObservedEffect`: unclassifiable call
-- `TestDirtyPathsOutside`: unclassifiable call
-- `TestRemoveContainedPath_RefusesEscapingIntermediate`: unclassifiable call
-- `TestRemoveContainedPath_RemovesLegitimateNested`: unclassifiable call
-- `TestRemoveContainedPath_RemovesFinalLinkNotTarget`: unclassifiable call
-- `TestRemoveContainedPath_AbsentIsNoOp`: unclassifiable call
+- `TestBolt_DirtyRepo_CommitsAndPushes`: unclassifiable call
+- `TestBolt_CleanRepo_CommitAndPushAreNoOps`: unclassifiable call
+- `TestBolt_SkipGit_ShortCircuits`: unclassifiable call
+- `TestBolt_CommitWritten`: unclassifiable call
+- `TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst`: unclassifiable call
+- `TestCloneHub_CreatesHubScratchDir`: unclassifiable call
+- `TestCommit_SkipGit_TwoSided`: unclassifiable call
+- `TestCommit_SkipGit_WarpOnly`: unclassifiable call
+- `TestCommit_TwoSided_NormalOpts_ControlCase`: unclassifiable call
+- `TestCommitLock_WarpOnlySerializesConcurrentCommits`: unclassifiable call
+- `TestCommitLock_ContendsAcrossSides`: unclassifiable call
+- `TestCommitLock_ReleasedBeforePush`: unclassifiable call
+- `TestCommitLock_PushFiresOnPartialFailure`: unclassifiable call
+- `TestCommit_PartialFailure_WarpLandsWeftCommitFails`: unclassifiable call
+- `TestCommit_PartialFailure_WarpCommitFails`: unclassifiable call
+- `TestCommit_PartialFailure_CommittedButUnrecorded`: unclassifiable call
+- `TestCommit_LyxOnlyPathspec_NeverProducesWarpCommit`: unclassifiable call
+- `TestContainedWorktreeAdd_RefusesSymlinkedTarget`: unclassifiable call
+- `TestContainedWorktreeAdd_PlacesWorktreeAtTarget`: unclassifiable call
+- `TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap`: unclassifiable call
+- `TestLandedWork_PushedBranchPasses`: unclassifiable call
+- `TestLandedWork_SquashLandedBranchPasses`: unclassifiable call
+- `TestLandedWork_UnlandedBranchRefusedEvenWithForce`: unclassifiable call
+- `TestLandedWork_CheckedOutBranchRefused`: unclassifiable call
 - `TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent`: unclassifiable call
 - `TestMutateGitExclude_ReportsWhetherContentChanged`: unclassifiable call
 - `TestExcludeAnchoredDir_AppendsAnchoredLineOnce`: unclassifiable call
 - `TestExcludeAnchoredDir_AnchorsToSubpath`: unclassifiable call
 - `TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing`: unclassifiable call
 - `TestExcludeAnchoredDir_HoldsExcludeLock`: unclassifiable call
-- `TestHubWorkspacePathAndFolders`: unclassifiable call
-- `TestParseTrailerScanRecord`: unclassifiable call
-- `TestUnseedJunctionRecords_AccumulatesBeforeAbort`: unclassifiable call
-- `TestUnseedJunctionRecords_EmptyIsNoOp`: unclassifiable call
-- `TestUnseedJunctionRecords_RemovesEveryHealthyJunction`: unclassifiable call
-- `TestExcludePatternFor_AnchorsToRepoRoot`: unclassifiable call
-- `TestFilterHubReserved`: unclassifiable call
-- `TestBoardDir`: unclassifiable call
-- `TestHubPath`: unclassifiable call
-- `TestIsReservedHubName`: unclassifiable call
-- `TestLauncherExt`: unclassifiable call
-- `TestLauncherScript`: unclassifiable call
-- `TestMergeErrors_PinnedStrings`: unclassifiable call
-- `TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates`: unclassifiable call
-- `TestMergeGuardError_WorktreeDirty`: unclassifiable call
-- `TestMergePaths_UnifyConflictPaths`: unclassifiable call
-- `TestMergePaths_WeftPathVisibleAcrossSeparators`: unclassifiable call
-- `TestMergeState_LandedConcludeCommit`: unclassifiable call
-- `TestMergeState_BothSidesAlreadyUpToDate`: unclassifiable call
-- `TestMergeVocabulary_GuardReasonSetMatchesConstBlock`: spawns
-- `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile`: spawns
-- `TestMutations_Append_HubRelativeConversion`: unclassifiable call
-- `TestMutations_MarshalJSON`: unclassifiable call
-- `TestMutations_AppendLogsOneRecord`: unclassifiable call
-- `TestMutations_AppendRefLogsOneRecord`: unclassifiable call
-- `TestMutations_ExtendLogsNothing`: unclassifiable call
-- `TestMutations_NilReceiverLogsNothing`: unclassifiable call
-- `TestRefDetail`: unclassifiable call
-- `TestOriginRecordPath_BothAnchors`: unclassifiable call
-- `TestOriginRecordPathFor_BothAnchors`: unclassifiable call
-- `TestPathTracked`: spawns
-- `TestMirroredPortalLauncherMethods`: unclassifiable call
-- `TestRemoveLaunchers_PreservesForeignContent`: unclassifiable call
-- `TestRemoveLaunchers_DirRemovalIsContained`: unclassifiable call
-- `TestRemoveLaunchers_EmptyDirRemovedAndRecorded`: unclassifiable call
-- `TestRemovePortal_LeavesAnchorDirectory`: unclassifiable call
-- `TestRemoveLaunchersAndPortal_ContainmentRefusalSurvivesSurfaceRefusal`: unclassifiable call
-- `TestIsRawWarpWorktree_ProbesAnchoredDirectory`: unclassifiable call
-- `TestRefusalOf`: unclassifiable call
-- `TestCheck_RendersThreeSpellings`: unclassifiable call
-- `TestReadShortname_NotFound`: unclassifiable call
-- `TestResolveEffectiveShortname`: unclassifiable call
-- `TestValidateWorktreeSlug`: unclassifiable call
-- `TestSpawnDetachedPush_SkipEnvAndEmptyPaths`: spawns
-- `TestPushWarpAt_Gating`: unclassifiable call
-- `TestAppendParseWarpSHATrailer_RoundTrip`: unclassifiable call
-- `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock`: unclassifiable call
-- `TestAppendSnapshotTrailers_RejectsInvalidTags`: unclassifiable call
-- `TestNormalizeWarpURL`: unclassifiable call
-- `TestResolveEffectiveWarpURL`: unclassifiable call
-- `TestWarpLyxLinkMethods`: unclassifiable call
-- `TestWarpJunctions`: unclassifiable call
-- `TestWarpJunctionsHere`: unclassifiable call
-- `TestWeftPathAccessors`: unclassifiable call
-- `TestWeftWarpSlug`: unclassifiable call
-- `TestRemoveJunctionRecords_ContinuesPastFailure`: unclassifiable call
-- `TestRemoveJunctionRecords_EmptyIsNoOp`: unclassifiable call
-- `TestAdd_ExistingBranchErrorNamesRemedy`: spawns
-- `TestAdd_LeftoverWorktreeDirErrorNamesRemedy`: spawns
-- `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight`: spawns
-- `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`: spawns
-- `TestAdd_WarpLeftoverRefusedAtPreflight`: spawns
-- `TestAdd_WarpFastForwardableLeftoverProceeds`: spawns
-- `TestAdd_SkipPushSkipsLeftoverProbes`: spawns
-- `TestAdd_DivergedArchivedWeftLeftoverReplaced`: spawns
-- `TestAdd_ArchivedAncestorWeftLeftoverReplaced`: spawns
-- `TestAdd_WeftReplaceLeaseRaceRefused`: spawns
-- `TestAddRollback_AdoptedWeftBranchSurvives`: spawns
-- `TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix`: spawns
-- `TestAddRollback_RefusedWarpBranchDeletionLogsWarn`: spawns
-- `TestAdd_WiresJunctionsEagerly`: spawns
-- `TestAddRollback_UnwiresJunctionsOnPostWiringFailure`: spawns
-- `TestAdd_GitFailureCarriesGitsOwnReason`: spawns
-- `TestAdd_DropsParentRunRecords`: spawns
-- `TestAdd_DropsParentRunRecords_SubpathAnchor`: spawns
-- `TestAdd_NoRunRecordsToDrop`: spawns
-- `TestAdd_AdoptKeepsRunRecords`: spawns
-- `TestAdd_FromTaskPairDropsParentRunRecords`: spawns
-- `TestAdd_DropRollsBackFully`: spawns
-- `TestAdd_WiresSlugValidation`: unclassifiable call
-- `TestArchiveWeftTip_TagsAndPushesTip`: spawns
-- `TestArchiveWeftTip_NoOriginSkips`: spawns
-- `TestArchiveWeftTip_UnreachableOriginErrors`: spawns
-- `TestArchiveWeftTip_OriginOnlyBranch`: spawns
-- `TestArchiveWeftTip_MissingBranchIsNoop`: spawns
-- `TestArchiveWeftTip_ClashingTagErrors`: spawns
-- `TestWeftBranchName`: unclassifiable call
-- `TestCheckout_RefreshesCorrespondenceIndex`: spawns
-- `TestCheckout_JunctionFailureRollsBackBothSides`: spawns
-- `TestCheckout_JunctionFailureDeletesForkedWeftBranch`: spawns
-- `TestCheckout_WarpSwitchFailureCarriesGitStderr`: spawns
-- `TestClean_ReasonWording`: spawns
-- `TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout`: spawns
-- `TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable`: spawns
-- `TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan`: spawns
-- `TestCleanup_RemoteFalseLeavesRemoteCopyIntact`: spawns
-- `TestCleanup_DryRunWithRemoteDeletesNeither`: spawns
-- `TestCleanup_NeverPushedOrphanIsIdempotentOnRemote`: spawns
-- `TestCleanup_ProtectedEntryUntouchedOnRemote`: spawns
-- `TestCleanup_RemoteFailureIsNonFatal`: spawns
-- `TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce`: spawns
-- `TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing`: spawns
-- `TestCleanup_NoOriginWithRemoteFalseReportsNoReason`: spawns
-- `TestCleanupRemoteWarp_DryRunClassifiesEveryBranch`: spawns
-- `TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate`: spawns
-- `TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion`: spawns
-- `TestCleanupRemoteWarp_MovedTipKeepsTheBranchWithAnError`: spawns
-- `TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch`: spawns
-- `TestCloneHub_CreatesFreshWeftPrimaryBranch`: spawns
-- `TestCloneHub_StrictAbortRemovesHubOnFailure`: spawns
-- `TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote`: spawns
-- `TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch`: spawns
-- `TestCloneHub_AnchorCreatePath`: spawns
-- `TestCloneHub_AnchorTypoPathHardErrors`: spawns
-- `TestCloneHub_AnchorFileNotDirectoryHardErrors`: spawns
-- `TestCloneHub_AnchorRootDefaultPath`: spawns
-- `TestCloneHub_AnchorAdoptPath`: spawns
-- `TestCloneHub_StaleFabricAnchorHardErrors`: spawns
-- `TestCloneHub_RejectsUnusableSubpath`: spawns
-- `TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch`: spawns
-- `TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn`: spawns
-- `TestCloneHub_NonEmptyWeftRemoteBranchUnchanged`: spawns
-- `TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath`: spawns
-- `TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock`: spawns
-- `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`: spawns
-- `TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd`: spawns
+- `TestPathTracked`: unclassifiable call
+- `TestAdd_ExistingBranchErrorNamesRemedy`: unclassifiable call
+- `TestAdd_LeftoverWorktreeDirErrorNamesRemedy`: unclassifiable call
+- `TestAdd_UnarchivedWeftLeftoverRefusedAtPreflight`: unclassifiable call
+- `TestAdd_AdoptedWeftDivergedRefusedAtPreflight`: unclassifiable call
+- `TestAdd_WarpLeftoverRefusedAtPreflight`: unclassifiable call
+- `TestAdd_WarpFastForwardableLeftoverProceeds`: unclassifiable call
+- `TestAdd_SkipPushSkipsLeftoverProbes`: unclassifiable call
+- `TestAdd_DivergedArchivedWeftLeftoverReplaced`: unclassifiable call
+- `TestAdd_ArchivedAncestorWeftLeftoverReplaced`: unclassifiable call
+- `TestAdd_WeftReplaceLeaseRaceRefused`: unclassifiable call
+- `TestAddRollback_AdoptedWeftBranchSurvives`: unclassifiable call
+- `TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix`: unclassifiable call
+- `TestAddRollback_RefusedWarpBranchDeletionLogsWarn`: unclassifiable call
+- `TestAddRollback_UnwiresJunctionsOnPostWiringFailure`: unclassifiable call
+- `TestAdd_GitFailureCarriesGitsOwnReason`: unclassifiable call
+- `TestAdd_FromTaskPairDropsParentRunRecords`: unclassifiable call
+- `TestAdd_DropRollsBackFully`: unclassifiable call
+- `TestCheckout_RefreshesCorrespondenceIndex`: unclassifiable call
+- `TestCheckout_JunctionFailureRollsBackBothSides`: unclassifiable call
+- `TestCheckout_JunctionFailureDeletesForkedWeftBranch`: unclassifiable call
+- `TestCheckout_WarpSwitchFailureCarriesGitStderr`: unclassifiable call
+- `TestClean_ReasonWording`: unclassifiable call
+- `TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout`: unclassifiable call
+- `TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable`: unclassifiable call
+- `TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan`: unclassifiable call
+- `TestCleanup_RemoteFalseLeavesRemoteCopyIntact`: unclassifiable call
+- `TestCleanup_DryRunWithRemoteDeletesNeither`: unclassifiable call
+- `TestCleanup_NeverPushedOrphanIsIdempotentOnRemote`: unclassifiable call
+- `TestCleanup_ProtectedEntryUntouchedOnRemote`: unclassifiable call
+- `TestCleanup_RemoteFailureIsNonFatal`: unclassifiable call
+- `TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce`: unclassifiable call
+- `TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing`: unclassifiable call
+- `TestCleanup_NoOriginWithRemoteFalseReportsNoReason`: unclassifiable call
+- `TestCleanupRemoteWarp_DryRunClassifiesEveryBranch`: unclassifiable call
+- `TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate`: unclassifiable call
+- `TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion`: unclassifiable call
+- `TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch`: unclassifiable call
+- `TestCloneHub_CreatesFreshWeftPrimaryBranch`: unclassifiable call
+- `TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote`: unclassifiable call
+- `TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch`: unclassifiable call
+- `TestCloneHub_AnchorCreatePath`: unclassifiable call
+- `TestCloneHub_AnchorRootDefaultPath`: unclassifiable call
+- `TestCloneHub_AnchorAdoptPath`: unclassifiable call
+- `TestCloneHub_RejectsUnusableSubpath`: unclassifiable call
+- `TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch`: unclassifiable call
+- `TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath`: unclassifiable call
+- `TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning`: unclassifiable call
+- `TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd`: unclassifiable call
 - `TestCommit_TwoSided_WarpFirstOrdering`: unclassifiable call
 - `TestCommit_TwoSided_RecordsCorrespondence`: unclassifiable call
 - `TestCommit_ResultFields`: unclassifiable call
@@ -1226,406 +1283,270 @@ No coverage:
 - `TestCommit_NoOp_DoesNotInvokePushRecorder`: unclassifiable call
 - `TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit`: unclassifiable call
 - `TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline`: unclassifiable call
-- `TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath`: spawns
+- `TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath`: unclassifiable call
 - `TestCommit_TagsOnly_LandsEmptyWeftCommit`: unclassifiable call
 - `TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit`: unclassifiable call
-- `TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit`: spawns
-- `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`: spawns
+- `TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit`: unclassifiable call
+- `TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit`: unclassifiable call
 - `TestCommit_SkipGit_WithTags_NoWeftCommitNoError`: unclassifiable call
 - `TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire`: unclassifiable call
 - `TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce`: unclassifiable call
 - `TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted`: unclassifiable call
-- `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`: spawns
-- `TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit`: spawns
+- `TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError`: unclassifiable call
 - `TestCommit_DotLyxPath_HardErrorsAndCommitsNothing`: unclassifiable call
-- `TestCommitResult_Committed`: unclassifiable call
-- `TestCommittedAnchoredFile_ReturnsCommittedBytes`: spawns
-- `TestCommittedAnchoredFile_NeverCommitted`: spawns
-- `TestWireJunctions_WiresEveryPassedName`: spawns
-- `TestHealthy_NarrowPathspecIsHealthy`: spawns
-- `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`: spawns
-- `TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused`: spawns
-- `TestDeleteRemoteBranchGate_CheckedOutBranchRefused`: spawns
-- `TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted`: spawns
-- `TestDeleteArchivedWeftBranch_PrimaryRefused`: spawns
-- `TestDeleteArchivedWeftBranch_EmptyArchiveTagRefused`: spawns
-- `TestDeleteArchivedWeftBranch_EmptyLeaseRefused`: spawns
-- `TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip`: spawns
-- `TestUnwireJunctions_RefusesLinkOutsideItsWorktree`: spawns
-- `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`: spawns
-- `TestCloneHub_TeardownSucceedsOnAHalfBuiltHub`: spawns
-- `TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles`: spawns
-- `TestRemoveWarpWorktreeDir_FallbackHonoursForce`: spawns
-- `TestOwnership_RegisteredLinkedWorktreeKind`: spawns
-- `TestOwnership_WarpCheckoutKind`: spawns
-- `TestOwnership_FabricHubKind`: spawns
-- `TestWorktreeDirty_BothScopesAcrossFourStates`: spawns
-- `TestBranchOwnership_ManagedBranchKind`: spawns
-- `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites`: spawns
-- `TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch`: spawns
-- `TestDiff_MergesWarpAndWeftSides`: spawns
-- `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`: spawns
-- `TestDiff_NoWeftCorrespondence_BeforeFirstSync`: spawns
-- `TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts`: spawns
-- `TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires`: spawns
-- `TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite`: spawns
-- `TestDotLyxJunction_AdoptsPreExistingRealDotLyx`: spawns
-- `TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched`: spawns
-- `TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides`: spawns
-- `TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern`: spawns
-- `TestEnvSyncOptions`: unclassifiable call
-- `TestScopedPathspec`: unclassifiable call
-- `TestRequireWarpWorktree`: unclassifiable call
-- `TestFabricHeadSHA_TracksWorktreeHead`: spawns
-- `TestHealthy_ReasonCauses`: spawns
-- `TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort`: spawns
-- `TestInstallPostCheckoutHook_Idempotent`: spawns
-- `TestInstallPostCheckoutHook_ChainIdempotent`: spawns
-- `TestInstallPostCheckoutHook_WeftResolution_Prime`: spawns
-- `TestInstallPostCheckoutHook_WeftResolution_Child`: spawns
-- `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`: spawns
-- `TestInstallPostCheckoutHook_HonoursCoreHooksPath`: spawns
-- `TestHubContainment_CloneWiresNoBoardJunction`: spawns
-- `TestHubContainment_AddWiresNoBoardJunction`: spawns
-- `TestHubContainment_ReconcileWiresNoBoardJunction`: spawns
-- `TestHubReserved_BoardExcludedFromPathspecRoutes`: spawns
-- `TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning`: spawns
-- `TestCloneHub_BoardStageAllCommitNeverStagesHubScratch`: spawns
-- `TestWriteHubWorkspace`: spawns
-- `TestWriteHubWorkspace_ReadErrorFailsWithReadCause`: spawns
-- `TestWriteHubWorkspace_RefusesEscapingLaunchersSymlink`: spawns
-- `TestWeftGitDir_ResolvesInsideWeftGitdir`: spawns
-- `TestRecordAndLookupCorrespondence_RoundTrip`: spawns
-- `TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence`: spawns
-- `TestRebuildIndex_ReproducesTrailerHistory`: spawns
-- `TestWireJunctions_MaterialisesMissingWeftTarget`: spawns
-- `TestWireJunctions_RefusesRealWarpDirectory`: spawns
-- `TestUnwireJunctions_ReportsAndClearsEveryJunction`: spawns
-- `TestUnwireJunctions_AlreadyUnwiredIsNoOp`: spawns
-- `TestDetectWarpPollution_LyxTrackedAsRestorable`: spawns
-- `TestDetectWarpPollution_ScanErrorIsNonFatal`: spawns
-- `TestDetectWarpPollution_RaddleNoLongerReported`: spawns
-- `TestHealthy_JunctionDriftShapes`: spawns
-- `TestReconcile_RepairsOptionalJunctionOnlyDrift`: spawns
-- `TestStatus_ReportsOptionalJunctionUnhealthy`: spawns
-- `TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth`: spawns
-- `TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName`: spawns
-- `TestWireJunctions_RepointsWrongTargetJunction`: spawns
-- `TestWireJunctions_RepointsWrongTargetJunction_Extra`: spawns
-- `TestWireJunctions_RepointsDanglingJunction`: spawns
-- `TestWireJunctions_RepointsDanglingJunction_Extra`: spawns
-- `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`: spawns
-- `TestManifestRoundTrip`: spawns
-- `TestManifestGitAllowlist`: spawns
-- `TestManifestPortability`: spawns
-- `TestManifestWiredJunctionWalk`: spawns
-- `TestCrossProduct`: spawns
-- `TestCloneHubReset`: spawns
+- `TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink`: unclassifiable call
+- `TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree`: unclassifiable call
+- `TestRemoveWarpWorktreeDir_FallbackHonoursForce`: unclassifiable call
+- `TestOwnership_RegisteredLinkedWorktreeKind`: unclassifiable call
+- `TestOwnership_WarpCheckoutKind`: unclassifiable call
+- `TestOwnership_FabricHubKind`: unclassifiable call
+- `TestWorktreeDirty_BothScopesAcrossFourStates`: unclassifiable call
+- `TestBranchOwnership_ManagedBranchKind`: unclassifiable call
+- `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites`: unclassifiable call
+- `TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch`: unclassifiable call
+- `TestDiff_MergesWarpAndWeftSides`: unclassifiable call
+- `TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline`: unclassifiable call
+- `TestDiff_NoWeftCorrespondence_BeforeFirstSync`: unclassifiable call
+- `TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern`: unclassifiable call
+- `TestHealthy_ReasonCauses`: unclassifiable call
+- `TestHubContainment_CloneWiresNoBoardJunction`: unclassifiable call
+- `TestHubContainment_AddWiresNoBoardJunction`: unclassifiable call
+- `TestHubContainment_ReconcileWiresNoBoardJunction`: unclassifiable call
+- `TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning`: unclassifiable call
+- `TestCloneHub_BoardStageAllCommitNeverStagesHubScratch`: unclassifiable call
+- `TestWriteHubWorkspace`: unclassifiable call
+- `TestHealthy_JunctionDriftShapes`: unclassifiable call
+- `TestReconcile_RepairsOptionalJunctionOnlyDrift`: unclassifiable call
+- `TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink`: unclassifiable call
+- `TestManifestRoundTrip`: unclassifiable call
+- `TestManifestGitAllowlist`: unclassifiable call
+- `TestManifestPortability`: unclassifiable call
+- `TestCrossProduct`: unclassifiable call
+- `TestCloneHubReset`: unclassifiable call
 - `TestAssertRecordMatchesDiff`: unclassifiable call
-- `TestRefusedByGate`: spawns
-- `TestRefusedByGate_Negatives`: spawns
-- `TestRefusedBefore`: spawns
-- `TestStates`: spawns
-- `TestVerbCases_CleanState`: spawns
-- `TestMatchParentBranch`: unclassifiable call
-- `TestMerge_CleanSquash`: spawns
-- `TestMerge_CleanNonSquash`: spawns
-- `TestMerge_MessagePrecedence`: spawns
-- `TestMerge_DirtyTargetHalts`: spawns
-- `TestMerge_StaleTargetSyncsBeforeMerging`: spawns
-- `TestMerge_DivergedTargetRefuses`: spawns
-- `TestMerge_NoUpstreamSidePassesVacuously`: spawns
-- `TestMerge_ConflictSelfAborts`: spawns
-- `TestMerge_BothSidesAlreadyUpToDate`: spawns
-- `TestMerge_CrashRecovery`: spawns
-- `TestMerge_PreMergeSyncRunsInsideTheWriteLock`: spawns
-- `TestMerge_UnfetchedDivergedTargetRefuses`: spawns
-- `TestMerge_FetchedDivergedWeftDoesNotRefuse`: spawns
-- `TestMerge_FetchedBehindTargetIsSyncedNotRefused`: spawns
-- `TestMergeCrucible_DetachedHeadRefused`: spawns
-- `TestMergeCrucible_WeftDetachedDoesNotRefuse`: spawns
-- `TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides`: spawns
-- `TestMergeCrucible_ResultFlagsDescribeWhatHappened`: spawns
-- `TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming`: spawns
-- `TestMergeCrucible_ConflictsIsEmptyNeverNil`: spawns
-- `TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned`: spawns
-- `TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded`: spawns
-- `TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone`: spawns
-- `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord`: spawns
-- `TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource`: spawns
-- `TestMergeIn_BothSidesClean`: spawns
-- `TestMergeIn_WarpConflicts`: spawns
-- `TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable`: spawns
-- `TestMergeIn_OneSideAlreadyUpToDate_OtherMerges`: spawns
-- `TestMergeIn_BothSidesAlreadyUpToDate`: spawns
-- `TestMergeContinue_ResolvedConflictsConclude`: spawns
-- `TestMergeContinue_UnresolvedConflictsRefuse`: spawns
-- `TestMergeAbort_AfterConflict`: spawns
-- `TestMergeIn_NeverSquashes`: spawns
-- `TestMergeAbort_FreshHandle_RecoversConflictedRecord`: spawns
-- `TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging`: spawns
-- `TestMergeContinue_ConcludeFailureThenRetryConcludes`: spawns
-- `TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching`: spawns
-- `TestMergeVerbs_NoRecordNoForeignState_ReturnNoMergeInProgress`: spawns
-- `TestMergeIn_Freshness_LocalBehindRemote`: spawns
-- `TestMergeIn_Freshness_SourceOnlyRemote`: spawns
-- `TestMergeIn_Freshness_SourceResolvableNowhere`: spawns
-- `TestMergeIn_NoWeftCounterpart_NothingMutated`: spawns
-- `TestMergeIn_DirtyWarpRefuses`: spawns
-- `TestMergeIn_DirtyWeftDoesNotRefuse`: spawns
-- `TestMergeIn_ConflictMarkers_NeverLeakWeftName`: spawns
-- `TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking`: spawns
-- `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted`: spawns
-- `TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted`: spawns
-- `TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted`: spawns
-- `TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted`: spawns
-- `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted`: spawns
-- `TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted`: spawns
-- `TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted`: spawns
-- `TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted`: spawns
-- `TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead`: spawns
-- `TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted`: spawns
-- `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate`: spawns
-- `TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses`: spawns
-- `TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting`: spawns
-- `TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress`: spawns
-- `TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting`: spawns
-- `TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting`: spawns
-- `TestMergeIn_StartsAreReReadUnderLock`: spawns
-- `TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses`: spawns
-- `TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses`: spawns
-- `TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt`: spawns
-- `TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt`: spawns
-- `TestMergeSiblings_Dispositions`: spawns
-- `TestMergeSiblings_CommitRefusesForeignMergeState`: spawns
-- `TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging`: spawns
-- `TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds`: spawns
-- `TestMergeStageResolved_PathNotConflictedOnEitherSide`: spawns
-- `TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion`: spawns
-- `TestMergeStageResolved_EmptyPathsIsNoOp`: spawns
-- `TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed`: spawns
-- `TestMergeStageTracked_NoMergeInProgressRefuses`: spawns
-- `TestMergeStageTracked_ForeignMergeStateRefuses`: spawns
-- `TestMergeState_SaveLoadRoundtripPreservesEveryField`: spawns
-- `TestMergeState_AbsentRecord`: spawns
-- `TestMergeState_DeleteRemovesAndToleratesSecondCall`: spawns
-- `TestMergeState_ForeignMergeStatePresent`: spawns
-- `TestMergeState_ResetMergeSides_WarpSideConflicted`: spawns
-- `TestMergeState_ResetMergeSides_WeftSideConflicted`: spawns
-- `TestMergeState_ResetMergeSides_WarpOnly`: spawns
-- `TestMergeStateActive_CleanWeft_ReportsFalse`: spawns
-- `TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue`: spawns
-- `TestMergeStateActive_WeftConflictedSquashNoMergeHead_ReportsTrue`: spawns
-- `TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse`: spawns
-- `TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged`: spawns
-- `TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged`: spawns
-- `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes`: spawns
-- `TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft`: spawns
-- `TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths`: spawns
-- `TestMidMerge_CleanPair_None`: spawns
-- `TestMidMerge_FabricParkedWithConflicts_Parked`: spawns
-- `TestMidMerge_FabricParkedResolved_ParkedNoConflicts`: spawns
-- `TestMidMerge_ForeignState_EverySideAndShape`: spawns
-- `TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing`: spawns
-- `TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction`: spawns
-- `TestOpen_HappyPath`: spawns
-- `TestOpen_MissingWarpWorktree`: spawns
-- `TestOpen_MissingSiblingWorktree`: spawns
-- `TestOpenParent_HappyPath`: spawns
-- `TestOpenParent_NoLivePairForBranch`: spawns
-- `TestOpenParent_ParentSiblingMissing`: spawns
-- `TestOpenParent_PrunableParentDirRemoved`: spawns
-- `TestOpenParent_ResolveFailureNamesBranchAndPath`: spawns
-- `TestAdd_RecordsNonDefaultParentBranch`: spawns
-- `TestAdd_RecordsParentWorktree`: spawns
-- `TestAdd_RecordsParentBranch_SubpathAnchoredHub`: spawns
-- `TestAdd_CommitsOriginRecordOnWeftBranch`: spawns
-- `TestCommitWeftPaths_SerializesConcurrentCommits`: spawns
-- `TestAddRollback_CreatedPathLeavesNoOriginRecord`: spawns
-- `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`: spawns
-- `TestAdd_OriginRecordMutationEntries`: spawns
-- `TestAdd_SkipGitWritesRecordWithoutCommit`: spawns
-- `TestAdd_RunLauncherLifecycle`: spawns
-- `TestCleanup_ApplyArchivesEachOrphanBeforeDeleting`: spawns
-- `TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep`: spawns
-- `TestCleanup_NoOriginDeletesAndReportsArchiveSkip`: spawns
-- `TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain`: spawns
-- `TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink`: spawns
-- `TestPrune_ProtectsDirtyWeftWorktreeUntilForced`: spawns
-- `TestPrune_RefusesHubDirectoryItDoesNotOwn`: spawns
-- `TestPrune_RefusesUnrelatedGitCloneInHub`: spawns
-- `TestPrune_StillRemovesAStaleWeftWorktreeItOwns`: spawns
-- `TestPull_DetectsDriftUnreachableUnprunedObject`: spawns
-- `TestPull_ReanchorsSingleCommitBack`: spawns
-- `TestPull_ReanchorsMultiCommitBack`: spawns
-- `TestPull_IdempotentAfterReconcile`: spawns
-- `TestPull_LeavesWeftHistoryUntouched`: spawns
-- `TestPull_AbortsOnUnpushedPlusDiverged`: spawns
-- `TestPull_NoSurvivingAnchorAborts`: spawns
-- `TestPull_CleanFastForwardAdvancesWarp`: spawns
-- `TestPull_NoWeftUpstreamIsACleanNoOp`: spawns
-- `TestPull_StaleIndexRebuiltBeforeAnchorWalk`: spawns
-- `TestPull_DirtyWarpRefusesBeforeMovingWarp`: spawns
-- `TestPull_EmptyIndexNoDrift`: spawns
-- `TestPull_WeftDivergedAndWarpFetchFails_PartialError`: spawns
-- `TestPull_WeftDivergedWarpAdvancesCleanly`: spawns
-- `TestPull_HealthyPairBothSidesPullCleanly`: spawns
-- `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`: spawns
-- `TestPushAnchored_PushesAndRecordsBranchPush`: spawns
-- `TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped`: spawns
-- `TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected`: spawns
-- `TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush`: spawns
-- `TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing`: spawns
-- `TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue`: spawns
-- `TestReady_SiblingAbsent`: spawns
-- `TestReady_SiblingPresent`: spawns
-- `TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot`: spawns
-- `TestReconcile_RecreatesHandDeletedWeftWorktree`: spawns
-- `TestReconcile_MissingWeftRepoIsDiagnosedByName`: spawns
-- `TestPrune_ApplyRemovesPortalAndLaunchers`: spawns
-- `TestPrune_StaleRegistrationReportedOnce`: spawns
-- `TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`: spawns
-- `TestCleanup_NonSuffixedBranchNeverDeleted`: spawns
-- `TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch`: spawns
-- `TestHealthy_RealDirNotAJunction`: spawns
-- `TestReconcile_RecreatedWeftIsWiredInTheSamePass`: spawns
-- `TestCleanup_DryRunMatchesApplyVerdict`: spawns
-- `TestCleanup_ForceIsReservedAndChangesNoVerdict`: spawns
-- `TestReconcile_RestoresDeletedPortalAndLaunchers`: spawns
-- `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`: spawns
-- `TestReconcile_CorrectJunctionsAreNoOp`: spawns
-- `TestReconcile_ConvergesAllWorktreesToRepoWidePathspec`: spawns
-- `TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural`: spawns
-- `TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig`: spawns
-- `TestReconcile_NeverRemovesReservedHubName`: spawns
-- `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`: spawns
-- `TestReconcile_PreservesUserSymlinkAtAnchor`: spawns
-- `TestUnwire_PreservesUserSymlinkAtAnchor`: spawns
-- `TestReconcile_RefusedStaleRemovalReportsNothing`: spawns
-- `TestRefScanner_Matches`: unclassifiable call
-- `TestRemove_ArchivesWeftTipBeforeTeardown`: spawns
-- `TestRemove_ReusesSameTipArchiveTag`: spawns
-- `TestRemove_PendingRecordsAreCommittedAndArchivedOnce`: spawns
-- `TestRemove_UnreachableOriginFailsClosed`: spawns
-- `TestRemove_ForceStillArchives`: spawns
-- `TestRemove_RemoteFalseStillPushesArchiveTag`: spawns
-- `TestRemove_NoOriginSkipsArchiveAndCompletes`: spawns
-- `TestAddRollback_LeavesNoArchiveTag`: spawns
-- `TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand`: spawns
-- `TestRemove_FinishesPairWithBothWorktreesGone`: spawns
-- `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin`: spawns
-- `TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote`: spawns
-- `TestRemove_ReportsStrayPathAndFinishesBranchTeardown`: spawns
-- `TestRemove_ReturnsPairNotFoundWhenNothingRemains`: spawns
-- `TestRemove_RefusesPrimeWorktreeAndLeavesItIntact`: spawns
-- `TestRemove_RefusesForeignWorktreeWithoutDeletingIt`: spawns
-- `TestRemove_TearsDownNestedJunction`: spawns
-- `TestRemove_SweepsAnchoredLinksOnSubpathHub`: spawns
-- `TestRemove_FailedWeftTeardownIsReported`: spawns
-- `TestRemove_CommitsPendingRecordsIntoArchiveTag`: spawns
-- `TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation`: spawns
-- `TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit`: spawns
-- `TestRemoveRefusal_ProbeLeavesPairUntouched`: spawns
-- `TestRemove_DirtyRefusalLeavesPairIntact`: spawns
-- `TestRemove_WarpStatusProbeFailurePushesNoTag`: spawns
-- `TestRemove_StatusFailureNamesPathAndCommandOnce`: spawns
-- `TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin`: spawns
-- `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`: spawns
-- `TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin`: spawns
-- `TestDeleteTaskBranchAtTip_MovedTipFailsLease`: spawns
-- `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk`: spawns
-- `TestRemove_UntrackedDriveReportIsCommittedAndArchived`: spawns
-- `TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty`: spawns
-- `TestRemove_PushedWarpBranchIsDeleted`: spawns
-- `TestRemove_SquashLandedWarpBranchIsDeleted`: spawns
-- `TestRemove_UnlandedWarpBranchIsKept`: spawns
-- `TestRemove_MissingWeftWorktreeRecreatesNothing`: spawns
-- `TestRemove_AddSucceedsAfterWarpBranchDeleted`: spawns
-- `TestRemove_RemoteTrueDeletesWeftBranchOnRemote`: spawns
-- `TestRemove_RemoteFalseLeavesRemoteBranchIntact`: spawns
-- `TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact`: spawns
-- `TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown`: spawns
-- `TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked`: spawns
-- `TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses`: spawns
-- `TestResetPairWarp_OwnershipRefusals`: spawns
-- `TestCloneHub_FreshBindWithoutShortnameRefuses`: spawns
-- `TestCloneHub_ShortnameRecordLifecycle`: spawns
-- `TestCloneHub_BoundWeftWithoutRecord`: spawns
-- `TestSnapshotWarpSHA_Miss`: spawns
-- `TestSnapshotWarpSHA_NewestTaggedCommitWins`: spawns
-- `TestSnapshotWarpSHA_TagIsolation`: spawns
-- `TestSnapshotWarpSHA_MultipleTagsOnOneCommit`: spawns
-- `TestSnapshotWarpSHA_UnbornWeftHEAD`: spawns
-- `TestSnapshotWarpSHA_UntaggedCommitsAreSkipped`: spawns
-- `TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped`: spawns
-- `TestSnapshotWarpSHA_ByteExactMatching`: spawns
-- `TestSnapshotWarpSHA_PerBranchScoping`: spawns
-- `TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate`: spawns
-- `TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins`: spawns
-- `TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse`: spawns
-- `TestStatus_DetectsWarpPollutionUnderSubpathAnchor`: spawns
-- `TestCommitSeededStencils_EmptyInputIsNoOp`: spawns
-- `TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt`: spawns
-- `TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory`: spawns
-- `TestStencilBaseByStamp_FindsOlderDefaultByStamp`: spawns
-- `TestStencilBaseByStamp_NoMatchReturnsFoundFalse`: spawns
-- `TestStencilBaseByStamp_HashNormalisationAcrossCRLF`: spawns
-- `TestRebuildIndex_EqualsIncrementallyBuiltIndex`: spawns
-- `TestWeftSHAForWarpSHA_DetachedPathSelfCorrection`: spawns
-- `TestWeftSHAForWarpSHA_StalenessSurvivesRebuild`: spawns
-- `TestUnwire_RemovesOnDiskJunctionsIncludingStale`: spawns
-- `TestUnwire_PreservesWeftLyxAndOptionalContent`: spawns
-- `TestUnwire_NeverWiredWarpIsIdempotentNoOp`: spawns
-- `TestUnwire_PreservesRepoWideRecords`: spawns
-- `TestUnwire_LeavesSiblingWorktreeUndirtied`: spawns
-- `TestCloneHub_BootstrapWritesBinding`: spawns
-- `TestCloneHub_DerivesWarpFromBinding`: spawns
-- `TestCloneHub_MatchingBindingIsNoOp`: spawns
-- `TestCloneHub_NormalizedBindingMatch`: spawns
-- `TestCloneHub_ConflictLeavesNoHub`: spawns
-- `TestCloneHub_UnboundWeftNamesTwoArgForm`: spawns
-- `TestCloneHub_EmptyWeftRemoteTaxonomy`: spawns
-- `TestCloneHub_UnreachableWeftIsHardError`: spawns
-- `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken`: spawns
-- `TestCloneHub_BackfillsBindingOnPreBindingHub`: spawns
-- `TestCloneHub_OldOrderInvocationIsRefused`: spawns
-- `TestCloneHub_AnchorBearingWeftPassesGuard`: spawns
-- `TestCloneHub_ForceBootstrapOverridesGuard`: spawns
-- `TestCloneHub_ResetInBothArgumentForms`: spawns
-- `TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm`: spawns
-- `TestReconcile_BacksFillsBindingOnce`: spawns
-- `TestReconcile_BacksFillsOnceOnMultiWorktreeHub`: spawns
-- `TestReconcile_NormalizedRecordReportsPresent`: spawns
-- `TestReconcile_DivergentRecordIsLeftUntouched`: spawns
-- `TestReconcile_TransportOnlyDifferenceIsAdvisory`: spawns
-- `TestReconcile_DirtyBoardDefersWrite`: spawns
-- `TestReconcile_NoWarpOriginIsSkipped`: spawns
-- `TestReconcile_UnpushedRetryPushesOnPresent`: spawns
-- `TestUnwire_LeavesWarpBindingInPlace`: spawns
-- `TestReconcile_BoardLockArtifactDoesNotDeferBackfill`: spawns
-- `TestFabricWarp_IsAncestorOrdersWarpCommits`: spawns
-- `TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree`: spawns
-- `TestFabricWarp_ResetHardRefusesDirtyWarpCheckout`: spawns
-- `TestFabricWarp_CurrentBranchErrorsOnDetachedHead`: spawns
-- `TestWarpLayoutFor_FastPathMatchesResolveWorktree`: spawns
-- `TestCommitWeft_LockArtifactsExcludedFromStatus`: spawns
-- `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`: spawns
-- `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth`: spawns
-- `TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp`: spawns
-- `TestCommitWeft_UntrackedNewFileCountsAsMatch`: spawns
-- `TestCommitWeft_IndexOnlyDeletionCountsAsMatch`: spawns
-- `TestCommitWeft_ExcludeMagicPassesThroughUntouched`: spawns
-- `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`: spawns
-- `TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir`: spawns
-- `TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`: spawns
-- `TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes`: spawns
-- `TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes`: spawns
-- `TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly`: spawns
-- `TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges`: spawns
-- `TestWeftGuards_EveryRecordThisBinaryWritesIsResumable`: spawns
-- `TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact`: spawns
-- `TestList`: spawns
-- `TestList_ParsesPrunable`: spawns
+- `TestRefusedByGate`: unclassifiable call
+- `TestRefusedByGate_Negatives`: unclassifiable call
+- `TestRefusedBefore`: unclassifiable call
+- `TestStates`: unclassifiable call
+- `TestVerbCases_CleanState`: unclassifiable call
+- `TestMerge_CleanSquash`: unclassifiable call
+- `TestMerge_CleanNonSquash`: unclassifiable call
+- `TestMerge_MessagePrecedence`: unclassifiable call
+- `TestMerge_DirtyTargetHalts`: unclassifiable call
+- `TestMerge_StaleTargetSyncsBeforeMerging`: unclassifiable call
+- `TestMerge_DivergedTargetRefuses`: unclassifiable call
+- `TestMerge_NoUpstreamSidePassesVacuously`: unclassifiable call
+- `TestMerge_ConflictSelfAborts`: unclassifiable call
+- `TestMerge_BothSidesAlreadyUpToDate`: unclassifiable call
+- `TestMerge_CrashRecovery`: unclassifiable call
+- `TestMerge_PreMergeSyncRunsInsideTheWriteLock`: unclassifiable call
+- `TestMerge_UnfetchedDivergedTargetRefuses`: unclassifiable call
+- `TestMerge_FetchedDivergedWeftDoesNotRefuse`: unclassifiable call
+- `TestMerge_FetchedBehindTargetIsSyncedNotRefused`: unclassifiable call
+- `TestMergeCrucible_DetachedHeadRefused`: unclassifiable call
+- `TestMergeCrucible_WeftDetachedDoesNotRefuse`: unclassifiable call
+- `TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides`: unclassifiable call
+- `TestMergeCrucible_ResultFlagsDescribeWhatHappened`: unclassifiable call
+- `TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming`: unclassifiable call
+- `TestMergeCrucible_ConflictsIsEmptyNeverNil`: unclassifiable call
+- `TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned`: unclassifiable call
+- `TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded`: unclassifiable call
+- `TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone`: unclassifiable call
+- `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord`: unclassifiable call
+- `TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource`: unclassifiable call
+- `TestMergeIn_BothSidesClean`: unclassifiable call
+- `TestMergeIn_WarpConflicts`: unclassifiable call
+- `TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable`: unclassifiable call
+- `TestMergeIn_OneSideAlreadyUpToDate_OtherMerges`: unclassifiable call
+- `TestMergeIn_BothSidesAlreadyUpToDate`: unclassifiable call
+- `TestMergeContinue_ResolvedConflictsConclude`: unclassifiable call
+- `TestMergeContinue_UnresolvedConflictsRefuse`: unclassifiable call
+- `TestMergeAbort_AfterConflict`: unclassifiable call
+- `TestMergeIn_NeverSquashes`: unclassifiable call
+- `TestMergeAbort_FreshHandle_RecoversConflictedRecord`: unclassifiable call
+- `TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging`: unclassifiable call
+- `TestMergeContinue_ConcludeFailureThenRetryConcludes`: unclassifiable call
+- `TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching`: unclassifiable call
+- `TestMergeVerbs_NoRecordNoForeignState_ReturnNoMergeInProgress`: unclassifiable call
+- `TestMergeIn_Freshness_LocalBehindRemote`: unclassifiable call
+- `TestMergeIn_Freshness_SourceOnlyRemote`: unclassifiable call
+- `TestMergeIn_Freshness_SourceResolvableNowhere`: unclassifiable call
+- `TestMergeIn_NoWeftCounterpart_NothingMutated`: unclassifiable call
+- `TestMergeIn_DirtyWarpRefuses`: unclassifiable call
+- `TestMergeIn_DirtyWeftDoesNotRefuse`: unclassifiable call
+- `TestMergeIn_ConflictMarkers_NeverLeakWeftName`: unclassifiable call
+- `TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking`: unclassifiable call
+- `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted`: unclassifiable call
+- `TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted`: unclassifiable call
+- `TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted`: unclassifiable call
+- `TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead`: unclassifiable call
+- `TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted`: unclassifiable call
+- `TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate`: unclassifiable call
+- `TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses`: unclassifiable call
+- `TestMergeAbort_ConcludeLandingWhileWaitingForLock_RefusesInsteadOfResetting`: unclassifiable call
+- `TestMergeContinue_RecordRetiredWhileWaitingForLock_ReportsNoMergeInProgress`: unclassifiable call
+- `TestMergeIn_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting`: unclassifiable call
+- `TestMerge_RecordAppearingWhileWaitingForLock_RefusesInsteadOfOverwriting`: unclassifiable call
+- `TestMergeIn_StartsAreReReadUnderLock`: unclassifiable call
+- `TestMergeIn_ForeignStateAppearingWhileWaitingForLock_Refuses`: unclassifiable call
+- `TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses`: unclassifiable call
+- `TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt`: unclassifiable call
+- `TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt`: unclassifiable call
+- `TestMergeSiblings_Dispositions`: unclassifiable call
+- `TestMergeSiblings_CommitRefusesForeignMergeState`: unclassifiable call
+- `TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging`: unclassifiable call
+- `TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds`: unclassifiable call
+- `TestMergeStageResolved_PathNotConflictedOnEitherSide`: unclassifiable call
+- `TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion`: unclassifiable call
+- `TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed`: unclassifiable call
+- `TestMergeStageTracked_ForeignMergeStateRefuses`: unclassifiable call
+- `TestMergeState_ForeignMergeStatePresent`: unclassifiable call
+- `TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged`: unclassifiable call
+- `TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged`: unclassifiable call
+- `TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes`: unclassifiable call
+- `TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft`: unclassifiable call
+- `TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths`: unclassifiable call
+- `TestMidMerge_FabricParkedWithConflicts_Parked`: unclassifiable call
+- `TestMidMerge_FabricParkedResolved_ParkedNoConflicts`: unclassifiable call
+- `TestMidMerge_ForeignState_EverySideAndShape`: unclassifiable call
+- `TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing`: unclassifiable call
+- `TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction`: unclassifiable call
+- `TestAdd_RecordsParentWorktree`: unclassifiable call
+- `TestAddRollback_CreatedPathLeavesNoOriginRecord`: unclassifiable call
+- `TestAddRollback_AdoptedPathPreservesOriginRecordCommit`: unclassifiable call
+- `TestAdd_OriginRecordMutationEntries`: unclassifiable call
+- `TestAdd_SkipGitWritesRecordWithoutCommit`: unclassifiable call
+- `TestAdd_RunLauncherLifecycle`: unclassifiable call
+- `TestCleanup_ApplyArchivesEachOrphanBeforeDeleting`: unclassifiable call
+- `TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep`: unclassifiable call
+- `TestCleanup_NoOriginDeletesAndReportsArchiveSkip`: unclassifiable call
+- `TestAdd_DoesNotCreatePortalOutsideHubThroughContainerSymlink`: unclassifiable call
+- `TestPrune_ProtectsDirtyWeftWorktreeUntilForced`: unclassifiable call
+- `TestPrune_RefusesHubDirectoryItDoesNotOwn`: unclassifiable call
+- `TestPrune_RefusesUnrelatedGitCloneInHub`: unclassifiable call
+- `TestPrune_StillRemovesAStaleWeftWorktreeItOwns`: unclassifiable call
+- `TestPull_DetectsDriftUnreachableUnprunedObject`: unclassifiable call
+- `TestPull_ReanchorsSingleCommitBack`: unclassifiable call
+- `TestPull_ReanchorsMultiCommitBack`: unclassifiable call
+- `TestPull_IdempotentAfterReconcile`: unclassifiable call
+- `TestPull_LeavesWeftHistoryUntouched`: unclassifiable call
+- `TestPull_AbortsOnUnpushedPlusDiverged`: unclassifiable call
+- `TestPull_NoSurvivingAnchorAborts`: unclassifiable call
+- `TestPull_CleanFastForwardAdvancesWarp`: unclassifiable call
+- `TestPull_NoWeftUpstreamIsACleanNoOp`: unclassifiable call
+- `TestPull_StaleIndexRebuiltBeforeAnchorWalk`: unclassifiable call
+- `TestPull_DirtyWarpRefusesBeforeMovingWarp`: unclassifiable call
+- `TestPull_EmptyIndexNoDrift`: unclassifiable call
+- `TestPull_WeftDivergedAndWarpFetchFails_PartialError`: unclassifiable call
+- `TestPull_WeftDivergedWarpAdvancesCleanly`: unclassifiable call
+- `TestPull_HealthyPairBothSidesPullCleanly`: unclassifiable call
+- `TestPushAnchored_SkipGitOrSkipPush_PushesNothing`: unclassifiable call
+- `TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing`: unclassifiable call
+- `TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot`: unclassifiable call
+- `TestReconcile_RecreatesHandDeletedWeftWorktree`: unclassifiable call
+- `TestReconcile_MissingWeftRepoIsDiagnosedByName`: unclassifiable call
+- `TestPrune_ApplyRemovesPortalAndLaunchers`: unclassifiable call
+- `TestPrune_StaleRegistrationReportedOnce`: unclassifiable call
+- `TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`: unclassifiable call
+- `TestCleanup_NonSuffixedBranchNeverDeleted`: unclassifiable call
+- `TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch`: unclassifiable call
+- `TestReconcile_RecreatedWeftIsWiredInTheSamePass`: unclassifiable call
+- `TestCleanup_DryRunMatchesApplyVerdict`: unclassifiable call
+- `TestCleanup_ForceIsReservedAndChangesNoVerdict`: unclassifiable call
+- `TestReconcile_RestoresDeletedPortalAndLaunchers`: unclassifiable call
+- `TestReconcile_AddsMissingRemovesStaleNoOpsCorrect`: unclassifiable call
+- `TestReconcile_CorrectJunctionsAreNoOp`: unclassifiable call
+- `TestReconcile_ConvergesAllWorktreesToRepoWidePathspec`: unclassifiable call
+- `TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural`: unclassifiable call
+- `TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig`: unclassifiable call
+- `TestReconcile_NeverRemovesReservedHubName`: unclassifiable call
+- `TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig`: unclassifiable call
+- `TestReconcile_PreservesUserSymlinkAtAnchor`: unclassifiable call
+- `TestReconcile_RefusedStaleRemovalReportsNothing`: unclassifiable call
+- `TestRemove_ArchivesWeftTipBeforeTeardown`: unclassifiable call
+- `TestRemove_ReusesSameTipArchiveTag`: unclassifiable call
+- `TestRemove_PendingRecordsAreCommittedAndArchivedOnce`: unclassifiable call
+- `TestRemove_UnreachableOriginFailsClosed`: unclassifiable call
+- `TestRemove_ForceStillArchives`: unclassifiable call
+- `TestRemove_RemoteFalseStillPushesArchiveTag`: unclassifiable call
+- `TestRemove_NoOriginSkipsArchiveAndCompletes`: unclassifiable call
+- `TestAddRollback_LeavesNoArchiveTag`: unclassifiable call
+- `TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand`: unclassifiable call
+- `TestRemove_FinishesPairWithBothWorktreesGone`: unclassifiable call
+- `TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin`: unclassifiable call
+- `TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote`: unclassifiable call
+- `TestRemove_ReportsStrayPathAndFinishesBranchTeardown`: unclassifiable call
+- `TestRemove_ReturnsPairNotFoundWhenNothingRemains`: unclassifiable call
+- `TestRemove_RefusesPrimeWorktreeAndLeavesItIntact`: unclassifiable call
+- `TestRemove_RefusesForeignWorktreeWithoutDeletingIt`: unclassifiable call
+- `TestRemove_TearsDownNestedJunction`: unclassifiable call
+- `TestRemove_SweepsAnchoredLinksOnSubpathHub`: unclassifiable call
+- `TestRemove_FailedWeftTeardownIsReported`: unclassifiable call
+- `TestRemove_CommitsPendingRecordsIntoArchiveTag`: unclassifiable call
+- `TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation`: unclassifiable call
+- `TestRemoveRefusal_ProbeLeavesPairUntouched`: unclassifiable call
+- `TestRemove_DirtyRefusalLeavesPairIntact`: unclassifiable call
+- `TestRemove_WarpStatusProbeFailurePushesNoTag`: unclassifiable call
+- `TestRemove_StatusFailureNamesPathAndCommandOnce`: unclassifiable call
+- `TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin`: unclassifiable call
+- `TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin`: unclassifiable call
+- `TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin`: unclassifiable call
+- `TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk`: unclassifiable call
+- `TestRemove_UntrackedDriveReportIsCommittedAndArchived`: unclassifiable call
+- `TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty`: unclassifiable call
+- `TestRemove_PushedWarpBranchIsDeleted`: unclassifiable call
+- `TestRemove_SquashLandedWarpBranchIsDeleted`: unclassifiable call
+- `TestRemove_UnlandedWarpBranchIsKept`: unclassifiable call
+- `TestRemove_MissingWeftWorktreeRecreatesNothing`: unclassifiable call
+- `TestRemove_AddSucceedsAfterWarpBranchDeleted`: unclassifiable call
+- `TestRemove_RemoteTrueDeletesWeftBranchOnRemote`: unclassifiable call
+- `TestRemove_RemoteFalseLeavesRemoteBranchIntact`: unclassifiable call
+- `TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact`: unclassifiable call
+- `TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown`: unclassifiable call
+- `TestResetPairWarp_OwnershipRefusals`: unclassifiable call
+- `TestCloneHub_ShortnameRecordLifecycle`: unclassifiable call
+- `TestCloneHub_BoundWeftWithoutRecord`: unclassifiable call
+- `TestRebuildIndex_EqualsIncrementallyBuiltIndex`: unclassifiable call
+- `TestCloneHub_BootstrapWritesBinding`: unclassifiable call
+- `TestCloneHub_DerivesWarpFromBinding`: unclassifiable call
+- `TestCloneHub_MatchingBindingIsNoOp`: unclassifiable call
+- `TestCloneHub_NormalizedBindingMatch`: unclassifiable call
+- `TestCloneHub_EmptyWeftRemoteTaxonomy`: unclassifiable call
+- `TestCloneHub_UnreachableWeftIsHardError`: unclassifiable call
+- `TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken`: unclassifiable call
+- `TestCloneHub_BackfillsBindingOnPreBindingHub`: unclassifiable call
+- `TestCloneHub_AnchorBearingWeftPassesGuard`: unclassifiable call
+- `TestCloneHub_ForceBootstrapOverridesGuard`: unclassifiable call
+- `TestCloneHub_ResetInBothArgumentForms`: unclassifiable call
+- `TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm`: unclassifiable call
+- `TestReconcile_BacksFillsBindingOnce`: unclassifiable call
+- `TestReconcile_BacksFillsOnceOnMultiWorktreeHub`: unclassifiable call
+- `TestReconcile_NormalizedRecordReportsPresent`: unclassifiable call
+- `TestReconcile_DivergentRecordIsLeftUntouched`: unclassifiable call
+- `TestReconcile_TransportOnlyDifferenceIsAdvisory`: unclassifiable call
+- `TestReconcile_DirtyBoardDefersWrite`: unclassifiable call
+- `TestReconcile_NoWarpOriginIsSkipped`: unclassifiable call
+- `TestReconcile_UnpushedRetryPushesOnPresent`: unclassifiable call
+- `TestUnwire_LeavesWarpBindingInPlace`: unclassifiable call
+- `TestReconcile_BoardLockArtifactDoesNotDeferBackfill`: unclassifiable call
+- `TestCommitWeft_LockArtifactsExcludedFromStatus`: unclassifiable call
+- `TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent`: unclassifiable call
+- `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth`: unclassifiable call
+- `TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp`: unclassifiable call
+- `TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing`: unclassifiable call
+- `TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir`: unclassifiable call
+- `TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes`: unclassifiable call
+- `TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes`: unclassifiable call
+- `TestWeftGuards_NoWeftCounterpartMergesSourceNotFoundStillWarpOnly`: unclassifiable call
+- `TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges`: unclassifiable call
+- `TestWeftGuards_EveryRecordThisBinaryWritesIsResumable`: unclassifiable call
+- `TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact`: unclassifiable call
+- `TestList`: unclassifiable call
 
 ## internal/friction
 
@@ -2174,40 +2095,61 @@ No test lacks coverage.
 
 ## internal/loomcli
 
-312 tests, wall 79.97s, serial 80.43s.
+278 tests, wall 79.26s, serial 79.68s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
+| `TestApproveVerb_AwaitingAndBlockedAtGate` | `TestApproveVerb_Refusals` | yes |
+| `TestApproveVerb_AwaitingAtOtherProducerRefused` | `TestApproveVerb_Refusals` | yes |
+| `TestApproveVerb_AwaitingAtPublishRefused` | `TestApproveVerb_Refusals` | yes |
+| `TestApproveCmd_HelpNamesAwaitingOrBlocked` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestApproveVerb_Success` | `TestApproveVerb_Refusals` | yes |
+| `TestApproveVerb_RemovesRejectionBeforeWritingApproval` | `TestApproveVerb_Refusals` | yes |
 | `TestResolveRunID_RefusesEachGenericVerbWhenNoSeed` | `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | yes |
 | `TestResolveRunID_NonGenericVerbsNeverRefuse` | `TestResolveRunID_RejectReviewFileIsNotARunID` | yes |
 | `TestResolveRunID_RejectReviewFileIsNotARunID` | `TestResolveRunID_NonGenericVerbsNeverRefuse` | no |
 | `TestResolveRunID_EmptyListingReadsAsOrdinary` | `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | yes |
 | `TestResolveRunID_RunAndStepWriteNothingToDiskWhenTheyRefuse` | `TestResolveRunID_EmptyListingReadsAsOrdinary` | no |
-| `TestMustSpawnDriver` | `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns` | yes |
-| `TestResolveDriverStrandAction` | `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`, `TestResolveStatusStrandAction`, `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns`, `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRemoveStatusStrands`, `TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake` | yes |
-| `TestDriverStrandDisplayName_AddAndLookupAgree` | `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp` | yes |
-| `TestDriverStrandDisplayName_DiffersFromOtherStrandNames` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
+| `TestMustSpawnDriver` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
+| `TestResolveDriverStrandAction` | `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`, `TestResolveStatusStrandAction`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRemoveStatusStrands`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure` | yes |
+| `TestDriverStrandDisplayName_AddAndLookupAgree` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
+| `TestDriverStrandDisplayName_DiffersFromOtherStrandNames` | `TestApproveVerb_Refusals` | yes |
+| `TestStartVerb_NoAttachFlag_DefaultsFalse` | `TestCirclingCLI_PreRunResolvesTarget`, `TestDecideHandover` | yes |
 | `TestNoAttachFields_PinsSuccessEnvelope` | `TestNoAttachFields_HintKey` | yes |
+| `TestAwaitRunLock_ReadyOnLaterIteration` | `TestAwaitRunLock_ChildDied`, `TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit` | no |
+| `TestAwaitRunLock_ChildDied` | `TestAwaitRunLock_ReadyOnLaterIteration`, `TestAwaitRunLock_HaltedCheckedAfterAliveCheck` | yes |
+| `TestAwaitRunLock_Deadline` | `TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline` | yes |
+| `TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit` | `TestAwaitRunLock_ReadyOnLaterIteration` | yes |
+| `TestAwaitRunLock_HaltedCheckedAfterAliveCheck` | `TestAwaitRunLock_ChildDied` | no |
+| `TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline` | `TestAwaitRunLock_Deadline` | no |
 | `TestFindStatusStrand` | `TestResolveStatusStrandAction`, `TestSmokeBootstrap_BringsUpSessionStrandAndDriver`, `TestRemoveStatusStrands` | yes |
-| `TestScanFileForDriverFieldReads_StampsTheEnclosingFunction` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
+| `TestScanFileForDriverFieldReads_StampsTheEnclosingFunction` | `TestApproveVerb_Refusals` | yes |
 | `TestStatusStrandAddSpec` | `TestSmokeStart_LLMRunRemovesEveryStatusStrand` | yes |
-| `TestBootstrapVerb_IsExactlyStart` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestNewLoomCLI_SetsInjectedSeams` | `TestBootstrapVerb_MatchesStartCmdUse` | yes |
-| `TestProductionFiles_LoomCLILiteralOnlyInFactory` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriverPrompt_NamesRunIDReportPathAndAutonomousMode` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverPrompt_NamesSlugRunIDAndExactTeardownCommand` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverPrompt_TiesTeardownToDoneAndBusyAndParksElsewhere` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverPrompt_NamesParentNotice` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriverPrompt_StaysShort` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriverResumeLine_NamesRunIDReportPathBaselineAndBudget` | `TestResumeParkedDriver_NeverReadyExhaustsAttempts` | yes |
-| `TestDriverResumeLine_SingleLine` | `TestResumeParkedDriver_NeverReadyExhaustsAttempts` | yes |
+| `TestBootstrapVerb_IsExactlyStart` | `TestApproveVerb_Refusals` | yes |
+| `TestBootstrapVerb_MatchesStartCmdUse` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestCommand_StartVerb_RegistersNoAttachFlag` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestNewLoomCLI_SetsInjectedSeams` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestProductionFiles_LoomCLILiteralOnlyInFactory` | `TestApproveVerb_Refusals` | yes |
+| `TestSpecFor_ScratchAndFrictionDir` | `TestStepCmd_BusyRefusal_BeforeBootstrap`, `TestStatusCmd_EnvelopeKeySet` | yes |
+| `TestCommitRecordsVerb_OrdinaryPathCommitsThenPushes` | `TestCommitRecordsVerb_ErrorEnvelopes` | yes |
+| `TestDecisionVerb_AppendsAndCommits` | `TestDecisionVerb_CommitFailureNamesWayForward`, `TestCirclingVerb_Records`, `TestDecisionVerb_AllowsOperatorAndNoStatusFile` | no |
+| `TestDecisionVerb_AllowsOperatorAndNoStatusFile` | `TestDecisionVerb_AppendsAndCommits` | yes |
+| `TestDecisionVerb_InputRefusalsAppendNothing` | `TestDecisionVerb_Refusals` | yes |
+| `TestDriverPrompt_CarriesEveryMarkerValue` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestDriverPrompt_NoParentRendersNoParentVariant` | `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
+| `TestDriverTeardownCommand_CommitsRecordsBeforeRemovingStrandJoinedBySemicolon` | `TestApproveVerb_Refusals` | yes |
+| `TestDriverReportPath_FrozenClock_TwoCallsProduceDifferentPaths` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestDriverReportPath_LandsUnderDriveReportsDir` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestDriverReportPath_TimestampAheadOfRandomComponent` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestDriverReportPath_FixedStubRandMakesPathDeterministic` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestNewDriverReportRand_ProducesFourHexChars` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
+| `TestResumeParkedDriver_SendsOneLineAndRemovesMarker` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
+| `TestResumeParkedDriver_WaitsThroughNotReadyPane` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`, `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker` | yes |
+| `TestResumeParkedDriver_NeverReadyExhaustsAttempts` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker` | yes |
+| `TestResumeParkedDriver_OtherErrorIsNeverRetried` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
+| `TestDriverResumeLine_NamesRunIDReportPathBaselineAndBudget` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
+| `TestDriverResumeLine_SingleLine` | `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
 | `TestDriverSpec` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestDriveSkill_NamesParkMarker` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriveSkill_FilesNothing` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriveSkill_NamesFrictionFailed` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriveSkill_NamesParentNotice` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
-| `TestDriveSkill_NamesNoLoomRow` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
 | `TestEnsureFrictionDirAfterSeed_NilErrorClearsThenCreates` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
 | `TestEnsureFrictionDirAfterSeed_ErrSeedExistsLeavesNotesUntouched` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
 | `TestRunEnsuresAbsentFrictionDir` | `TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError` | yes |
@@ -2215,256 +2157,132 @@ No test lacks coverage.
 | `TestReflectFriction_ReleasesTheLockForTheNextDriver` | `TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
 | `TestReflectFrictionRow_SkipsWhenTierTwoOff` | `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
 | `TestReflectFrictionRow_ReflectsWhenTierTwoOn` | `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle` | `TestLoomAfterStep_ProducerError_FailedStatusReflects`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
-| `TestWriteHaltNote_NamesProducerAndReason` | `TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects` | yes |
+| `TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle` | `TestLoomPostRun_HaltNotes`, `TestReflectFrictionRow_WaitsOnAHeldReflectionLock` | yes |
+| `TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects` | `TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes` | yes |
+| `TestLoomAfterStep_ProducerError_FailedStatusReflects` | `TestStep_ProducerErrorReflectsOnTheErrorEnvelope` | yes |
+| `TestLoomAfterStep_AwaitingAndPaused_WriteNothing` | `TestLoomAfterStep_Done_ReportsTheRowStatus` | yes |
+| `TestConsumeHandoffVoucher` | `TestObserveEntry_ConsumesHandoffVoucherIntoObservation` | yes |
 | `TestLandingDeps_EveryFieldPopulated` | `TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON` | yes |
 | `TestDiscussionWriteRow_GateListIsDiscussionThenParentReview` | `TestCirclingVerb_Records` | yes |
+| `TestNewParentReviewConfig_ReviewerFromResolver` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestWire_BouncerSlugAndSegmentBounces`, `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit` | yes |
 | `TestDiscussionCommitPathspec_IncludesParentReviewDir` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestWire_Real_ReworkRoundsArchiveGenerations` | yes |
+| `TestGenericVerbs_AcceptOptionalRunIDPositional` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestRejectVerb_SuccessAtAwaitingGate` | `TestRejectVerb_Refusals`, `TestRejectVerb_BlockedReworkReplacesRecordPastBudget` | no |
+| `TestRejectVerb_BlockedReworkReplacesRecordPastBudget` | `TestRejectVerb_SuccessAtAwaitingGate` | yes |
+| `TestReviewApprove_OrdinaryApproveIgnoresRunStatus` | `TestReviewVerbs_VerdictAlreadyRecorded`, `TestReviewApprove_SupersedesCapRejectOnBlockedRun`, `TestReviewVerbs_Success` | yes |
+| `TestReviewWaiting_AbsentDirIsEmpty` | `TestVerifyWaiting_NoMarkerNoReviewIsEmpty` | yes |
+| `TestReviewWaiting_OpenUndelivered` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
+| `TestReviewWaiting_SettledRoundsReportNothing` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestReviewApprove_SupersedesCapRejectOnBlockedRun`, `TestReviewApprove_OrdinaryApproveIgnoresRunStatus`, `TestReviewVerbs_Expired`, `TestReviewWaiting_LatestRoundOnly` | no |
+| `TestReviewWaiting_LatestRoundOnly` | `TestReviewWaiting_SettledRoundsReportNothing` | yes |
+| `TestVerifyWaiting_NoMarkerNoReviewIsEmpty` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch`, `TestReviewWaiting_AbsentDirIsEmpty` | no |
+| `TestSpecFor_WaitingHookNilWithoutLocation` | `TestStatusCmd_EnvelopeKeySet` | yes |
 | `TestSeedSlug` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver` | yes |
-| `TestSelfreportFiledMarker_PendingRoundTrip` | `TestDetectAndFileAnomalies_CancelledWithCrashResume_FilesItAndRetriesPending` | yes |
-| `TestBootstrapStage_ConstantsAreDistinctAndZeroValued` | `TestApproveCmd_HelpNamesAwaitingOrBlocked` | yes |
+| `TestBootstrapStage_ConstantsAreDistinctAndZeroValued` | `TestApproveVerb_Refusals` | yes |
 | `TestLoomSeedFor_RecipeAndParentParam` | `TestLoomSeedFor_WriteSeedIsIdempotent` | yes |
 | `TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig` | `TestResolveSeedDriver`, `TestLoomSeedFor_WriteSeedIsIdempotent` | yes |
-| `TestMustUseLLMDriverArm` | `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns` | yes |
+| `TestMustUseLLMDriverArm` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
+| `TestStartLLMDriverArm_ComposesAndStarts` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
+| `TestStartLLMDriverArm_AddressesRunBySlug` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
+| `TestStartLLMDriverArm_RemovesCorpseBeforeStart` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
+| `TestStartLLMDriverArm_NoCorpseRemovalWhenActionNone` | `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced` | yes |
+| `TestStartLLMDriverArm_StarterErrorPropagates` | `TestStartLLMDriverArm_AddressesRunBySlug`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart` | no |
+| `TestStartLLMDriverArm_RemoveCorpseErrorPropagates` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
+| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart`, `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns`, `TestStartLLMDriverArm_RemoveCorpseErrorPropagates` | no |
+| `TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced` | `TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing` | no |
+| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestStartLLMDriverArm_StarterErrorPropagates`, `TestStep_ProducerErrorReflectsOnTheErrorEnvelope`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure` | yes |
+| `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestStartLLMDriverArm_StarterErrorPropagates`, `TestStep_ProducerErrorReflectsOnTheErrorEnvelope`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure` | yes |
+| `TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume` | yes |
+| `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume`, `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`, `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp`, `TestResumeParkedDriver_SendsOneLineAndRemovesMarker` | no |
+| `TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing` | `TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced` | yes |
+| `TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably` | `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed` | yes |
+| `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp` | `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed`, `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned` | yes |
+| `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns` | `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`, `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure` | yes |
+| `TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused` | `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`, `TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals` | yes |
+| `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed` | `TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably`, `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp` | no |
+| `TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses` | `TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses` | yes |
+| `TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds` | `TestRunDriverSpawnAndWait_SpawnVouchesForTheResume` | yes |
 | `TestIdentityOf_ChangesWithSizeAndMtime` | `TestIdentityOf_ResolvesSymlink` | yes |
 | `TestIdentityOf_ResolvesSymlink` | `TestIdentityOf_ChangesWithSizeAndMtime` | no |
 | `TestStepEnvelope_NextInterruptPolicyMatchesTable` | `TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes` | yes |
-| `TestConsumeStepHandoffMatch` | `TestStep_TierOne_HandoffMarkerSuppressesCrashResume` | yes |
-| `TestObserveEntry_ConsumesStepHandoffIntoObservation` | `TestStep_TierOne_HandoffMarkerSuppressesCrashResume` | yes |
-| `TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed` | `TestGateParity_ReworkPlanGate` | yes |
+| `TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed` | `TestGateParity_PlanGate` | yes |
+| `TestValidateDiscussionCmd` | `TestGateParity_DiscussionGate` | yes |
+| `TestValidatePlanCmd_QuarryUnavailableNamesQuarry` | `TestGateParity_PlanGate`, `TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive` | yes |
 | `TestValidatePlanCmd_RequireApprovedFlagRegistered` | `TestCirclingCLI_PreRunResolvesTarget` | yes |
+| `TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch` | `TestGateParity_ReworkPlanGate` | yes |
+| `TestValidateDescriptionCmd` | `TestGateParity_DescriptionGate` | yes |
+| `TestNewCommitStatusSeam_OrdinaryPath` | `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion` | yes |
+| `TestWireLightweight_CommitStatusFilled` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
+| `TestWire_CommitStatusFilled` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
 | `TestStatusCommitPathspec` | `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion` | yes |
+| `TestStatusCommitPathspec_RunRecords` | `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports` | yes |
+| `TestStatusCommitPathspec_PendingRejectionHoldsTheRound` | `TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound`, `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports` | yes |
+| `TestWire_PathFieldsMatchLoomengineAccessors` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_RunLockDiffersFromStatusLock` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_CwdIsToldToTheEnv` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_WebsterDepsFullyPopulated` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_WebsterParentBranchNonNil` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_RefMatcherIsRealScanner` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_LandingSeamFieldsPopulated` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_EnvShuttleIsTheRunner` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_DescriptionPathMatchesLandingDir` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_ReviewSegmentPathsAndClock` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWire_ReviewTripleMatchesLoadedConfig` | `TestWire_BouncerSlugAndSegmentBounces` | yes |
+| `TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig` | `TestParentReviewExchange_RejectThenFixGoesOnToPerch` | yes |
+| `TestWire_FrictionDirFillsBurlerAndWebster` | `TestWire_DiscussionSpecEvaluatesToExpectedShape` | yes |
 
 No coverage:
 
-- `TestApproveVerb_AwaitingAndBlockedAtGate`: unclassifiable call
-- `TestApproveVerb_AwaitingAtOtherProducerRefused`: unclassifiable call
-- `TestApproveVerb_AwaitingAtPublishRefused`: unclassifiable call
-- `TestApproveCmd_HelpNamesAwaitingOrBlocked`: unclassifiable call
-- `TestApproveVerb_Refusals`: unclassifiable call
-- `TestApproveVerb_Success`: unclassifiable call
-- `TestApproveVerb_RemovesRejectionBeforeWritingApproval`: unclassifiable call
-- `TestApproveVerb_RemoveRejectionFailureWritesNoApproval`: unclassifiable call
-- `TestStartVerb_NoAttachFlag_DefaultsFalse`: spawns
-- `TestAwaitRunLock_ReadyOnLaterIteration`: unclassifiable call
-- `TestAwaitRunLock_ChildDied`: unclassifiable call
-- `TestAwaitRunLock_Deadline`: unclassifiable call
-- `TestAwaitRunLock_LockSeamErrors`: unclassifiable call
-- `TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit`: unclassifiable call
-- `TestAwaitRunLock_HaltedWhileChildStillAlive`: unclassifiable call
-- `TestAwaitRunLock_HaltedCheckedAfterAliveCheck`: unclassifiable call
-- `TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline`: unclassifiable call
-- `TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField`: spawns
-- `TestRemoveStatusStrands`: unclassifiable call
-- `TestBootstrapVerb_MatchesStartCmdUse`: spawns
-- `TestCirclingCLI_PreRunResolvesTarget`: spawns
-- `TestCirclingVerb_Records`: unclassifiable call
-- `TestCirclingVerb_Refusals`: unclassifiable call
-- `TestCirclingStatusReader`: unclassifiable call
-- `TestResolvePersistentPreRun_SkipsReviewGroup`: spawns
-- `TestStartAliasCommand_StaysOneCommandWithSubtreeVerb`: spawns
-- `TestCommand_StartVerb_RegistersNoAttachFlag`: spawns
-- `TestRunCLI_GroupGuard_NoGitRepoNeeded`: failed
-- `TestVerbRefusals`: unclassifiable call
-- `TestSpecFor_ScratchAndFrictionDir`: unclassifiable call
-- `TestCommitRecordsVerb_Real_CommitsAndPushesLateDriveReport`: spawns
-- `TestCommitRecordsVerb_Real_CleanTreeIsNoOpSuccess`: spawns
-- `TestCommitRecordsVerb_MidMergeSkipsAndSucceeds`: unclassifiable call
-- `TestCommitRecordsVerb_ErrorEnvelopes`: unclassifiable call
-- `TestCommitRecordsVerb_OrdinaryPathCommitsThenPushes`: unclassifiable call
-- `TestDecisionVerb_AppendsAndCommits`: unclassifiable call
-- `TestDecisionVerb_AllowsOperatorAndNoStatusFile`: unclassifiable call
-- `TestDecisionVerb_Refusals`: unclassifiable call
-- `TestDecisionVerb_InputRefusalsAppendNothing`: unclassifiable call
-- `TestDecisionVerb_CommitFailureNamesWayForward`: unclassifiable call
-- `TestReedDriverPaneProbe_RemoveDriverStrand_PassesFalseCascade`: unclassifiable call
-- `TestReedDriverPaneProbe_Strands_ReturnsStatusStrands`: unclassifiable call
-- `TestDriverReportPath_FrozenClock_TwoCallsProduceDifferentPaths`: unclassifiable call
-- `TestDriverReportPath_LandsUnderDriveReportsDir`: unclassifiable call
-- `TestDriverReportPath_TimestampAheadOfRandomComponent`: unclassifiable call
-- `TestDriverReportPath_FixedStubRandMakesPathDeterministic`: unclassifiable call
-- `TestNewDriverReportRand_ProducesFourHexChars`: unclassifiable call
-- `TestResumeParkedDriver_SendsOneLineAndRemovesMarker`: unclassifiable call
-- `TestResumeParkedDriver_WaitsThroughNotReadyPane`: unclassifiable call
-- `TestResumeParkedDriver_NeverReadyExhaustsAttempts`: unclassifiable call
-- `TestResumeParkedDriver_OtherErrorIsNeverRetried`: unclassifiable call
-- `TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting`: unclassifiable call
-- `TestGoto_AwaitingAtPRGateMovesBackToPublish`: unclassifiable call
-- `TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects`: unclassifiable call
-- `TestLoomAfterStep_ProducerError_FailedStatusReflects`: unclassifiable call
-- `TestLoomAfterStep_BusyAndStaleFailed_WriteNothing`: unclassifiable call
-- `TestLoomAfterStep_Done_ReportsTheRowStatus`: unclassifiable call
-- `TestLoomAfterStep_AwaitingAndPaused_WriteNothing`: unclassifiable call
-- `TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus`: unclassifiable call
-- `TestLoomPostRun_HaltNotes`: unclassifiable call
-- `TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes`: unclassifiable call
-- `TestStep_ProducerErrorReflectsOnTheErrorEnvelope`: unclassifiable call
-- `TestStep_TierOne_StuckProducerFilesEscalationBeforeReflection`: unclassifiable call
-- `TestStep_TierOne_ProducerErrorFilesHardFailureBeforeReflection`: unclassifiable call
-- `TestLoomAfterStep_TierOne_CrashResumeFilesAndWritesNoNote`: unclassifiable call
-- `TestStep_TierOne_HandoffMarkerSuppressesCrashResume`: unclassifiable call
-- `TestLoomAfterStep_TierOne_SkipsFileNothing`: unclassifiable call
-- `TestWriteHaltNote_TierOneLineFollowsTheKnob`: unclassifiable call
-- `TestLoomPostRun_TierOne_BlockedFilesThroughTheSeam`: unclassifiable call
-- `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`: spawns
-- `TestLandingDeps_MarkTaskDone_SetsStatusDone`: spawns
-- `TestLandingDeps_MarkTaskDone_UnknownSlugIsError`: spawns
-- `TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON`: spawns
-- `TestParentReviewExchange_RejectThenFixGoesOnToPerch`: spawns
-- `TestNewParentReviewConfig_ReviewerFromResolver`: unclassifiable call
-- `TestStrandLive`: unclassifiable call
-- `TestGateParity_DiscussionGate`: failed
-- `TestGateParity_PlanGate`: failed
-- `TestGenericVerbs_AcceptOptionalRunIDPositional`: spawns
-- `TestGateParity_DescriptionGate`: failed
-- `TestGateParity_ReworkPlanGate`: unclassifiable call
-- `TestRejectVerb_Refusals`: unclassifiable call
-- `TestRejectVerb_SuccessAtAwaitingGate`: unclassifiable call
-- `TestRejectVerb_BlockedReworkReplacesRecordPastBudget`: unclassifiable call
-- `TestReviewVerbs_Success`: unclassifiable call
-- `TestReviewVerbs_NoOpenRequest`: unclassifiable call
-- `TestReviewVerbs_VerdictAlreadyRecorded`: unclassifiable call
-- `TestReviewVerbs_Expired`: unclassifiable call
-- `TestReviewVerbs_ReviewFileMissingOrEmpty`: unclassifiable call
-- `TestResolveReviewTarget`: unclassifiable call
-- `TestReviewApprove_SupersedesCapRejectOnBlockedRun`: unclassifiable call
-- `TestReviewApprove_SupersedeRefusals`: unclassifiable call
-- `TestReviewApprove_OrdinaryApproveIgnoresRunStatus`: unclassifiable call
-- `TestReviewRange_ReworkBranchListsOnlyOwnCommitsAfterHead`: spawns
-- `TestReviewWaiting_AbsentDirIsEmpty`: unclassifiable call
-- `TestReviewWaiting_OpenUndelivered`: unclassifiable call
-- `TestReviewWaiting_OpenDelivered`: unclassifiable call
-- `TestReviewWaiting_SettledRoundsReportNothing`: unclassifiable call
-- `TestReviewWaiting_LatestRoundOnly`: unclassifiable call
-- `TestVerifyWaiting_LiveMarkerAheadOfReview`: unclassifiable call
-- `TestVerifyWaiting_DeadMarkerFallsToReview`: unclassifiable call
-- `TestVerifyWaiting_NoMarkerNoReviewIsEmpty`: unclassifiable call
-- `TestSpecFor_WaitingHookNilWithoutLocation`: unclassifiable call
-- `TestDetectAndFileAnomalies_EngineBoundary_RequestShapes`: unclassifiable call
-- `TestDetectAndFileAnomalies_FilingFailure_LeavesMarkerUnfiledAndDoesNotPropagate`: unclassifiable call
-- `TestDetectAndFileAnomalies_AlreadyFiledTitle_ProducesNoRequest`: unclassifiable call
-- `TestDetectAndFileAnomalies_MarkerReadFailure_TreatedAsEmptyAndFilingProceeds`: unclassifiable call
-- `TestDetectAndFileAnomalies_MarkerWriteFailure_DoesNotPropagate`: unclassifiable call
-- `TestDetectAndFileAnomalies_NilRunError_RunsPassAndFiles`: unclassifiable call
-- `TestDetectAndFileAnomalies_NonBusyRunError_StillRunsPass`: unclassifiable call
-- `TestDetectAndFileAnomalies_BusySentinel_ReadsNothingDetectsNothingFilesNothing`: unclassifiable call
-- `TestDetectAndFileAnomalies_SelfreportDisabled_TotalInaction`: unclassifiable call
-- `TestDetectAndFileAnomalies_DoneContextNoCrash_TotalInaction`: unclassifiable call
-- `TestDetectAndFileAnomalies_DoneContextWithCrash_FilesExactlyOne`: unclassifiable call
-- `TestDetectAndFileAnomalies_LiveContext_FilesEverything`: unclassifiable call
-- `TestSelfreportFiledMarker_RoundTrip`: unclassifiable call
-- `TestDetectAndFileAnomalies_FailedFilingResumedPast_IsRetriedOnce`: unclassifiable call
-- `TestDetectAndFileAnomalies_PendingRetryFailsAgain_StaysPendingAndNewStillFiles`: unclassifiable call
-- `TestDetectAndFileAnomalies_PendingTitleDetectedAgain_FiledOnce`: unclassifiable call
-- `TestDetectAndFileAnomalies_PendingRetryFailsAndDetectedAgain_FiledOnceStaysPendingOnce`: unclassifiable call
-- `TestDetectAndFileAnomalies_UnusableStatus_StillRetriesPending`: unclassifiable call
-- `TestDetectAndFileAnomalies_Skips_LeavePendingInPlace`: unclassifiable call
-- `TestDetectAndFileAnomalies_CancelledWithCrashResume_FilesItAndRetriesPending`: unclassifiable call
-- `TestSelfreportFiledMarker_NewDistinctHaltStillFiles`: unclassifiable call
-- `TestDetectAndFileAnomalies_LedgerInHistory_FilesNothing`: unclassifiable call
+- `TestCirclingCLI_PreRunResolvesTarget`: out of process
+- `TestCommitRecordsVerb_Real_CommitsAndPushesLateDriveReport`: unclassifiable call
+- `TestCommitRecordsVerb_Real_CleanTreeIsNoOpSuccess`: unclassifiable call
+- `TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver`: out of process
+- `TestLandingDeps_MarkTaskDone_SetsStatusDone`: unclassifiable call
+- `TestLandingDeps_MarkTaskDone_UnknownSlugIsError`: unclassifiable call
+- `TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON`: unclassifiable call
+- `TestParentReviewExchange_RejectThenFixGoesOnToPerch`: out of process
+- `TestReviewRange_ReworkBranchListsOnlyOwnCommitsAfterHead`: unclassifiable call
 - `TestBuildLoomShed_OutputShape`: skipped
-- `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning`: spawns
-- `TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone`: spawns
-- `TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem`: spawns
-- `TestSmokeStep_RecordsCleanHandoffMarkerMatchingPersistedStatus`: spawns
-- `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy`: spawns
-- `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`: spawns
-- `TestSmokeStep_AddsNoStatusStrandOnEitherDriver`: spawns
-- `TestSmokeStep_LeavesAPreexistingStatusStrandUntouched`: spawns
-- `TestSmokeStep_FailedReedUpRefusesWithBootstrapKind`: spawns
-- `TestSmokeStart_LLMRunRemovesEveryStatusStrand`: spawns
-- `TestSmokeStart_FailedReedUpRefusesOnEitherDriver`: spawns
-- `TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact`: spawns
-- `TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough`: spawns
-- `TestSmokeStart_AttachTailAddsNoOperatorStrand`: spawns
-- `TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon`: spawns
-- `TestSmokeBootstrap_BringsUpSessionStrandAndDriver`: spawns
-- `TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver`: spawns
-- `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed`: spawns
-- `TestSmokeRunStandalone_RefusesOnNeverSeededPair`: spawns
-- `TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog`: spawns
-- `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy`: spawns
-- `TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove`: spawns
-- `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit`: spawns
-- `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit`: spawns
-- `TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver`: spawns
-- `TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`: spawns
-- `TestSpecFor_FillsRunIdentityForSelf`: unclassifiable call
-- `TestSpecFor_LegacySelfDirKeepsSlugRunID`: unclassifiable call
-- `TestStartLLMDriverArm_ComposesAndStarts`: unclassifiable call
-- `TestStartLLMDriverArm_AddressesRunBySlug`: unclassifiable call
-- `TestStartLLMDriverArm_RemovesCorpseBeforeStart`: unclassifiable call
-- `TestStartLLMDriverArm_NoCorpseRemovalWhenActionNone`: unclassifiable call
-- `TestStartLLMDriverArm_StarterErrorPropagates`: unclassifiable call
-- `TestStartLLMDriverArm_RemoveCorpseErrorPropagates`: unclassifiable call
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure`: spawns
-- `TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced`: spawns
-- `TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart`: spawns
-- `TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake`: spawns
-- `TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned`: spawns
-- `TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing`: spawns
-- `TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably`: spawns
-- `TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp`: spawns
-- `TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns`: spawns
-- `TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses`: spawns
-- `TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds`: spawns
-- `TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath`: unclassifiable call
-- `TestStatusCmd_EnvelopeKeySet`: unclassifiable call
-- `TestStepCmd_BusyRefusal_BeforeBootstrap`: unclassifiable call
-- `TestValidateDiscussionCmd`: failed
-- `TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess`: failed
-- `TestValidatePlanCmd_QuarryUnavailableNamesQuarry`: failed
-- `TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch`: unclassifiable call
-- `TestValidatePlanCmd`: failed
-- `TestValidateDescriptionCmd`: failed
-- `TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes`: spawns
-- `TestCommitStatusSeam_Real_MidMergeSkipsWithoutTouchingTheMerge`: spawns
-- `TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting`: spawns
-- `TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays`: spawns
-- `TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo`: spawns
-- `TestCommitStatusSeam_Real_CommitsTheRoundRecord`: spawns
-- `TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus`: spawns
-- `TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus`: spawns
-- `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion`: spawns
-- `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports`: spawns
-- `TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion`: spawns
-- `TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound`: spawns
-- `TestNewCommitStatusSeam_OrdinaryPath`: unclassifiable call
-- `TestNewCommitStatusSeam_BoardStatus`: unclassifiable call
-- `TestWireLightweight_CommitStatusFilled`: unclassifiable call
-- `TestWire_CommitStatusFilled`: unclassifiable call
-- `TestStatusCommitPathspec_RunRecords`: unclassifiable call
-- `TestStatusCommitPathspec_PendingRejectionHoldsTheRound`: unclassifiable call
-- `TestWire_WebsterParentBranchReadsPairOrigin`: spawns
-- `TestWire_Real_ReworkRoundsArchiveGenerations`: spawns
-- `TestWire_Real_PlanReviewSkipFollowsGenerationClass`: spawns
-- `TestWire_EverySeamFilled`: unclassifiable call
-- `TestWire_PathFieldsMatchLoomengineAccessors`: unclassifiable call
-- `TestWire_RunLockDiffersFromStatusLock`: unclassifiable call
-- `TestWire_CwdIsToldToTheEnv`: unclassifiable call
-- `TestWire_WebsterDepsFullyPopulated`: unclassifiable call
-- `TestWire_WebsterParentBranchNonNil`: unclassifiable call
-- `TestWire_RefMatcherIsRealScanner`: unclassifiable call
-- `TestWire_LandingSeamFieldsPopulated`: unclassifiable call
-- `TestWire_EnvShuttleIsTheRunner`: unclassifiable call
-- `TestWire_DescriptionPathMatchesLandingDir`: unclassifiable call
-- `TestWire_DiscussionSpecEvaluatesToExpectedShape`: unclassifiable call
-- `TestWire_ReviewSegmentPathsAndClock`: unclassifiable call
-- `TestWire_ReviewTripleMatchesLoadedConfig`: unclassifiable call
-- `TestWire_PlanSpecEvaluatesToExpectedShape`: unclassifiable call
-- `TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig`: unclassifiable call
-- `TestWire_FrictionDirFillsBurlerAndWebster`: unclassifiable call
-- `TestWire_BouncerSlugAndSegmentBounces`: unclassifiable call
+- `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning`: out of process
+- `TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone`: out of process
+- `TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem`: out of process
+- `TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus`: out of process
+- `TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy`: out of process
+- `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps`: out of process
+- `TestSmokeStep_AddsNoStatusStrandOnEitherDriver`: out of process
+- `TestSmokeStep_LeavesAPreexistingStatusStrandUntouched`: out of process
+- `TestSmokeStep_FailedReedUpRefusesWithBootstrapKind`: out of process
+- `TestSmokeStart_LLMRunRemovesEveryStatusStrand`: out of process
+- `TestSmokeStart_FailedReedUpRefusesOnEitherDriver`: out of process
+- `TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact`: out of process
+- `TestSmokeParentReview_NoticeReachesTheWriterPaneAndApproveLetsTheRunThrough`: out of process
+- `TestSmokeStart_AttachTailAddsNoOperatorStrand`: out of process
+- `TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon`: out of process
+- `TestSmokeBootstrap_BringsUpSessionStrandAndDriver`: out of process
+- `TestSmokeBootstrap_SecondInvocationDoesNotSpawnASecondDriver`: out of process
+- `TestSmokeRunStandalone_AdvancesMachineFromExistingSeed`: out of process
+- `TestSmokeRunStandalone_RefusesOnNeverSeededPair`: out of process
+- `TestSmokeRunStandalone_FailureBeforeFirstPersistLeavesNonEmptyLog`: out of process
+- `TestSmokeBootstrap_MalformedStatusProceedsToHandoverAndLogsWhy`: out of process
+- `TestSmokeFabricAdd_RunLauncherExistsThenGoneAfterRemove`: out of process
+- `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit`: out of process
+- `TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit`: out of process
+- `TestSmokeBootstrap_ConcurrentSpawnHandshakeYieldsOneDriver`: out of process
+- `TestSmokeBootstrap_DiedDriverProceedsToHandoverAndLogsWhy`: out of process
+- `TestCommitStatusSeam_Real_OrdinaryPathCommitsAndPushes`: unclassifiable call
+- `TestCommitStatusSeam_Real_MidMergeSkipsWithoutTouchingTheMerge`: unclassifiable call
+- `TestCommitStatusSeam_Real_MergeGoesLiveAfterProbeSkipsInsteadOfHalting`: unclassifiable call
+- `TestCommitStatusSeam_Real_RejectedPushWarnsAndTheCommitStays`: unclassifiable call
+- `TestCommitStatusSeam_Real_UnreachableRemoteWarnsToo`: unclassifiable call
+- `TestCommitStatusSeam_Real_CommitsTheRoundRecord`: unclassifiable call
+- `TestCommitStatusSeam_Real_NoReviewsDirTouchesOnlyStatus`: unclassifiable call
+- `TestCommitStatusSeam_Real_EmptyReviewsSegmentTouchesOnlyStatus`: unclassifiable call
+- `TestCommitStatusSeam_Real_ArchiveRenameCommitsAdditionAndDeletion`: unclassifiable call
+- `TestCommitStatusSeam_Real_CommitsFrictionAndDriveReports`: unclassifiable call
+- `TestCommitStatusSeam_Real_FrictionArchiveRenameCommitsAdditionAndDeletion`: unclassifiable call
+- `TestCommitStatusSeam_Real_PendingRejectionHoldsTheRound`: unclassifiable call
+- `TestWire_WebsterParentBranchReadsPairOrigin`: unclassifiable call
+- `TestWire_Real_ReworkRoundsArchiveGenerations`: unclassifiable call
+- `TestWire_Real_PlanReviewSkipFollowsGenerationClass`: unclassifiable call
 
 ## internal/loomengine
 
@@ -3409,72 +3227,172 @@ No coverage:
 
 ## internal/reedengine
 
-329 tests, wall 19.75s, serial 19.61s.
+330 tests, wall 15.46s, serial 15.28s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply` | yes |
-| `TestPlanLayout_HiddenStrandExcludedFromPlacement` | `TestApplyLayoutLockedOpts_SkipWhenBoxEquals`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply` | yes |
-| `TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery` | `TestApplyLayoutLockedOpts_SkipWhenBoxEquals` | yes |
-| `TestAnyPlacedStrand` | `TestAttachArgv_DegradedPathsInstallNoResizePinHook` | yes |
+| `TestPlanLayout_MatchesRenderRulesForCanonicalStrandTable` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate` | yes |
+| `TestPlanLayout_HiddenStrandExcludedFromPlacement` | `TestAttachArgv_ChainGate`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
+| `TestPlanLayout_StaleSelvagePaneIDNeverEmittedAsLayoutCell` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate` | yes |
+| `TestPlanLayout_UsesTheToldBoxAndIssuesNoQuery` | `TestAttachArgv_ChainGate` | yes |
+| `TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestApplyLayoutLockedOpts_SkipWhenBoxEquals` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestReapplyLayout_HookProbeExactMatchOnly`, `TestLiveBoxLocked` | yes |
+| `TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestAnyPlacedStrand` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
+| `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestWatchLoop_FailuresNeverKillTheLoop`, `TestLiveBoxLocked` | yes |
+| `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`, `TestLiveBoxLocked` | yes |
+| `TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
+| `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`, `TestLiveBoxLocked` | yes |
 | `TestPaneIDsByTop_SortsByVerticalPosition` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestAttachArgv_ChainedShape` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_ToldBoxAndNoLiveQuery` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_ReservedRows` | `TestAttachArgv_ChainGate`, `TestAttachArgv_ReservedRowsFloor`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_NeverMutatesTheSessionOrPersistsState` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning` | yes |
+| `TestAttachArgv_DegradedPathsInstallNoResizePinHook` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
+| `TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv` | `TestAttachArgv_ChainGate`, `TestAttachArgv_MultiClientWarning`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | yes |
+| `TestDirectory_MapsEachStrandToItsRow` | `TestDirectory_DoesNotRepairOrPersist`, `TestMarkRetiring_RoundTripsThroughStateAndStatus`, `TestDirectoryRows_ColdSessionIsAllDormant` | no |
+| `TestDirectory_DoesNotRepairOrPersist` | `TestDirectory_MapsEachStrandToItsRow` | yes |
 | `TestDirectoryRows_ColdSessionIsAllDormant` | `TestDirectory_MapsEachStrandToItsRow` | yes |
+| `TestEndSessionByName_SiblingsRemainKeepsServer` | `TestEndSessionByName_LastSessionKillsServer` | yes |
 | `TestCleanClaudeEnv` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestCleanClaudeEnv_NoClaudeKeysUnchanged` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestParsePaneGeneration` | `TestAdoptPaneGenerationLocked` | yes |
 | `TestPaneGeneration_RecordedAndSameIncarnation` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestRemoveStrand_DeletesLeafScriptKeepsSibling` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
+| `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | `TestRemoveStrand_DeletesLeafScriptKeepsSibling`, `TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved` | no |
+| `TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor` | `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
+| `TestRemoveStrand_NoScriptSucceedsSilently` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts`, `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
+| `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact` | `TestUp_ValidWatchdogValuesPassTheBootCheck`, `TestPinGeometryOptionsLocked` | yes |
+| `TestUp_ValidWatchdogValuesPassTheBootCheck` | `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAttachArgv_ChainGate`, `TestPinGeometryOptionsLocked_HookLifecycle` | no |
 | `TestStripAgentNameEnv_DropsNameAndParentOnly` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestWithOpLock_PathIsUnderDotLyx` | `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestWithOpLock_SerializesConcurrentCalls` | `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestWithOpLock_ReacquireAfterReleaseSucceeds` | `TestAddStrandUnless_LiveNamedSkips` | yes |
 | `TestEngine_SocketAndSessionName` | `TestAddStrandUnless_LiveNamedSkips` | yes |
-| `TestNewGUID_UniqueAndHex` | `TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch` | yes |
+| `TestWithOpLock_QuietWhenTheLockFileSurvives` | `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestWithTryOpLock_RunsFnOnAFreeLock` | `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue` | `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestNewGUID_UniqueAndHex` | `TestAddStrandLocked_UnknownParentRejected` | yes |
 | `TestPlanTitleRepairs` | `TestDirectory_MapsEachStrandToItsRow` | yes |
-| `TestPaneBinPrelude_ComposesPrependThenExport` | `TestComposePaneLaunchLine_NameExports` | yes |
+| `TestRepairNames_DriftedTitleIsRewrittenAndLogged` | `TestNaming_RepairNamesRestoresAHandChangedTitle`, `TestRepairNames_SessionNameRenamedOnIdlePane` | yes |
+| `TestRepairNames_MatchingTitleIsLeftAlone` | `TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID` | yes |
+| `TestReapSessionKill` | `TestEndSessionByName_LastSessionKillsServer` | yes |
+| `TestReapSessionPanes` | `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv`, `TestEndSessionByName_LastSessionKillsServer` | yes |
+| `TestReapSession_CallOrdering` | `TestLaunchScript_SourcedScriptRunsInThePaneShellScope`, `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv`, `TestEndSessionByName_LastSessionKillsServer` | yes |
+| `TestPaneCreationSitesRouteThroughThePreludeChokepoint` | `TestSelvageIdentifiersConfinedToSelvagePane` | yes |
+| `TestLaunchStrandLockedStillComposesThePrelude` | `TestSelvageIdentifiersConfinedToSelvagePane` | yes |
+| `TestPaneBinPrelude_ComposesPrependThenExport` | `TestComposePaneLaunchLine_NameExports` | no |
+| `TestComposePaneLaunchLine_PreludeThenCommand` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable` | yes |
+| `TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestComposePaneLaunchLine_NameExports` | `TestNaming_TaskWorktreeStrandNameTitleAndEnv`, `TestPaneBinPrelude_ComposesPrependThenExport` | yes |
+| `TestComposePaneLaunchLine_ExportsSurviveAnExecutableError` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable`, `TestNaming_TaskWorktreeStrandNameTitleAndEnv`, `TestPaneBinPrelude_ComposesPrependThenExport` | yes |
 | `TestComposePaneLaunchLine_DashLeadingLineStillRoundTripsThroughSendKeysLiteralArg` | `TestMultiplexerContract` | yes |
 | `TestStageLaunchScript_RegenerateReplacesContent` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestStageLaunchScript_FileMode` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestStageLaunchScript_EmptyLine` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestStageLaunchScript_WriteFailureDegrades` | `TestLaunchStrandLocked_WriteFailureSendsTheFullLine` | yes |
-| `TestDescendantClosure` | `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout` | yes |
+| `TestStageLaunchScript_WriteFailureDegrades` | `TestLaunchStrandLocked_WriteFailureSendsTheFullLine` | no |
+| `TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestDescendantClosure` | `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
+| `TestReapplyLayout_GuardInheritance` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestReapplyLayout_FocusIsNeverMoved` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestReapplyLayout_Deferral` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestReapplyLayout_BoxEqualityGuard` | `TestWatchLoop_DeferralCostsNoBudget`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestReapplyLayout_DegradedBox` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestLiveBoxLocked` | yes |
+| `TestReapplyLayout_ProbeOrdering` | `TestReapplyLayout_HookProbeExactMatchOnly`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestReapplyLayout_ProbeHookFalseAsksNothing` | `TestReapplyLayout_HookProbeExactMatchOnly`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestReapplyLayout_PersistsNothing` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux` | `TestLaunchStrandLocked_RelaunchRegeneratesTheScript`, `TestAddStrandUnless_NotLiveAdds`, `TestAddStrand_EmptyCmdLeavesALivePane` | no |
 | `TestClearConflictingPaneBindings` | `TestMarkRetiring_RoundTripsThroughStateAndStatus`, `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims` | yes |
-| `TestMoveStrandTo` | `TestMoveStrandTo_NoOps`, `TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor` | yes |
+| `TestMoveStrandTo` | `TestMoveStrandTo_NoOps`, `TestReplaceStrand_KeepsTopSlotAtCollapsedRows` | yes |
 | `TestMoveStrandTo_NoOps` | `TestMoveStrandTo`, `TestResolveLivePaneID` | no |
-| `TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestReapplyLayout_BoxEqualityGuard` | yes |
+| `TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestWatchLoop_DeferralCostsNoBudget` | yes |
 | `TestRemoveStrandLocked_UnknownGUIDWrapsErrUnknownStrand` | `TestRemoveStrandLocked_UnknownGuidRejected` | yes |
+| `TestSelvageIdentViolations_ExemptionsAndFlags` | `TestAddStrandLocked_UnknownParentRejected` | yes |
 | `TestNewReapPolicy_ThreeQuestionsAssertedIndependently` | `TestPlanReconcile` | yes |
-| `TestSelvageRenderParams` | `TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane` | yes |
+| `TestSelvageRenderParams` | `TestAttachArgv_ChainGate` | yes |
 | `TestSeedSelvageClaim` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestClearSelvagePaneBinding` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestBottommostPaneID` | `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout` | yes |
-| `TestServerName_Deterministic` | `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestServerName_SocketSafe` | `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
+| `TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit` | `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand` | yes |
+| `TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand` | `TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit` | no |
+| `TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag` | `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand`, `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout` | yes |
+| `TestServerName_Deterministic` | `TestAddStrandLocked_UnknownParentRejected` | yes |
+| `TestServerName_SocketSafe` | `TestAddStrandLocked_UnknownParentRejected` | yes |
 | `TestServerName_BoundedForALongHubBasename` | `TestAddStrand_LogsAttributionOnlyOnColdBoot` | yes |
-| `TestTruncateAtRuneBoundary` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestServerName_DistinctForDistinctHubsSharingBasename` | `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestServerName_HasHubBasenameAndPrefix` | `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
-| `TestSessionName_IsWorktreeBasename` | `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
+| `TestTruncateAtRuneBoundary` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAddStrandLocked_UnknownParentRejected` | yes |
+| `TestServerName_DistinctForDistinctHubsSharingBasename` | `TestAddStrandLocked_UnknownParentRejected` | yes |
+| `TestServerName_HasHubBasenameAndPrefix` | `TestAddStrandLocked_UnknownParentRejected` | yes |
+| `TestSessionName_IsWorktreeBasename` | `TestAddStrandLocked_UnknownParentRejected` | yes |
 | `TestSanitizeSessionName` | `TestSanitizeSessionName_OutputAlwaysPassesValidation` | yes |
 | `TestSanitizeSessionName_OutputAlwaysPassesValidation` | `TestAddStrandUnless_LiveNamedSkips`, `TestSanitizeSessionName` | no |
+| `TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape`, `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
+| `TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile` | `TestAddStrandUnless_LiveNamedSkips`, `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape`, `TestValidateToldWorktreeRootLive` | yes |
+| `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape` | `TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState` | no |
+| `TestWithOpLock_SucceedsForTheStandaloneFirstRunShape` | `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestWithOpLock_SucceedsForTheHubFirstRunShape` | `TestAddStrandUnless_LiveNamedSkips` | yes |
 | `TestPlanLogPrune` | `TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently`, `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestRemoveSocketFileOnceGone` | `TestRemoveStaleSocket`, `TestEndSessionByName_LastSessionKillsServer` | yes |
+| `TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAddStrand_PersistFailureLeavesNoScript`, `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity` | yes |
+| `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity` | no |
 | `TestSendKeysLiteralArg` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestMultiplexerContract` | yes |
 | `TestValidateSplitCreatedNewPane` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure` | yes |
+| `TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestLaunchStrandLocked_RelaunchRegeneratesTheScript` | `TestWatchdogSelfHeal_BurstCoalesces`, `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux` | yes |
+| `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestComposePaneLaunchLine_ExportsSurviveAnExecutableError` | no |
+| `TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestLaunchStrandLocked_WriteFailureSendsTheFullLine` | `TestAddStrand_LogsAttributionOnlyOnColdBoot`, `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestStageLaunchScript_WriteFailureDegrades` | yes |
+| `TestAddStrandLocked_FailedSendLeavesNoScript` | `TestAddStrand_PersistFailureLeavesNoScript` | yes |
+| `TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestSpawnWatchdog_SuppressedReturnsWithoutSpawning` | `TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning` | no |
+| `TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning` | `TestSpawnWatchdog_SuppressedReturnsWithoutSpawning` | yes |
 | `TestLoadState_AbsentFileReturnsNilNil` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestSaveState_ThenLoadState_RoundTrips` | `TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad` | yes |
-| `TestLoadState_CorruptFileErrors` | `TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad`, `TestLoadState_UnreadableFileIsActionable` | yes |
+| `TestSaveState_ThenLoadState_RoundTrips` | `TestAddStrandUnless_LiveNamedSkips` | yes |
+| `TestLoadState_CorruptFileErrors` | `TestAddStrandUnless_LiveNamedSkips`, `TestLoadState_UnreadableFileIsActionable` | yes |
 | `TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestStatusLineText_EmptyTemplateRendersEmbeddedDefault` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestStatusLineText_ConfiguredTemplateRendersFromConfig` | `TestPinGeometryOptionsLocked` | yes |
 | `TestStatusLineText_ConfiguredTemplateRendersAllThreeTokens` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
-| `TestValidateStatusLine_UnknownTopLevelTokenErrors` | `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact` | yes |
+| `TestValidateStatusLine_UnknownTopLevelTokenErrors` | `TestPinGeometryOptionsLocked`, `TestUp_ValidWatchdogValuesPassTheBootCheck` | yes |
 | `TestValidateStatusLine_GoodTemplateReturnsNil` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestPinGeometryOptionsLocked` | yes |
-| `TestNeedsLaunchOnAdd` | `TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch` | yes |
+| `TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
+| `TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
+| `TestAddStrandLocked_KnownParentAccepted` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestGuidByName` | yes |
+| `TestNeedsLaunchOnAdd` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestNeedsLaunchOnSurface` | `TestUpdateStrandLocked_HiddenToHidden_NoOpNoLaunch` | yes |
+| `TestUpdateStrandLocked_UnknownGuidRejected` | `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
 | `TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved` | `TestRemoveStrand_RecursiveDeletesSubtreeScripts` | yes |
 | `TestRemoveStrandLocked_UnknownGuidRejected` | `TestRemoveStrandLocked_UnknownGUIDWrapsErrUnknownStrand` | no |
 | `TestValidateIfAbsent` | `TestAddStrandUnless_LiveNamedSkips`, `TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact` | yes |
-| `TestLiveStrandNamed` | `TestAddStrandUnless_LiveNamedSkips`, `TestAddStrandUnless_NotLiveAdds` | yes |
+| `TestAddStrand_IfAbsent_MatchedAliveNoOps` | `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName` | yes |
+| `TestAddStrand_IfAbsent_HiddenOnlyNoOps` | `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure`, `TestClassifyIfAbsent` | yes |
+| `TestLiveStrandNamed` | `TestAddStrandUnless_LiveNamedSkips`, `TestAddStrandUnless_NotLiveAdds` | no |
+| `TestAddStrandUnless_NotLiveAdds` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`, `TestWatchdogSelfHeal_BurstCoalesces`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestAddStrandUnless_LiveNamedSkips`, `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux`, `TestLiveStrandNamed` | yes |
+| `TestStrandNameLocked_FormsAndNumbersRoles` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
+| `TestStrandNameLocked_DormantStrandStillCounts` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
+| `TestStrandNameLocked_LegacyNameHoldsNothing` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestAddStrandUnless_UnformableNameRefusesBeforeTmux`, `TestGuidByName_RoleSegmentFullNameAndLegacyName` | yes |
+| `TestStrandNameLocked_EmptySlugGivesTwoSegments` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`, `TestNaming_EmptySlugGivesShortnameAndRole` | yes |
+| `TestStrandNameLocked_DefaultRole` | `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget` | yes |
+| `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName` | `TestAddStrand_IfAbsent_MatchedAliveNoOps` | no |
+| `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | `TestAddStrand_PersistFailureLeavesNoScript`, `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | yes |
+| `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary` | `TestUpdateStrandLocked_UnknownGuidRejected`, `TestAddStrandLocked_AnchorValidatedAtEngineBoundary` | no |
 | `TestAlivePanePIDs` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` | yes |
 | `TestSessionReapRoots` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestPaneIDsInSession` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds` | yes |
+| `TestRemoveStrand_NeverKillsAPaneOutsideThisSession` | `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`, `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`, `TestLaunchScript_SourcedScriptRunsInThePaneShellScope` | yes |
 | `TestWatchdogOption` | `TestPinGeometryOptionsLocked_HookLifecycle` | yes |
 | `TestWatchdogTemplateDefault_BothGOOS` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestResizeHookCommand_Posix` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
@@ -3484,230 +3402,79 @@ No coverage:
 | `TestResizeSignalPath` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestWatchDefaultTiming_MatchesTheSixConstants` | `TestWatchdogSelfHeal_BurstCoalesces` | yes |
 | `TestTickerPeriodFor_AnswersPerModeCadence` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
-| `TestWatchState_SingleSignalWaitsThenApplies` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_CoalescesABurstIntoOneApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_SignalInsideQuietRestartsIt` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_SucceededClearsTheOwedApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_FailedEscalatesAndCaps` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_StreakResetsOnSuccess` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_StreakResetsOnFreshSignal` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_DeferredChangesNothing` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
-| `TestWatchState_FreshSignalAfterExhaustedStreakReArms` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure` | yes |
+| `TestWatchState_SingleSignalWaitsThenApplies` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_CoalescesABurstIntoOneApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_SignalInsideQuietRestartsIt` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_SucceededClearsTheOwedApply` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_FailedEscalatesAndCaps` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_StreakResetsOnSuccess` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestWatchState_StreakResetsOnFreshSignal` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_BurstCoalesces` | yes |
+| `TestWatchState_DeferredChangesNothing` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchState_FreshSignalAfterExhaustedStreakReArms` | `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_NoSelfTriggerLoop` | yes |
+| `TestWatchLoop_DisabledNeverReturnsWhileCtxLive` | `TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive`, `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | yes |
+| `TestWatchLoop_StaleSignalFileRemovedAtStart` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWatchLoop_PollModeByDefault` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestWatchLoop_ModePromotion` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWatchLoop_NeverDemotes` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWatchLoop_UndecidedProbeDoesNotGuess` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWatchLoop_SignalConsumedByRemovalBeforeTheApply` | `TestWatchLoop_DeferralCostsNoBudget` | yes |
+| `TestWatchLoop_TakeEffectBoundary` | `TestWatchLoop_DeferralCostsNoBudget`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchdogSelfHeal_DegradedPathStillConverges`, `TestReapplyLayout_HookProbeExactMatchOnly` | yes |
+| `TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode` | yes |
+| `TestWatchLoop_NonSentinelFailureDoesNotGoDormant` | `TestWatchLoop_RecoversFromDormancyToItsPriorMode`, `TestWatchLoop_FailuresNeverKillTheLoop`, `TestWatchdogSelfHeal_DegradedPathStillConverges` | yes |
 | `TestParseWindowSize` | `TestLiveBoxLocked` | yes |
-| `TestReservedRowsFromStatus` | `TestAttachArgv_ReservedRows`, `TestAttachArgv_ChainGate` | yes |
+| `TestLiveBoxLocked` | `TestApplyLayoutLockedOpts_SkipWhenBoxEquals`, `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout`, `TestParseWindowSize` | no |
+| `TestReservedRowsFromStatus` | `TestAttachArgv_ChainGate`, `TestAttachArgv_ReservedRowsFloor`, `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv` | yes |
 | `TestWindowSizeAllowsChain` | `TestAttachArgv_ChainGate` | yes |
 | `TestEscapeStatusText` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestStatusLeftLength` | `TestStatusLeftLength_EscapeThenMeasureOrderMatters` | yes |
 | `TestStatusLeftLength_EscapeThenMeasureOrderMatters` | `TestAddStrand_EmptyCmdLeavesALivePane`, `TestStatusLeftLength` | no |
+| `TestReadStatusRowsLocked` | `TestAttachArgv_ChainGate` | yes |
+| `TestReadWindowSizeLatestLocked` | `TestAttachArgv_ChainGate` | yes |
+| `TestResizePinHookArgvs` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestResizePinHookArgvs_SignalEntry` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestResizePinHookArgvs_NoRepaintEntryShips` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
+| `TestInstallResizePinsLocked_IssuesTheSignalEntryLast` | `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply`, `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear` | no |
 | `TestLoadConfig_TemplateDefaultsResolve` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestLoadConfig_StaleHeaderBlockIsIgnored` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 | `TestLoadConfig_RetiredStrandNameKeyIsIgnored` | `TestAddStrand_EmptyCmdLeavesALivePane` | yes |
 
 No coverage:
 
-- `TestApplyLayoutLocked_SkipsTmuxWhenFewerThanTwoLivePanes`: spawns
-- `TestApplyLayoutLocked_SkipsTmuxWhenNoStrandOwnsAPresentPane`: spawns
-- `TestApplyLayoutLockedOpts_GuardSkipsReturnZeroResult`: spawns
-- `TestApplyLayoutLockedOpts_SkipFocusSuppressesSelectPane`: spawns
-- `TestApplyLayoutLockedOpts_SkipWhenBoxEquals`: spawns
-- `TestApplyLayoutLocked_WrapperStillIssuesBothSelectLayoutAndSelectPane`: spawns
-- `TestApplyLayoutLocked_InstallsResizePinsAfterSelectLayout`: spawns
-- `TestApplyLayoutLocked_ZeroPinsStillIssuesTheClear`: spawns
-- `TestApplyLayoutLocked_GuardSkipIssuesNoSetHookCall`: spawns
-- `TestApplyLayoutLocked_SetHookErrorDoesNotFailApply`: spawns
-- `TestAttachArgv_ChainedShape`: spawns
-- `TestAttachArgv_ToldBoxAndNoLiveQuery`: spawns
-- `TestAttachArgv_ReservedRows`: spawns
-- `TestAttachArgv_ReservedRowsFloor`: spawns
-- `TestAttachArgv_ChainGate`: spawns
-- `TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv`: spawns
-- `TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback`: spawns
-- `TestAttachArgv_NeverMutatesTheSessionOrPersistsState`: spawns
-- `TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead`: spawns
-- `TestAttachArgv_DegradedPathsInstallNoResizePinHook`: spawns
-- `TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv`: spawns
-- `TestAttachArgv_MultiClientWarning`: spawns
-- `TestAttachGeometry_ExactLayoutAndRowBudgets`: spawns
-- `TestAttachGeometry_DegradedPathStillAttaches`: spawns
-- `TestAttachGeometry_StaleLayoutRaceIsSafe`: spawns
-- `TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets`: spawns
-- `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`: spawns
-- `TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin`: spawns
-- `TestMultiplexerContract`: spawns
-- `TestExactSessionTargetsNeverPrefixMatchSiblings`: spawns
-- `TestDisplayMessageDoesNotErrorForAnAbsentSession`: spawns
-- `TestSessionNameRewriteIsSilentAndExactTargetsMissIt`: spawns
-- `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`: spawns
-- `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout`: spawns
-- `TestSelvageNeverGetsZeroHeightLayoutCell`: spawns
-- `TestDirectory_MapsEachStrandToItsRow`: spawns
-- `TestDirectory_DoesNotRepairOrPersist`: spawns
-- `TestAddStrand_EmptyCmdLeavesALivePane`: spawns
-- `TestEndSessionByName_AbsentSessionTouchesNothing`: spawns
-- `TestEndSessionByName_SiblingsRemainKeepsServer`: spawns
-- `TestEndSessionByName_LastSessionKillsServer`: spawns
-- `TestEndSessionByName_HasSessionFailureIsAnError`: spawns
-- `TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm`: spawns
-- `TestAddStrand_LogsAttributionOnlyOnColdBoot`: spawns
-- `TestAdoptPaneGenerationLocked`: spawns
-- `TestRemoveStrand_DeletesLeafScriptKeepsSibling`: spawns
-- `TestRemoveStrand_RecursiveDeletesSubtreeScripts`: spawns
-- `TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor`: spawns
-- `TestRemoveStrand_NoScriptSucceedsSilently`: spawns
-- `TestDown_RemovesStateAndLaunchDir`: spawns
-- `TestLaunchScript_SourcedScriptRunsInThePaneShellScope`: spawns
-- `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact`: spawns
-- `TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact`: spawns
-- `TestUp_ValidWatchdogValuesPassTheBootCheck`: spawns
-- `TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently`: unclassifiable call
-- `TestWithOpLock_PathIsUnderDotLyx`: unclassifiable call
-- `TestWithOpLock_SerializesConcurrentCalls`: unclassifiable call
-- `TestWithOpLock_ReacquireAfterReleaseSucceeds`: unclassifiable call
-- `TestWithOpLock_ReportsALockFileRemovedMidOperation`: unclassifiable call
-- `TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed`: unclassifiable call
-- `TestWithOpLock_QuietWhenTheLockFileSurvives`: unclassifiable call
-- `TestWithTryOpLock_RunsFnOnAFreeLock`: unclassifiable call
-- `TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld`: unclassifiable call
-- `TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue`: unclassifiable call
-- `TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched`: unclassifiable call
-- `TestMouseBootIntegration_PinsOptionAtBoot`: spawns
-- `TestMouseBootIntegration_NoLiveToggleWithoutRestart`: spawns
-- `TestRepairNames_DriftedTitleIsRewrittenAndLogged`: spawns
-- `TestRepairNames_MatchingTitleIsLeftAlone`: spawns
-- `TestRepairNames_SessionNameRenamedOnIdlePane`: spawns
-- `TestRepairNames_BusyPaneTypesNothing`: spawns
-- `TestRepairNames_NoDriftTypesNothing`: spawns
-- `TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID`: spawns
-- `TestRepairNames_UnanswerableSessionCheckRepairsNothing`: spawns
-- `TestNaming_TaskWorktreeStrandNameTitleAndEnv`: spawns
-- `TestNaming_EmptySlugGivesShortnameAndRole`: spawns
-- `TestNaming_RepairNamesRestoresAHandChangedTitle`: spawns
-- `TestStatus_NoSessionWrapsErrNoSession`: spawns
-- `TestListSessions`: spawns
-- `TestReapSessionKill`: spawns
-- `TestReapSessionPanes`: spawns
-- `TestReapSession_CallOrdering`: spawns
-- `TestPaneCreationSitesRouteThroughThePreludeChokepoint`: spawns
-- `TestLaunchStrandLockedStillComposesThePrelude`: spawns
-- `TestComposePaneLaunchLine_PreludeThenCommand`: unclassifiable call
-- `TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone`: unclassifiable call
-- `TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough`: unclassifiable call
-- `TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand`: unclassifiable call
-- `TestComposePaneLaunchLine_NameExports`: unclassifiable call
-- `TestComposePaneLaunchLine_ExportsSurviveAnExecutableError`: unclassifiable call
-- `TestProbeCapability`: unclassifiable call
-- `TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd`: unclassifiable call
-- `TestReapplyLayout_GuardInheritance`: spawns
-- `TestReapplyLayout_FocusIsNeverMoved`: spawns
-- `TestReapplyLayout_Deferral`: spawns
-- `TestReapplyLayout_BoxEqualityGuard`: spawns
-- `TestReapplyLayout_DegradedBox`: spawns
-- `TestReapplyLayout_HookProbeExactMatchOnly`: spawns
-- `TestReapplyLayout_ProbeOrdering`: spawns
-- `TestReapplyLayout_ProbeHookFalseAsksNothing`: spawns
-- `TestReapplyLayout_PersistsNothing`: spawns
-- `TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux`: spawns
-- `TestReconcileLocked_LogsTheUntrackedPanesItReaps`: spawns
-- `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`: spawns
-- `TestMarkRetiring_RoundTripsThroughStateAndStatus`: spawns
-- `TestMarkRetiring_UnknownGUIDWrapsErrUnknownStrand`: unclassifiable call
-- `TestMarkRetiring_NoStateFileWrapsErrUnknownStrand`: unclassifiable call
-- `TestSelvageIdentifiersConfinedToSelvagePane`: spawns
-- `TestSelvageIdentViolations_ExemptionsAndFlags`: unclassifiable call
-- `TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath`: spawns
-- `TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure`: spawns
-- `TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit`: spawns
-- `TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys`: spawns
-- `TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch`: spawns
-- `TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand`: spawns
-- `TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag`: spawns
-- `TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState`: unclassifiable call
-- `TestWithOpLock_RefusesARewrittenSessionNameBeforeTouchingTmux`: unclassifiable call
-- `TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState`: unclassifiable call
-- `TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState`: unclassifiable call
-- `TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile`: unclassifiable call
-- `TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape`: unclassifiable call
-- `TestWithOpLock_SucceedsForTheStandaloneFirstRunShape`: unclassifiable call
-- `TestWithOpLock_SucceedsForTheHubFirstRunShape`: unclassifiable call
-- `TestRemoveStaleSocket`: unclassifiable call
-- `TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget`: spawns
-- `TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped`: spawns
-- `TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity`: spawns
-- `TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity`: spawns
-- `TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims`: spawns
-- `TestLaunchStrandLocked_SendsThePreludeAheadOfTheStrandCommand`: spawns
-- `TestLaunchStrandLocked_RelaunchRegeneratesTheScript`: spawns
-- `TestLaunchStrandLocked_ScriptWithoutPreludeWhenExecutableUnresolvable`: spawns
-- `TestLaunchStrandLocked_EmptyCommandWritesThePreludeAlone`: spawns
-- `TestLaunchStrandLocked_WriteFailureSendsTheFullLine`: spawns
-- `TestAddStrandLocked_FailedSendLeavesNoScript`: spawns
-- `TestAddStrand_PersistFailureLeavesNoScript`: spawns
-- `TestReplaceStrand_PersistFailureLeavesNoScriptForTheNewStrand`: spawns
-- `TestLaunchStrandLocked_SplitWindowCarriesNoTrailingShellCommand`: spawns
-- `TestLaunchStrandLocked_MirrorsTheFullNameIntoThePaneTitle`: spawns
-- `TestSpawnWatchdog_SuppressedReturnsWithoutSpawning`: spawns
-- `TestSpawnWatchdog_EmptyHubPathReturnsWithoutSpawning`: spawns
-- `TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch`: spawns
-- `TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad`: spawns
-- `TestAddStrandLocked_UnknownParentRejected`: spawns
-- `TestAddStrandLocked_KnownParentAccepted`: spawns
-- `TestUpdateStrandLocked_VisibleToHiddenRejected`: spawns
-- `TestUpdateStrandLocked_HiddenToHidden_NoOpNoLaunch`: spawns
-- `TestUpdateStrandLocked_UnknownGuidRejected`: spawns
-- `TestAddStrand_IfAbsent_MatchedAliveNoOps`: spawns
-- `TestAddStrand_IfAbsent_HiddenOnlyNoOps`: spawns
-- `TestAddStrandUnless_LiveNamedSkips`: spawns
-- `TestAddStrandUnless_NotLiveAdds`: spawns
-- `TestAddStrandUnless_UnformableNameRefusesBeforeTmux`: spawns
-- `TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact`: spawns
-- `TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage`: spawns
-- `TestStrandNameLocked_FormsAndNumbersRoles`: spawns
-- `TestStrandNameLocked_DormantStrandStillCounts`: spawns
-- `TestStrandNameLocked_LegacyNameHoldsNothing`: spawns
-- `TestStrandNameLocked_EmptySlugGivesTwoSegments`: spawns
-- `TestStrandNameLocked_DefaultRole`: spawns
-- `TestStrandNameLocked_ExplicitNameHeldRefuses`: spawns
-- `TestStrandNameLocked_ForeignPrefixRefuses`: spawns
-- `TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand`: spawns
-- `TestAddStrand_IfAbsent_RoleSegmentMatchesFullName`: spawns
-- `TestAddStrandLocked_AnchorValidatedAtEngineBoundary`: spawns
-- `TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary`: spawns
-- `TestResolvePaneInThisSessionLocked`: spawns
-- `TestRemoveStrand_NeverKillsAPaneOutsideThisSession`: spawns
-- `TestWatchdogSelfHeal_GrowsBackToPlannedLayout`: spawns
-- `TestWatchdogSelfHeal_ShrinksBackToPlannedLayout`: spawns
-- `TestWatchdogSelfHeal_BurstCoalesces`: spawns
-- `TestWatchdogSelfHeal_DegradedPathStillConverges`: spawns
-- `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure`: spawns
-- `TestWatchdogSelfHeal_FocusNeverStolen`: spawns
-- `TestWatchdogSelfHeal_NoSelfTriggerLoop`: spawns
-- `TestWatchdogSelfHeal_HookProbeMatchesLiveTmux`: spawns
-- `TestWatchdogSelfHeal_ResizeTouchesTheSignalFile`: spawns
-- `TestWatchLoop_DisabledNeverReturnsWhileCtxLive`: spawns
-- `TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive`: spawns
-- `TestWatchLoop_StaleSignalFileRemovedAtStart`: spawns
-- `TestWatchLoop_PollModeByDefault`: spawns
-- `TestWatchLoop_ModePromotion`: spawns
-- `TestWatchLoop_NeverDemotes`: spawns
-- `TestWatchLoop_UndecidedProbeDoesNotGuess`: spawns
-- `TestWatchLoop_SignalConsumedByRemovalBeforeTheApply`: spawns
-- `TestWatchLoop_TakeEffectBoundary`: spawns
-- `TestWatchLoop_FailuresNeverKillTheLoop`: spawns
-- `TestWatchLoop_DeferralCostsNoBudget`: spawns
-- `TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot`: spawns
-- `TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot`: spawns
-- `TestWatchLoop_RecoversFromDormancyToItsPriorMode`: spawns
-- `TestWatchLoop_NonSentinelFailureDoesNotGoDormant`: spawns
-- `TestLiveBoxLocked`: spawns
-- `TestReadStatusRowsLocked`: spawns
-- `TestReadWindowSizeLatestLocked`: spawns
-- `TestPinGeometryOptionsLocked`: spawns
-- `TestPinGeometryOptionsLocked_HookLifecycle`: spawns
-- `TestResizePinHookArgvs`: unclassifiable call
-- `TestResizePinHookArgvs_SignalEntry`: unclassifiable call
-- `TestResizePinHookArgvs_NoRepaintEntryShips`: unclassifiable call
-- `TestInstallResizePinsLocked_IssuesTheSignalEntryLast`: spawns
+- `TestAttachGeometry_ExactLayoutAndRowBudgets`: out of process
+- `TestAttachGeometry_DegradedPathStillAttaches`: out of process
+- `TestAttachGeometry_StaleLayoutRaceIsSafe`: out of process
+- `TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets`: out of process
+- `TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget`: out of process
+- `TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin`: out of process
+- `TestMultiplexerContract`: out of process
+- `TestExactSessionTargetsNeverPrefixMatchSiblings`: out of process
+- `TestDisplayMessageDoesNotErrorForAnAbsentSession`: out of process
+- `TestSessionNameRewriteIsSilentAndExactTargetsMissIt`: out of process
+- `TestRemoveStrand_SoleStrandEmptiesSessionSucceeds`: out of process
+- `TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout`: out of process
+- `TestSelvageNeverGetsZeroHeightLayoutCell`: out of process
+- `TestAddStrand_EmptyCmdLeavesALivePane`: out of process
+- `TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm`: out of process
+- `TestAddStrand_LogsAttributionOnlyOnColdBoot`: out of process
+- `TestLaunchScript_SourcedScriptRunsInThePaneShellScope`: out of process
+- `TestMouseBootIntegration_PinsOptionAtBoot`: out of process
+- `TestMouseBootIntegration_NoLiveToggleWithoutRestart`: out of process
+- `TestNaming_TaskWorktreeStrandNameTitleAndEnv`: out of process
+- `TestNaming_EmptySlugGivesShortnameAndRole`: out of process
+- `TestNaming_RepairNamesRestoresAHandChangedTitle`: out of process
+- `TestStatus_NoSessionWrapsErrNoSession`: out of process
+- `TestReplaceStrand_KeepsTopSlotAtCollapsedRows`: out of process
+- `TestWatchdogSelfHeal_GrowsBackToPlannedLayout`: out of process
+- `TestWatchdogSelfHeal_ShrinksBackToPlannedLayout`: out of process
+- `TestWatchdogSelfHeal_BurstCoalesces`: out of process
+- `TestWatchdogSelfHeal_DegradedPathStillConverges`: out of process
+- `TestWatchdogSelfHeal_SurvivesInducedTmuxFailure`: out of process
+- `TestWatchdogSelfHeal_FocusNeverStolen`: out of process
+- `TestWatchdogSelfHeal_NoSelfTriggerLoop`: out of process
+- `TestWatchdogSelfHeal_HookProbeMatchesLiveTmux`: out of process
+- `TestWatchdogSelfHeal_ResizeTouchesTheSignalFile`: out of process
 
 ## internal/reedengine/render
 
@@ -3786,265 +3553,190 @@ No coverage:
 
 ## internal/shedadapters
 
-259 tests, wall 0.79s, serial 0.58s.
+261 tests, wall 0.32s, serial 0.10s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
+| `TestArchiveStaleOutputs_RenamesExistingFile` | `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
+| `TestArchiveStaleOutputs_CollisionTakesNumericSuffix` | `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
+| `TestArchiveStaleOutputs_AbsentEntryIsNoOp` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestArchiveRunDir_MovesEveryEntryAndRecreatesEmpty` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
+| `TestArchiveRunDir_CollisionTakesNumericSuffix` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
+| `TestArchiveRunDir_RenameFailureReturnsError` | `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestArchiveStaleOutputs_MixedListArchivesOnlyExisting` | `TestBouncer_SeedCall_SpawnProducedNothingUsable` | yes |
+| `TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts` | `TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue` | yes |
+| `TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore` | `TestBurlerProducer_RoundScan` | yes |
+| `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | yes |
+| `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing` | `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`, `TestBouncer_CirclingGuard`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying` | `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`, `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles` | `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_SeedCall_NoLiveRunArchivesThenSpawns` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
+| `TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs` | `TestBouncer_CirclingGuard`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestBouncer_Circling_EmptySlugOmitsTheArgument` | `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
+| `TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestBouncer_Clear_ApprovedRunDirClearsAndReseeds` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Clear_CollisionTakesNumericSuffix` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck`, `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
+| `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning`, `TestBouncer_ReBounceProbesForALiveSeed`, `TestBurlerProducer_RoundScan` | yes |
+| `TestBouncer_Clear_HarvestApprovedDoesNotClear` | `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Clear_EndToEndSequence` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Commit_ApprovedCallsExactlyOnce` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError` | yes |
+| `TestBouncer_Commit_BlockingNeverCalls` | `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_Commit_NilIsNotAnError` | `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_Commit_FailingCommitIsAnError` | `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears` | no |
+| `TestBouncer_Commit_CancelledContextStillCommits` | `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_Approve_CalledBeforeCommit` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestBouncer_Approve_NilStillCommits` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Commit_FailingCommitIsAnError` | yes |
+| `TestBouncer_Approve_BlockingNeverCalls` | `TestBouncer_CirclingGuard` | yes |
+| `TestNewBouncer_EmptyModelEffortVersionAccepted` | `TestNewBouncer_RubricProbe` | yes |
+| `TestNewBouncer_NilNowDefaultsToNonNilClock` | `TestNewBouncer_RubricProbe` | yes |
+| `TestNewBouncer_ArtifactPathNeedNotExist` | `TestNewBouncer_RubricProbe` | yes |
+| `TestBouncer_Escalation_SpentBudgetContinueAwaitsWithCauseBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestBouncer_Escalation_SpentBudgetOverCirclingIsBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestBouncer_Escalation_BelowBudget` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam` | no |
+| `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears` | no |
+| `TestBouncer_Escalation_ReCallLeavesTheRecordUntouched` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
+| `TestBouncer_JudgeCall_SkillAndParentDirective` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
+| `TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir` | `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_JudgeCall_Approved` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_JudgeCall_Blocking` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger` | `TestBouncer_JudgeCall_PreviousLedgerHandling` | yes |
+| `TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_JudgeCall_ReviewWithoutClassStillSpawnsJudge` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue` | `TestBouncer_JudgeCall_Degradations`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_JudgeCall_Harvest` | `TestBouncer_PointerDiscipline`, `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`, `TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue` | no |
+| `TestBouncer_JudgeCall_DebrisIsNotJudged` | `TestBouncer_JudgeCall_PreviousLedgerHandling`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations`, `TestBurlerProducer_RoundScan` | yes |
+| `TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn` | `TestBouncer_JudgeCall_PreviousLedgerHandling`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Degradations` | yes |
+| `TestBouncer_Replay_Approved` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Replay_Blocking` | `TestBouncer_CirclingGuard`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Judged_IgnoresFocusFile` | `TestBouncer_CirclingGuard` | yes |
+| `TestBouncer_FocusSynthesis_OverUnparseableFile` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
+| `TestBouncer_PointerDiscipline` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_JudgeCall_Degradations`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning`, `TestBouncer_ReBounceProbesForALiveSeed`, `TestBurlerProducer_RoundScan`, `TestBouncer_Cancellation_AlreadyCancelled` | yes |
+| `TestBouncer_Cancellation_AlreadyCancelled` | `TestBouncer_PointerDiscipline` | no |
+| `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_SeedCall_ComposedPromptStatesSpecsDir` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
+| `TestBouncer_SeedCall_SkillAndParentDirective` | `TestBouncer_PointerDiscipline`, `TestBouncer_JudgeCall_SkillAndParentDirective` | no |
+| `TestBouncer_SeedCall_HappyPath` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_SkillAndParentDirective`, `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
+| `TestBouncer_SeedDiscriminator_ParsesRatherThanStats` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning` | yes |
+| `TestBouncer_SeedSideHarvest_SurvivesLateRunError` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
+| `TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone` | `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
+| `TestBouncer_ReBounce` | `TestBouncer_ReBounceProbesForALiveSeed` | yes |
+| `TestBouncer_StampLeakRegression_BothTemplates` | `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
+| `TestBouncer_SpecIdentity_RoleAndRound` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
+| `TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs` | `TestBouncer_SeedCall_SkillAndParentDirective` | yes |
+| `TestBouncer_Skip_FalseSeedsRoundOne` | `TestBouncer_Skip_ErrorFallsBackToReview` | yes |
 | `TestParseVerdict_Vocabulary` | `TestParseRecordedVerdict_AliasesLegacyWords` | yes |
-| `TestFactsPath_IsNotAJudgeOutput` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
-| `TestParseVerdictProseAndUnknownKey` | `TestBouncer_Approve_BlockingNeverCalls` | yes |
-| `TestParseLedgerProseAndUnknownKey` | `TestBouncer_Approve_BlockingNeverCalls` | yes |
-| `TestParseFocusProseAndUnknownKey` | `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives` | yes |
-| `TestWriteFocus_WritesReadableFile` | `TestBouncer_Clear_EndToEndSequence` | yes |
-| `TestNewBurlerProducer_ValidCallSucceedsWithNoError` | `TestBurlerProducer_Call_AlreadyCancelledContext` | yes |
+| `TestHarvestedVerdict_RefusesLegacyWords` | `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | yes |
+| `TestBouncer_Verdict_LegacyApprovedAtEntryClearsAndReseeds` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Verdict_LegacyBlockingAtEntryReplaysAsStuck` | `TestBouncer_CirclingGuard`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestParseRecordedVerdict_AliasesLegacyWords` | yes |
+| `TestBouncer_Verdict_SpawnedJudgeWritingLegacyWordIsRejudged` | `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged` | `TestBouncer_Verdict_SpawnedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning` | no |
+| `TestBouncer_Verdict_ConvergedApprovesCommitsAndNextCallClears` | `TestBouncer_JudgeCall_Harvest`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`, `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_Commit_FailingCommitIsAnError`, `TestBouncer_Approve_FailingApproveSkipsCommit`, `TestBouncer_Clear_ArchiveFailureDegradesToStuck` | yes |
+| `TestBouncer_Verdict_ContinueReturnsStuckWithLedgerPointer` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_Harvest` | yes |
+| `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`, `TestBouncer_Clear_EndToEndSequence`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_CirclingGuard`, `TestBouncer_Escalation_ReCallLeavesTheRecordUntouched`, `TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason`, `TestWriteRoundFacts_IsDeterministic` | no |
+| `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests` | `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`, `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning`, `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying` | no |
+| `TestComputeRoundFacts_NoRecurringKeysSaysSo` | `TestComputeRoundFacts_CountsAndRecurringKeys`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
+| `TestComputeRoundFacts_MediumDesignCountsAsGating` | `TestComputeRoundFacts_CountsAndRecurringKeys` | yes |
+| `TestComputeRoundFacts_BlockingScopeIsNotGating` | `TestComputeRoundFacts_CountsAndRecurringKeys` | yes |
+| `TestWriteRoundFacts_IsDeterministic` | `TestComputeRoundFacts_CountsAndRecurringKeys`, `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning` | yes |
+| `TestFactsPath_IsNotAJudgeOutput` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestParseVerdictProseAndUnknownKey` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestParseLedgerProseAndUnknownKey` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestParseFocusCommonRules` | `TestReadRoundFocus_DegradesToTheZeroDirective`, `TestParseLedgerCommonRules` | yes |
+| `TestParseFocusProseAndUnknownKey` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
+| `TestParseFocusSpecific` | `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestReadRoundFocus_DegradesToTheZeroDirective` | yes |
+| `TestRenderFocus_RoundTripsThroughParseFocus` | `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile`, `TestBurlerProducer_Hydration`, `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething` | no |
+| `TestWriteFocus_WritesReadableFile` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation` | yes |
+| `TestFocusSchemaMarkers_BothStencilsBothModes` | `TestBouncer_Approve_FailingApproveSkipsCommit`, `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
+| `TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint` | `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts` | no |
+| `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBouncer_JudgeCall_Harvest`, `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`, `TestBouncer_MarkerCompleteness_BothTemplates` | yes |
+| `TestNewBurlerProducer_ValidCallSucceedsWithNoError` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestBurlerProducer_Hydration` | `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBouncer_SeedCall_SpawnProducedNothingUsable`, `TestReadRoundFocus_DegradesToTheZeroDirective`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
+| `TestBurlerProducer_StalePreexistingRoundFileArchivedBeforeInvocation` | `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestBurlerProducer_Call_DoneReturnsStuckNeverDone` | `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_ProfileCarriesDerivedFields` | `TestBurlerProducer_Hydration`, `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile` | no |
+| `TestBurlerProducer_Call_RunOptsCarriesRoundToken` | `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_RunOptsCarriesNoteID` | `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry` | `TestBurlerProducer_Call_ArchiveOnExit`, `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestBurlerProducer_Call_AskingIsHardErrorOnFirstOccurrence` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_AlreadyCancelledContext` | `TestBurlerProducer_RoundScan` | yes |
+| `TestBurlerProducer_Call_CancelledBetweenAttempts` | `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday` | `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | yes |
+| `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | `TestBurlerProducer_Call_ArchiveOnExit`, `TestBurlerProducer_RoundScan`, `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry` | no |
+| `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry` | `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer`, `TestBurlerProducer_Call_ArchiveOnExit` | yes |
+| `TestRecordCirclingDecision_WritesPendingFile` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
+| `TestRecordCirclingDecision_BudgetEscalationOverContinueVerdict` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestRecordCirclingDecision_CircledEscalationRecord` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
 | `TestReadCirclingDecision_LegacyFileReadsAsCircling` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`, `TestReadCirclingDecision_MalformedIsAnError` | yes |
-| `TestReadCirclingDecision_AbsentFile` | `TestBouncer_Approve_BlockingNeverCalls` | yes |
-| `TestEntryErr_HealthyContext` | `TestBouncer_Approve_BlockingNeverCalls` | yes |
+| `TestSettleCirclingAccept_SettlesPendingAccept` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestReadCirclingDecision_AbsentFile` | `TestBouncer_CirclingGuard` | yes |
+| `TestEntryErr_HealthyContext` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
 | `TestCancelErr_HealthyContext` | `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove` | yes |
-| `TestReadRoundFocus_ReadsTheFileTheBouncerWrites` | `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething` | yes |
-| `TestReadRoundFocus_ResolvesFilenameByTargetRound` | `TestBurlerProducer_Hydration` | yes |
-| `TestGateFailedReason_NamesAttemptsAndFindingsPath` | `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry` | yes |
-| `TestReadRubric_SubstitutesTheSpecsDir` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
-| `TestReadRubric_StripsTheStampBanner` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
-| `TestReadRubric_MarkerlessRubricRendersUnchanged` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
+| `TestEntryErr_CancelledContext` | `TestBouncer_Cancellation_AlreadyCancelled` | yes |
+| `TestCancelErr_CancelledContext` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError` | yes |
+| `TestEntryErr_DeadlineExceeded` | `TestBouncer_Cancellation_AlreadyCancelled` | yes |
+| `TestCancelErr_DeadlineExceeded` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError` | yes |
+| `TestEntryErrAndCancelErr_MessagesDiffer` | `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`, `TestBurlerProducer_RoundScan` | yes |
+| `TestEscalation_RoundTrip` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestEscalation_EmptyBriefStillReadable` | `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestEscalation_EmptyNoticeWritesNoNoticeFile` | `TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason`, `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause` | yes |
+| `TestEscalation_AbsentRecord` | `TestBouncer_CirclingGuard` | yes |
+| `TestReadRoundFocus_ReadsTheFileTheBouncerWrites` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
+| `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething` | `TestBurlerProducer_Call_ProfileCarriesDerivedFields`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestRenderFocus_RoundTripsThroughParseFocus` | yes |
+| `TestReadRoundFocus_ResolvesFilenameByTargetRound` | `TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename`, `TestBurlerProducer_Call_ClusterExcludeDropWarning`, `TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue` | yes |
+| `TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind` | `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`, `TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename`, `TestBurlerProducer_Call_ClusterExcludeDropWarning` | yes |
+| `TestGateFailedReason_NamesAttemptsAndFindingsPath` | `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer` | yes |
+| `TestResolveRound_EmptyRunDirReturnsZero` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestResolveRound_OnlyRoundOnePresent` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestResolveRound_RoundsOneThroughThreePresent` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestResolveRound_GapStopsScanBeforeLaterRounds` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestResolveRound_BothDerivedReadings` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestRoundPathHelpers_PinExactFilenameSpellings` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_SubstitutesTheSpecsDir` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_StripsTheStampBanner` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_MarkerlessRubricRendersUnchanged` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_EmptySpecsDirIsAnError` | `TestReadRubric_EmptyStencilsDirIsAnError` | yes |
 | `TestReadRubric_UnreadableRubricIsAnError` | `TestBouncer_JudgeCall_Degradations` | yes |
-| `TestReadRubric_SubstitutesTheStencilsDir` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
-| `TestReadRubric_SubstitutesBothMarkers` | `TestBouncer_Approve_CalledBeforeCommit` | yes |
-| `TestReadRubric_EmptyStencilsDirIsAnError` | `TestReadRubric_EmptySpecsDirIsAnError` | yes |
-| `TestSingleLLMProducer_OutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestSingleLLMProducer_ArchivesPreexistingOutput` | `TestSingleLLMProducer_NilNowStillArchives`, `TestSingleLLMProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | yes |
-| `TestSingleLLMProducer_ArchiveCollisionSuffix` | `TestSingleLLMProducer_NilNowStillArchives`, `TestBouncer_Clear_CollisionTakesNumericSuffix` | yes |
-| `TestSingleLLMProducer_MissingOutputFileIsNoOp` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | yes |
-| `TestSingleLLMProducer_NoBridgeInstalled` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | yes |
-| `TestSingleLLMProducer_ProbeNotFound_ArchivesAndRuns` | `TestSingleLLMProducer_NilNowStillArchives` | yes |
-| `TestSingleLLMProducer_ProbeFound_NoArchiveNoRun` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | yes |
-| `TestSingleLLMProducer_AttachedOutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestSingleLLMProducer_AttachedOutcomeAsking` | `TestSingleLLMProducer_OutcomeAsking`, `TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout` | yes |
+| `TestReadRubric_SubstitutesTheStencilsDir` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_SubstitutesBothMarkers` | `TestBouncer_Approve_FailingApproveSkipsCommit` | yes |
+| `TestReadRubric_EmptyStencilsDirIsAnError` | `TestReadRubric_EmptySpecsDirIsAnError` | no |
+| `TestSingleLLMProducer_OutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
+| `TestSingleLLMProducer_ArchivesPreexistingOutput` | `TestSingleLLMProducer_ArchiveCollisionSuffix`, `TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn` | yes |
+| `TestSingleLLMProducer_ArchiveCollisionSuffix` | `TestSingleLLMProducer_ArchivesPreexistingOutput`, `TestBouncer_Clear_CollisionTakesNumericSuffix` | no |
+| `TestSingleLLMProducer_MissingOutputFileIsNoOp` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestSingleLLMProducer_AlreadyCancelledContext` | `TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted` | yes |
+| `TestSingleLLMProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | `TestSingleLLMProducer_ArchiveCollisionSuffix`, `TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn` | yes |
+| `TestSingleLLMProducer_NoBridgeInstalled` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestSingleLLMProducer_ProbeNotFound_ArchivesAndRuns` | `TestSingleLLMProducer_ArchiveCollisionSuffix` | yes |
+| `TestSingleLLMProducer_ProbeFound_NoArchiveNoRun` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestSingleLLMProducer_AttachedOutcomeDone` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
+| `TestSingleLLMProducer_AttachedOutcomeAsking` | `TestSingleLLMProducer_OutcomeAsking`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout` | `TestSingleLLMProducer_NotStartedWrapsErrNotStarted`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted` | `TestSingleLLMProducer_AlreadyCancelledContext` | no |
+| `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | no |
 | `TestSingleLLMProducer_Gate_PassingGateReachesDone` | `TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer` | no |
 | `TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer` | `TestSingleLLMProducer_Gate_TerminalReasonReachesStuck`, `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically` | yes |
 | `TestSingleLLMProducer_Gate_AskingKeepsEmptyPointer` | `TestSingleLLMProducer_OutcomeAsking` | yes |
-| `TestSingleLLMProducer_Gate_AttachPathIsGatedToo` | `TestSingleLLMProducer_Gate_PassingGateReachesDone`, `TestSingleLLMProducer_PrepareFreshSpawnAmendment`, `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically` | yes |
+| `TestSingleLLMProducer_Gate_AttachPathIsGatedToo` | `TestSingleLLMProducer_Gate_PassingGateReachesDone`, `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`, `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically` | yes |
 | `TestSingleLLMProducer_Gate_AttemptsPropagatesOntoOutputPointer` | `TestSingleLLMProducer_Gate_PassingGateReachesDone` | yes |
-| `TestWebsterProducer_OutcomeDone` | `TestWebsterProducer_OutcomeStuck`, `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | yes |
-| `TestNewWebsterProducer_ReentryStepNamesTheRow` | `TestWebsterProducer_MasterAskingError`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
-| `TestWebsterProducer_PendingAuditFindingsIsStuck` | `TestWebsterProducer_MasterAskingError`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
-| `TestWebsterProducer_MasterAskingMatchedViaErrorsIs` | `TestWebsterProducer_MasterAskingError` | yes |
-| `TestWebsterProducer_FreshIsAlwaysFalse` | `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds`, `TestWebsterProducer_OutcomeStuck` | yes |
+| `TestSingleLLMProducer_PrepareFreshSpawnAmendment` | `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath` | yes |
+| `TestWebsterProducer_OutcomeDone` | `TestWebsterProducer_OutcomeStuck`, `TestWebsterProducer_OutcomePaused` | yes |
+| `TestWebsterProducer_MasterAskingError` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs` | yes |
+| `TestNewWebsterProducer_ReentryStepNamesTheRow` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
+| `TestWebsterProducer_PendingAuditFindingsIsStuck` | `TestWebsterProducer_MasterAskingMatchedViaErrorsIs`, `TestWebsterProducer_PendingAuditFindingsBlocksRun` | yes |
+| `TestWebsterProducer_MasterAskingMatchedViaErrorsIs` | `TestWebsterProducer_MasterAskingError` | no |
+| `TestWebsterProducer_FreshIsAlwaysFalse` | `TestWebsterProducer_OutcomePaused`, `TestWebsterProducer_OutcomeStuck` | yes |
+| `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds` | `TestWebsterProducer_OutcomePaused` | yes |
 
-No coverage:
-
-- `TestArchiveStaleOutputs_RenamesExistingFile`: unclassifiable call
-- `TestArchiveStaleOutputs_CollisionTakesNumericSuffix`: unclassifiable call
-- `TestArchiveStaleOutputs_AbsentEntryIsNoOp`: unclassifiable call
-- `TestArchiveRunDir_MovesEveryEntryAndRecreatesEmpty`: unclassifiable call
-- `TestArchiveRunDir_CollisionTakesNumericSuffix`: unclassifiable call
-- `TestArchiveRunDir_RenameFailureReturnsError`: unclassifiable call
-- `TestArchiveStaleOutputs_MixedListArchivesOnlyExisting`: unclassifiable call
-- `TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning`: unclassifiable call
-- `TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts`: unclassifiable call
-- `TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore`: unclassifiable call
-- `TestBurlerProducer_AttachedRunAlreadyDiedRespawnsFromAttemptOne`: unclassifiable call
-- `TestBurlerProducer_AttachErrorNeitherArchivesNorSpawns`: unclassifiable call
-- `TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning`: unclassifiable call
-- `TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning`: unclassifiable call
-- `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing`: unclassifiable call
-- `TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying`: unclassifiable call
-- `TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles`: unclassifiable call
-- `TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore`: unclassifiable call
-- `TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles`: unclassifiable call
-- `TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning`: unclassifiable call
-- `TestBouncer_SeedCall_NoLiveRunArchivesThenSpawns`: unclassifiable call
-- `TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs`: unclassifiable call
-- `TestBouncer_Circling_EmptySlugOmitsTheArgument`: unclassifiable call
-- `TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam`: unclassifiable call
-- `TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears`: unclassifiable call
-- `TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove`: unclassifiable call
-- `TestBouncer_Circling_SettledAcceptReachedInSettleDegrades`: unclassifiable call
-- `TestBouncer_Circling_MalformedDecisionReturnsStuckAndRunsNoSeam`: unclassifiable call
-- `TestBouncer_CirclingGuard`: unclassifiable call
-- `TestBouncer_Clear_ApprovedRunDirClearsAndReseeds`: unclassifiable call
-- `TestBouncer_Clear_CollisionTakesNumericSuffix`: unclassifiable call
-- `TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched`: unclassifiable call
-- `TestBouncer_Clear_HarvestApprovedDoesNotClear`: unclassifiable call
-- `TestBouncer_Clear_ArchiveFailureDegradesToStuck`: unclassifiable call
-- `TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir`: unclassifiable call
-- `TestBouncer_Clear_AfterCommitFailureSubsequentCallClears`: unclassifiable call
-- `TestBouncer_Clear_EndToEndSequence`: unclassifiable call
-- `TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration`: unclassifiable call
-- `TestBouncer_Commit_ApprovedCallsExactlyOnce`: unclassifiable call
-- `TestBouncer_Commit_BlockingNeverCalls`: unclassifiable call
-- `TestBouncer_Commit_NilIsNotAnError`: unclassifiable call
-- `TestBouncer_Commit_FailingCommitIsAnError`: unclassifiable call
-- `TestBouncer_Commit_CancelledContextStillCommits`: unclassifiable call
-- `TestBouncer_Approve_CalledBeforeCommit`: unclassifiable call
-- `TestBouncer_Approve_NilStillCommits`: unclassifiable call
-- `TestBouncer_Approve_FailingApproveSkipsCommit`: unclassifiable call
-- `TestBouncer_Approve_BlockingNeverCalls`: unclassifiable call
-- `TestNewBouncer_ValidationRules`: unclassifiable call
-- `TestNewBouncer_EmptyModelEffortVersionAccepted`: unclassifiable call
-- `TestNewBouncer_NilNowDefaultsToNonNilClock`: unclassifiable call
-- `TestNewBouncer_ArtifactPathNeedNotExist`: unclassifiable call
-- `TestNewBouncer_RubricProbe`: unclassifiable call
-- `TestBouncer_Escalation_SpentBudgetContinueAwaitsWithCauseBudget`: unclassifiable call
-- `TestBouncer_Escalation_SpentBudgetOverCirclingIsBudget`: unclassifiable call
-- `TestBouncer_Escalation_BelowBudget`: unclassifiable call
-- `TestBouncer_Escalation_UnknownBudgetNeverEscalatesOnBudget`: unclassifiable call
-- `TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation`: unclassifiable call
-- `TestBouncer_Escalation_RecordedAcceptSettlesEitherCause`: unclassifiable call
-- `TestBouncer_Escalation_ReCallLeavesTheRecordUntouched`: unclassifiable call
-- `TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason`: unclassifiable call
-- `TestBouncer_Escalation_FailedRecordWriteErrorsNamingTheWayForward`: unclassifiable call
-- `TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward`: unclassifiable call
-- `TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir`: unclassifiable call
-- `TestBouncer_JudgeCall_PatternDirective`: unclassifiable call
-- `TestBouncer_JudgeCall_PatternDirectiveFailureDegrades`: unclassifiable call
-- `TestBouncer_JudgeCall_Approved`: unclassifiable call
-- `TestBouncer_JudgeCall_Blocking`: unclassifiable call
-- `TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger`: unclassifiable call
-- `TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts`: unclassifiable call
-- `TestBouncer_JudgeCall_ReviewWithoutClassStillSpawnsJudge`: unclassifiable call
-- `TestBouncer_JudgeCall_PreviousLedgerHandling`: unclassifiable call
-- `TestBouncer_JudgeCall_Degradations`: unclassifiable call
-- `TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue`: unclassifiable call
-- `TestBouncer_JudgeCall_Harvest`: unclassifiable call
-- `TestBouncer_JudgeCall_DebrisIsNotJudged`: unclassifiable call
-- `TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn`: unclassifiable call
-- `TestBouncer_Replay_Approved`: unclassifiable call
-- `TestBouncer_Replay_Blocking`: unclassifiable call
-- `TestBouncer_Judged_IgnoresFocusFile`: unclassifiable call
-- `TestBouncer_FocusSynthesis_OverUnparseableFile`: unclassifiable call
-- `TestBouncer_PointerDiscipline`: unclassifiable call
-- `TestBouncer_Cancellation_AlreadyCancelled`: unclassifiable call
-- `TestBouncer_Cancellation_DuringRun_ParsedVerdictSurvives`: unclassifiable call
-- `TestBouncer_Cancellation_DuringRun_OrdinaryRuleReturnsError`: unclassifiable call
-- `TestBouncer_SeedCall_ComposedPromptStatesSpecsDir`: unclassifiable call
-- `TestBouncer_SeedCall_HappyPath`: unclassifiable call
-- `TestBouncer_SeedDiscriminator_ParsesRatherThanStats`: unclassifiable call
-- `TestBouncer_SeedCall_SpawnProducedNothingUsable`: unclassifiable call
-- `TestBouncer_SeedSideHarvest_SurvivesLateRunError`: unclassifiable call
-- `TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone`: unclassifiable call
-- `TestBouncer_ReBounce`: unclassifiable call
-- `TestBouncer_ReBounceProbesForALiveSeed`: unclassifiable call
-- `TestBouncer_ReBounceDegradesOnAnUndeterminableProbe`: unclassifiable call
-- `TestBouncer_MarkerCompleteness_BothTemplates`: unclassifiable call
-- `TestBouncer_StampLeakRegression_BothTemplates`: unclassifiable call
-- `TestBouncer_SpecIdentity_RoleAndRound`: unclassifiable call
-- `TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs`: unclassifiable call
-- `TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit`: unclassifiable call
-- `TestBouncer_Skip_FalseSeedsRoundOne`: unclassifiable call
-- `TestBouncer_Skip_ErrorFallsBackToReview`: unclassifiable call
-- `TestBouncer_Skip_FailingApproveSkipsCommit`: unclassifiable call
-- `TestHarvestedVerdict_RefusesLegacyWords`: unclassifiable call
-- `TestBouncer_Verdict_LegacyApprovedAtEntryClearsAndReseeds`: unclassifiable call
-- `TestBouncer_Verdict_LegacyBlockingAtEntryReplaysAsStuck`: unclassifiable call
-- `TestBouncer_Verdict_SpawnedJudgeWritingLegacyWordIsRejudged`: unclassifiable call
-- `TestBouncer_Verdict_AttachedJudgeWritingLegacyWordIsRejudged`: unclassifiable call
-- `TestBouncer_Verdict_ConvergedApprovesCommitsAndNextCallClears`: unclassifiable call
-- `TestBouncer_Verdict_ContinueReturnsStuckWithLedgerPointer`: unclassifiable call
-- `TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning`: unclassifiable call
-- `TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests`: unclassifiable call
-- `TestComputeRoundFacts_CountsAndRecurringKeys`: unclassifiable call
-- `TestComputeRoundFacts_NoRecurringKeysSaysSo`: unclassifiable call
-- `TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow`: unclassifiable call
-- `TestComputeRoundFacts_MissingReviewIsAParseErrorRow`: unclassifiable call
-- `TestComputeRoundFacts_MediumDesignCountsAsGating`: unclassifiable call
-- `TestComputeRoundFacts_BlockingScopeIsNotGating`: unclassifiable call
-- `TestWriteRoundFacts_IsDeterministic`: unclassifiable call
-- `TestParseVerdictCommonRules`: unclassifiable call
-- `TestParseVerdictSpecific`: unclassifiable call
-- `TestParseLedgerCommonRules`: unclassifiable call
-- `TestParseLedgerSpecific`: unclassifiable call
-- `TestParseLedger_ClassAndSeverity`: unclassifiable call
-- `TestParseFocusCommonRules`: unclassifiable call
-- `TestParseFocusSpecific`: unclassifiable call
-- `TestRenderFocus_RoundTripsThroughParseFocus`: unclassifiable call
-- `TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename`: unclassifiable call
-- `TestFocusSchemaMarkers_BothStencilsBothModes`: unclassifiable call
-- `TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint`: unclassifiable call
-- `TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint`: unclassifiable call
-- `TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts`: unclassifiable call
-- `TestNewBurlerProducer_Validation`: unclassifiable call
-- `TestBurlerProducer_RoundScan`: unclassifiable call
-- `TestBurlerProducer_Hydration`: unclassifiable call
-- `TestBurlerProducer_StalePreexistingRoundFileArchivedBeforeInvocation`: unclassifiable call
-- `TestBurlerProducer_Call_DoneReturnsStuckNeverDone`: unclassifiable call
-- `TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue`: unclassifiable call
-- `TestBurlerProducer_Call_ProfileCarriesDerivedFields`: unclassifiable call
-- `TestBurlerProducer_Call_ClusterExcludeDropWarning`: unclassifiable call
-- `TestBurlerProducer_Call_RunOptsCarriesRoundToken`: unclassifiable call
-- `TestBurlerProducer_Call_RunOptsCarriesNoteID`: unclassifiable call
-- `TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry`: unclassifiable call
-- `TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions`: unclassifiable call
-- `TestBurlerProducer_Call_AskingIsHardErrorOnFirstOccurrence`: unclassifiable call
-- `TestBurlerProducer_Call_RunnerErrorWrapped`: unclassifiable call
-- `TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile`: unclassifiable call
-- `TestBurlerProducer_Call_AlreadyCancelledContext`: unclassifiable call
-- `TestBurlerProducer_Call_CancelledBetweenAttempts`: unclassifiable call
-- `TestBurlerProducer_Call_CancelledDuringFailedRoundArchives`: unclassifiable call
-- `TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts`: unclassifiable call
-- `TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday`: unclassifiable call
-- `TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer`: unclassifiable call
-- `TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry`: unclassifiable call
-- `TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically`: unclassifiable call
-- `TestBurlerProducer_Call_ArchiveOnExit`: unclassifiable call
-- `TestBurlerProducer_Call_PreAttemptArchiveFailureHonoursCancellation`: unclassifiable call
-- `TestRecordCirclingDecision_WritesPendingFile`: unclassifiable call
-- `TestRecordCirclingDecision_BudgetEscalationOverContinueVerdict`: unclassifiable call
-- `TestRecordCirclingDecision_CircledEscalationRecord`: unclassifiable call
-- `TestRecordCirclingDecision_SecondRecordIsRefused`: unclassifiable call
-- `TestRecordCirclingDecision_NotEscalatedWritesNothing`: unclassifiable call
-- `TestSettleCirclingAccept_SettlesPendingAccept`: unclassifiable call
-- `TestReadCirclingDecision_MalformedIsAnError`: unclassifiable call
-- `TestCirclingEvidence`: unclassifiable call
-- `TestEntryErr_CancelledContext`: unclassifiable call
-- `TestCancelErr_CancelledContext`: unclassifiable call
-- `TestEntryErr_DeadlineExceeded`: unclassifiable call
-- `TestCancelErr_DeadlineExceeded`: unclassifiable call
-- `TestEntryErrAndCancelErr_MessagesDiffer`: unclassifiable call
-- `TestEscalation_RoundTrip`: unclassifiable call
-- `TestEscalation_EmptyBriefStillReadable`: unclassifiable call
-- `TestEscalation_EmptyNoticeWritesNoNoticeFile`: unclassifiable call
-- `TestEscalation_AbsentRecord`: unclassifiable call
-- `TestEscalation_MalformedRecordIsAnError`: unclassifiable call
-- `TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething`: unclassifiable call
-- `TestReadRoundFocus_DegradesToTheZeroDirective`: unclassifiable call
-- `TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind`: unclassifiable call
-- `TestResolveRound_EmptyRunDirReturnsZero`: unclassifiable call
-- `TestResolveRound_OnlyRoundOnePresent`: unclassifiable call
-- `TestResolveRound_RoundsOneThroughThreePresent`: unclassifiable call
-- `TestResolveRound_GapStopsScanBeforeLaterRounds`: unclassifiable call
-- `TestResolveRound_MissingRunDirReturnsError`: unclassifiable call
-- `TestResolveRound_NonDirectoryReturnsError`: unclassifiable call
-- `TestResolveRound_NonNotExistStatErrorIsReturned`: unclassifiable call
-- `TestResolveRound_BothDerivedReadings`: unclassifiable call
-- `TestRoundPathHelpers_PinExactFilenameSpellings`: unclassifiable call
-- `TestReadRubric_EmptySpecsDirIsAnError`: unclassifiable call
-- `TestSingleLLMProducer_OutcomeAsking`: unclassifiable call
-- `TestSingleLLMProducer_OutcomeDiedAndTimeout`: unclassifiable call
-- `TestSingleLLMProducer_NotStartedWrapsErrNotStarted`: unclassifiable call
-- `TestSingleLLMProducer_CancelledDuringRun_DiedOutcomeEmitsNoWarn`: unclassifiable call
-- `TestSingleLLMProducer_SeamErrorPropagates`: unclassifiable call
-- `TestSingleLLMProducer_OutcomeDoneWithEmptyOutputFiles`: unclassifiable call
-- `TestSingleLLMProducer_SpecSourceError`: unclassifiable call
-- `TestSingleLLMProducer_RelativeOutputFileRejected`: unclassifiable call
-- `TestSingleLLMProducer_AlreadyCancelledContext`: unclassifiable call
-- `TestSingleLLMProducer_CancelledDuringRun_OutcomeDoneStillSucceeds`: unclassifiable call
-- `TestSingleLLMProducer_CancelledDuringRun_OutcomeAskingYieldsContextError`: unclassifiable call
-- `TestSingleLLMProducer_AttachedOutcomeDiedAndTimeout`: unclassifiable call
-- `TestSingleLLMProducer_ProbeErrorPropagates`: unclassifiable call
-- `TestSingleLLMProducer_AlreadyCancelledContext_NoProbeAttempted`: unclassifiable call
-- `TestSingleLLMProducer_CancelledDuringProbe_YieldsContextError`: unclassifiable call
-- `TestSingleLLMProducer_PrepareFreshSpawnRunsOnlyOnTheRespawnPath`: unclassifiable call
-- `TestSingleLLMProducer_PrepareFreshSpawnErrorNeitherArchivesNorSpawns`: unclassifiable call
-- `TestSingleLLMProducer_PrepareFreshSpawnAmendment`: unclassifiable call
-- `TestWebsterProducer_OutcomePaused`: unclassifiable call
-- `TestWebsterProducer_UnrecognizedOutcome`: unclassifiable call
-- `TestWebsterProducer_MasterAskingError`: unclassifiable call
-- `TestWebsterProducer_OtherEngineErrors`: unclassifiable call
-- `TestWebsterProducer_AlreadyCancelledContext`: unclassifiable call
-- `TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds`: unclassifiable call
-- `TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextError`: unclassifiable call
-- `TestWebsterProducer_NoBridgeInstalled`: unclassifiable call
+No test lacks coverage.
 
 ## internal/shedbuild
 
@@ -4539,23 +4231,94 @@ No test lacks coverage.
 
 ## internal/shuttleengine
 
-213 tests, wall 0.48s, serial 0.37s.
+218 tests, wall 0.36s, serial 0.30s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestCollectAttachCandidates_RecordsEventsSize` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates` | yes |
-| `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates` | yes |
-| `TestRunDirRoot_DefaultUsesDotLyxShuttle` | `TestGateList_EmptyListLeavesResultGateNil` | yes |
-| `TestRunDirRoot_AbsoluteUsedVerbatim` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates` | yes |
-| `TestRunState_RoundTrip` | `TestRunner_Start_PersistsRunningOutcome` | yes |
+| `TestDispositionCandidate_AskingReentry` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestAttach_Multiplicity` | yes |
+| `TestCollectAttachCandidates_RecordsEventsSize` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
+| `TestAttach_OutcomeDisposition` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestAttach_Multiplicity` | yes |
+| `TestAttach_DeadPane` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestAttach_Multiplicity` | yes |
+| `TestAttach_UntrackedStrand_AgeRule` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors` | yes |
+| `TestAttach_BindingClearedStrand_AgeRule` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | yes |
+| `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`, `TestStartup_FailedStartThenAttach_RespawnEligible`, `TestAttach_BindingClearedStrand_AgeRule` | no |
+| `TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
+| `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors` | `TestAttach_Multiplicity`, `TestAttach_BindingClearedStrand_AgeRule`, `TestAttach_DeadPane` | no |
+| `TestAttach_OutputFilesExistButLive_AttachesNotLeftover` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
+| `TestAttach_AnchorDefaulting` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestAttach_KeepPane` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
+| `TestAttach_WaitRunsAgainstPersistedEventsPath` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
+| `TestAttach_DeadlineRestartedAtAttachTime` | `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
+| `TestAttach_OffsetStartsAtZero` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
+| `TestAttach_StartedSeededTrue` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestAttach_LaterGoesNotLive_StillClassifiesDone` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
+| `TestCompletionSignal_NegativeVerdictReturnSites` | `TestProviderSeamImportRule` | yes |
+| `TestCompletionSignal_FileContractCallSites` | `TestProviderSeamImportRule` | yes |
+| `TestGateList_SecondEntryRunsOnlyAfterFirstPasses` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGateList_FailPassFailStartsBudgetAfresh` | `TestGateList_EveryStateAndAggregateAttempts` | no |
+| `TestGateList_FinalArrivalAtFailingPassOnCapEntry` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar` | yes |
+| `TestGateList_ExhaustionWithoutPassOnCapFinalizesFailed` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGateList_PassOnCapLetsThroughWithoutRunningAgain` | `TestGateList_EveryStateAndAggregateAttempts` | no |
+| `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | `TestGateList_EveryStateAndAggregateAttempts` | no |
+| `TestGateList_EveryStateAndAggregateAttempts` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGateList_PassOnCapLetsThroughWithoutRunningAgain`, `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | yes |
+| `TestGateList_EmptyListLeavesResultGateNil` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestGateList_OnlyOffEntriesYieldPassedOutcome` | `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled` | yes |
+| `TestGateList_SecondEntryClosureErrorStaysInfrastructureError` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGateTerminal_TerminalOnPassedOrPendingOrPassOnCapIsGateError`, `TestGate_ClosureError` | yes |
+| `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
+| `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates`, `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage` | no |
+| `TestGatePending_RejectAfterPendingRepromptsOnce` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
+| `TestGatePending_VerdictBetweenTicksIsNotMasked` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal` | yes |
+| `TestGatePending_ContractViolationsAreErrors` | `TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal` | yes |
+| `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates` | `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks` | `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal` | `TestGatePending_ContractViolationsAreErrors` | no |
+| `TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGate_PassesOnFirstDone` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGate_FailsOnceThenPassesOnNextTurn` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGate_FailsEveryAttempt_ExhaustsBudget` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGate_ClosureError` | `TestGateList_SecondEntryClosureErrorStaysInfrastructureError` | no |
+| `TestGate_NoLiveSessionDonePaths` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestGateList_FailPassFailStartsBudgetAfresh`, `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
+| `TestGate_RunDeadlineExpires_NoLiveSession` | `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal`, `TestGateList_FailPassFailStartsBudgetAfresh`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline` | yes |
+| `TestGate_FinishedDespiteMechanismFailure_NoLiveSession` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | yes |
+| `TestGate_EvaluateOncePerAttempt_Memoized` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar` | `TestGateList_FinalArrivalAtFailingPassOnCapEntry`, `TestGateList_EveryStateAndAggregateAttempts` | no |
+| `TestGate_DeadlineExpiresBetweenAttempts` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | yes |
+| `TestGate_ZeroGateSpec_RegressionGuard` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestAttachGated_ThreadsGateThroughReconstructAndWait` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestAttach_LeavesResultGateNil` | `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan` | yes |
+| `TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
+| `TestRunnerStart_NoResumeSessionID_NeverCallsCheck` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses` | yes |
+| `TestNewRunner_AcceptsHubGeometryShapes` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
+| `TestRun_RunDir_ReturnsStartCreatedDirectory` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses`, `TestStartup_TrustPromptThenReady` | yes |
+| `TestRunner_Start_HappyPath_WiresAddSpecVerbatim` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses` | yes |
+| `TestRunner_Start_ReadyStartProbesExactlyOnce` | `TestStartup_TrustPromptThenReady`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
+| `TestRunner_Start_PersistsRunningOutcome` | `TestStartup_TrustPromptThenReady`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
+| `TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir` | `TestRunner_Start_StrandTeardownFailure_LogsThroughLogger` | yes |
+| `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
+| `TestRunner_Start_SweepErrorDoesNotBlockStart` | `TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError` | yes |
+| `TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError` | `TestRunner_Start_SweepErrorDoesNotBlockStart` | no |
+| `TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState` | `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`, `TestStartup_SkillSkipCauses`, `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
+| `TestRun_Interrupt_PlaysEscape` | `TestRun_Interrupt_ReadyProbeRetriesTransientBoot` | yes |
+| `TestRun_Send_PlaysEscThenTextWithSubmit` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds` | `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery` | yes |
+| `TestRun_Send_NeverDelivered_ReportsHonestFailure` | `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery`, `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure` | yes |
+| `TestRun_Send_PreexistingText_RequiresNewOccurrence` | `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure`, `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery` | yes |
+| `TestRun_Interrupt_ReadyProbeRetriesTransientBoot` | `TestRun_Interrupt_PlaysEscape`, `TestRun_InterruptAndSend_RefuseAgentlessShellPane` | no |
+| `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure` | `TestRun_Send_PreexistingText_RequiresNewOccurrence`, `TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay` | no |
+| `TestScanPaneForNeedle` | `TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay` | yes |
+| `TestRunDirRoot_DefaultUsesDotLyxShuttle` | `TestGateList_FailPassFailStartsBudgetAfresh` | yes |
+| `TestRunDirRoot_AbsoluteUsedVerbatim` | `TestAttach_AskingReentryStartsAtRecordedOffset` | yes |
+| `TestRunState_RoundTrip` | `TestStartup_RemoveStrandFailureDuringTeardown` | yes |
 | `TestLoadRunState_AbsentReturnsNotFound` | `TestAttach_ReedStateGate_AbsentOrUnreadable` | yes |
 | `TestFindRunByStrand_Hit` | `TestRunner_ClearSession_PlaysScriptedSequence` | yes |
 | `TestFindRunByStrand_Miss` | `TestRunner_ClearSession_UnknownGUID` | yes |
-| `TestSweepOrphans_AgeGuardAndLiveGuid` | `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates`, `TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld` | yes |
+| `TestSweepOrphans_AgeGuardAndLiveGuid` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld` | yes |
 | `TestSweepOrphans_MissingRunJSONRemovedOnlyWhenOld` | `TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest`, `TestSweepOrphans_AgeGuardAndLiveGuid` | no |
+| `TestProviderSeamImportRule` | `TestCompletionSignal_FileContractCallSites` | no |
+| `TestRunner_ReadEvents_AbsentFileKeepsOffset` | `TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun` | yes |
 | `TestSpec_Validate_EmptyPrompt` | `TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall` | yes |
 | `TestSpec_Validate_RelativeOutputFilesResolveToAbsolute` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
-| `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | `TestRun_Wait_StartedRun_SkipsStartupProbe` | yes |
+| `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | yes |
 | `TestSpec_Validate_TimeoutDefaultsFromConfig` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
 | `TestSpec_Validate_TimeoutPassThroughWhenSet` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
 | `TestSpec_Validate_AnchorDefaultsToBelowParent` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
@@ -4564,192 +4327,60 @@ No test lacks coverage.
 | `TestSpec_Validate_AwaitOperatorUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
 | `TestSpec_Validate_NameOverrideUntouched` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
 | `TestSpec_Validate_AnchorPassThroughWhenSet` | `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
+| `TestStartup_TrustPromptThenReady` | `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_ProbeCadenceMatchesWait`, `TestStartup_SkillSkipCauses`, `TestRunner_Start_ReadyStartProbesExactlyOnce`, `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | no |
+| `TestStartup_ReadyOnFirstProbe` | `TestStartup_SkillSkipCauses` | yes |
+| `TestStartup_PaneNotLiveMidStartup` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
+| `TestStartup_UndismissableGateUntilWindowExpires` | `TestStartup_PaneNotLiveMidStartup`, `TestStartup_TrustPromptThenReady`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | no |
+| `TestStartup_FileContractSatisfiedWhilePending` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_TrustPromptThenReady`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
+| `TestStartup_OneTransientStatusErrorThenReady` | `TestStartup_TrustPromptThenReady`, `TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent` | yes |
+| `TestStartup_ReedNeverTracksStrand` | `TestStartup_RunGated_MechanismFailure`, `TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles` | yes |
+| `TestStartup_ProbeCadenceMatchesWait` | `TestStartup_TrustPromptThenReady` | yes |
+| `TestStartup_CaptureAlwaysErroringUntilWindowExpires` | `TestStartup_UndismissableGateUntilWindowExpires`, `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | no |
+| `TestStartup_KeepPaneOnNotReadyStart` | `TestStartup_RemoveStrandFailureDuringTeardown` | yes |
+| `TestStartup_RunGated_NotReady` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestStartup_RunDeadlineShorterThanWindow_NeverReady` | yes |
+| `TestStartup_FailedStartThenAttach_RespawnEligible` | `TestStartup_RemoveStrandFailureDuringTeardown`, `TestAttach_ZeroTimeoutUsesConfigDefault`, `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge` | yes |
+| `TestStartup_SkillsLoadInOrderBeforePrompt` | `TestStartup_SkillSkipCauses`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal` | yes |
+| `TestStartup_NoSkillsNoPromptLineSendsNothing` | `TestStartup_SkillSkipCauses`, `TestRunnerStart_Resume_WarningReachesRunAndRunStarts` | yes |
+| `TestPollInterval_FloorsNonPositive` | `TestAttach_AskingReentryStartsAtRecordedOffset`, `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions` | yes |
+| `TestRun_Wait_LogsTeardownThroughLogger` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_DoneHappyPath_CleansUp` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_DoneWithKeepPane_SkipsCleanup` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_Asking_CarriesMessageKeepsStrand` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_LiveAsk_DoneFirstStillWins` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_Died_ViaStatusNotLive` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_UntrackedStrand_OutputFilesStillWin` | `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | `TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin` | no |
+| `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestGatePending_FailedSendWarnsAndStaysPending`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
+| `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_UndismissableGateUntilWindowExpires` | yes |
+| `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_CaptureAlwaysErroringUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
+| `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline` | yes |
+| `TestRun_Wait_StartedRun_SkipsStartupProbe` | `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestStartup_SkillSkipCauses`, `TestStartup_TrustPromptThenReady`, `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
+| `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins` | `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | `TestGate_FinishedDespiteMechanismFailure_NoLiveSession`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | no |
+| `TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`, `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`, `TestStartup_UndismissableGateUntilWindowExpires`, `TestStartup_TrustPromptThenReady` | yes |
+| `TestRun_Wait_Timeout_KeepsStrand` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone` | `TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath` | yes |
+| `TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath` | `TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone` | no |
+| `TestRun_Wait_MultiStopOffsetTracking` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins` | yes |
+| `TestRun_Wait_EventsOffsetResilience_PartialLine` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly` | yes |
+| `TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied` | `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin` | `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone` | yes |
+| `TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome` | `TestRun_Wait_AwaitOperator_AskingNonTerminal`, `TestAttach_ZeroTimeoutUsesConfigDefault` | yes |
+| `TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup` | `TestAttach_OutputFileMatching_ResolvedAbsoluteSet`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestPollEventsTick_WaitingIsStillRunning` | `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestPollEventsTick_StopAfterWaitingClassifiesAsking` | `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound`, `TestRun_Wait_AwaitOperator_AskingNonTerminal` | yes |
+| `TestPollEventsTick_WaitingWithOutputFilesIsDone` | `TestGateList_FailPassFailStartsBudgetAfresh`, `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound` | yes |
+| `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival` | `TestGatePending_FailedSendWarnsAndStaysPending`, `TestWait_GatedShellExpiryEvaluatesGate` | yes |
+| `TestPollEventsTick_ShellExpiresAfterBound` | `TestWait_GatedShellExpiryEvaluatesGate` | yes |
+| `TestPollEventsTick_ShellExpiryWithMissingOutputIsAsking` | `TestPollEventsTick_LaterTurnEndListingExpiredShellEndsWithoutNewWait` | yes |
+| `TestWait_GatedShellExpiryEvaluatesGate` | `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival`, `TestGatePending_RejectAfterPendingRepromptsOnce`, `TestPollEventsTick_ShellExpiresAfterBound` | no |
 | `TestLoadConfig_TemplateDefaultsResolve` | `TestLoadConfig_BackgroundShellWaitMin` | yes |
 | `TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition` | `TestLoadConfig_BackgroundShellWaitMin` | yes |
 
-No coverage:
-
-- `TestDispositionCandidate_AskingReentry`: unclassifiable call
-- `TestAttach_AskingReentryStartsAtRecordedOffset`: unclassifiable call
-- `TestAttach_NoCandidates`: unclassifiable call
-- `TestAttach_OutcomeDisposition`: unclassifiable call
-- `TestAttach_Multiplicity`: unclassifiable call
-- `TestAttach_DeadPane`: unclassifiable call
-- `TestAttach_OutputFilesMismatch`: unclassifiable call
-- `TestAttach_UntrackedStrand_AgeRule`: unclassifiable call
-- `TestAttach_BindingClearedStrand_AgeRule`: unclassifiable call
-- `TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge`: unclassifiable call
-- `TestAttach_ReedStateGate_AbsentOrUnreadable`: unclassifiable call
-- `TestAttach_StatusError`: unclassifiable call
-- `TestAttach_NegativeTimeout`: unclassifiable call
-- `TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn`: unclassifiable call
-- `TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors`: unclassifiable call
-- `TestAttach_OutputFilesExistButLive_AttachesNotLeftover`: unclassifiable call
-- `TestAttach_AnchorDefaulting`: unclassifiable call
-- `TestAttach_KeepPane`: unclassifiable call
-- `TestAttach_WaitRunsAgainstPersistedEventsPath`: unclassifiable call
-- `TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan`: unclassifiable call
-- `TestAttach_DeadlineRestartedAtAttachTime`: unclassifiable call
-- `TestAttach_ZeroTimeoutUsesConfigDefault`: unclassifiable call
-- `TestAttach_OutputFileMatching_ResolvedAbsoluteSet`: unclassifiable call
-- `TestAttach_OffsetStartsAtZero`: unclassifiable call
-- `TestAttach_StartedSeededTrue`: unclassifiable call
-- `TestAttach_LaterGoesNotLive_StillClassifiesDone`: unclassifiable call
-- `TestAttach_ReedStateUnavailable_HarvestsFinishedRun`: unclassifiable call
-- `TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun`: unclassifiable call
-- `TestCompletionSignal_NegativeVerdictReturnSites`: spawns
-- `TestCompletionSignal_FileContractCallSites`: spawns
-- `TestGateList_SecondEntryRunsOnlyAfterFirstPasses`: unclassifiable call
-- `TestGateList_FailPassFailStartsBudgetAfresh`: unclassifiable call
-- `TestGateList_FinalArrivalAtFailingPassOnCapEntry`: unclassifiable call
-- `TestGateList_ExhaustionWithoutPassOnCapFinalizesFailed`: unclassifiable call
-- `TestGateList_PassOnCapLetsThroughWithoutRunningAgain`: unclassifiable call
-- `TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled`: unclassifiable call
-- `TestGateList_EveryStateAndAggregateAttempts`: unclassifiable call
-- `TestGateList_EmptyListLeavesResultGateNil`: unclassifiable call
-- `TestGateList_OnlyOffEntriesYieldPassedOutcome`: unclassifiable call
-- `TestGateList_SecondEntryClosureErrorStaysInfrastructureError`: unclassifiable call
-- `TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage`: unclassifiable call
-- `TestGatePending_FailedSendWarnsAndStaysPending`: unclassifiable call
-- `TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal`: unclassifiable call
-- `TestGatePending_RejectAfterPendingRepromptsOnce`: unclassifiable call
-- `TestGatePending_VerdictBetweenTicksIsNotMasked`: unclassifiable call
-- `TestGatePending_ContractViolationsAreErrors`: unclassifiable call
-- `TestAttachGated_PendingReplayedDoneThenPollTickReevaluates`: unclassifiable call
-- `TestAttachGated_PendingWithoutTextReevaluatesOnPollTicks`: unclassifiable call
-- `TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal`: unclassifiable call
-- `TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal`: unclassifiable call
-- `TestGateTerminal_TerminalFailureFinalizesWithoutReprompt`: unclassifiable call
-- `TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts`: unclassifiable call
-- `TestGateTerminal_TerminalOnPassedOrPendingOrPassOnCapIsGateError`: unclassifiable call
-- `TestGate_PassesOnFirstDone`: unclassifiable call
-- `TestGate_FailsOnceThenPassesOnNextTurn`: unclassifiable call
-- `TestGate_FailsEveryAttempt_ExhaustsBudget`: unclassifiable call
-- `TestGate_ClosureError`: unclassifiable call
-- `TestGate_NoLiveSessionDonePaths`: unclassifiable call
-- `TestGate_RunDeadlineExpires_NoLiveSession`: unclassifiable call
-- `TestGate_FinishedDespiteMechanismFailure_NoLiveSession`: unclassifiable call
-- `TestGate_EvaluateOncePerAttempt_Memoized`: unclassifiable call
-- `TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar`: unclassifiable call
-- `TestGate_DeadlineExpiresBetweenAttempts`: unclassifiable call
-- `TestGate_ZeroGateSpec_RegressionGuard`: unclassifiable call
-- `TestAttachGated_ThreadsGateThroughReconstructAndWait`: unclassifiable call
-- `TestAttach_LeavesResultGateNil`: unclassifiable call
-- `TestPosixPath`: unclassifiable call
-- `TestRunner_Inject_HappyPath_PlaysEveryInputInOrder`: unclassifiable call
-- `TestRunner_Inject_DeadStrand_Refuses`: unclassifiable call
-- `TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed`: unclassifiable call
-- `TestRunner_Inject_EmptyInputs_IsARejectedNoOp`: unclassifiable call
-- `TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare`: unclassifiable call
-- `TestRunnerStart_Resume_RefusalLeavesNoRunDirOrStrand`: unclassifiable call
-- `TestRunnerStart_Resume_WarningReachesRunAndRunStarts`: unclassifiable call
-- `TestRunnerStart_Resume_EngineWithoutCapabilityRefuses`: unclassifiable call
-- `TestRunnerStart_NoResumeSessionID_NeverCallsCheck`: unclassifiable call
-- `TestNewRunner_RefusesUnusableToldPaths`: unclassifiable call
-- `TestNewRunner_AcceptsHubGeometryShapes`: unclassifiable call
-- `TestNewDetachedRunner_RefusesUnusableToldPaths`: unclassifiable call
-- `TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions`: unclassifiable call
-- `TestRun_RunDir_ReturnsStartCreatedDirectory`: unclassifiable call
-- `TestRunner_Start_HappyPath_WiresAddSpecVerbatim`: unclassifiable call
-- `TestRunner_Start_ReadyStartProbesExactlyOnce`: unclassifiable call
-- `TestRunner_Start_PersistsRunningOutcome`: unclassifiable call
-- `TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall`: unclassifiable call
-- `TestRunner_Start_AddStrandFailure_CleansRunDir`: unclassifiable call
-- `TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir`: unclassifiable call
-- `TestRunner_Start_StrandTeardownFailure_LogsThroughLogger`: unclassifiable call
-- `TestRunner_Start_SweepErrorDoesNotBlockStart`: unclassifiable call
-- `TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError`: unclassifiable call
-- `TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState`: unclassifiable call
-- `TestRun_Interrupt_PlaysEscape`: unclassifiable call
-- `TestRun_Send_RejectsNewlines`: unclassifiable call
-- `TestRun_Send_RejectsEmptyOrWhitespace`: unclassifiable call
-- `TestRun_Send_PlaysEscThenTextWithSubmit`: unclassifiable call
-- `TestRun_Send_SwallowedFirstAttempt_ReplaySucceeds`: unclassifiable call
-- `TestRun_Send_NeverDelivered_ReportsHonestFailure`: unclassifiable call
-- `TestRun_Send_PreexistingText_RequiresNewOccurrence`: unclassifiable call
-- `TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery`: unclassifiable call
-- `TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand`: unclassifiable call
-- `TestRun_InterruptAndSend_RefuseAgentlessShellPane`: unclassifiable call
-- `TestRun_Interrupt_ReadyProbeRetriesTransientBoot`: unclassifiable call
-- `TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay`: unclassifiable call
-- `TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure`: unclassifiable call
-- `TestScanPaneForNeedle`: unclassifiable call
-- `TestProviderSeamImportRule`: spawns
-- `TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly`: unclassifiable call
-- `TestRunner_ReadEvents_AbsentFileKeepsOffset`: unclassifiable call
-- `TestRunner_ReadEvents_UnknownGUID`: unclassifiable call
-- `TestRunner_SessionMethods_ErrorOnPlainEngine`: unclassifiable call
-- `TestRunner_ContextTokens_Delegates`: unclassifiable call
-- `TestRunner_SessionIdle_DeadStrandErrors`: unclassifiable call
-- `TestRunner_SessionIdle_ReturnsScriptedClassification`: unclassifiable call
-- `TestRunner_ClearSession_PlaysScriptedSequence`: unclassifiable call
-- `TestRunner_CompactSession_PlaysSequenceForFocus`: unclassifiable call
-- `TestRunner_CompactSession_RefusesMultiLineFocus`: unclassifiable call
-- `TestRunner_ClearSession_UnknownGUID`: unclassifiable call
-- `TestStartup_TrustPromptThenReady`: unclassifiable call
-- `TestStartup_ReadyOnFirstProbe`: unclassifiable call
-- `TestStartup_PaneNotLiveMidStartup`: unclassifiable call
-- `TestStartup_UndismissableGateUntilWindowExpires`: unclassifiable call
-- `TestStartup_FileContractSatisfiedWhilePending`: unclassifiable call
-- `TestStartup_OneTransientStatusErrorThenReady`: unclassifiable call
-- `TestStartup_StatusErrorsExhaustRetryCap_NoOutputFiles`: unclassifiable call
-- `TestStartup_StatusErrorsExhaustRetryCap_OutputFilePresent`: unclassifiable call
-- `TestStartup_ReedNeverTracksStrand`: unclassifiable call
-- `TestStartup_TickCap`: unclassifiable call
-- `TestStartupTickCap`: unclassifiable call
-- `TestStartup_ProbeCadenceMatchesWait`: unclassifiable call
-- `TestStartup_CaptureAlwaysErroringUntilWindowExpires`: unclassifiable call
-- `TestStartup_RemoveStrandFailureDuringTeardown`: unclassifiable call
-- `TestStartup_KeepPaneOnNotReadyStart`: unclassifiable call
-- `TestStartup_RunGated_NotReady`: unclassifiable call
-- `TestStartup_RunGated_MechanismFailure`: unclassifiable call
-- `TestStartup_RunDeadlineShorterThanWindow_NeverReady`: unclassifiable call
-- `TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline`: unclassifiable call
-- `TestStartup_FailedStartThenAttach_RespawnEligible`: unclassifiable call
-- `TestPollInterval_FloorsNonPositive`: unclassifiable call
-- `TestRun_Wait_MechanismFailure_KeepsRunIdentity`: unclassifiable call
-- `TestRun_Wait_LogsTeardownThroughLogger`: unclassifiable call
-- `TestRun_Wait_DoneHappyPath_CleansUp`: unclassifiable call
-- `TestRun_Wait_DoneWithKeepPane_SkipsCleanup`: unclassifiable call
-- `TestRun_Wait_Asking_CarriesMessageKeepsStrand`: unclassifiable call
-- `TestRun_Wait_AwaitOperator_AskingNonTerminal`: unclassifiable call
-- `TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking`: unclassifiable call
-- `TestRun_Wait_LiveAsk_DoneFirstStillWins`: unclassifiable call
-- `TestRun_Wait_Died_ViaStatusNotLive`: unclassifiable call
-- `TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied`: unclassifiable call
-- `TestRun_Wait_UntrackedStrand_OutputFilesStillWin`: unclassifiable call
-- `TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone`: unclassifiable call
-- `TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath`: unclassifiable call
-- `TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns`: unclassifiable call
-- `TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied`: unclassifiable call
-- `TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout`: unclassifiable call
-- `TestRun_Wait_StartedRun_SkipsStartupProbe`: unclassifiable call
-- `TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins`: unclassifiable call
-- `TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins`: unclassifiable call
-- `TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded`: unclassifiable call
-- `TestRun_Wait_Timeout_KeepsStrand`: unclassifiable call
-- `TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone`: unclassifiable call
-- `TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath`: unclassifiable call
-- `TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome`: unclassifiable call
-- `TestRun_Wait_MultiStopOffsetTracking`: unclassifiable call
-- `TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry`: unclassifiable call
-- `TestRun_Wait_EventsOffsetResilience_PartialLine`: unclassifiable call
-- `TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied`: unclassifiable call
-- `TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin`: unclassifiable call
-- `TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome`: unclassifiable call
-- `TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup`: unclassifiable call
-- `TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult`: unclassifiable call
-- `TestPollEventsTick_WaitingIsStillRunning`: unclassifiable call
-- `TestPollEventsTick_StopAfterWaitingClassifiesAsking`: unclassifiable call
-- `TestPollEventsTick_WaitingWithOutputFilesIsDone`: unclassifiable call
-- `TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival`: unclassifiable call
-- `TestPollEventsTick_ShellExpiresAfterBound`: unclassifiable call
-- `TestPollEventsTick_ShellExpiryWithMissingOutputIsAsking`: unclassifiable call
-- `TestPollEventsTick_ForkOutstandingKeepsWaitingPastBound`: unclassifiable call
-- `TestPollEventsTick_AwaitedShellKeepsWaitingPastBound`: unclassifiable call
-- `TestPollEventsTick_LaterTurnEndListingExpiredShellEndsWithoutNewWait`: unclassifiable call
-- `TestWait_GatedShellExpiryEvaluatesGate`: unclassifiable call
-- `TestLoadConfig_BackgroundShellWaitMin`: unclassifiable call
+No test lacks coverage.
 
 ## internal/shuttleengine/claudeengine
 
@@ -5415,30 +5046,50 @@ No coverage:
 
 ## internal/websterengine
 
-455 tests, wall 6.43s, serial 7.31s.
+456 tests, wall 5.49s, serial 7.80s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
+| `TestFirstFreeArchivePath_ReturnsBareCandidateWhenFree` | `TestFailBatch_RecordsSuspectBlobs` | yes |
+| `TestFirstFreeArchivePath_CollisionAppendsSuffix` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestArchiveStateFile_RenamesAndPreservesContent` | `TestRun_FreshContractFileEvidence` | yes |
+| `TestArchiveReportsDir_ArchivesExistingContentAndRecreatesEmpty` | `TestRun_FreshContractFileEvidence` | yes |
 | `TestArchiveRunRecord_MovesWholeRecordAndClearsPrompts` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
 | `TestArchiveRunRecord_SecondCallIsNoOp` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
 | `TestArchiveRunRecord_AbsentWebsterDirIsNoOp` | `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
-| `TestForkWarnings` | `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_NoReportKeepsNeverReturnedWarning` | yes |
-| `TestNewTranscripts` | `TestParentMergeBetweenForkCommitAndRecordBatch` | yes |
-| `TestClassifyAttribution` | `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
-| `TestFindingIdentity_ParentKeyPerSession` | `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch`, `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
-| `TestRecordFailedFinding_DispositionsWithoutWarning` | `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch` | yes |
-| `TestRecordedAuditWarnings_BatchesThenRunLevel` | `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`, `TestRecordBatch_DriftBlocksOnDeletedStillReferenced` | yes |
-| `TestAuditLedger_StateRoundTrip` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestRenderCardGates_OneLinePerCard` | `TestBeginBatch_PromptFileCarriesCardGateCommand`, `TestCardGateCommand` | yes |
-| `TestClassify_ReportPresentShortCircuitsToTerminal` | `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath` | yes |
-| `TestClassify_ReportPresentFailedIsStuck` | `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath` | yes |
+| `TestCheckFork` | `TestRecordBatch_ForgedTerminalRecordFails`, `TestRun_ForkStateWriteAtRunExit`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot`, `TestCheckParent`, `TestRefScannerMatches`, `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRun_DoneWithNestedAgentInFixerForkWarns` | yes |
+| `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | `TestCheckFork` | no |
+| `TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | `TestCheckParent` | yes |
+| `TestForkWarnings` | `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_NoReportKeepsNeverReturnedWarning` | no |
+| `TestNewTranscripts` | `TestRecordBatch_ForgedTerminalRecordFails` | yes |
+| `TestSettleRetry_ReturnsEarlyOnLaterTick` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
+| `TestSettleRetry_WindowExhausted` | `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
+| `TestSettleRetry_FetchErrorPropagates` | `TestRecordBatch_MissingSessionTranscriptArchivesReport` | yes |
+| `TestClassifyAttribution` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
+| `TestFindingIdentity_ParentKeyPerSession` | `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | yes |
+| `TestRecordFailedFinding_DispositionsWithoutWarning` | `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
+| `TestRecordedAuditWarnings_BatchesThenRunLevel` | `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`, `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | yes |
+| `TestAuditLedger_StateRoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestFailBatch_ArchivesReportAndFreesLivePath` | `TestFailBatch_RecordsSuspectBlobs` | yes |
+| `TestFailBatch_NoReportArchivesNothing` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestFailBatch_RecordsTerminalFailed` | `TestFailBatch_RecordsSuspectBlobs` | yes |
+| `TestFailBatch_TranscriptsAppendedOnce` | `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
+| `TestBatchFailedError_TextAndSentinel` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestRenderCardGates_OneLinePerCard` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestCardGateCommand` | yes |
+| `TestClassify_ReportPresentShortCircuitsToTerminal` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestClassify_ReportPresentFailedIsStuck` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
 | `TestClassify_NoReport_TimeoutIsDeadTimeout` | `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead` | yes |
-| `TestClassify_NoReport_StillRunning` | `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath` | yes |
-| `TestPendingPathsWayForward_ContractPaths` | `TestPendingFindingsText_BoardModelFindingsGolden`, `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep`, `TestAcceptPendingAudit_MasterWroteAfterForkAccepts` | yes |
-| `TestDistill_StatusMapping` | `TestParentMergeBetweenForkCommitAndRecordBatch` | yes |
-| `TestDistill_CarriesHeadSHAAndDeviations` | `TestParentMergeBetweenForkCommitAndRecordBatch` | yes |
-| `TestDistill_LargeDeviationListNeverChangesStatus` | `TestParentMergeBetweenForkCommitAndRecordBatch` | yes |
-| `TestFindingsClause_NamesAPathTheDetailLacksOnce` | `TestRun_PendingPlanPathNamesRestorePlan` | yes |
+| `TestClassify_NoReport_StillRunning` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestAcceptPendingAudit_ContractFilesAbsentAccepts` | `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRun_FreshContractFileEvidence`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
+| `TestAcceptPendingAudit_MasterWroteAfterForkAccepts` | `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
+| `TestPendingPathsWayForward_ContractPaths` | `TestPendingFindingsText_BoardModelFindingsGolden`, `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep`, `TestAcceptPendingAudit_MasterWroteAfterForkAccepts` | no |
+| `TestDistill_StatusMapping` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestDistill_CarriesHeadSHAAndDeviations` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestDistill_LargeDeviationListNeverChangesStatus` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestPendingFindingsText_BoardModelFindingsGolden` | `TestRun_ForkStateWriteAtRunExit`, `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestPendingPathsWayForward_ContractPaths`, `TestRun_FreshContractFileEvidence`, `TestUncheckableReason` | yes |
+| `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep` | `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_ForkStateWriteAtRunExit`, `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`, `TestPendingPathsWayForward_ContractPaths` | yes |
+| `TestPendingFindingsText_PathlessFindingTakesTheResetRoute` | `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
+| `TestFindingsClause_NamesAPathTheDetailLacksOnce` | `TestRun_PendingPlanPathNamesRestorePlan` | no |
 | `TestFingerprint_IdenticalDirsMatch` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
 | `TestFingerprint_ChangesOnRename` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
 | `TestFingerprint_ChangesOnByteEdit` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
@@ -5446,14 +5097,24 @@ No coverage:
 | `TestFingerprint_IgnoresNonMarkdownAndSubdirs` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
 | `TestFingerprint_IgnoresTheAmendmentLog` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
 | `TestRestampFingerprint_RebaselinesTheStalenessGuard` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
-| `TestRestampFingerprint_MovesBegunCardHashButRestampBaselineDoesNot` | `TestBeginBatch_RecordsCardSet` | yes |
-| `TestPlanEditError_NilOnUnchangedPlanAndNamesWayForwardAfterEdit` | `TestRebaseline_ForeignEditToBegunCardStaysRefused` | yes |
+| `TestRestampFingerprint_MovesBegunCardHashButRestampBaselineDoesNot` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
+| `TestPlanEditError_NilOnUnchangedPlanAndNamesWayForwardAfterEdit` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330` | yes |
+| `TestHeadSHA_ReturnsHEAD` | `TestAcceptPendingAudit_AcceptsAfterHeadReset` | yes |
+| `TestDirty_TrueAndFalse` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330` | yes |
+| `TestRefuseMidMerge` | `TestRecordBatch_MergeInProgressRefusedThenSucceeds` | yes |
+| `TestRefuseMidMerge_LinkedWorktree` | `TestRecordBatch_MergeInProgressRefusedThenSucceeds` | yes |
+| `TestOtherWorktrees` | `TestClassifyViolation` | yes |
 | `TestParseOutcome_MissingFile` | `TestRunInFlight` | yes |
+| `TestArchiveStaleOutcome_AbsentFileIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestArchiveStaleOutcome_RenamesAndPreservesContent` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
+| `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
 | `TestStorePlanBaseline_ContentAddressed` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved` | yes |
 | `TestRestorePlan_NothingChanged` | `TestRestorePlan_RestoresEditedAndRemovesUnrecorded` | yes |
+| `TestPollUntilTerminal_TerminalMidWaitReturnsEarly` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestPollUntilTerminal_DeadlineReturnsRunning` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
 | `TestMasterPlanDirDisplay` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
 | `TestRenderCardPointers_ReRootsOntoPlanDirDisplay` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved` | yes |
-| `TestRenderProgress_NilBatchStateIsSkippedNotPanicked` | `TestRun_DoneWithUnrecordedBatchIsHardError` | yes |
+| `TestRenderProgress_NilBatchStateIsSkippedNotPanicked` | `TestRun_WayForward_RunExitRefusals` | yes |
 | `TestReport_RoundTrip_OK_EmptyDeviations` | `TestReport_RoundTrip_FAILED_PopulatedDeviations` | no |
 | `TestReport_RoundTrip_FAILED_PopulatedDeviations` | `TestReport_RoundTrip_OK_EmptyDeviations` | yes |
 | `TestReportFileName` | `TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses` | yes |
@@ -5461,373 +5122,267 @@ No coverage:
 | `TestParseReport_RejectsBadStatus` | `TestRecordBatch_MalformedReportYAMLErrors` | yes |
 | `TestParseReport_RejectsMalformedYAML` | `TestParseReport_RejectsUnknownKey` | yes |
 | `TestParseReport_RejectsEmptyFile` | `TestParseReport_RejectsUnknownKey` | yes |
-| `TestParseReport_MissingFile` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes` | yes |
+| `TestParseReport_MissingFile` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
+| `TestLoadRunWrites_MergesEverySessionsEvents` | `TestRecoverSpawnOrAttach_ContractFileEvidence` | yes |
+| `TestLoadRunWrites_SessionRecordedTwiceAuditedOnce` | `TestPlanReset_OwnPathsHoldSucceededWriteAndOmitFailedOne` | yes |
 | `TestStrandLive` | `TestRemoveStrandIfLive` | yes |
+| `TestCheckRecoveredSuspects_EmptyStartHoldsNothing` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestCheckSuspectPaths` | yes |
+| `TestRunEvidenceBases_PicksByAncestry` | `TestAcceptPendingAudit_UsesExecutionOrderHead`, `TestAcceptPendingAudit_RefusesMissingCommit`, `TestRun_FabricReferenceInFixerForkIsStuck` | yes |
+| `TestVerifyGate_FlakyFailurePassesOnRerunWithNote` | `TestRun_FlakyVerifyKeepsDoneWithWarning` | yes |
+| `TestVerifyGate_FailedEvaluationWritesReport` | `TestRun_VerifyGateExhaustedEndsStuck`, `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
+| `TestVerifyGate_DirtyFailureRecordsPreFixHead` | `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses`, `TestRun_VerifyGateExhaustedEndsStuck` | yes |
+| `TestVerifyGate_PreFixHeadPersistence` | `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
+| `TestVerifyGate_RejectedFixCommitFailsTerminal` | `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal` | yes |
+| `TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead` | `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal` | yes |
+| `TestCardHint_NamesCardsThatTouchedAFailingPackage` | `TestRun_VerifyGateExhaustedEndsStuck` | yes |
 | `TestVerifyGateReport_RoundTrip` | `TestRun_VerifyGateExhaustedEndsStuck` | yes |
+| `TestParseVerifyFailures_Package` | `TestParseVerifyFailures` | yes |
 | `TestWebsterGeometryHelpers` | `TestWebsterGeometryHelpers_SubpathAnchored` | yes |
 | `TestWebsterGeometryHelpers_SubpathAnchored` | `TestWebsterGeometryHelpers` | no |
 | `TestWebsterGeometryHelpers_ToldDirectory` | `TestWebsterGeometryHelpers_SubpathAnchored` | yes |
 | `TestAwaitBatch_ReportAlreadyPresentReturnsImmediately` | `TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow` | yes |
 | `TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow` | `TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses`, `TestAwaitBatch_ReportAlreadyPresentReturnsImmediately` | no |
+| `TestBeginBatch_FingerprintMismatch` | `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestBeginBatch_PromptFilePrevDigest` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestBeginBatch_StateUpdated` | `TestBeginBatch_ModelAssertion` | yes |
+| `TestBeginBatch_ReBeginKeepsStartSHA` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
+| `TestBeginBatch_RecordsCardSet` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
+| `TestBeginBatch_ReBeginKeepsAuditWarnings` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
+| `TestBeginBatch_ReBeginEmptyStartSHARecordsHead` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget` | yes |
+| `TestBeginBatch_CreatesReportsDir` | `TestBeginBatch_ModelAssertion` | yes |
+| `TestBeginBatch_PreExistingReportRefused` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_WayForward_ReportExistsIsRecorded` | yes |
+| `TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestBeginBatch_ReResolvesPlanAtDispatch` | yes |
+| `TestBeginBatch_WayForward_ReportExistsIsRecorded` | `TestBeginBatch_CreatesReportsDir`, `TestBeginBatch_PreExistingReportRefused` | no |
+| `TestBeginBatch_PromptFileCarriesCardGateCommand` | `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`, `TestBeginBatch_ModelAssertion` | yes |
 | `TestConfigTemplate_ParsesAsYAML` | `TestLoadConfig_BadRoleGrammarNamesTheKey` | yes |
 | `TestConfigTemplate_RoundTripsThroughLoadConfig` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults`, `TestLoadConfig_UninitializedFallsBackToTemplate` | yes |
 | `TestConfigTemplate_ContainsEveryConfigYAMLTag` | `TestLoadConfig_BadRoleGrammarNamesTheKey` | yes |
 | `TestLoadConfig_OverridesRoundTrip` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults`, `TestLoadConfig_UninitializedFallsBackToTemplate`, `TestResolveRoles_NoOversizedRole` | yes |
 | `TestLoadConfig_RetiredPollWaitKeyStillLoads` | `TestLoadConfig_ExplicitZeroKnobNamesTheKey`, `TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults` | yes |
+| `TestParentMergeBetweenForkCommitAndRecordBatch` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_VerifyGateExhaustedEndsStuck`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
 | `TestPause_RequestObserveClearCycle` | `TestPause_ClearIsIdempotent`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | no |
 | `TestPause_RequestIsIdempotent` | `TestBeginBatch_PauseSentinel` | yes |
 | `TestPause_ClearIsIdempotent` | `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestPause_RequestObserveClearCycle` | yes |
+| `TestRebaseline_ForeignEditAcceptedMidRun` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRebaseline_ForeignEditToBegunCardStaysRefused`, `TestRebaseline_RecordWithoutCardHashesComparesIDsOnly`, `TestBeginBatch_FingerprintMismatch` | no |
+| `TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb` | `TestRebaseline_RefusesChangedCardSet` | yes |
+| `TestRebaseline_LegacyRecordWithoutCardsAccepted` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestRebaseline_RefusesChangedBegunCardBody` | `TestRebaseline_ForeignEditToBegunCardStaysRefused` | no |
+| `TestRebaseline_AcceptsEditedUnbegunCard` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
+| `TestRebaseline_RecordWithoutCardHashesComparesIDsOnly` | `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestRebaseline_RefusesUnnamedEditedCard` | `TestRebaseline_RefusesEditedCardTheOperatorDidNotName` | no |
+| `TestRebaseline_RefusesEditedCardTheOperatorDidNotName` | `TestRebaseline_RefusesUnnamedEditedCard`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
+| `TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_RefusesChangedBegunCardBody` | yes |
+| `TestRebaseline_ForeignEditToBegunCardStaysRefused` | `TestRebaseline_RefusesChangedBegunCardBody`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards` | yes |
+| `TestRecordBatch_AuditsBracketOpeningSession` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
+| `TestRecordBatch_TranscriptAppearsOnLaterTick` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestRecordBatch_ZeroNewTranscriptsArchivesReport` | yes |
+| `TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
+| `TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
+| `TestRecordBatch_ReportPresentDropsNeverReturnedWarning` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestForkWarnings` | yes |
+| `TestRecordBatch_NoReportKeepsNeverReturnedWarning` | `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestForkWarnings` | yes |
+| `TestRecordBatch_ParentWriteOutsideWorktreeWarns` | `TestRecordBatch_RetryNeverDuplicatesWarning`, `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches`, `TestPersistRecoveryTerminal_PassesRederived`, `TestRecordBatch_ForkPlanWriteFailsBatch`, `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch`, `TestClassifyViolation` | no |
+| `TestRecordBatch_ForkNestedAgentWarnsWhenVerifyPasses` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRerunCardVerifies_AllPass` | yes |
+| `TestRecordBatch_MutatingFabricReferenceFailsBatch` | `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestRecordBatch_FabricReferenceRecordsUncheckable` | `TestRecordBatch_MutatingFabricReferenceFailsBatch` | no |
+| `TestRecordBatch_ScratchParentWriteRecordsUncheckable` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestUncheckableReason` | yes |
+| `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty` | `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch` | no |
+| `TestRecordBatch_RetryNeverDuplicatesWarning` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestRerunCardVerifies_AllPass` | yes |
+| `TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch` | yes |
+| `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty` | yes |
+| `TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch` | `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRun_DoneWithNestedAgentInFixerForkWarns` | yes |
+| `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches` | `TestRecordBatch_ParentWriteOutsideWorktreeWarns`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning` | yes |
+| `TestRecordBatch_ParentWriteToRunStateFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails` | yes |
+| `TestRecordBatch_ForkContractWriteFailsBatch` | `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_ForgedTerminalRecordFails`, `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot` | yes |
+| `TestRecordBatch_ForkPlanWriteFailsBatch` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRecoverSpawnOrAttach_ContractFileEvidence`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_ForkStateWriteAtRunExit`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_DoneWithNestedAgentInFixerForkWarns`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRecordBatch_FabricReferenceRecordsUncheckable` | yes |
+| `TestRecordBatch_Regression20260930_ForkAuditFalsePositive` | `TestRecoverSpawnOrAttach_RefusesUncheckableFindings`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_ForkStateWriteAtRunExit`, `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`, `TestRun_FabricReferenceInFixerForkIsStuck`, `TestRecordBatch_FabricReferenceRecordsUncheckable`, `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`, `TestRecordBatch_ForgedTerminalRecordFails` | yes |
+| `TestRecordBatch_RefusesPlanEditedSinceBegin` | `TestRecordBatch_RefusedForeignEditLeavesCardHashes` | no |
+| `TestRecordBatch_BindsHandleFromDeltaEndToEnd` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_RefusesPlanEditedSinceBegin` | yes |
+| `TestRecordBatch_ScopeGuardFindingsLandInWarnings` | `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`, `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift` | yes |
+| `TestRecordBatch_DriftBlocksOnDeletedStillReferenced` | `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`, `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock` | yes |
+| `TestRecordBatch_DoneChecksPassOnLandedCreate` | `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift`, `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks` | yes |
+| `TestRecordBatch_ParentMergeAfterForkCommit` | `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | yes |
+| `TestRecordBatch_TwoParentMergesAfterForkCommit` | `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | yes |
+| `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn` | `TestRecordBatch_ParentMergeAfterForkCommit`, `TestParentMergeBetweenForkCommitAndRecordBatch`, `TestRecordBatch_ScopeGuardFindingsLandInWarnings` | no |
+| `TestRecordBatch_RefusedForeignEditLeavesCardHashes` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts`, `TestRun_FreshDropsFindingsOnceReset`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`, `TestRecordBatch_RefusesPlanEditedSinceBegin` | yes |
+| `TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestRecoverBatch_DoneReportRefusedUnlessPriorDead` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient`, `TestRecoverBatch_WayForward_DoneReportRecordsInstead` | yes |
+| `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes` | no |
+| `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest` | `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | yes |
+| `TestRecoverBatch_ReportHeadSHAMismatchIsHardError` | `TestRecoverBatch_NonMergeCommitAfterReportHeadRefused` | no |
+| `TestRecoverBatch_NonMergeCommitAfterReportHeadRefused` | `TestRecoverBatch_ReportHeadSHAMismatchIsHardError`, `TestRecoverBatch_ParentMergeAfterReportHead` | yes |
+| `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | no |
+| `TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestRecoverSpawnOrAttach_RefusesUncheckableFindings` | `TestRecordBatch_Regression20260930_ForkAuditFalsePositive` | no |
+| `TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestRecoverSpawn_InheritsTheStuckForksStartSHA` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestRecoverSpawn_RecordsCardSet` | `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
+| `TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing` | `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient` | yes |
+| `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes`, `TestRecoverBatch_DoneReportRefusedUnlessPriorDead`, `TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing` | no |
+| `TestRecoverSpawnOrAttach_WayForward_MalformedReport` | `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRecordBatch_MalformedReportYAMLErrors` | yes |
+| `TestRecoverBatch_WayForward_DoneReportRecordsInstead` | `TestRecoverBatch_DoneReportRefusedUnlessPriorDead` | no |
+| `TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | `TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives`, `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved`, `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath`, `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`, `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix` | no |
+| `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestPersistRecoveryTerminal_PassesReverted` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestPersistRecoveryTerminal_PassesRederived` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved` | `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`, `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved`, `TestAcceptPendingAudit_RefusesUnverifiablePath` | no |
+| `TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent` | `TestRecoverBatch_ParentMergeAfterReportHead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
+| `TestRecoverSpawn_CarriesSuspectPathsAndTranscripts` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved` | yes |
+| `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes` | `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_InformationalFindingsDoNotRefuseRun`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_VerifyGateExhaustedEndsStuck`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn` | yes |
+| `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead`, `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | yes |
+| `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout` | `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`, `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand` | no |
 | `TestResolveRoles_BothRolesResolve` | `TestResolveRoles_NoOversizedRole`, `TestResolveRoles_EscapeFormNeedsNoRegistryEntry` | yes |
 | `TestResolveRoles_NoOversizedRole` | `TestResolveRoles_BothRolesResolve` | no |
 | `TestResolveRoles_BracketParamsSurviveIntoResolved` | `TestResolveRoles_NoOversizedRole`, `TestResolveRoles_EscapeFormNeedsNoRegistryEntry` | yes |
-| `TestSequenceBatches_MultiCardBatch` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestSequenceBatches_AcyclicOrdering` | `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation` | yes |
-| `TestSequenceBatches_NoOpOnDeclaredCorrectOrder` | `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation` | yes |
+| `TestRun_BlockingGlyphFindingRefusesRun` | `TestRun_WayForward_ValidationRefusal` | no |
+| `TestRun_QuarryUnavailableRefusesRunNamingQuarry` | `TestRun_BlockingGlyphFindingRefusesRun`, `TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth` | yes |
+| `TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact` | `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestRebaseline_ForeignEditAcceptedMidRun` | yes |
+| `TestRun_FreshArchivesStateReportsAndClearsPrompts` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshOnUnchangedPlanWithoutFindingsResumes`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
+| `TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
+| `TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn` | `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_FreshContractFileEvidence`, `TestRun_WayForward_RunExitRefusals`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
+| `TestRun_AssertedModelInitializedToMasterRoleModel` | `TestRun_MasterSpecCarriesWebsterStrandRole`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
+| `TestRun_MasterSpecCarriesWebsterStrandRole` | `TestRun_AssertedModelInitializedToMasterRoleModel` | no |
+| `TestRun_NoExpiredShellsWritesNothing` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestRun_MasterSpecAwaitsRecoverBatchShell` | `TestRun_MasterSpecCarriesWebsterStrandRole` | yes |
+| `TestRun_MasterStrandPersistedBeforeFindRun` | `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
+| `TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_PausedOutcomeLeavesPauseFlagIntact` | yes |
+| `TestRun_DoneWithMissingSummaryIsHardError` | `TestRun_PausedOutcomeLeavesPauseFlagIntact`, `TestRun_FreshDropsFindingsOnceReset`, `TestRun_WayForward_RunExitRefusals` | yes |
+| `TestRun_DoneWithUnrecordedBatchIsHardError` | `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`, `TestRun_WayForward_RunExitRefusals` | yes |
+| `TestRun_VerifyGateFailsThenPassesEndsDone` | `TestRun_VerifyGateExhaustedEndsStuck`, `TestRun_FlakyVerifyKeepsDoneWithWarning`, `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses` | yes |
+| `TestRun_ReorderingIsObservableInMasterPrompt` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`, `TestSequenceBatches_EdgeDerivation` | yes |
+| `TestRun_AcyclicPlanReportsNoCycles` | `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches` | yes |
+| `TestRun_ResumeWithCompletedCreateCardIsNotRefused` | `TestRun_FreshContractFileEvidence`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_WayForward_MasterEndedEarly`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite` | yes |
+| `TestRun_UnapprovedPlanRefused` | `TestRun_WayForward_UnapprovedPlan` | yes |
+| `TestRun_GateReachesStartMaster` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_GateNamingVerifyIsRefused` | yes |
+| `TestRun_ZeroGateReachesStartMasterWithOnlyVerify` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestRun_Regression20260930_BegunUnrecordedBatchResumes` | `TestRun_FreshContractFileEvidence`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_WayForward_MasterEndedEarly`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite` | yes |
+| `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation` | `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_ErrRunBusy`, `TestRun_FreshRunOverNewGenerationAfterArchive`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestSequenceBatches_EdgeDerivation` | yes |
+| `TestRun_WayForward_UnapprovedPlan` | `TestRun_ErrRunBusy`, `TestRun_UnapprovedPlanRefused` | no |
+| `TestRun_WayForward_ValidationRefusal` | `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_FreshRefusesDifferingPlanPath`, `TestRun_InformationalFindingsDoNotRefuseRun`, `TestRun_BlockingGlyphFindingRefusesRun`, `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`, `TestRebaseline_ForeignEditAcceptedMidRun`, `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards` | yes |
+| `TestRun_WayForward_QuarryUnavailable` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestBeginBatch_ReResolvesPlanAtDispatch`, `TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth` | yes |
+| `TestRun_WayForward_StartMasterFailure` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent` | yes |
+| `TestRun_FirstInitRecordsPlanFileHashes` | `TestRun_ErrRunBusy`, `TestRun_FreshContractFileEvidence`, `TestRun_FreshRunOverNewGenerationAfterArchive` | yes |
+| `TestRun_FreshDropsPathlessFinding` | `TestRun_FreshDropsPlanPathWithoutCopy` | yes |
+| `TestRun_FreshDropsUncheckableBatch` | `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_FreshDropsPlanPathWithoutCopy`, `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
+| `TestRun_FreshRefusesUncheckableBatchPastStart` | `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`, `TestRun_FreshDropsUncheckableBatch`, `TestRun_FreshRefusesCommitPastStart` | no |
+| `TestRun_FreshOnUnchangedPlanWithoutFindingsResumes` | `TestRun_FreshContractFileEvidence`, `TestRun_FreshArchivesStateReportsAndClearsPrompts` | no |
+| `TestRun_FreshRefusesCommitPastStart` | `TestRun_FreshDropsFindingsOnceReset`, `TestRun_FreshRefusesWhileSuspectPathDiffers`, `TestRun_FreshRefusesUncheckableBatchPastStart` | yes |
+| `TestRun_PendingPlanPathNamesRestorePlan` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestRun_FixerForkPlanWriteIsFlagged`, `TestRun_FreshRefusesDifferingPlanPath`, `TestRun_ForkStateWriteAtRunExit`, `TestFindingsClause_NamesAPathTheDetailLacksOnce` | yes |
+| `TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestSequenceBatches_MultiCardBatch` | `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning` | yes |
+| `TestSequenceBatches_AcyclicOrdering` | `TestSequenceBatches_EdgeDerivation` | yes |
+| `TestSequenceBatches_NoOpOnDeclaredCorrectOrder` | `TestSequenceBatches_EdgeDerivation`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
 | `TestSequenceBatches_ConsumerDeclaredBeforeProducer` | `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_TwoCardCycle` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation`, `TestSequenceBatches_EdgeDerivation` | yes |
+| `TestSequenceBatches_TwoCardCycle` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
 | `TestSequenceBatches_TwoDisjointCycles` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
-| `TestSequenceBatches_AcyclicPlanReportsNoCycles` | `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation` | yes |
-| `TestSequenceBatches_StructuralGuarantees` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation`, `TestSequenceBatches_EdgeDerivation` | yes |
+| `TestSequenceBatches_AcyclicPlanReportsNoCycles` | `TestSequenceBatches_EdgeDerivation`, `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestSequenceBatches_StructuralGuarantees` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestSequenceBatches_EdgeDerivation` | yes |
 | `TestCycle_Warning` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
 | `TestCycle_WarningZeroValueAndEmptyBatchesDoNotPanic` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
-| `TestState_PreFixHeadRoundTrip` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestState_RoundTrip` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestState_DigestPersistsAcrossSaveLoad` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestState_AbsentFileReturnsNil` | `TestRun_AssertedModelInitializedToMasterRoleModel` | yes |
-| `TestState_LegacyIntegrationRecordsStillLoad` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
+| `TestState_PreFixHeadRoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestState_RoundTrip` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestState_DigestPersistsAcrossSaveLoad` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestState_AbsentFileReturnsNil` | `TestRun_BlockingGlyphFindingRefusesRun` | yes |
+| `TestState_LegacyIntegrationRecordsStillLoad` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
 | `TestAcquireStateMutation_ExcludesSecondHolder` | `TestRun_ErrRunBusy` | yes |
 | `TestRunActive_ReflectsRunLockHeld` | `TestPlanReset_HeldRunLockIsTransientBusy`, `TestPlanReset_DetachedHeadRefuses` | yes |
-| `TestArchiveStaleSummary_AbsentFileIsNoOp` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
+| `TestArchiveStaleSummary_AbsentFileIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
 | `TestArchiveStaleSummary_RenamesAndPreservesContent` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck` | yes |
-| `TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix` | yes |
+| `TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix` | `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`, `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob` | yes |
 | `TestAppendIntegrationTriage_FlakyListedByIdentity` | `TestRun_FlakyVerifyKeepsDoneWithWarning` | yes |
 | `TestAppendAuditWarnings_AppendsBulletsInOrder` | `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning` | yes |
-| `TestAppendBackgroundShells_EmptyIsNoOp` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
+| `TestAppendBackgroundShells_EmptyIsNoOp` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
 | `TestAppendBackgroundShells_AppendsBulletsInOrder` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote` | yes |
-| `TestRenderPrompts_CarryCardGates` | `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved` | yes |
-| `TestMasterTemplate_QuotesDigestFieldsAndNoOthers` | `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_QuotesOutcomeSchemaKeys` | `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_FillsWithAllMarkers` | `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestRenderForkPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_PatternDirectiveOptional` | `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
+| `TestRenderPrompts_CarryCardGates` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestMasterTemplate_QuotesDigestFieldsAndNoOthers` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
+| `TestMasterTemplate_QuotesOutcomeSchemaKeys` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
+| `TestMasterTemplate_FillsWithAllMarkers` | `TestRenderPrompts_ParentDirective`, `TestRenderForkPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
+| `TestMasterTemplate_PatternDirectiveOptional` | `TestRenderPrompts_ParentDirective`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
+| `TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures` | `TestRenderPrompts_ParentDirective` | yes |
 | `TestForkTemplate_FillsWithAllMarkers` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRecoveryTemplate_FillsWithAllMarkers` | `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath`, `TestRenderRecoveryPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderForkPrompt_StatesSpecsDir` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderForkPrompt_OmitsSharedDecisions` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderForkPrompt_OmitsRenameMechanic` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderRecoveryPrompt_InstructsColdOrientation` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderPrompts_PatternDirectiveFromRepoRoot` | `TestRenderRecoveryPrompt_InstructsColdOrientation`, `TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork` | no |
-| `TestRenderRecoveryPrompt_StatesSpecsDir` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`, `TestRenderForkPrompt_EmptySpecsDirErrors` | yes |
-| `TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderMasterPrompt_NeverFillsWorktreeRoot` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderVerifyFixPrompt_NamesGateReport` | `TestRenderVerifyFixPrompt_FrictionDirective` | yes |
-| `TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
+| `TestRecoveryTemplate_FillsWithAllMarkers` | `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`, `TestRenderRecoveryPrompt_EmptySpecsDirErrors`, `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
+| `TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderForkPrompt_StatesSpecsDir` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderForkPrompt_OmitsSharedDecisions` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderForkPrompt_OmitsRenameMechanic` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderRecoveryPrompt_InstructsColdOrientation` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | no |
+| `TestRenderPrompts_PatternDirectiveFromRepoRoot` | `TestRenderPrompts_ParentDirective`, `TestRenderRecoveryPrompt_InstructsColdOrientation` | yes |
+| `TestRenderRecoveryPrompt_StatesSpecsDir` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderRecoveryPrompt_FailureDigest` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderMasterPrompt_NeverFillsWorktreeRoot` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderVerifyFixPrompt_NamesGateReport` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`, `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork` | `TestRenderPrompts_ParentDirective` | yes |
 | `TestTemplates_ComposedOutputCarriesNoBannerLeak` | `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
 | `TestTemplates_ComposedReadsReflectOnDiskEdits` | `TestTemplates_ForkAndRecoveryShareImplementerBody` | yes |
-| `TestMasterTemplate_MissingBoardIsAHardError` | `TestRenderMasterPrompt_MissingPatternStencilErrors`, `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderProgress_ListsOnlyTerminalBatches` | `TestRun_WayForward_RunExitRefusals`, `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
+| `TestMasterTemplate_MissingBoardIsAHardError` | `TestRenderMasterPrompt_MissingPatternStencilErrors`, `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderProgress_ListsOnlyTerminalBatches` | `TestRun_WayForward_RunExitRefusals`, `TestRenderPrompts_ParentDirective` | yes |
 | `TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord` | `TestRun_WayForward_RunExitRefusals` | yes |
-| `TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
-| `TestRenderProgress_FollowsSliceOrderNotAscendingNumber` | `TestRun_AcyclicPlanReportsNoCycles` | yes |
-| `TestRenderMasterPrompt_ReflectsSequencedOrder` | `TestRenderPrompts_PatternDirectiveFromRepoRoot` | yes |
+| `TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber` | `TestRenderPrompts_ParentDirective` | yes |
+| `TestRenderProgress_FollowsSliceOrderNotAscendingNumber` | `TestRun_CycleReportingSurfacesOnRunResultButNeverFails` | yes |
+| `TestRenderMasterPrompt_ReflectsSequencedOrder` | `TestRenderPrompts_ParentDirective` | yes |
 | `TestRenderForkPrompt_FrictionDirective` | `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`, `TestRenderRecoveryPrompt_FrictionDirective` | yes |
 | `TestRenderRecoveryPrompt_FrictionDirective` | `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes`, `TestRenderMasterPrompt_FrictionDirective`, `TestRenderForkPrompt_FrictionDirective`, `TestRenderPrompts_CarryCardGates` | no |
-| `TestRenderMasterPrompt_FrictionDirective` | `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestRenderRecoveryPrompt_FrictionDirective`, `TestRenderPrompts_PatternDirectiveFromRepoRoot`, `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote` | yes |
+| `TestRenderVerifyFixPrompt_FrictionDirective` | `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote`, `TestRenderRecoveryPrompt_FrictionDirective` | yes |
+| `TestRenderMasterPrompt_FrictionDirective` | `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`, `TestRenderRecoveryPrompt_FrictionDirective`, `TestRenderPrompts_ParentDirective`, `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote` | yes |
 
 No coverage:
 
-- `TestFirstFreeArchivePath_ReturnsBareCandidateWhenFree`: unclassifiable call
-- `TestFirstFreeArchivePath_CollisionAppendsSuffix`: unclassifiable call
-- `TestArchiveStateFile_AbsentFileIsNoOp`: unclassifiable call
-- `TestArchiveStateFile_RenamesAndPreservesContent`: unclassifiable call
-- `TestArchiveReportsDir_AbsentDirStillRecreatesEmpty`: unclassifiable call
-- `TestArchiveReportsDir_ArchivesExistingContentAndRecreatesEmpty`: unclassifiable call
-- `TestRefScannerMatches`: unclassifiable call
-- `TestNeverMatches_AlwaysFalse`: unclassifiable call
-- `TestCheckFork`: unclassifiable call
-- `TestCheckParent`: unclassifiable call
-- `TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot`: unclassifiable call
-- `TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot`: unclassifiable call
-- `TestSettleRetry_ReturnsEarlyOnLaterTick`: unclassifiable call
-- `TestSettleRetry_WindowExhausted`: unclassifiable call
-- `TestSettleRetry_FetchErrorPropagates`: unclassifiable call
-- `TestAcceptPendingAudit_RefusesPathlessFinding`: unclassifiable call
-- `TestClassifyViolation`: spawns
 - `TestCheckParent_KeysDistinctAndStable`: unclassifiable call
 - `TestFailBatch_RecordsSuspectBlobs`: unclassifiable call
-- `TestFailBatch_ArchivesReportAndFreesLivePath`: unclassifiable call
-- `TestFailBatch_NoReportArchivesNothing`: unclassifiable call
-- `TestFailBatch_RecordsTerminalFailed`: unclassifiable call
-- `TestFailBatch_TranscriptsAppendedOnce`: unclassifiable call
-- `TestBatchFailedError_TextAndSentinel`: unclassifiable call
-- `TestDispatchScope`: unclassifiable call
 - `TestRerunCardVerifies_AllPass`: unclassifiable call
 - `TestRerunCardVerifies_NonZeroExit`: unclassifiable call
 - `TestRerunCardVerifies_Timeout`: unclassifiable call
 - `TestRerunCardVerifies_MissingDir`: unclassifiable call
-- `TestAcceptPendingAudit_ContractFilesAbsentAccepts`: unclassifiable call
-- `TestAcceptPendingAudit_MasterWroteAfterForkAccepts`: unclassifiable call
-- `TestAcceptPendingAudit_ForkWroteLastRefusesNamingDeleteRoute`: unclassifiable call
-- `TestPendingFindingsText_BoardModelFindingsGolden`: unclassifiable call
-- `TestPendingFindingsText_AcceptRouteEndsInOneReentryStep`: unclassifiable call
-- `TestPendingFindingsText_PathlessFindingTakesTheResetRoute`: unclassifiable call
-- `TestMoveBegunCardHashes`: unclassifiable call
-- `TestHeadSHA_ReturnsHEAD`: spawns
-- `TestDirty_TrueAndFalse`: spawns
-- `TestReconcileReportHead_EqualIsFastPath`: spawns
-- `TestReconcileReportHead_MergesOnTopAccepted`: spawns
-- `TestReconcileReportHead_ReportHeadIsMergeCommit`: spawns
-- `TestReconcileReportHead_Refusals`: spawns
-- `TestReconcileReportHead_UncleanParentMergesRefused`: spawns
-- `TestReconcileReportHead_ParentOnlyOnOrigin`: spawns
-- `TestRefuseMidMerge`: spawns
-- `TestRefuseMidMerge_LinkedWorktree`: spawns
-- `TestOtherWorktrees`: spawns
-- `TestArchiveStaleOutcome_AbsentFileIsNoOp`: unclassifiable call
-- `TestArchiveStaleOutcome_RenamesAndPreservesContent`: unclassifiable call
-- `TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix`: unclassifiable call
-- `TestPollUntilTerminal_TerminalMidWaitReturnsEarly`: unclassifiable call
-- `TestPollUntilTerminal_DeadlineReturnsRunning`: unclassifiable call
-- `TestPollUntilTerminal_GatherErrorPropagates`: unclassifiable call
-- `TestPlanReset_MergeInProgressRefuses`: spawns
-- `TestPlanReset_DetachedHeadRefuses`: spawns
-- `TestPlanReset_ParentBranchRefuses`: spawns
-- `TestPlanReset_NoRecordedTargetRefuses`: spawns
-- `TestPlanReset_MissingCommitRefuses`: spawns
-- `TestPlanReset_NotAncestorRefuses`: spawns
-- `TestPlanReset_ForeignDirtRefusesAndNamesPath`: spawns
-- `TestPlanReset_UntrackedFileIsNotDirt`: spawns
-- `TestPlanReset_StartTargetsOctopusMergeBaseOfDivergingStarts`: spawns
-- `TestPlanReset_OwnPathsHoldSucceededWriteAndOmitFailedOne`: spawns
-- `TestPlanReset_HeldRunLockIsTransientBusy`: unclassifiable call
-- `TestPlanReset_NoStateNamesRun`: unclassifiable call
-- `TestLoadRunWrites_MergesEverySessionsEvents`: unclassifiable call
-- `TestLoadRunWrites_SessionRecordedTwiceAuditedOnce`: unclassifiable call
-- `TestLoadRunWrites_AuditErrorNamesSession`: unclassifiable call
-- `TestCheckSuspectPaths`: spawns
-- `TestCheckRecoveredSuspects_EmptyStartHoldsNothing`: spawns
-- `TestRunEvidenceBases_PicksByAncestry`: spawns
-- `TestAcceptPendingAudit_RefusesMissingCommit`: spawns
-- `TestAcceptPendingAudit_UsesExecutionOrderHead`: spawns
-- `TestAcceptPendingAudit_ClearsWhenPathsMatchHead`: spawns
-- `TestAcceptPendingAudit_RefusesDifferingPath`: spawns
-- `TestAcceptPendingAudit_RefusesCommitPastHead`: spawns
-- `TestAcceptPendingAudit_AcceptsAfterHeadReset`: spawns
-- `TestAcceptPendingAudit_RefusesUnverifiablePath`: spawns
-- `TestAcceptPendingAudit_PlanPathNamesRestorePlan`: spawns
-- `TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify`: spawns
-- `TestVerifyGate_CleanTreePassesAndRecordsTheTree`: spawns
-- `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal`: spawns
-- `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses`: spawns
-- `TestVerifyGate_NoParentBranchAcceptsNoMerge`: spawns
-- `TestVerifyGate_NonDoneOutcomePassesWithoutVerifying`: unclassifiable call
-- `TestVerifyGate_NoVerifySectionPasses`: unclassifiable call
-- `TestVerifyGate_FlakyFailurePassesOnRerunWithNote`: unclassifiable call
-- `TestVerifyGate_FailedEvaluationWritesReport`: unclassifiable call
-- `TestVerifyGate_DirtyFailureRecordsPreFixHead`: unclassifiable call
-- `TestVerifyGate_PreFixHeadPersistence`: unclassifiable call
-- `TestVerifyGate_PersistFailureIsTheGatesError`: unclassifiable call
-- `TestVerifyGate_RejectedFixCommitFailsTerminal`: unclassifiable call
-- `TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead`: unclassifiable call
-- `TestVerifyGate_UnreadableOutcomePassesWithoutVerifying`: unclassifiable call
-- `TestCardHint_NamesCardsThatTouchedAFailingPackage`: unclassifiable call
-- `TestCardHint_OpaqueAndForeignPackagesYieldNoHint`: unclassifiable call
-- `TestCardHint_ChangedPathsErrorPropagates`: unclassifiable call
-- `TestParseVerifyFailures`: unclassifiable call
-- `TestParseVerifyFailures_Package`: unclassifiable call
-- `TestBeginBatch_PauseSentinel`: spawns
-- `TestBeginBatch_FingerprintMismatch`: spawns
-- `TestBeginBatch_ModelAssertion`: spawns
-- `TestBeginBatch_PromptFilePrevDigest`: spawns
-- `TestBeginBatch_StateUpdated`: spawns
-- `TestBeginBatch_ReBeginKeepsStartSHA`: spawns
-- `TestBeginBatch_RecordsCardSet`: spawns
-- `TestBeginBatch_ReBeginKeepsAuditWarnings`: spawns
-- `TestBeginBatch_ReBeginEmptyStartSHARecordsHead`: spawns
-- `TestBeginBatch_CreatesReportsDir`: spawns
-- `TestBeginBatch_UnknownRoleErrors`: spawns
-- `TestBeginBatch_PreExistingReportRefused`: spawns
-- `TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite`: spawns
-- `TestBeginBatch_ReResolvesPlanAtDispatch`: spawns
-- `TestBeginBatch_AlreadyBuiltCardsAreNotReResolved`: spawns
-- `TestBeginBatch_RestampsFingerprintEvenWhenPlanDrifts`: spawns
-- `TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch`: spawns
-- `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`: spawns
-- `TestBeginBatch_WayForward_UnknownBatch`: spawns
-- `TestBeginBatch_WayForward_ModelSwitchFailureIsTransient`: spawns
-- `TestBeginBatch_WayForward_ReportExistsIsRecorded`: spawns
-- `TestBeginBatch_PromptFileCarriesCardGateCommand`: spawns
-- `TestRunInFlight`: unclassifiable call
-- `TestParentMergeBetweenForkCommitAndRecordBatch`: spawns
-- `TestRebaseline_ForeignEditAcceptedMidRun`: spawns
-- `TestRebaseline_RefusesChangedCardSet`: spawns
-- `TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb`: spawns
-- `TestRebaseline_LegacyRecordWithoutCardsAccepted`: spawns
-- `TestRebaseline_RefusesChangedBegunCardBody`: spawns
-- `TestRebaseline_AcceptsEditedUnbegunCard`: spawns
-- `TestRebaseline_RecordWithoutCardHashesComparesIDsOnly`: spawns
-- `TestRebaseline_RefusesUnnamedEditedCard`: spawns
-- `TestRebaseline_RefusesEditedOverviewEvenWhenEveryCardIsNamed`: spawns
-- `TestRebaseline_RefusesEditedCardTheOperatorDidNotName`: spawns
-- `TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly`: spawns
-- `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`: spawns
-- `TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330`: spawns
-- `TestRebaseline_ForeignEditToBegunCardStaysRefused`: spawns
-- `TestRecordBatch_NoBeginRecord`: spawns
-- `TestRecordBatch_RecoveryBatchRefusedLoud`: spawns
-- `TestRecordBatch_AuditsBracketOpeningSession`: spawns
-- `TestRecordBatch_ZeroNewTranscriptsArchivesReport`: spawns
-- `TestRecordBatch_TranscriptAppearsOnLaterTick`: spawns
-- `TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted`: spawns
-- `TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew`: spawns
-- `TestRecordBatch_ReportPresentDropsNeverReturnedWarning`: spawns
-- `TestRecordBatch_NoReportKeepsNeverReturnedWarning`: spawns
-- `TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors`: spawns
-- `TestRecordBatch_ParentWriteOutsideWorktreeWarns`: spawns
-- `TestRecordBatch_ForkNestedAgentWarnsWhenVerifyPasses`: spawns
-- `TestRecordBatch_MutatingFabricReferenceFailsBatch`: spawns
-- `TestRecordBatch_FabricReferenceRecordsUncheckable`: spawns
-- `TestRecordBatch_ScratchParentWriteRecordsUncheckable`: spawns
-- `TestRecordBatch_TrackedParentWriteLeavesUncheckableEmpty`: spawns
-- `TestRecordBatch_RetryNeverDuplicatesWarning`: spawns
-- `TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning`: spawns
-- `TestRecordBatch_CorrectnessParentFindingNoReportFailsBatch`: spawns
-- `TestRecordBatch_CorrectnessFindingFailedReportFailsBatch`: spawns
-- `TestRecordBatch_PolicyFindingFailingVerifySameCallFailsBatch`: spawns
-- `TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches`: spawns
-- `TestRecordBatch_ParentWriteToRunStateFailsBatch`: spawns
-- `TestRecordBatch_ForkContractWriteFailsBatch`: spawns
-- `TestRecordBatch_ForkPlanWriteFailsBatch`: spawns
-- `TestRecordBatch_ForgedTerminalRecordFails`: spawns
-- `TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript`: spawns
-- `TestRecordBatch_Regression20260930_ForkAuditFalsePositive`: spawns
-- `TestRecordBatch_HeadSHAMismatchErrors`: spawns
-- `TestRecordBatch_MalformedReportYAMLErrors`: spawns
-- `TestRecordBatch_WayForward_UnknownBatch`: spawns
-- `TestRecordBatch_MissingSessionTranscriptArchivesReport`: spawns
-- `TestRecordBatch_DoneChecksBlockOnUnresolvedCreate`: spawns
-- `TestRecordBatch_RefusesPlanEditedSinceBegin`: spawns
-- `TestRecordBatch_BindsHandleFromDeltaEndToEnd`: spawns
-- `TestRecordBatch_ScopeGuardFindingsLandInWarnings`: spawns
-- `TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable`: spawns
-- `TestRecordBatch_DriftBlocksOnDeletedStillReferenced`: spawns
-- `TestRecordBatch_EvidenceTierDriftWarnsAndDoesNotBlock`: spawns
-- `TestRecordBatch_DeleteCardDeletingItsOwnTargetIsNotDrift`: spawns
-- `TestRecordBatch_DoneChecksPassOnLandedCreate`: spawns
-- `TestRecordBatch_RestampsFingerprintEvenWhenDriftBlocks`: spawns
-- `TestRecordBatch_ParentMergeAfterForkCommit`: spawns
-- `TestRecordBatch_TwoParentMergesAfterForkCommit`: spawns
-- `TestRecordBatch_ParentMergeSymbolsAreNotTheBatchsOwn`: spawns
-- `TestRecordBatch_NonMergeMovementRefused`: spawns
-- `TestRecordBatch_EvilParentMergeRefused`: spawns
-- `TestRecordBatch_MergeInProgressRefusedThenSucceeds`: spawns
-- `TestRecordBatch_RefusedForeignEditLeavesCardHashes`: spawns
-- `TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand`: spawns
-- `TestRecoverBatch_DoneReportRefusedUnlessPriorDead`: spawns
-- `TestPersistRecoveryTerminal_RefusesPlanEditedSinceSpawn`: spawns
-- `TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`: spawns
-- `TestRecoverBatch_ReportHeadSHAMismatchIsHardError`: spawns
-- `TestRecoverBatch_ParentMergeAfterReportHead`: spawns
-- `TestRecoverBatch_NonMergeCommitAfterReportHeadRefused`: spawns
-- `TestRecoverBatch_MergeInProgressRefused`: spawns
-- `TestRecoverBatch_TimeoutAcrossCallsClassifiesDead`: spawns
-- `TestRecoverSpawnOrAttach_PredecessorDigestFollowsExecutionOrder`: spawns
-- `TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh`: spawns
-- `TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch`: spawns
-- `TestRecoverSpawnOrAttach_FailedBatchSpawnsWithFailureDigest`: spawns
-- `TestRecoverSpawnOrAttach_RefusesUncheckableFindings`: spawns
-- `TestRecoverSpawnOrAttach_ContractFileEvidence`: spawns
-- `TestRecoverSpawnOrAttach_FailedBatchArchivesLateReport`: spawns
-- `TestRecoverSpawn_InheritsTheStuckForksStartSHA`: spawns
-- `TestRecoverSpawn_RecordsCardSet`: spawns
-- `TestRecoverSpawnOrAttach_NotReadyStartSurfacesAndRecordsNothing`: spawns
-- `TestRecoverSpawnOrAttach_WayForward_StartFailureIsTransient`: spawns
-- `TestPersistRecoveryTerminal_WayForward_NoRecordedState`: spawns
-- `TestRecoverSpawnOrAttach_WayForward_MalformedReport`: spawns
-- `TestRecoverBatch_WayForward_DoneReportRecordsInstead`: spawns
-- `TestPersistRecoveryTerminal_FailsWhenSuspectContentSurvives`: spawns
-- `TestPersistRecoveryTerminal_RefailKeepsFlaggedBlob`: spawns
-- `TestPersistRecoveryTerminal_FailsOnUncommittedSuspectPath`: spawns
-- `TestPersistRecoveryTerminal_PassesReverted`: spawns
-- `TestPersistRecoveryTerminal_PassesRederived`: spawns
-- `TestPersistRecoveryTerminal_FailsWhenSuspectContentMoved`: spawns
-- `TestPersistRecoveryTerminal_FailsWhenSuspectUntrackedAndMoved`: spawns
-- `TestPersistRecoveryTerminal_PassesWhenStartHeldSameContent`: spawns
-- `TestRecoverSpawn_CarriesSuspectPathsAndTranscripts`: spawns
-- `TestPersistRecoveryTerminal_RefusedForeignEditLeavesCardHashes`: spawns
-- `TestRecoveryWaitBudget_NeverReturnsRunningOverSilentStrand`: spawns
-- `TestRecoveryWaitBudget_ReturnsAtTerminalReportBeforeTimeout`: spawns
-- `TestRun_ErrRunBusy`: spawns
-- `TestRun_NilBatcherRefuses`: spawns
-- `TestRun_ZeroBatchPlanRefusedLoud`: spawns
-- `TestRun_BlockingGlyphFindingRefusesRun`: spawns
-- `TestRun_InformationalFindingsDoNotRefuseRun`: spawns
-- `TestRun_QuarryUnavailableRefusesRunNamingQuarry`: spawns
-- `TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact`: spawns
-- `TestRun_FreshArchivesStateReportsAndClearsPrompts`: spawns
-- `TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent`: spawns
-- `TestRun_EntryTimeReclaimWithNoRecordedStrandRemovesNothing`: spawns
-- `TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn`: spawns
-- `TestRun_AssertedModelInitializedToMasterRoleModel`: spawns
-- `TestRun_MasterSpecCarriesWebsterStrandRole`: spawns
-- `TestRun_ExpiredShellYieldsWarningSummarySectionAndFrictionNote`: spawns
-- `TestRun_NoExpiredShellsWritesNothing`: spawns
-- `TestRun_MasterSpecAwaitsRecoverBatchShell`: spawns
-- `TestRun_MasterStrandPersistedBeforeFindRun`: spawns
-- `TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult`: spawns
-- `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`: spawns
-- `TestRun_DoneWithMissingSummaryIsHardError`: spawns
-- `TestRun_DoneWithUnrecordedBatchIsHardError`: spawns
-- `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`: spawns
-- `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`: spawns
-- `TestRun_DoneWithNestedAgentInFixerForkWarns`: spawns
-- `TestRun_ForkStateWriteAtRunExit`: spawns
-- `TestRun_FixerForkPlanWriteIsFlagged`: spawns
-- `TestRun_RendersVerifyFixPrompt`: spawns
-- `TestRun_FabricReferenceInFixerForkIsStuck`: spawns
-- `TestRun_MasterNonDoneOutcomesMapToTypedErrors`: spawns
-- `TestRun_PausedOutcomeLeavesPauseFlagIntact`: spawns
-- `TestRun_VerifyGateFailsThenPassesEndsDone`: spawns
-- `TestRun_VerifyGateExhaustedEndsStuck`: spawns
-- `TestRun_FlakyVerifyKeepsDoneWithWarning`: spawns
-- `TestRun_ReorderingIsObservableInMasterPrompt`: spawns
-- `TestRun_CycleReportingSurfacesOnRunResultButNeverFails`: spawns
-- `TestRun_AcyclicPlanReportsNoCycles`: spawns
-- `TestRun_ResumeWithCompletedCreateCardIsNotRefused`: spawns
-- `TestRun_UnapprovedPlanRefused`: spawns
-- `TestRun_ValidationErrorAndRebaselineSaveFailure_ReportsBoth`: spawns
-- `TestRun_GateReachesStartMaster`: spawns
-- `TestRun_GateNamingVerifyIsRefused`: spawns
-- `TestRun_ZeroGateReachesStartMasterWithOnlyVerify`: spawns
-- `TestRun_Regression20260930_BegunUnrecordedBatchResumes`: spawns
-- `TestRun_Regression329_ForthcomingCreateTargetPassesEntryValidation`: spawns
-- `TestRun_WayForward_UnapprovedPlan`: spawns
-- `TestRun_WayForward_ZeroBatches`: spawns
-- `TestRun_WayForward_ValidationRefusal`: spawns
-- `TestRun_WayForward_QuarryUnavailable`: spawns
-- `TestRun_WayForward_StartMasterFailure`: spawns
-- `TestRun_WayForward_MasterEndedEarly`: spawns
-- `TestRun_WayForward_RunExitRefusals`: spawns
-- `TestRun_FreshRunOverNewGenerationAfterArchive`: spawns
-- `TestRun_FirstInitRecordsPlanFileHashes`: spawns
-- `TestRun_FingerprintMismatchWayForwardNamesTheEditedCards`: spawns
-- `TestRun_FreshRefusesWhileSuspectPathDiffers`: spawns
-- `TestRun_FreshContractFileEvidence`: spawns
-- `TestRun_FreshDropsFindingsOnceReset`: spawns
-- `TestRun_FreshDropsPathlessFinding`: spawns
-- `TestRun_FreshDropsUncheckableBatch`: spawns
-- `TestRun_FreshRefusesUncheckableBatchPastStart`: spawns
-- `TestRun_FreshDivergentStartsNeedHeadBeforeEvery`: spawns
-- `TestRun_FreshOnUnchangedPlanWithoutFindingsResumes`: spawns
-- `TestRun_FreshRefusesCommitPastStart`: spawns
-- `TestRun_FreshRefusesDifferingPlanPath`: spawns
-- `TestRun_FreshDropsPlanPathWithoutCopy`: spawns
-- `TestRun_PendingPlanPathNamesRestorePlan`: spawns
-- `TestRun_MasterSpecPromptIsRenderedPromptWithoutMasterFile`: spawns
-- `TestRenderRecoveryPrompt_FailureDigest`: unclassifiable call
-- `TestRenderVerifyFixPrompt_FrictionDirective`: unclassifiable call
+- `TestReconcileReportHead_EqualIsFastPath`: unclassifiable call
+- `TestReconcileReportHead_MergesOnTopAccepted`: unclassifiable call
+- `TestReconcileReportHead_ReportHeadIsMergeCommit`: unclassifiable call
+- `TestReconcileReportHead_Refusals`: unclassifiable call
+- `TestReconcileReportHead_UncleanParentMergesRefused`: unclassifiable call
+- `TestReconcileReportHead_ParentOnlyOnOrigin`: unclassifiable call
+- `TestPlanReset_MergeInProgressRefuses`: unclassifiable call
+- `TestPlanReset_DetachedHeadRefuses`: unclassifiable call
+- `TestPlanReset_ParentBranchRefuses`: unclassifiable call
+- `TestPlanReset_NoRecordedTargetRefuses`: unclassifiable call
+- `TestPlanReset_MissingCommitRefuses`: unclassifiable call
+- `TestPlanReset_NotAncestorRefuses`: unclassifiable call
+- `TestPlanReset_ForeignDirtRefusesAndNamesPath`: unclassifiable call
+- `TestPlanReset_UntrackedFileIsNotDirt`: unclassifiable call
+- `TestPlanReset_StartTargetsOctopusMergeBaseOfDivergingStarts`: unclassifiable call
+- `TestPlanReset_OwnPathsHoldSucceededWriteAndOmitFailedOne`: unclassifiable call
+- `TestCheckSuspectPaths`: unclassifiable call
+- `TestAcceptPendingAudit_RefusesMissingCommit`: unclassifiable call
+- `TestAcceptPendingAudit_UsesExecutionOrderHead`: unclassifiable call
+- `TestAcceptPendingAudit_ClearsWhenPathsMatchHead`: unclassifiable call
+- `TestAcceptPendingAudit_RefusesDifferingPath`: unclassifiable call
+- `TestAcceptPendingAudit_RefusesCommitPastHead`: unclassifiable call
+- `TestAcceptPendingAudit_AcceptsAfterHeadReset`: unclassifiable call
+- `TestAcceptPendingAudit_RefusesUnverifiablePath`: unclassifiable call
+- `TestAcceptPendingAudit_PlanPathNamesRestorePlan`: unclassifiable call
+- `TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify`: unclassifiable call
+- `TestVerifyGate_CleanTreePassesAndRecordsTheTree`: unclassifiable call
+- `TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal`: unclassifiable call
+- `TestVerifyGate_CleanParentMergeAboveTheFixBasePasses`: unclassifiable call
+- `TestVerifyGate_NoParentBranchAcceptsNoMerge`: unclassifiable call
+- `TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget`: unclassifiable call
+- `TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330`: unclassifiable call
+- `TestRecordBatch_HeadSHAMismatchErrors`: unclassifiable call
+- `TestRecordBatch_NonMergeMovementRefused`: unclassifiable call
+- `TestRecordBatch_EvilParentMergeRefused`: unclassifiable call
+- `TestRecordBatch_MergeInProgressRefusedThenSucceeds`: unclassifiable call
+- `TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches`: unclassifiable call
+- `TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck`: unclassifiable call
+- `TestRun_DoneWithNamedSpawnAlreadyDispositionedAddsNoWarning`: unclassifiable call
+- `TestRun_DoneWithNestedAgentInFixerForkWarns`: unclassifiable call
+- `TestRun_ForkStateWriteAtRunExit`: unclassifiable call
+- `TestRun_FixerForkPlanWriteIsFlagged`: unclassifiable call
+- `TestRun_RendersVerifyFixPrompt`: unclassifiable call
+- `TestRun_FabricReferenceInFixerForkIsStuck`: unclassifiable call
+- `TestRun_WayForward_RunExitRefusals`: unclassifiable call
+- `TestRun_FreshDropsFindingsOnceReset`: unclassifiable call
 
 ## internal/weftname
 
