@@ -5,6 +5,7 @@
 // Each case here injects a real go-github client pointed at an httptest server (or a dead address,
 // for the network-failure case) or a factory closure that itself fails, so no test ever reaches
 // real token resolution, a real git spawn, a real process, or a fixture tree -- untagged Tier 1.
+// The CreateIssue tests do not run in parallel: each swaps the package-level NewGitHubClient seam.
 
 package selfreportengine
 
