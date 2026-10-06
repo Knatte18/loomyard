@@ -1,19 +1,22 @@
 # Test suite prune, six packages
 
 Measurement report for the `test-suite-prune-core` task: the before and after state of the test suites of `internal/fabricengine`, `internal/websterengine`, `internal/reedengine`, `internal/shuttleengine`, `internal/loomcli` and `internal/shedadapters`.
-Per-test redundancy is in [test-redundancy.md](test-redundancy.md); how the harness runs is in [running-tests.md](running-tests.md).
+Per-test redundancy is in [test-redundancy.md](test-redundancy.md).
+How the harness runs is in [running-tests.md](running-tests.md).
 
 ## What was measured
 
 Per package, on one Linux machine (12 logical CPUs):
 
 - Top-level test count, wall time and serial time from `go run ./cmd/testtiming -tags integration,tmux`, run three times, reported as the median of each figure.
-  Wall is the package's elapsed time in the `go test ./...` run, so it includes contention with the other packages running at the same time; serial is the sum of its tests' own elapsed times.
+  Wall is the package's elapsed time in the `go test ./...` run, so it includes contention with the other packages running at the same time.
+  Serial is the sum of its tests' own elapsed times.
 - Statement coverage of the package's own code from `go test -tags integration,tmux -cover -count=1 ./internal/<pkg>`, one run.
 - The load average (`cat /proc/loadavg`) at the start of each of the three timing runs and of the coverage run.
 
 Measured commit: `6e43ff13df64a8288ccb92c9a1618a30c578cec0`, after the `cmd/testtiming` changes of cards 1–4 and before any test of the six packages changed.
-The per-package coverage profiles were kept uncommitted for naming lost blocks after the prune; they are reproducible from the measured commit with `go test -tags integration,tmux -count=1 -coverprofile=<file> ./internal/<pkg>`.
+The per-package coverage profiles were kept uncommitted for naming lost blocks after the prune.
+They are reproducible from the measured commit with `go test -tags integration,tmux -count=1 -coverprofile=<file> ./internal/<pkg>`.
 
 ## Before
 
@@ -26,7 +29,8 @@ The per-package coverage profiles were kept uncommitted for naming lost blocks a
 | `internal/loomcli` | 278 | 89.00 | 89.36 | 63.4% |
 | `internal/shedadapters` | 261 | 1.19 | 1.08 | 91.5% |
 
-Wall and serial times vary with machine load: the three timing runs started at rising load, and run 1 was the quietest.
+Wall and serial times vary with machine load: the three timing runs started at rising load,
+and run 1 was the quietest.
 The per-run wall times, in seconds:
 
 | Package | Run 1 | Run 2 | Run 3 |
@@ -85,7 +89,9 @@ The per-run wall times, in seconds:
 | `internal/loomcli` | 77.19 | 77.67 | 77.30 |
 | `internal/shedadapters` | 0.95 | 0.86 | 0.70 |
 
-Timing run 1 reported `internal/reedengine` as FAIL under full-suite contention; its test name was not captured, and the package passed in timing runs 2 and 3, in `-count=3` alone and alongside the heaviest tmux packages.
+Timing run 1 reported `internal/reedengine` as FAIL under full-suite contention.
+Its test name was not captured,
+and the package passed in timing runs 2 and 3, in `-count=3` alone and alongside the heaviest tmux packages.
 The failure did not reproduce, so it is recorded here and not diagnosed.
 
 ### Load average at the start of each run
@@ -97,10 +103,15 @@ The failure did not reproduce, so it is recorded here and not diagnosed.
 | Timing 3 | 2.18 | 3.85 | 3.36 |
 | Coverage | 1.77 | 3.88 | 3.62 |
 
-The after runs started at lower and steadier load than the before runs, which started at 2.58, 7.25 and 11.60 on the 1-minute average, so part of each wall-time delta is quieter load rather than the prune; serial time carries less of that.
+The after runs started at lower and steadier load than the before runs, which started at 2.58, 7.25 and 11.60 on the 1-minute average,
+so part of each wall-time delta is quieter load rather than the prune.
+Serial time carries less of that.
 
 ### Lost coverage
 
 No statement block covered before is uncovered after.
-The coverage percentages are equal or higher for every package, and for the five packages other than `internal/websterengine`, matching blocks by position finds no block covered in the before profile and uncovered in the after profile.
-For `internal/websterengine`, production code changed since the measured commit, so block positions shifted; matching blocks by source text instead of position finds none covered before and uncovered after, and 52 blocks of the before profile that no longer exist in the production code.
+The coverage percentages are equal or higher for every package,
+and for the five packages other than `internal/websterengine`, matching blocks by position finds no block covered in the before profile and uncovered in the after profile.
+For `internal/websterengine`, production code changed since the measured commit, so block positions shifted.
+Matching blocks by source text instead of position finds none covered before and uncovered after,
+and 52 blocks of the before profile that no longer exist in the production code.
