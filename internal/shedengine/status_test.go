@@ -1,16 +1,12 @@
 // status_test.go covers the JSON round-trip TDD candidate for Status: an in-memory marshal/unmarshal
-// round-trip, a full write-then-read cycle through internal/state against a real file under
-// t.TempDir(), and State.valid's enum gate.
+// round-trip and State.valid's enum gate.
 
 package shedengine
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // semanticJSONEqual compares two json.RawMessage payloads by semantic equality: unmarshal both
@@ -74,50 +70,6 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.History, want.History) {
 		t.Errorf("History = %+v; want %+v", got.History, want.History)
-	}
-	if !semanticJSONEqual(t, got.Product, want.Product) {
-		t.Errorf("Product = %s; want (semantically) %s", got.Product, want.Product)
-	}
-}
-
-func TestStatus_WriteReadCycleThroughState(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	lockPath := filepath.Join(dir, "status.json.lock")
-
-	want := Status{
-		CurrentProducer: "Finalize",
-		State:           StateDone,
-		Error:           "",
-		PauseRequested:  false,
-		Activity: Activity{
-			Now:  "Finalize",
-			Last: "Finalize → done",
-			Wait: "",
-		},
-		History: []HistoryEntry{
-			{Producer: "Finalize", Outcome: Done, Output: "", At: "2026-08-15T10:00:00Z"},
-		},
-		Product: json.RawMessage(`{"bounces_used":2}`),
-	}
-
-	if err := state.WriteJSON(statusPath, lockPath, want); err != nil {
-		t.Fatalf("state.WriteJSON(...) = %v", err)
-	}
-
-	got, found, err := state.ReadJSONStrict[Status](statusPath, lockPath)
-	if err != nil {
-		t.Fatalf("state.ReadJSONStrict(...) = _, _, %v", err)
-	}
-	if !found {
-		t.Fatalf("state.ReadJSONStrict(...) found = false; want true")
-	}
-
-	if got.CurrentProducer != want.CurrentProducer {
-		t.Errorf("CurrentProducer = %q; want %q", got.CurrentProducer, want.CurrentProducer)
-	}
-	if got.State != want.State {
-		t.Errorf("State = %q; want %q", got.State, want.State)
 	}
 	if !semanticJSONEqual(t, got.Product, want.Product) {
 		t.Errorf("Product = %s; want (semantically) %s", got.Product, want.Product)

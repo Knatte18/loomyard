@@ -32,10 +32,8 @@ var coverageGuardAllowedUnreachableEngines = map[string]bool{
 	"Stub":      true,
 }
 
-// TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted asserts every name in
-// shedrecipe.Names() is in the union of loomrecipe.RecipeEngines() and
-// battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines.
-func TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted(t *testing.T) {
+// reachedEngines returns the union of every recipe consumer's RecipeEngines().
+func reachedEngines() map[string]bool {
 	reached := make(map[string]bool)
 	for _, engine := range loomrecipe.RecipeEngines() {
 		reached[engine] = true
@@ -43,38 +41,42 @@ func TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted(t *testing.T)
 	for _, engine := range battenrecipe.RecipeEngines() {
 		reached[engine] = true
 	}
-
-	for _, name := range shedrecipe.Names() {
-		if reached[name] || coverageGuardAllowedUnreachableEngines[name] {
-			continue
-		}
-		t.Errorf("shedrecipe.Names() has %q, which no consumer's RecipeEngines() reaches and which is not in coverageGuardAllowedUnreachableEngines", name)
-	}
+	return reached
 }
 
-// TestCoverageGuard_AllowlistDoesNotDrift carries this guard's own drift direction: an allowlist
-// entry naming an engine that is no longer registered, or that some consumer now does reach, fails
-// rather than lingering.
-func TestCoverageGuard_AllowlistDoesNotDrift(t *testing.T) {
+// TestCoverageGuard asserts every name in shedrecipe.Names() is in the union of loomrecipe.RecipeEngines()
+// and battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines,
+// and carries the guard's own drift direction: an allowlist entry naming an engine that is no longer registered,
+// or that some consumer now does reach, fails rather than lingering.
+//
+//testtiming:keep pins that every registered engine is reached or allowlisted, and that the allowlist does not drift, a guard that fires on a new registry key
+func TestCoverageGuard(t *testing.T) {
+	t.Parallel()
+	reached := reachedEngines()
 	registered := make(map[string]bool)
 	for _, name := range shedrecipe.Names() {
 		registered[name] = true
 	}
 
-	reached := make(map[string]bool)
-	for _, engine := range loomrecipe.RecipeEngines() {
-		reached[engine] = true
-	}
-	for _, engine := range battenrecipe.RecipeEngines() {
-		reached[engine] = true
-	}
+	t.Run("EveryRegisteredEngineIsReachedOrAllowlisted", func(t *testing.T) {
+		t.Parallel()
+		for name := range registered {
+			if reached[name] || coverageGuardAllowedUnreachableEngines[name] {
+				continue
+			}
+			t.Errorf("shedrecipe.Names() has %q, which no consumer's RecipeEngines() reaches and which is not in coverageGuardAllowedUnreachableEngines", name)
+		}
+	})
 
-	for name := range coverageGuardAllowedUnreachableEngines {
-		if !registered[name] {
-			t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which shedrecipe.Names() no longer registers", name)
+	t.Run("AllowlistDoesNotDrift", func(t *testing.T) {
+		t.Parallel()
+		for name := range coverageGuardAllowedUnreachableEngines {
+			if !registered[name] {
+				t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which shedrecipe.Names() no longer registers", name)
+			}
+			if reached[name] {
+				t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which a consumer's RecipeEngines() now reaches -- remove it from the allowlist", name)
+			}
 		}
-		if reached[name] {
-			t.Errorf("coverageGuardAllowedUnreachableEngines names %q, which a consumer's RecipeEngines() now reaches -- remove it from the allowlist", name)
-		}
-	}
+	})
 }

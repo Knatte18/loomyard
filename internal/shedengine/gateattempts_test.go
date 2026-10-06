@@ -8,6 +8,7 @@ package shedengine
 
 import (
 	"context"
+	"strconv"
 	"testing"
 )
 
@@ -22,95 +23,58 @@ func gatedOutcomeProducer(outcome Outcome, outputPath string, gateAttempts *int)
 	}
 }
 
-func TestStep_GateAttempts_StuckExhaustion_PersistsCount(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-
-	attempts := 3
-	producer := gatedOutcomeProducer(Stuck, "", &attempts)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	res, err := shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step(...) = _, %v; want nil error", err)
+// TestStep_GateAttempts pins what Step records of a producer's gate attempts, in the returned history and in the status file:
+// an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call),
+// while an ungated producer gains no gate_attempts field.
+func TestStep_GateAttempts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		producer *funcProducer
+		want     *int
+	}{
+		{"stuck exhaustion persists the count", gatedOutcomeProducer(Stuck, "", intPtr(3)), intPtr(3)},
+		{"pass after retry persists the count", gatedOutcomeProducer(Done, "out.md", intPtr(2)), intPtr(2)},
+		{"passed first try shows zero, not omitted", gatedOutcomeProducer(Done, "out.md", intPtr(0)), intPtr(0)},
+		{"ungated producer omits the field", fixedOutcomeProducer(Done, "out.md"), nil},
 	}
-	if len(res.History) != 1 {
-		t.Fatalf("len(History) = %d; want 1", len(res.History))
+	describe := func(p *int) string {
+		if p == nil {
+			return "nil"
+		}
+		return "pointer to " + strconv.Itoa(*p)
 	}
-	if got := res.History[0].GateAttempts; got == nil || *got != 3 {
-		t.Errorf("History[0].GateAttempts = %v; want pointer to 3", got)
+	same := func(got, want *int) bool {
+		if got == nil || want == nil {
+			return got == want
+		}
+		return *got == *want
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.Producers = []ProducerDef{{Name: "A", Producer: tt.producer}}
+			seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
-	got := readStatus(t, statusPath, statusLockPath)
-	if len(got.History) != 1 {
-		t.Fatalf("persisted len(History) = %d; want 1", len(got.History))
-	}
-	if gp := got.History[0].GateAttempts; gp == nil || *gp != 3 {
-		t.Errorf("persisted History[0].GateAttempts = %v; want pointer to 3 -- the status file must show the exhausted gate's attempt count", gp)
-	}
-}
+			res, err := shed.Step(context.Background())
+			if err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+			if len(res.History) != 1 {
+				t.Fatalf("len(History) = %d; want 1", len(res.History))
+			}
+			if got := res.History[0].GateAttempts; !same(got, tt.want) {
+				t.Errorf("History[0].GateAttempts = %s; want %s", describe(got), describe(tt.want))
+			}
 
-func TestStep_GateAttempts_PassAfterRetry_PersistsCount(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-
-	attempts := 2
-	producer := gatedOutcomeProducer(Done, "out.md", &attempts)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	res, err := shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step(...) = _, %v; want nil error", err)
-	}
-	if got := res.History[0].GateAttempts; got == nil || *got != 2 {
-		t.Errorf("History[0].GateAttempts = %v; want pointer to 2 (passed after two re-prompts)", got)
-	}
-
-	got := readStatus(t, statusPath, statusLockPath)
-	if gp := got.History[0].GateAttempts; gp == nil || *gp != 2 {
-		t.Errorf("persisted History[0].GateAttempts = %v; want pointer to 2 -- the status file must show a pass-after-retry count, not just an exhaustion count", gp)
-	}
-}
-
-func TestStep_GateAttempts_PassedFirstTry_ZeroIsShownNotOmitted(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-
-	attempts := 0
-	producer := gatedOutcomeProducer(Done, "out.md", &attempts)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	if _, err := shed.Step(context.Background()); err != nil {
-		t.Fatalf("Step(...) = _, %v; want nil error", err)
-	}
-
-	got := readStatus(t, statusPath, statusLockPath)
-	gp := got.History[0].GateAttempts
-	if gp == nil {
-		t.Fatalf("persisted History[0].GateAttempts = nil; want a non-nil pointer to 0 -- a gate that passed on the first try is a distinct, meaningful verdict from an ungated call and must not collapse to the same absent field")
-	}
-	if *gp != 0 {
-		t.Errorf("persisted History[0].GateAttempts = %d; want 0", *gp)
-	}
-}
-
-func TestStep_GateAttempts_UngatedProducer_OmitsField(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-
-	producer := fixedOutcomeProducer(Done, "out.md")
-	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	res, err := shed.Step(context.Background())
-	if err != nil {
-		t.Fatalf("Step(...) = _, %v; want nil error", err)
-	}
-	if got := res.History[0].GateAttempts; got != nil {
-		t.Errorf("History[0].GateAttempts = %v; want nil for an ungated producer", *got)
-	}
-
-	got := readStatus(t, statusPath, statusLockPath)
-	if gp := got.History[0].GateAttempts; gp != nil {
-		t.Errorf("persisted History[0].GateAttempts = %v; want nil -- an ungated row must not gain a spurious gate_attempts field", *gp)
+			persisted := readStatus(t, statusPath, statusLockPath)
+			if len(persisted.History) != 1 {
+				t.Fatalf("persisted len(History) = %d; want 1", len(persisted.History))
+			}
+			if got := persisted.History[0].GateAttempts; !same(got, tt.want) {
+				t.Errorf("persisted History[0].GateAttempts = %s; want %s -- the status file must show the attempt count", describe(got), describe(tt.want))
+			}
+		})
 	}
 }

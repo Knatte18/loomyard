@@ -1,4 +1,4 @@
-// cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", an absent seed's run-id listing refusal, an unknown-recipe refusal, the verb gate, and the pinned refusal precedence.
+// cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
 // It stays untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment),
 // so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it --
 // matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
@@ -11,10 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/spf13/cobra"
 )
 
 // fixtureLocation builds a synthetic *lyxcwd.Location by hand, mirroring the field derivation
@@ -39,84 +41,6 @@ func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 
 	if _, err := armFromSeed(loc, "status", []string{"other-run"}); err == nil {
 		t.Error("armFromSeed(status, [other-run]) = nil; want a refusal -- \"other-run\" has no seed")
-	}
-}
-
-// TestArmFromSeed_AbsentSeedRefusesWithListing asserts an addressed run-id with no seed refuses,
-// naming every existing seeded run-id.
-func TestArmFromSeed_AbsentSeedRefusesWithListing(t *testing.T) {
-	loc := fixtureLocation(t)
-	if err := shedrun.WriteSeed(loc, "alpha", shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
-		t.Fatalf("WriteSeed(alpha) = %v; want nil", err)
-	}
-	if err := shedrun.WriteSeed(loc, "bravo", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
-		t.Fatalf("WriteSeed(bravo) = %v; want nil", err)
-	}
-
-	_, err := armFromSeed(loc, "status", []string{"charlie"})
-	if err == nil {
-		t.Fatal("armFromSeed(status, [charlie]) = nil; want a refusal -- \"charlie\" has no seed")
-	}
-	for _, want := range []string{"alpha", "bravo", "charlie"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("armFromSeed error = %q; want it to name %q", err.Error(), want)
-		}
-	}
-	if !strings.Contains(err.Error(), `lyx shed seed charlie --recipe`) {
-		t.Errorf("armFromSeed error = %q; want it to name the \"lyx shed seed\" remedy", err.Error())
-	}
-}
-
-// TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames asserts a seed whose recipe
-// field names something outside this table refuses via lookup's own unknown-recipe error, naming
-// the available recipes. shedrun.ReadSeed never validates Recipe against shedrun's own vocabulary
-// (only Driver), so a hand-edited or stale seed.json naming an unrecognised recipe is a real,
-// reachable case here, not merely hypothetical.
-func TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames(t *testing.T) {
-	loc := fixtureLocation(t)
-	if err := os.MkdirAll(shedrun.RunDir(loc, "some-run"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(RunDir) = %v; want nil", err)
-	}
-	if err := os.WriteFile(shedrun.SeedFile(loc, "some-run"), []byte(`{"recipe":"bogus-recipe","driver":"go"}`), 0o644); err != nil {
-		t.Fatalf("write raw seed.json = %v; want nil", err)
-	}
-
-	_, err := armFromSeed(loc, "status", []string{"some-run"})
-	if err == nil {
-		t.Fatal("armFromSeed over a seed naming an unknown recipe = nil; want a refusal")
-	}
-	for _, name := range names() {
-		if !strings.Contains(err.Error(), name) {
-			t.Errorf("armFromSeed error = %q; want it to name available recipe %q", err.Error(), name)
-		}
-	}
-}
-
-// TestArmFromSeed_VerbGateFiresForAnExcludedVerb asserts the verb gate refuses a verb a recipe's
-// table entry excludes, naming the verb, the recipe, and the verbs that recipe does support. It
-// temporarily shrinks recipes["batten"]'s own Verbs set for the duration of the test, restoring the
-// original afterward, since both shipped recipes now support all four generic verbs and there is no
-// standing example of an excluded verb/recipe pair to drive against. This shrink never reaches
-// battencli.ArmAt: the verb gate refuses before armFromSeed ever calls Arm, which is what lets this
-// case stay Tier 1 despite battencli.ArmAt's own fabricengine.PrimeName call spawning git.
-func TestArmFromSeed_VerbGateFiresForAnExcludedVerb(t *testing.T) {
-	original := recipes["batten"]
-	recipes["batten"] = entry{Arm: original.Arm, Verbs: []string{"run", "status", "pause"}}
-	t.Cleanup(func() { recipes["batten"] = original })
-
-	loc := fixtureLocation(t)
-	if err := shedrun.WriteSeed(loc, "some-slug", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
-		t.Fatalf("WriteSeed = %v; want nil", err)
-	}
-
-	_, err := armFromSeed(loc, "step", []string{"some-slug"})
-	if err == nil {
-		t.Fatal("armFromSeed(step) over a shrunk batten entry = nil; want a refusal")
-	}
-	for _, want := range []string{"step", "batten", "run", "status", "pause"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("verb-gate refusal = %q; want it to name %q", err.Error(), want)
-		}
 	}
 }
 
@@ -148,34 +72,57 @@ func TestArmFromSeed_MissingRunRefusalCarriesNoKindField(t *testing.T) {
 	}
 }
 
-// TestArmFromSeed_RefusalPrecedence pins this batch's own refusal precedence as a table. Stage 1
-// (lyxcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside
+// TestArmFromSeed_RefusalPrecedence pins armFromSeed's refusals as a table, in the order they fire.
+// Stage 1 (lyxcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside
 // resolvePersistentPreRun, which calls lyxcwd.Resolve unconditionally before ever calling
 // armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is
-// exercised by lyxcwd's own integration-tagged suite (internal/lyxcwd/lyxcwd_test.go). The three
-// rows below pin stages 2 through 4 against the identical location and verb shape, so a regression
+// exercised by lyxcwd's own integration-tagged suite (internal/lyxcwd/lyxcwd_test.go).
+// The rows pin stages 2 through 4 against the identical location and verb shape, so a regression
 // reordering any of them shows up as the wrong row's assertion failing rather than a passing test
 // for the wrong reason.
+// Rows shrink or replace entries of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(t *testing.T, loc *lyxcwd.Location)
 		verb  string
 		args  []string
-		want  string
+		// wants lists substrings the refusal must contain.
+		wants []string
 	}{
 		{
 			name: "stage2_run-id-listing",
 			setup: func(t *testing.T, loc *lyxcwd.Location) {
 				if err := shedrun.WriteSeed(loc, "alpha", shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
-					t.Fatalf("WriteSeed = %v; want nil", err)
+					t.Fatalf("WriteSeed(alpha) = %v; want nil", err)
+				}
+				if err := shedrun.WriteSeed(loc, "bravo", shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo}); err != nil {
+					t.Fatalf("WriteSeed(bravo) = %v; want nil", err)
 				}
 			},
-			verb: "status",
-			args: []string{"unaddressed-run"},
-			want: "no seed found",
+			verb:  "status",
+			args:  []string{"charlie"},
+			wants: []string{"no seed found", "alpha", "bravo", "charlie", "lyx shed seed charlie --recipe"},
 		},
 		{
+			// shedrun.ReadSeed never validates Recipe against shedrun's own vocabulary (only Driver),
+			// so a hand-edited or stale seed.json naming an unrecognised recipe is a real, reachable case.
+			name: "stage2_seed-naming-unknown-recipe",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				if err := os.MkdirAll(shedrun.RunDir(loc, "some-run"), 0o755); err != nil {
+					t.Fatalf("MkdirAll(RunDir) = %v; want nil", err)
+				}
+				if err := os.WriteFile(shedrun.SeedFile(loc, "some-run"), []byte(`{"recipe":"bogus-recipe","driver":"go"}`), 0o644); err != nil {
+					t.Fatalf("write raw seed.json = %v; want nil", err)
+				}
+			},
+			verb:  "status",
+			args:  []string{"some-run"},
+			wants: names(),
+		},
+		{
+			// Both shipped recipes support every generic verb, so the row shrinks loom's Verbs to have an excluded verb to drive against.
+			// The shrink never reaches Arm: the verb gate refuses before armFromSeed calls it.
 			name: "stage3_verb-gate",
 			setup: func(t *testing.T, loc *lyxcwd.Location) {
 				original := recipes["loom"]
@@ -185,9 +132,9 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 					t.Fatalf("WriteSeed = %v; want nil", err)
 				}
 			},
-			verb: "step",
-			args: nil,
-			want: "does not support verb",
+			verb:  "step",
+			args:  nil,
+			wants: []string{"does not support verb", "step", "loom", "run", "status", "pause"},
 		},
 		{
 			name: "stage4_arms-own-refusal",
@@ -211,7 +158,6 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			},
 			verb: "run",
 			args: nil,
-			want: "",
 		},
 	}
 
@@ -224,8 +170,10 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			if err == nil {
 				t.Fatalf("armFromSeed(%q, %v) = nil; want a refusal", tt.verb, tt.args)
 			}
-			if tt.want != "" && !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("armFromSeed(%q, %v) error = %q; want it to contain %q", tt.verb, tt.args, err.Error(), tt.want)
+			for _, want := range tt.wants {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("armFromSeed(%q, %v) error = %q; want it to contain %q", tt.verb, tt.args, err.Error(), want)
+				}
 			}
 		})
 	}
@@ -242,4 +190,55 @@ func TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto(t *testing.T) {
 			t.Errorf("%s Long carries goto's admission rule", name)
 		}
 	}
+}
+
+// findRunCommand returns cmd's own "run" subcommand, t.Fatal-ing if none is registered.
+func findRunCommand(t *testing.T, parent *cobra.Command) *cobra.Command {
+	t.Helper()
+	for _, sub := range parent.Commands() {
+		if sub.Name() == "run" {
+			return sub
+		}
+	}
+	t.Fatalf("%q has no \"run\" subcommand", parent.Name())
+	return nil
+}
+
+// TestParity_PositionalArgs asserts positional-argument parity at the structural level: with the
+// shared cobra.ExactArgs(1) value gone (batch 7's own MaximumNArgs(1) replaces it on both trees),
+// each path's own "run" command independently carries cobra.MaximumNArgs(1) -- no positional
+// argument is a legal parse (this batch's own no-slug default-to-"self"/omitted-slug behaviour lives
+// past Args, in Arm/ArmAt, not at this layer), and two are refused as an arity error on both sides.
+func TestParity_PositionalArgs(t *testing.T) {
+	battenRun := findRunCommand(t, battencli.Command())
+	shedRun := findRunCommand(t, Command())
+
+	t.Run("ZeroArgs", func(t *testing.T) {
+		if err := battenRun.Args(battenRun, nil); err != nil {
+			t.Errorf("battencli run.Args(nil) = %v; want nil -- zero args is no longer a refusal", err)
+		}
+		if err := shedRun.Args(shedRun, nil); err != nil {
+			t.Errorf("shed run.Args(nil) = %v; want nil -- zero args is no longer a refusal", err)
+		}
+	})
+
+	t.Run("OneArg", func(t *testing.T) {
+		args := []string{"some-slug"}
+		if err := battenRun.Args(battenRun, args); err != nil {
+			t.Errorf("battencli run.Args(%v) = %v; want nil", args, err)
+		}
+		if err := shedRun.Args(shedRun, args); err != nil {
+			t.Errorf("shed run.Args(%v) = %v; want nil", args, err)
+		}
+	})
+
+	t.Run("TwoSlugs", func(t *testing.T) {
+		args := []string{"slug-one", "slug-two"}
+		if err := battenRun.Args(battenRun, args); err == nil {
+			t.Errorf("battencli run.Args(%v) = nil; want an arity refusal", args)
+		}
+		if err := shedRun.Args(shedRun, args); err == nil {
+			t.Errorf("shed run.Args(%v) = nil; want an arity refusal", args)
+		}
+	})
 }

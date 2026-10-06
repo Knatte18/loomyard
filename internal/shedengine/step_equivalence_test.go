@@ -80,136 +80,98 @@ func assertStatusesAgree(t *testing.T, stepped, run Status) {
 	}
 }
 
-func TestStepRunEquivalence_ReachesDone(t *testing.T) {
-	names := []string{"Preflight", "Plan-Write", "Finalize"}
+// TestStepRunEquivalence drives each fixture to a terminal state with repeated Step calls and once with Run,
+// and asserts the two agree on the status file and on the Run result versus the final StepResult.
+func TestStepRunEquivalence(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		entry string
+		build func(t *testing.T) []ProducerDef
+		// check asserts fixture-specific properties of the Run result.
+		check func(t *testing.T, runResult Result)
+	}{
+		{
+			name:  "reaches done",
+			entry: "Preflight",
+			build: func(t *testing.T) []ProducerDef {
+				return linearChain(t, []string{"Preflight", "Plan-Write", "Finalize"}, []ShedProducer{
+					fixedOutcomeProducer(Done, ""),
+					fixedOutcomeProducer(Done, ""),
+					fixedOutcomeProducer(Done, ""),
+				})
+			},
+		},
+		{
+			name:  "reaches blocked",
+			entry: "A",
+			build: func(t *testing.T) []ProducerDef {
+				return []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Stuck, ""), OnStuck: ""}}
+			},
+		},
+		{
+			name:  "bounces before done",
+			entry: "A",
+			build: func(t *testing.T) []ProducerDef {
+				firstCall := true
+				a := &funcProducer{}
+				a.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
+					if firstCall {
+						firstCall = false
+						return Stuck, OutputPointer{}, nil
+					}
+					return Done, OutputPointer{}, nil
+				}
+				return []ProducerDef{
+					{Name: "A", Producer: a, OnStuck: "A", OnDone: "B"},
+					{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+				}
+			},
+			check: func(t *testing.T, runResult Result) {
+				if len(runResult.History) < 3 {
+					t.Fatalf("len(runResult.History) = %d; want at least 3 (a bounce, then two Done entries)", len(runResult.History))
+				}
+				if runResult.History[0].Outcome != Stuck {
+					t.Errorf("runResult.History[0].Outcome = %q; want %q -- this fixture must bounce at least once", runResult.History[0].Outcome, Stuck)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			steppedShed, steppedStatusPath, _, steppedStatusLockPath := newTestShed(t)
+			steppedShed.Producers = tt.build(t)
+			seedStatus(t, steppedStatusPath, steppedStatusLockPath, commonSeed(tt.entry))
+			finalStep := driveWithStep(t, steppedShed)
 
-	steppedShed, steppedStatusPath, _, steppedStatusLockPath := newTestShed(t)
-	steppedShed.Producers = linearChain(t, names, []ShedProducer{
-		fixedOutcomeProducer(Done, ""),
-		fixedOutcomeProducer(Done, ""),
-		fixedOutcomeProducer(Done, ""),
-	})
-	seedStatus(t, steppedStatusPath, steppedStatusLockPath, commonSeed(names[0]))
-	finalStep := driveWithStep(t, steppedShed)
-
-	runShed, runStatusPath, _, runStatusLockPath := newTestShed(t)
-	runShed.Producers = linearChain(t, names, []ShedProducer{
-		fixedOutcomeProducer(Done, ""),
-		fixedOutcomeProducer(Done, ""),
-		fixedOutcomeProducer(Done, ""),
-	})
-	seedStatus(t, runStatusPath, runStatusLockPath, commonSeed(names[0]))
-	runResult, err := runShed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run(...) = _, %v; want nil error", err)
-	}
-
-	steppedStatus := readStatus(t, steppedStatusPath, steppedStatusLockPath)
-	runStatus := readStatus(t, runStatusPath, runStatusLockPath)
-	assertStatusesAgree(t, steppedStatus, runStatus)
-
-	if string(runResult.Outcome) != string(finalStep.State) {
-		t.Errorf("Run Result.Outcome = %q; want %q (final StepResult.State)", runResult.Outcome, finalStep.State)
-	}
-	if runResult.HaltedProducer != finalStep.Next {
-		t.Errorf("Run Result.HaltedProducer = %q; want %q (final StepResult.Next)", runResult.HaltedProducer, finalStep.Next)
-	}
-	if runResult.Reason != finalStep.Reason {
-		t.Errorf("Run Result.Reason = %q; want %q (final StepResult.Reason)", runResult.Reason, finalStep.Reason)
-	}
-	if len(runResult.History) != len(finalStep.History) {
-		t.Errorf("len(Run Result.History) = %d; want %d (final StepResult.History)", len(runResult.History), len(finalStep.History))
-	}
-}
-
-func TestStepRunEquivalence_ReachesBlocked(t *testing.T) {
-	buildProducers := func() []ProducerDef {
-		return []ProducerDef{
-			{Name: "A", Producer: fixedOutcomeProducer(Stuck, ""), OnStuck: ""},
-		}
-	}
-
-	steppedShed, steppedStatusPath, _, steppedStatusLockPath := newTestShed(t)
-	steppedShed.Producers = buildProducers()
-	seedStatus(t, steppedStatusPath, steppedStatusLockPath, commonSeed("A"))
-	finalStep := driveWithStep(t, steppedShed)
-
-	runShed, runStatusPath, _, runStatusLockPath := newTestShed(t)
-	runShed.Producers = buildProducers()
-	seedStatus(t, runStatusPath, runStatusLockPath, commonSeed("A"))
-	runResult, err := runShed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run(...) = _, %v; want nil error", err)
-	}
-
-	steppedStatus := readStatus(t, steppedStatusPath, steppedStatusLockPath)
-	runStatus := readStatus(t, runStatusPath, runStatusLockPath)
-	assertStatusesAgree(t, steppedStatus, runStatus)
-
-	if string(runResult.Outcome) != string(finalStep.State) {
-		t.Errorf("Run Result.Outcome = %q; want %q (final StepResult.State)", runResult.Outcome, finalStep.State)
-	}
-	if runResult.HaltedProducer != finalStep.Next {
-		t.Errorf("Run Result.HaltedProducer = %q; want %q (final StepResult.Next)", runResult.HaltedProducer, finalStep.Next)
-	}
-	if runResult.Reason != finalStep.Reason {
-		t.Errorf("Run Result.Reason = %q; want %q (final StepResult.Reason)", runResult.Reason, finalStep.Reason)
-	}
-	if len(runResult.History) != len(finalStep.History) {
-		t.Errorf("len(Run Result.History) = %d; want %d (final StepResult.History)", len(runResult.History), len(finalStep.History))
-	}
-}
-
-func TestStepRunEquivalence_BouncesBeforeDone(t *testing.T) {
-	buildProducers := func() []ProducerDef {
-		firstCall := true
-		a := &funcProducer{}
-		a.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
-			if firstCall {
-				firstCall = false
-				return Stuck, OutputPointer{}, nil
+			runShed, runStatusPath, _, runStatusLockPath := newTestShed(t)
+			runShed.Producers = tt.build(t)
+			seedStatus(t, runStatusPath, runStatusLockPath, commonSeed(tt.entry))
+			runResult, err := runShed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run(...) = _, %v; want nil error", err)
 			}
-			return Done, OutputPointer{}, nil
-		}
-		return []ProducerDef{
-			{Name: "A", Producer: a, OnStuck: "A", OnDone: "B"},
-			{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
-		}
-	}
 
-	steppedShed, steppedStatusPath, _, steppedStatusLockPath := newTestShed(t)
-	steppedShed.Producers = buildProducers()
-	seedStatus(t, steppedStatusPath, steppedStatusLockPath, commonSeed("A"))
-	finalStep := driveWithStep(t, steppedShed)
+			steppedStatus := readStatus(t, steppedStatusPath, steppedStatusLockPath)
+			runStatus := readStatus(t, runStatusPath, runStatusLockPath)
+			assertStatusesAgree(t, steppedStatus, runStatus)
 
-	runShed, runStatusPath, _, runStatusLockPath := newTestShed(t)
-	runShed.Producers = buildProducers()
-	seedStatus(t, runStatusPath, runStatusLockPath, commonSeed("A"))
-	runResult, err := runShed.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Run(...) = _, %v; want nil error", err)
-	}
-
-	steppedStatus := readStatus(t, steppedStatusPath, steppedStatusLockPath)
-	runStatus := readStatus(t, runStatusPath, runStatusLockPath)
-	assertStatusesAgree(t, steppedStatus, runStatus)
-
-	if string(runResult.Outcome) != string(finalStep.State) {
-		t.Errorf("Run Result.Outcome = %q; want %q (final StepResult.State)", runResult.Outcome, finalStep.State)
-	}
-	if runResult.HaltedProducer != finalStep.Next {
-		t.Errorf("Run Result.HaltedProducer = %q; want %q (final StepResult.Next)", runResult.HaltedProducer, finalStep.Next)
-	}
-	if runResult.Reason != finalStep.Reason {
-		t.Errorf("Run Result.Reason = %q; want %q (final StepResult.Reason)", runResult.Reason, finalStep.Reason)
-	}
-	if len(runResult.History) != len(finalStep.History) {
-		t.Errorf("len(Run Result.History) = %d; want %d (final StepResult.History)", len(runResult.History), len(finalStep.History))
-	}
-	if len(runResult.History) < 3 {
-		t.Fatalf("len(runResult.History) = %d; want at least 3 (a bounce, then two Done entries)", len(runResult.History))
-	}
-	if runResult.History[0].Outcome != Stuck {
-		t.Errorf("runResult.History[0].Outcome = %q; want %q -- this fixture must bounce at least once", runResult.History[0].Outcome, Stuck)
+			if string(runResult.Outcome) != string(finalStep.State) {
+				t.Errorf("Run Result.Outcome = %q; want %q (final StepResult.State)", runResult.Outcome, finalStep.State)
+			}
+			if runResult.HaltedProducer != finalStep.Next {
+				t.Errorf("Run Result.HaltedProducer = %q; want %q (final StepResult.Next)", runResult.HaltedProducer, finalStep.Next)
+			}
+			if runResult.Reason != finalStep.Reason {
+				t.Errorf("Run Result.Reason = %q; want %q (final StepResult.Reason)", runResult.Reason, finalStep.Reason)
+			}
+			if len(runResult.History) != len(finalStep.History) {
+				t.Errorf("len(Run Result.History) = %d; want %d (final StepResult.History)", len(runResult.History), len(finalStep.History))
+			}
+			if tt.check != nil {
+				tt.check(t, runResult)
+			}
+		})
 	}
 }

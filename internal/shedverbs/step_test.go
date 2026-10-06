@@ -20,6 +20,7 @@ func stepTexts() VerbTexts {
 	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
 }
 
+//testtiming:keep pins the step envelope's closed key set, which its covering tests do not
 func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
 	res := shedengine.StepResult{
 		Producer: "P",
@@ -48,39 +49,9 @@ func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
 	}
 }
 
-// TestStepEnvelope_ParentNoticeConditional asserts parent_notice is present only when the step result carries one.
-func TestStepEnvelope_ParentNoticeConditional(t *testing.T) {
-	with := StepEnvelope(shedengine.StepResult{State: shedengine.StateAwaiting, ParentNotice: "settle it"}, "", "", "", StepLocations{}, nil)
-	if got := with["parent_notice"]; got != "settle it" {
-		t.Errorf("parent_notice = %v; want %q", got, "settle it")
-	}
-	without := StepEnvelope(shedengine.StepResult{State: shedengine.StateAwaiting}, "", "", "", StepLocations{}, nil)
-	if _, ok := without["parent_notice"]; ok {
-		t.Errorf("parent_notice present without a notice: %v", without)
-	}
-}
-
-// TestStepEnvelope_ContinueDerivedFromState asserts continue is true only for StateRunning.
-func TestStepEnvelope_ContinueDerivedFromState(t *testing.T) {
-	tests := []struct {
-		state shedengine.State
-		want  bool
-	}{
-		{shedengine.StateRunning, true},
-		{shedengine.StatePaused, false},
-		{shedengine.StateDone, false},
-		{shedengine.StateBlocked, false},
-		{shedengine.StateFailed, false},
-	}
-	for _, tt := range tests {
-		env := StepEnvelope(shedengine.StepResult{State: tt.state}, "", "", "", StepLocations{}, nil)
-		if env["continue"] != tt.want {
-			t.Errorf("state %q: continue = %v; want %v", tt.state, env["continue"], tt.want)
-		}
-	}
-}
-
+//testtiming:keep pins each state's field mapping and parent_notice presence in the step envelope, which its covering tests do not
 func TestStepEnvelope_FieldMapping(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		res          shedengine.StepResult
@@ -90,6 +61,8 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 		wantState    string
 		wantContinue bool
 		wantReason   string
+		// wantParentNotice is the parent_notice the envelope carries; empty means the key is absent.
+		wantParentNotice string
 	}{
 		{
 			name: "DoneWithOnDone",
@@ -166,11 +139,42 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 			wantState:    string(shedengine.StateDone),
 			wantContinue: false,
 		},
+		{
+			name:         "Paused",
+			res:          shedengine.StepResult{State: shedengine.StatePaused},
+			wantState:    string(shedengine.StatePaused),
+			wantContinue: false,
+		},
+		{
+			name:         "Failed",
+			res:          shedengine.StepResult{State: shedengine.StateFailed},
+			wantState:    string(shedengine.StateFailed),
+			wantContinue: false,
+		},
+		{
+			name:             "AwaitingWithParentNotice",
+			res:              shedengine.StepResult{State: shedengine.StateAwaiting, ParentNotice: "settle it"},
+			wantState:        string(shedengine.StateAwaiting),
+			wantContinue:     false,
+			wantParentNotice: "settle it",
+		},
+		{
+			name:         "AwaitingWithoutParentNotice",
+			res:          shedengine.StepResult{State: shedengine.StateAwaiting},
+			wantState:    string(shedengine.StateAwaiting),
+			wantContinue: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			env := StepEnvelope(tt.res, "", "/some/status.json", "", StepLocations{}, nil)
+			if notice, present := env["parent_notice"]; tt.wantParentNotice == "" && present {
+				t.Errorf("parent_notice present without a notice: %v", notice)
+			} else if tt.wantParentNotice != "" && notice != tt.wantParentNotice {
+				t.Errorf("parent_notice = %v; want %q", notice, tt.wantParentNotice)
+			}
 
 			if got := env["producer"]; got != tt.wantProducer {
 				t.Errorf("envelope[\"producer\"] = %v; want %v", got, tt.wantProducer)
@@ -202,6 +206,8 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 
 // TestStepKinds_IsExactlyFive asserts the closed refusal-kind vocabulary is exactly the five
 // declared constants and no larger, each non-empty and distinct.
+//
+//testtiming:keep pins the closed five-kind refusal vocabulary, a guard that fires when a kind is added or duplicated
 func TestStepKinds_IsExactlyFive(t *testing.T) {
 	want := []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
 	if len(StepKinds) != len(want) {

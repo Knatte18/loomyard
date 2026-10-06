@@ -2,8 +2,7 @@
 
 // parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation
 // paths -- "lyx <module> <verb> [<run-id>]" and "lyx shed <verb> [<run-id>]" -- for every verb/
-// recipe pair this table supports, plus positional-argument parity and the lightweight-wiring
-// proof.
+// recipe pair this table supports, plus the lightweight-wiring proof.
 //
 // Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore
 // lyxcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans
@@ -56,7 +55,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
-	"github.com/spf13/cobra"
 )
 
 // lyxcwdResolveWorktreeForTest resolves cwd -- a pair's code worktree root -- into a *lyxcwd.Location
@@ -116,11 +114,10 @@ func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, 
 	}
 }
 
-// TestParity_LoomRun_NoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded
+// parityLoomRunNoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded
 // at "self" for loom but with no loom status file, which refuses at the very first statement in
 // loomPreRun -- well above reed.Up() and fabricengine.Open.
-func TestParity_LoomRun_NoStatusFile(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-run")
 	cwd := h.PairWarpWorktree("parity-run")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
@@ -154,9 +151,8 @@ func readRecordedEnvelope(t *testing.T, label string, printed map[string]any) ma
 	return envelope.Decode(t, string(data)).Raw
 }
 
-// TestParity_LoomStep_RunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
-func TestParity_LoomStep_RunLockBusy(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// parityLoomStepRunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
+func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-step")
 	cwd := h.PairWarpWorktree("parity-step")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
@@ -232,11 +228,10 @@ func TestParity_LoomStep_RunLockBusy(t *testing.T) {
 	}
 }
 
-// TestParity_BattenStep_RunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a
+// parityBattenStepRunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a
 // batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the
 // envelope names the slug's scratch_dir and no friction_dir.
-func TestParity_BattenStep_RunLockBusy(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-step-busy"
 	seedRunForTest(t, cwd, slug, shedrun.RecipeBatten)
@@ -282,11 +277,10 @@ func TestParity_BattenStep_RunLockBusy(t *testing.T) {
 	}
 }
 
-// TestParity_LoomStatus_Seeded drives "lyx loom status" and "lyx shed status" over a pair seeded at
+// parityLoomStatusSeeded drives "lyx loom status" and "lyx shed status" over a pair seeded at
 // "self" for loom with a seeded status file, exercising the success envelope: status is read-only
 // and lightweight-wired, and never reaches the substrate on any path.
-func TestParity_LoomStatus_Seeded(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-status")
 	cwd := h.PairWarpWorktree("parity-status")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
@@ -311,12 +305,11 @@ func TestParity_LoomStatus_Seeded(t *testing.T) {
 	)
 }
 
-// TestParity_LoomPause_Seeded drives "lyx loom pause" and "lyx shed pause" over a pair seeded at
+// parityLoomPauseSeeded drives "lyx loom pause" and "lyx shed pause" over a pair seeded at
 // "self" for loom with a seeded status file, exercising the success envelope. pause mutates
 // PauseRequested, but the mutation is idempotent and the envelope carries only status_file, so
 // running both invocations sequentially over the same fixture does not disturb the comparison.
-func TestParity_LoomPause_Seeded(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
 	cwd := h.PairWarpWorktree("parity-pause")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
@@ -341,11 +334,10 @@ func TestParity_LoomPause_Seeded(t *testing.T) {
 	)
 }
 
-// TestParity_BattenRun_StateDone drives "lyx batten run <slug>" and "lyx shed run <slug>" over a
+// parityBattenRunStateDone drives "lyx batten run <slug>" and "lyx shed run <slug>" over a
 // slug seeded for batten whose persisted status is StateDone, which refuses inside batten's own
 // PreRun before BuildShed is ever called.
-func TestParity_BattenRun_StateDone(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-done"
 	seedRunForTest(t, cwd, slug, shedrun.RecipeBatten)
@@ -378,64 +370,12 @@ func TestParity_BattenRun_StateDone(t *testing.T) {
 	)
 }
 
-// findRunCommand returns cmd's own "run" subcommand, t.Fatal-ing if none is registered.
-func findRunCommand(t *testing.T, parent *cobra.Command) *cobra.Command {
-	t.Helper()
-	for _, sub := range parent.Commands() {
-		if sub.Name() == "run" {
-			return sub
-		}
-	}
-	t.Fatalf("%q has no \"run\" subcommand", parent.Name())
-	return nil
-}
-
-// TestParity_PositionalArgs asserts positional-argument parity at the structural level: with the
-// shared cobra.ExactArgs(1) value gone (batch 7's own MaximumNArgs(1) replaces it on both trees),
-// each path's own "run" command independently carries cobra.MaximumNArgs(1) -- no positional
-// argument is a legal parse (this batch's own no-slug default-to-"self"/omitted-slug behaviour lives
-// past Args, in Arm/ArmAt, not at this layer), and two are refused as an arity error on both sides.
-func TestParity_PositionalArgs(t *testing.T) {
-	battenRun := findRunCommand(t, battencli.Command())
-	shedRun := findRunCommand(t, Command())
-
-	t.Run("ZeroArgs", func(t *testing.T) {
-		if err := battenRun.Args(battenRun, nil); err != nil {
-			t.Errorf("battencli run.Args(nil) = %v; want nil -- zero args is no longer a refusal", err)
-		}
-		if err := shedRun.Args(shedRun, nil); err != nil {
-			t.Errorf("shed run.Args(nil) = %v; want nil -- zero args is no longer a refusal", err)
-		}
-	})
-
-	t.Run("OneArg", func(t *testing.T) {
-		args := []string{"some-slug"}
-		if err := battenRun.Args(battenRun, args); err != nil {
-			t.Errorf("battencli run.Args(%v) = %v; want nil", args, err)
-		}
-		if err := shedRun.Args(shedRun, args); err != nil {
-			t.Errorf("shed run.Args(%v) = %v; want nil", args, err)
-		}
-	})
-
-	t.Run("TwoSlugs", func(t *testing.T) {
-		args := []string{"slug-one", "slug-two"}
-		if err := battenRun.Args(battenRun, args); err == nil {
-			t.Errorf("battencli run.Args(%v) = nil; want an arity refusal", args)
-		}
-		if err := shedRun.Args(shedRun, args); err == nil {
-			t.Errorf("shed run.Args(%v) = nil; want an arity refusal", args)
-		}
-	})
-}
-
-// TestParity_LightweightWiring_StatusSucceedsWhenRunRefuses is the proof "lyx shed status" reaches
+// parityLightweightWiringStatusSucceedsWhenRunRefuses is the proof "lyx shed status" reaches
 // loom's lightweight wiring rather than the full wire(): over a pair seeded at "self" for loom whose
 // loom module config is deliberately broken in a way that refuses "lyx shed run", "lyx shed status"
 // must still succeed. A verb-blind arming would silently reintroduce the exact hazard
 // wireLightweight exists to avoid, on this path only.
-func TestParity_LightweightWiring_StatusSucceedsWhenRunRefuses(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-lightweight")
 	cwd := h.PairWarpWorktree("parity-lightweight")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
@@ -469,5 +409,31 @@ func TestParity_LightweightWiring_StatusSucceedsWhenRunRefuses(t *testing.T) {
 	statusCode := RunCLIIn(cwd, &statusOut, []string{"status"})
 	if statusCode != 0 {
 		t.Fatalf("RunCLIIn(shed status) over a broken loom.yaml exit code = %d; want 0 (status must reach the lightweight wiring, not the full wire()). output: %s", statusCode, statusOut.String())
+	}
+}
+
+// TestParity_Scenario drives every module-versus-shed parity case over one hub; each step addresses its own pair or slug,
+// so a step relies on no earlier step's state and the fixed order only lets a failing step stop the run.
+// The scenario calls t.Parallel as a whole: its steps share the hub fixture and the process-global durable sink dir the busy step sets, so no step does.
+func TestParity_Scenario(t *testing.T) {
+	t.Parallel()
+	h := hubforge.NewHub(t, ".")
+	steps := []struct {
+		name string
+		run  func(t *testing.T, h *hubforge.Hub)
+	}{
+		{"loom run without a status file", parityLoomRunNoStatusFile},
+		{"loom step with the run lock busy", parityLoomStepRunLockBusy},
+		{"batten step with the run lock busy", parityBattenStepRunLockBusy},
+		{"loom status seeded", parityLoomStatusSeeded},
+		{"loom pause seeded", parityLoomPauseSeeded},
+		{"batten run in state done", parityBattenRunStateDone},
+		{"lightweight wiring lets status succeed when run refuses", parityLightweightWiringStatusSucceedsWhenRunRefuses},
+		{"batten seed is refused outside prime", seedBattenRefusedOutsidePrime},
+	}
+	for _, step := range steps {
+		if !t.Run(step.name, func(t *testing.T) { step.run(t, h) }) {
+			return
+		}
 	}
 }

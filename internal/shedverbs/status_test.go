@@ -266,37 +266,37 @@ func TestStatusCmd_EnsureStatusLockDir_False(t *testing.T) {
 
 // TestRenderStatusLine_LabelAndOptionalTails asserts the told label appears in the rendered line
 // and the optional last/wait tails are included only when non-empty.
+//
+//testtiming:keep pins the told label and the optional last and wait tails of the status line, which its covering test does not
 func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
-	st := shedengine.Status{
-		State:    shedengine.StateRunning,
-		Activity: shedengine.Activity{Now: "Plan-Write", Last: "Discussion-Write → done", Wait: "5m"},
+	t.Parallel()
+	tests := []struct {
+		name     string
+		label    string
+		activity shedengine.Activity
+		want     string
+	}{
+		{"both tails", "loom", shedengine.Activity{Now: "Plan-Write", Last: "Discussion-Write → done", Wait: "5m"},
+			"loom running | now Plan-Write | last Discussion-Write → done | wait 5m"},
+		{"no tails", "batten", shedengine.Activity{Now: "Plan-Write"}, "batten running | now Plan-Write"},
+		{"last only", "loom", shedengine.Activity{Now: "Discussion-Write", Last: "Preflight → done"},
+			"loom running | now Discussion-Write | last Preflight → done"},
 	}
-	line := RenderStatusLine("loom", st)
-	want := "loom running | now Plan-Write | last Discussion-Write → done | wait 5m"
-	if line != want {
-		t.Errorf("RenderStatusLine = %q; want %q", line, want)
-	}
-
-	stNoTails := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "Plan-Write"}}
-	line = RenderStatusLine("batten", stNoTails)
-	want = "batten running | now Plan-Write"
-	if line != want {
-		t.Errorf("RenderStatusLine (no tails) = %q; want %q", line, want)
-	}
-
-	stLastOnly := shedengine.Status{
-		State:    shedengine.StateRunning,
-		Activity: shedengine.Activity{Now: "Discussion-Write", Last: "Preflight → done"},
-	}
-	line = RenderStatusLine("loom", stLastOnly)
-	want = "loom running | now Discussion-Write | last Preflight → done"
-	if line != want {
-		t.Errorf("RenderStatusLine (last only) = %q; want %q", line, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			st := shedengine.Status{State: shedengine.StateRunning, Activity: tt.activity}
+			if line := RenderStatusLine(tt.label, st); line != tt.want {
+				t.Errorf("RenderStatusLine = %q; want %q", line, tt.want)
+			}
+		})
 	}
 }
 
 // TestUnavailableLine_DedupesAcrossPolls asserts the composed unavailable line is byte-identical
 // across polls for a given label -- the property PrintStatusLinesOnChange's dedupe relies on.
+//
+//testtiming:keep pins that the unavailable line is byte-stable across polls and starts with the told label, which its covering test does not
 func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {
 	a := UnavailableLine("loom")
 	b := UnavailableLine("loom")
@@ -308,44 +308,18 @@ func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {
 	}
 }
 
-// TestPrintStatusLinesOnChange_ChangeOnlyPrinting drives PrintStatusLinesOnChange through a finite
-// polls count with an injected sleep and no wall-clock wait, asserting change-only printing.
-func TestPrintStatusLinesOnChange_ChangeOnlyPrinting(t *testing.T) {
-	lines := []string{"a", "a", "b", "b", "b", "c"}
-	i := 0
-	poll := func() string {
-		line := lines[i]
-		i++
-		return line
-	}
-	sleeps := 0
-	sleep := func() { sleeps++ }
-
-	var out strings.Builder
-	PrintStatusLinesOnChange(&out, poll, sleep, len(lines))
-
-	printed := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	want := []string{"a", "b", "c"}
-	if len(printed) != len(want) {
-		t.Fatalf("printed = %v; want %v", printed, want)
-	}
-	for idx, w := range want {
-		if printed[idx] != w {
-			t.Errorf("printed[%d] = %q; want %q", idx, printed[idx], w)
-		}
-	}
-	if sleeps != len(lines) {
-		t.Errorf("sleeps = %d; want %d", sleeps, len(lines))
-	}
-}
-
-// TestPrintStatusLinesOnChange_LineSequences covers the dedupe rule's edges: a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
+// TestPrintStatusLinesOnChange_LineSequences drives PrintStatusLinesOnChange through a finite polls count with an injected sleep and no wall-clock wait, covering the dedupe rule: only changes print, a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
 func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
 	tests := []struct {
 		name  string
 		polls []string
 		want  []string
 	}{
+		{
+			name:  "ChangeOnlyPrinting",
+			polls: []string{"a", "a", "b", "b", "b", "c"},
+			want:  []string{"a", "b", "c"},
+		},
 		{
 			name:  "ReprintsAfterReturningToAnEarlierLine",
 			polls: []string{"loom running | now Plan-Write", "loom running | now Plan-Bouncer", "loom running | now Plan-Write"},

@@ -114,6 +114,7 @@ func TestStep_ExemptStuckWithoutOnStuckStillBlocks(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that an absent budget_exempt decodes as false, counts as a stuck and is omitted on marshal, which its covering test does not
 func TestHistoryEntry_MissingBudgetExemptDecodesAndCounts(t *testing.T) {
 	var e HistoryEntry
 	if err := json.Unmarshal([]byte(`{"producer":"Wait","outcome":"stuck","output":"","at":"2026-01-01T00:00:00Z"}`), &e); err != nil {
@@ -179,6 +180,8 @@ func BenchmarkStep_LongHistory(b *testing.B) {
 
 // TestEpisodeStuckCount_SegmentDoneEndsEpisode covers a Burler-round row, which only ever returns
 // Stuck: its segment's Bouncer passing ends its episode, while a standalone row counts on.
+//
+//testtiming:keep pins that a segment Bouncer's done ends a Burler-round row's episode and segmentEnders of a standalone row is nil, which its covering tests do not
 func TestEpisodeStuckCount_SegmentDoneEndsEpisode(t *testing.T) {
 	history := []HistoryEntry{
 		{Producer: "Bouncer", Outcome: Stuck},
