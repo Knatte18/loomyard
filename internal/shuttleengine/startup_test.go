@@ -950,7 +950,8 @@ func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 	}
 }
 
-// TestStartup_SkillLoadTurns does not call t.Parallel: it asserts on the logger output, which is process-global.
+// TestStartup_SkillLoadTurns does not call t.Parallel: it asserts on the logger output,
+// which is process-global.
 func TestStartup_SkillLoadTurns(t *testing.T) {
 	const (
 		atLeastTimeout = "atLeastTimeout"

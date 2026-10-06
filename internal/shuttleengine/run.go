@@ -488,7 +488,8 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 }
 
 // settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.
-// It returns the skills a first turn found missing, which the caller retries once.
+// It returns the skills a first turn found missing,
+// which the caller retries once.
 // After the retry (final), still-missing skills are skipped with cause "not loaded" and none is returned.
 // died is true when the strand's pane is no longer live.
 func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time.Duration, final bool) (missing []string, died bool, err error) {

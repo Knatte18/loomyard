@@ -425,7 +425,8 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
-// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text.
+// skillReed is a fakeReed whose pane capture echoes every text typed into it,
+// so a verified send finds its text.
 // It plays a scripted reaction to each "LOAD:<list>" typed, counting load turns from zero:
 // a turn in Hangs never ends, one in Dies kills the strand's pane,
 // and any other appends a turn end to the run's events file.

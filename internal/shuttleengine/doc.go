@@ -92,7 +92,8 @@
 // An engine that realizes skills leaves the prompt pointer off its launch line and returns it as Launch.PromptLine;
 // once the provider is ready, shuttle sends the engine's one load message for the whole list through the verified send path and polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout).
 // The engine classifies that turn end into a SkillLoadReport: each unknown skill is skipped at once with a logged warning,
-// and the missing ones are asked for once more in a second load turn naming only them, whose still-missing skills are skipped with a logged warning.
+// and the missing ones are asked for once more in a second load turn naming only them,
+// whose still-missing skills are skipped with a logged warning.
 // A turn whose evidence the engine could not read is confirmed unverified with one logged warning and no retry,
 // and a turn that never ends skips its skills at the timeout with no retry.
 // So a launch runs at most two load turns, each bounded by the timeout,
