@@ -43,6 +43,7 @@ func TestClaudeBinary(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the exact launch line for every flag combination and both shell dialects, which its covering tests only substring-match
 func TestBuildLaunchCmd(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -330,6 +331,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 // valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized
 // value rather than failing, so a silently-accepted "High" would defeat the whole hard-error
 // guarantee).
+//
+//testtiming:keep pins the accepted effort values and the wrong-case rejection, which its covering tests do not assert row by row
 func TestValidateEffort(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -397,6 +400,7 @@ func TestResolveModelID(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the exact resume line for every mode-bearing flag, which its covering tests only substring-match
 func TestBuildResumeCmd(t *testing.T) {
 	// The resumed process is a fresh claude that inherits nothing from the launch, and reed replays
 	// this string verbatim — so every mode-bearing flag buildLaunchCmd emits must be here too, or a
@@ -437,6 +441,8 @@ func TestBuildResumeCmd(t *testing.T) {
 }
 
 // TestBuildResumeCmd_NoticePosix pins the posix resume line carrying a real assembled notice inside the fork-mode env wrap.
+//
+//testtiming:keep pins the posix resume line with a real notice inside the fork env wrap, which its covering test only substring-matches
 func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 	notice := noticeAgentForkDeny + " " + noticeAskUserQuestionDeny
 	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + notice + `'`
@@ -451,6 +457,8 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 }
 
 // TestValidatePermissionMode pins the mode resolution table.
+//
+//testtiming:keep pins every mode and interactivity row, including the wrong-case rejection, which its covering tests do not assert
 func TestValidatePermissionMode(t *testing.T) {
 	tests := []struct {
 		mode        string

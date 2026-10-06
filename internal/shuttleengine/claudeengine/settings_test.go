@@ -1,7 +1,7 @@
 // settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle
-// matrix and the interactive/autonomous split, the fork-mode conditional Agent hook, asserts the
-// events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and
-// exercises Prepare end to end against a real temp directory.
+// matrix and the interactive/autonomous split, the fork-mode conditional Agent hook and Bash guard,
+// asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant,
+// and exercises Prepare end to end against a real temp directory.
 
 package claudeengine
 
@@ -35,6 +35,9 @@ func hooksFor(doc map[string]any, event string) []any {
 	return entries
 }
 
+// TestBuildSettings_PromptSuggestionOff pins promptSuggestionEnabled as false in every run mode.
+//
+//testtiming:keep pins promptSuggestionEnabled=false in the interactive, autonomous and fork documents, which its covering tests do not assert
 func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -63,61 +66,53 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 }
 
-func TestBuildSettings_StopHookAlwaysPresent(t *testing.T) {
-	data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false)
-	if err != nil {
-		t.Fatalf("buildSettings() error: %v", err)
-	}
-	doc := parseSettings(t, data)
+// TestBuildSettings_StopHook pins the one Stop hook every document carries: a single command entry
+// with no tool matcher that appends the payload to the events path in its POSIX form, followed by a
+// newline guarantee.
+// A run directory path containing a literal apostrophe (an unusual but legal Windows path character,
+// e.g. a worktree named "operator's-box") must not break out of the hook's single-quoted shell
+// argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
+//
+//testtiming:keep pins the Stop hook's exact command and its single-quote escaping, which its covering test does not assert
+func TestBuildSettings_StopHook(t *testing.T) {
+	t.Parallel()
 
-	stop := hooksFor(doc, "Stop")
-	if len(stop) != 1 {
-		t.Fatalf("Stop hooks = %v; want exactly one entry", stop)
+	tests := []struct {
+		name        string
+		eventsPath  string
+		wantCommand string
+	}{
+		{"plain_path", "/c/run/events.jsonl", `cat >> '/c/run/events.jsonl' && printf '\n' >> '/c/run/events.jsonl'`},
+		{"embedded_single_quote_escaped", `/c/run's dir/events.jsonl`, `cat >> '/c/run'\''s dir/events.jsonl' && printf '\n' >> '/c/run'\''s dir/events.jsonl'`},
 	}
-	entry, _ := stop[0].(map[string]any)
-	if _, hasMatcher := entry["matcher"]; hasMatcher {
-		t.Errorf("Stop entry has a matcher field; want none (Stop carries no tool matcher): %v", entry)
-	}
-	innerHooks, _ := entry["hooks"].([]any)
-	if len(innerHooks) != 1 {
-		t.Fatalf("Stop hooks list = %v; want exactly one command", innerHooks)
-	}
-	cmd, _ := innerHooks[0].(map[string]any)
-	if cmd["type"] != "command" {
-		t.Errorf("Stop hook type = %v; want %q", cmd["type"], "command")
-	}
-	command, _ := cmd["command"].(string)
-	if !strings.Contains(command, "/c/run/events.jsonl") {
-		t.Errorf("Stop hook command = %q; want it to embed the POSIX events path", command)
-	}
-	if !strings.HasPrefix(command, "cat >> '/c/run/events.jsonl'") {
-		t.Errorf("Stop hook command = %q; want it to start with the cat-append", command)
-	}
-	if !strings.Contains(command, "printf '\\n' >> '/c/run/events.jsonl'") {
-		t.Errorf("Stop hook command = %q; want the trailing printf newline guarantee", command)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestBuildSettings_EventsPathSingleQuoteEscaped(t *testing.T) {
-	// A run directory path containing a literal apostrophe (an unusual but
-	// legal Windows path character, e.g. a worktree named "operator's-box")
-	// must not be able to break out of the Stop hook's single-quoted shell
-	// argument: the embedded quote is escaped via the standard sh idiom
-	// rather than passed through raw.
-	data, err := buildSettings(`/c/run's dir/events.jsonl`, false, shuttleengine.Config{}, false, false)
-	if err != nil {
-		t.Fatalf("buildSettings() error: %v", err)
-	}
-	doc := parseSettings(t, data)
-	stop := hooksFor(doc, "Stop")
-	entry, _ := stop[0].(map[string]any)
-	innerHooks, _ := entry["hooks"].([]any)
-	cmd, _ := innerHooks[0].(map[string]any)
-	command, _ := cmd["command"].(string)
-
-	want := `cat >> '/c/run'\''s dir/events.jsonl' && printf '\n' >> '/c/run'\''s dir/events.jsonl'`
-	if command != want {
-		t.Errorf("Stop hook command = %q; want %q (embedded single quote must be sh-escaped, not passed through raw)", command, want)
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, false, false)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			stop := hooksFor(parseSettings(t, data), "Stop")
+			if len(stop) != 1 {
+				t.Fatalf("Stop hooks = %v; want exactly one entry", stop)
+			}
+			entry, _ := stop[0].(map[string]any)
+			if _, hasMatcher := entry["matcher"]; hasMatcher {
+				t.Errorf("Stop entry has a matcher field; want none (Stop carries no tool matcher): %v", entry)
+			}
+			innerHooks, _ := entry["hooks"].([]any)
+			if len(innerHooks) != 1 {
+				t.Fatalf("Stop hooks list = %v; want exactly one command", innerHooks)
+			}
+			cmd, _ := innerHooks[0].(map[string]any)
+			if cmd["type"] != "command" {
+				t.Errorf("Stop hook type = %v; want %q", cmd["type"], "command")
+			}
+			if command, _ := cmd["command"].(string); command != tt.wantCommand {
+				t.Errorf("Stop hook command = %q; want %q", command, tt.wantCommand)
+			}
+		})
 	}
 }
 
@@ -212,6 +207,9 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	}
 }
 
+// TestBuildSettings_NoForbiddenCharsInSteerText pins that no steer constant carries a character that would corrupt the hook command it rides in.
+//
+//testtiming:keep a guard that fires when a steer constant gains a forbidden character, which no covering test asserts
 func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// Each steer constant rides inside a JSON string literal (so a literal
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
@@ -224,207 +222,10 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	}
 }
 
-// bashCommand returns the Bash PreToolUse entry's command string and whether a
-// Bash entry is present at all — the fork-context webster-verb guard's hook.
-func bashCommand(t *testing.T, doc map[string]any) (string, bool) {
-	t.Helper()
-	preToolUse := hooksFor(doc, "PreToolUse")
-	for _, e := range preToolUse {
-		entry, _ := e.(map[string]any)
-		if entry["matcher"] != "Bash" {
-			continue
-		}
-		hooks, _ := entry["hooks"].([]any)
-		if len(hooks) == 0 {
-			return "", true
-		}
-		cmd, _ := hooks[0].(map[string]any)
-		command, _ := cmd["command"].(string)
-		return command, true
-	}
-	return "", false
-}
-
-// TestBuildSettings_ForkContextWebsterGuard pins the fork-loop-deadlock guard: a fork-mode run
-// emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx
-// webster` command before denying (with steerWebsterForkDeny),
-// and always exits 0 via the trailing `; true`.
-// The guard is independent of ClaudeDenyAgentTool and absent entirely when fork mode is off (no
-// Master, so no fork could reach the loop).
-func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
-	t.Run("fork_mode_emits_bash_guard_independent_of_agent_deny", func(t *testing.T) {
-		for _, agentDeny := range []bool{true, false} {
-			cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny}
-			data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
-			if err != nil {
-				t.Fatalf("buildSettings() error: %v", err)
-			}
-			doc := parseSettings(t, data)
-			command, present := bashCommand(t, doc)
-			if !present {
-				t.Fatalf("Bash PreToolUse guard absent with ClaudeDenyAgentTool=%v; want it present in fork mode regardless", agentDeny)
-			}
-			// The two AND-ed detection predicates: fork context (agent_id) and
-			// a lyx webster command.
-			if !strings.Contains(command, `"agent_id"`) {
-				t.Errorf("Bash guard command = %q; want the fork-context agent_id grep", command)
-			}
-			if !strings.Contains(command, `lyx[[:space:]]+webster`) {
-				t.Errorf("Bash guard command = %q; want the lyx-webster command grep", command)
-			}
-			if !strings.Contains(command, steerWebsterForkDeny) {
-				t.Errorf("Bash guard command = %q; want it to carry steerWebsterForkDeny", command)
-			}
-			// A non-matching grep exits non-zero; the trailing `; true` keeps
-			// the hook's own exit code 0 so a non-fork/non-webster call is
-			// allowed, never a spurious hook error.
-			if !strings.HasSuffix(command, "; true") {
-				t.Errorf("Bash guard command = %q; want it to end with `; true` so a non-deny path exits 0", command)
-			}
-		}
-	})
-
-	t.Run("non_fork_mode_emits_no_bash_guard", func(t *testing.T) {
-		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, false)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		if command, _ := bashCommand(t, doc); strings.Contains(command, steerWebsterForkDeny) {
-			t.Error("Bash PreToolUse guard present with forkSubagents=false; want none (no fork can reach the loop)")
-		}
-	})
-}
-
-// TestBuildSettings_BashEntriesAreOnlyTheForkGuard pins that no run mode installs a Bash stdin rewrite:
-// the only Bash PreToolUse entry a document carries is the webster fork guard in a fork run, and a non-fork run carries none.
-func TestBuildSettings_BashEntriesAreOnlyTheForkGuard(t *testing.T) {
-	cases := []struct {
-		name        string
-		interactive bool
-		fork        bool
-		allowAgent  bool
-	}{
-		{"autonomous", false, false, false},
-		{"interactive", true, false, false},
-		{"fork", false, true, false},
-		{"fork_allow_agent", false, true, true},
-	}
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, tt.allowAgent)
-			if err != nil {
-				t.Fatalf("buildSettings() error: %v", err)
-			}
-			var bashCommands []string
-			for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
-				entry, _ := e.(map[string]any)
-				if entry["matcher"] != "Bash" {
-					continue
-				}
-				hooks, _ := entry["hooks"].([]any)
-				cmd, _ := hooks[0].(map[string]any)
-				command, _ := cmd["command"].(string)
-				bashCommands = append(bashCommands, command)
-			}
-			if !tt.fork {
-				if len(bashCommands) != 0 {
-					t.Fatalf("Bash entries = %q; want none in a non-fork run (data: %s)", bashCommands, data)
-				}
-				return
-			}
-			if len(bashCommands) != 1 || !strings.Contains(bashCommands[0], steerWebsterForkDeny) {
-				t.Fatalf("Bash entries = %q; want exactly the webster fork guard (data: %s)", bashCommands, data)
-			}
-		})
-	}
-}
-
-// agentCommand returns the Agent PreToolUse entry's command string and
-// whether an Agent entry is present at all.
-func agentCommand(t *testing.T, doc map[string]any) (string, bool) {
-	t.Helper()
-	preToolUse := hooksFor(doc, "PreToolUse")
-	for _, e := range preToolUse {
-		entry, _ := e.(map[string]any)
-		if entry["matcher"] != "Agent" {
-			continue
-		}
-		hooks, _ := entry["hooks"].([]any)
-		if len(hooks) == 0 {
-			return "", true
-		}
-		cmd, _ := hooks[0].(map[string]any)
-		command, _ := cmd["command"].(string)
-		return command, true
-	}
-	return "", false
-}
-
-// TestBuildSettings_ForkMode covers the three-way interaction between cfg.ClaudeDenyAgentTool and
-// forkSubagents: fork mode on with the deny configured replaces the blanket deny with the
-// conditional grep hook;
-// fork mode off leaves today's blanket deny unchanged;
-// and the deny configured off entirely emits no Agent entry regardless of fork mode.
-func TestBuildSettings_ForkMode(t *testing.T) {
-	t.Run("fork_mode_on_replaces_blanket_deny", func(t *testing.T) {
-		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		command, present := agentCommand(t, doc)
-		if !present {
-			t.Fatal("Agent PreToolUse entry absent; want the conditional fork-allow hook")
-		}
-		if !strings.Contains(command, `"subagent_type":"fork"`) {
-			t.Errorf("Agent command = %q; want it to contain the subagent_type fork grep pattern", command)
-		}
-		if !strings.Contains(command, steerAgentNonForkDeny) {
-			t.Errorf("Agent command = %q; want it to contain steerAgentNonForkDeny %q", command, steerAgentNonForkDeny)
-		}
-		if strings.Contains(command, steerAgentDeny) {
-			t.Errorf("Agent command = %q; want it to NOT contain the blanket steerAgentDeny text", command)
-		}
-	})
-
-	t.Run("fork_mode_off_keeps_blanket_deny", func(t *testing.T) {
-		cfg := shuttleengine.Config{ClaudeDenyAgentTool: true}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, false)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		command, present := agentCommand(t, doc)
-		if !present {
-			t.Fatal("Agent PreToolUse entry absent; want today's blanket deny")
-		}
-		if !strings.Contains(command, steerAgentDeny) {
-			t.Errorf("Agent command = %q; want the unchanged blanket steerAgentDeny text", command)
-		}
-		if strings.Contains(command, `"subagent_type":"fork"`) {
-			t.Errorf("Agent command = %q; want no conditional fork-allow grep when fork mode is off", command)
-		}
-	})
-
-	t.Run("deny_off_and_fork_mode_on_emits_no_agent_entry", func(t *testing.T) {
-		cfg := shuttleengine.Config{ClaudeDenyAgentTool: false}
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, false)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		if _, present := agentCommand(t, doc); present {
-			t.Error("Agent PreToolUse entry present; want none when ClaudeDenyAgentTool is false, regardless of fork mode")
-		}
-	})
-}
-
-// matcherCommand returns the first command of the PreToolUse entry with the given matcher, and whether one exists.
-func matcherCommand(doc map[string]any, matcher string) (string, bool) {
+// matcherCommands returns the first command of every PreToolUse entry with the given matcher; an
+// entry with no hooks contributes an empty command.
+func matcherCommands(doc map[string]any, matcher string) []string {
+	var commands []string
 	for _, e := range hooksFor(doc, "PreToolUse") {
 		entry, _ := e.(map[string]any)
 		if entry["matcher"] != matcher {
@@ -432,83 +233,125 @@ func matcherCommand(doc map[string]any, matcher string) (string, bool) {
 		}
 		hooks, _ := entry["hooks"].([]any)
 		if len(hooks) == 0 {
-			return "", true
+			commands = append(commands, "")
+			continue
 		}
 		cmd, _ := hooks[0].(map[string]any)
 		command, _ := cmd["command"].(string)
-		return command, true
+		commands = append(commands, command)
 	}
-	return "", false
+	return commands
 }
 
-// TestBuildSettings_AllowAgentTool covers the per-run Agent allowance with claude_deny_agent_tool on:
-// it removes the Agent hook and notice sentence with or without ForkSubagents,
-// keeps the fork-context Bash webster guard,
-// and leaves the AskUserQuestion deny and its notice sentence alone.
-func TestBuildSettings_AllowAgentTool(t *testing.T) {
-	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+// agentHook names which Agent PreToolUse hook buildSettings installs.
+type agentHook int
 
-	t.Run("removes_agent_hook_and_notice_without_fork", func(t *testing.T) {
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, true)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		if _, present := agentCommand(t, doc); present {
-			t.Error("Agent PreToolUse entry present; want none under AllowAgentTool")
-		}
-		if bash, _ := matcherCommand(doc, "Bash"); strings.Contains(bash, steerWebsterForkDeny) {
-			t.Error("Bash webster guard present without ForkSubagents; want none")
-		}
-		notice := buildDenyNotice(false, cfg, false, true)
-		if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
-			t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
-		}
-	})
+const (
+	agentHookNone agentHook = iota
+	agentHookBlanketDeny
+	agentHookForkConditional
+)
 
-	t.Run("removes_agent_hook_and_notice_with_fork_keeps_webster_guard", func(t *testing.T) {
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, true, true)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		doc := parseSettings(t, data)
-		if _, present := agentCommand(t, doc); present {
-			t.Error("Agent PreToolUse entry present; want none under AllowAgentTool with ForkSubagents")
-		}
-		bash, present := matcherCommand(doc, "Bash")
-		if !present || !strings.Contains(bash, steerWebsterForkDeny) {
-			t.Errorf("Bash webster guard = %q (present=%v); want it kept under ForkSubagents", bash, present)
-		}
-		notice := buildDenyNotice(false, cfg, true, true)
-		if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
-			t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
-		}
-	})
+// TestBuildSettings_AgentAndBashHooks covers how cfg.ClaudeDenyAgentTool, forkSubagents and the
+// per-run Agent allowance decide the Agent and Bash PreToolUse entries.
+// Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
+// fork mode off leaves the blanket deny;
+// the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
+// The fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
+// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command
+// before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
+// The guard is independent of ClaudeDenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
+//
+//testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
+func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
+	t.Parallel()
 
-	t.Run("fork_env_wrapping_stays", func(t *testing.T) {
-		runDir := t.TempDir()
-		launch, err := New().Prepare(runDir, shuttleengine.Spec{Prompt: "p", ForkSubagents: true, AllowAgentTool: true}, cfg)
-		if err != nil {
-			t.Fatalf("Prepare() error: %v", err)
-		}
-		if !strings.Contains(launch.Cmd, "CLAUDE_CODE_FORK_SUBAGENT") {
-			t.Errorf("Launch.Cmd = %q; want the CLAUDE_CODE_FORK_SUBAGENT wrapping kept", launch.Cmd)
-		}
-	})
+	denyBoth := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	tests := []struct {
+		name          string
+		cfg           shuttleengine.Config
+		interactive   bool
+		fork          bool
+		allowAgent    bool
+		wantAgent     agentHook
+		wantBashGuard bool
+		wantAskDeny   bool
+	}{
+		{name: "fork_on_replaces_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, fork: true, wantAgent: agentHookForkConditional, wantBashGuard: true},
+		{name: "fork_off_keeps_blanket_deny", cfg: shuttleengine.Config{ClaudeDenyAgentTool: true}, wantAgent: agentHookBlanketDeny},
+		{name: "deny_off_and_fork_on_emits_no_agent_entry_but_keeps_bash_guard", cfg: shuttleengine.Config{}, fork: true, wantAgent: agentHookNone, wantBashGuard: true},
+		{name: "autonomous", cfg: denyBoth, wantAgent: agentHookBlanketDeny, wantAskDeny: true},
+		{name: "interactive", cfg: denyBoth, interactive: true, wantAgent: agentHookBlanketDeny},
+		{name: "allow_agent_without_fork", cfg: denyBoth, allowAgent: true, wantAgent: agentHookNone, wantAskDeny: true},
+		{name: "allow_agent_with_fork_keeps_bash_guard", cfg: denyBoth, fork: true, allowAgent: true, wantAgent: agentHookNone, wantBashGuard: true, wantAskDeny: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("askuserquestion_deny_unaffected", func(t *testing.T) {
-		data, err := buildSettings("/c/run/events.jsonl", false, cfg, false, true)
-		if err != nil {
-			t.Fatalf("buildSettings() error: %v", err)
-		}
-		ask, present := matcherCommand(parseSettings(t, data), "AskUserQuestion")
-		if !present || !strings.Contains(ask, steerAskUserQuestionDeny) {
-			t.Errorf("AskUserQuestion command = %q (present=%v); want the deny kept", ask, present)
-		}
-		if notice := buildDenyNotice(false, cfg, false, true); !strings.Contains(notice, noticeAskUserQuestionDeny) {
-			t.Errorf("notice = %q; want the AskUserQuestion sentence kept", notice)
-		}
-	})
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, tt.cfg, tt.fork, tt.allowAgent)
+			if err != nil {
+				t.Fatalf("buildSettings() error: %v", err)
+			}
+			doc := parseSettings(t, data)
+
+			agentCommands := matcherCommands(doc, "Agent")
+			switch tt.wantAgent {
+			case agentHookNone:
+				if len(agentCommands) != 0 {
+					t.Errorf("Agent PreToolUse entries = %q; want none (data: %s)", agentCommands, data)
+				}
+			case agentHookBlanketDeny:
+				if len(agentCommands) != 1 || !strings.Contains(agentCommands[0], steerAgentDeny) || strings.Contains(agentCommands[0], `"subagent_type":"fork"`) {
+					t.Errorf("Agent PreToolUse entries = %q; want exactly the unchanged blanket steerAgentDeny with no conditional fork-allow grep", agentCommands)
+				}
+			case agentHookForkConditional:
+				if len(agentCommands) != 1 || !strings.Contains(agentCommands[0], `"subagent_type":"fork"`) ||
+					!strings.Contains(agentCommands[0], steerAgentNonForkDeny) || strings.Contains(agentCommands[0], steerAgentDeny) {
+					t.Errorf("Agent PreToolUse entries = %q; want exactly the conditional hook with the subagent_type fork grep and steerAgentNonForkDeny, not the blanket steerAgentDeny", agentCommands)
+				}
+			}
+
+			bashCommands := matcherCommands(doc, "Bash")
+			if !tt.wantBashGuard {
+				if len(bashCommands) != 0 {
+					t.Errorf("Bash PreToolUse entries = %q; want none (data: %s)", bashCommands, data)
+				}
+			} else {
+				if len(bashCommands) != 1 {
+					t.Fatalf("Bash PreToolUse entries = %q; want exactly the webster fork guard (data: %s)", bashCommands, data)
+				}
+				command := bashCommands[0]
+				// The two AND-ed detection predicates: fork context (agent_id) and a lyx webster command.
+				for _, want := range []string{`"agent_id"`, `lyx[[:space:]]+webster`, steerWebsterForkDeny} {
+					if !strings.Contains(command, want) {
+						t.Errorf("Bash guard command = %q; want it to contain %q", command, want)
+					}
+				}
+				// A non-matching grep exits non-zero; the trailing `; true` keeps the hook's own exit code 0 so a
+				// non-fork/non-webster call is allowed, never a spurious hook error.
+				if !strings.HasSuffix(command, "; true") {
+					t.Errorf("Bash guard command = %q; want it to end with `; true` so a non-deny path exits 0", command)
+				}
+			}
+
+			askCommands := matcherCommands(doc, "AskUserQuestion")
+			notice := buildDenyNotice(tt.interactive, tt.cfg, tt.fork, tt.allowAgent)
+			if tt.allowAgent {
+				if strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny) {
+					t.Errorf("notice = %q; want no Agent sentence under AllowAgentTool", notice)
+				}
+			}
+			if tt.wantAskDeny {
+				if len(askCommands) != 1 || !strings.Contains(askCommands[0], steerAskUserQuestionDeny) {
+					t.Errorf("AskUserQuestion commands = %q; want the deny kept", askCommands)
+				}
+				if !strings.Contains(notice, noticeAskUserQuestionDeny) {
+					t.Errorf("notice = %q; want the AskUserQuestion sentence kept", notice)
+				}
+			}
+		})
+	}
 }
 
 // TestPrepare_PromptLaunchLimit pins that the launch line carries a pointer to prompt.md, never the prompt text,
@@ -561,6 +404,9 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	})
 }
 
+// TestPrepare_WritesArtifactsAndReturnsConsistentLaunch pins the artifacts Prepare leaves on disk and that the launch and resume lines agree with them.
+//
+//testtiming:keep pins the prompt.md, settings.json and bash-env.sh contents and the env-file lead on both lines, which its covering test does not assert
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
@@ -630,6 +476,9 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	}
 }
 
+// TestBuildDenyNotice_MatchesInstalledDenies pins that the notice names exactly the denies buildSettings installs, over every deny combination.
+//
+//testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the --append-system-prompt flag
 func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 	for _, agentDeny := range []bool{false, true} {
 		for _, askUserDeny := range []bool{false, true} {
@@ -676,6 +525,9 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 	}
 }
 
+// TestBuildDenyNotice_SentenceContent pins the wording the fork and non-fork notices carry.
+//
+//testtiming:keep pins the fork-subagent and Agent-unavailable wording of the notice, which its covering test does not assert
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
 	forkNotice := buildDenyNotice(false, cfg, true, false)
