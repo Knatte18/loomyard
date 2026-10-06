@@ -13,6 +13,8 @@ import (
 )
 
 func TestDecideParent(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		shortname     string
@@ -20,6 +22,7 @@ func TestDecideParent(t *testing.T) {
 		originFound   bool
 		parentIsPrime bool
 		want          Parent
+		wantErr       bool
 	}{
 		{
 			name:          "prime parent gives the two-segment orch name",
@@ -55,10 +58,25 @@ func TestDecideParent(t *testing.T) {
 			parentIsPrime: true,
 			want:          Parent{},
 		},
+		{
+			name:        "invalid parent worktree name is an error",
+			shortname:   "tst",
+			origin:      fabricengine.Origin{ParentWorktree: "Bad Name"},
+			originFound: true,
+			wantErr:     true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := decideParent(tt.shortname, tt.origin, tt.originFound, tt.parentIsPrime)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("decideParent = %+v, nil; want error", got)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("decideParent: %v", err)
 			}
@@ -69,29 +87,10 @@ func TestDecideParent(t *testing.T) {
 	}
 }
 
-func TestDecideParent_InvalidWorktreeNameIsAnError(t *testing.T) {
-	_, err := decideParent("tst", fabricengine.Origin{ParentWorktree: "Bad Name"}, true, false)
-	if err == nil {
-		t.Fatal("decideParent with an invalid parent worktree name: want error, got nil")
-	}
-}
-
-// TestResolveParent_RemovedParentWorktreeStillResolves asserts a parent pair that no longer exists on disk still yields the pair-form name.
-func TestResolveParent_RemovedParentWorktreeStillResolves(t *testing.T) {
-	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
-
-	got, err := ResolveParent(l)
-	if err != nil {
-		t.Fatalf("ResolveParent: %v", err)
-	}
-	want := Parent{Name: "tst:gone-task:orch", Worktree: "gone-task"}
-	if got != want {
-		t.Errorf("ResolveParent = %+v; want %+v", got, want)
-	}
-}
-
 // TestResolveParent_LegacySeedParentIsIgnored asserts a seed carrying a top-level parent key beside an origin record naming a parent worktree resolves to the origin's parent.
 func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
+	t.Parallel()
+
 	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
 	if err := os.MkdirAll(shedrun.RunDir(l, shedrun.SelfRunID), 0o755); err != nil {
 		t.Fatalf("MkdirAll run dir: %v", err)

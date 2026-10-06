@@ -152,10 +152,12 @@ func docsLinkHeadingAnchors(data []byte) map[string]bool {
 	return anchors
 }
 
-// TestDocsLinkSlug covers GitHub's heading-slug rules against literal data, including the three
-// worked examples from _mill/discussion.md's "Link-checker implementation notes" and a fourth case
-// for the Fabric Git Invariant heading, since card 5 links depend on exactly that slug.
+// TestDocsLinkSlug covers GitHub's heading-slug rules against literal data, including the three worked examples from _mill/discussion.md's "Link-checker implementation notes" and a fourth case for the Fabric Git Invariant heading, since card 5 links depend on exactly that slug.
+//
+//testtiming:keep pins GitHub's heading-slug rules on literal headings, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkSlug(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		heading string
@@ -184,6 +186,8 @@ func TestDocsLinkSlug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := docsLinkSlug(tt.heading)
 			if got != tt.want {
 				t.Errorf("docsLinkSlug(%q) = %q; want %q", tt.heading, got, tt.want)
@@ -192,10 +196,12 @@ func TestDocsLinkSlug(t *testing.T) {
 	}
 }
 
-// TestDocsLinkExtract covers the inline-link grammar over literal data: plain links, links whose
-// text carries backticks, multiple links on one line, fence skipping for both fence styles, and
-// that reference-style links plus autolinks are silently ignored as out of grammar.
+// TestDocsLinkExtract covers the inline-link grammar over literal data: plain links, links whose text carries backticks, multiple links on one line, fence skipping for both fence styles, and that reference-style links plus autolinks are silently ignored as out of grammar.
+//
+//testtiming:keep pins the inline-link grammar and fence skipping on literal data, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkExtract(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		data string
@@ -234,6 +240,8 @@ func TestDocsLinkExtract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := docsLinkExtract([]byte(tt.data))
 			if len(got) != len(tt.want) {
 				t.Fatalf("docsLinkExtract(%q) = %v; want %v", tt.data, got, tt.want)
@@ -247,10 +255,12 @@ func TestDocsLinkExtract(t *testing.T) {
 	}
 }
 
-// TestDocsLinkHeadingAnchors covers anchor-set construction over literal data: distinct headings,
-// duplicate-slug disambiguation up to three occurrences, and that a "#"-prefixed line inside a
-// fence never counts as a heading.
+// TestDocsLinkHeadingAnchors covers anchor-set construction over literal data: distinct headings, duplicate-slug disambiguation up to three occurrences, and that a "#"-prefixed line inside a fence never counts as a heading.
+//
+//testtiming:keep pins anchor-set construction and duplicate-slug disambiguation on literal data, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkHeadingAnchors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		data string
@@ -279,6 +289,8 @@ func TestDocsLinkHeadingAnchors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := docsLinkHeadingAnchors([]byte(tt.data))
 			if len(got) != len(tt.want) {
 				t.Fatalf("docsLinkHeadingAnchors(%q) = %v; want %v", tt.data, got, tt.want)

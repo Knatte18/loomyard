@@ -70,21 +70,6 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects Ctx.RepoName exactly
-// regardless of how RepoName was derived (resolveCore's -LYXHUB-trim derivation, a hand-built literal,
-// or any future derivation) — the token has no opinion about RepoName's provenance, only that it
-// reads the field verbatim.
-func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
-	t.Parallel()
-
-	ctx := Ctx{RepoName: "feature-branch"}
-
-	got := tokenByName(t, "repo").Resolve(ctx)
-	if got != "feature-branch" {
-		t.Errorf("repo token Resolve() = %q; want %q", got, "feature-branch")
-	}
-}
-
 // TestBuild_ReturnsAllThreeKeys verifies Build resolves the full registry into a flat map keyed by
 // token name, with all three current tokens (repo, hub, worktree) present and correctly valued.
 func TestBuild_ReturnsAllThreeKeys(t *testing.T) {
@@ -104,42 +89,43 @@ func TestBuild_ReturnsAllThreeKeys(t *testing.T) {
 	}
 }
 
-// TestRender_FillsTemplateVerbatim verifies Render fills a two-marker template with the resolved
-// vocabulary, byte-for-byte.
-func TestRender_FillsTemplateVerbatim(t *testing.T) {
+// TestRender covers Render's happy path and its propagated error.
+// A two-marker template is filled with the resolved vocabulary, byte-for-byte.
+// A template referencing a token the registry does not define (e.g. the deferred "slug" token) surfaces stencil.Fill's unfilled-top-level-marker error unchanged, rather than swallowing or rewording it.
+func TestRender(t *testing.T) {
 	t.Parallel()
 
 	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB"}
-	template := []byte("{{.hub}}/{{.repo}}")
-
-	got, err := Render(template, ctx)
-	if err != nil {
-		t.Fatalf("Render() unexpected error: %v", err)
+	tests := []struct {
+		name        string
+		template    string
+		want        string
+		wantErrWith string
+	}{
+		{"fills template verbatim", "{{.hub}}/{{.repo}}", "/hub/loomyard-LYXHUB/loomyard", ""},
+		{"propagates unknown token error", "{{.slug}}", "", "unfilled top-level marker(s): slug"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	want := "/hub/loomyard-LYXHUB/loomyard"
-	if string(got) != want {
-		t.Errorf("Render() = %q; want %q", string(got), want)
-	}
-}
-
-// TestRender_PropagatesUnknownTokenError verifies Render surfaces stencil.Fill's
-// unfilled-top-level-marker error unchanged for a template referencing a token the registry does
-// not define (e.g.
-// the deferred "slug" token), rather than swallowing or rewording it.
-func TestRender_PropagatesUnknownTokenError(t *testing.T) {
-	t.Parallel()
-
-	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB"}
-	template := []byte("{{.slug}}")
-
-	_, err := Render(template, ctx)
-	if err == nil {
-		t.Fatal("Render() got nil error for an unknown top-level token; want an error")
-	}
-	wantSubstr := "unfilled top-level marker(s): slug"
-	if !strings.Contains(err.Error(), wantSubstr) {
-		t.Errorf("Render() error = %q; want substring %q", err.Error(), wantSubstr)
+			got, err := Render([]byte(tt.template), ctx)
+			if tt.wantErrWith != "" {
+				if err == nil {
+					t.Fatalf("Render(%q) got nil error; want an error containing %q", tt.template, tt.wantErrWith)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrWith) {
+					t.Errorf("Render(%q) error = %q; want substring %q", tt.template, err.Error(), tt.wantErrWith)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Render(%q) unexpected error: %v", tt.template, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("Render(%q) = %q; want %q", tt.template, string(got), tt.want)
+			}
+		})
 	}
 }
 

@@ -7,6 +7,7 @@ package shedcli
 
 import (
 	"errors"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,39 +17,50 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lyx shed seed
-// <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself
-// never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would
-// otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate
-// with nothing to gate).
+// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lyx shed seed <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate with nothing to gate).
+// The seed reads back carrying the recipe and the driver: the default when none is passed, the typed llm driver otherwise.
 func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	t.Parallel()
+	tests := []struct {
+		name       string
+		driver     string
+		wantDriver string
+	}{
+		{"default driver", "", shedrun.DriverLLM},
+		{"typed llm driver", shedrun.DriverLLM, shedrun.DriverLLM},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 
-	if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || found {
-		t.Fatalf("precondition: ReadSeed = (found=%v, err=%v); want (false, nil)", found, err)
-	}
+			if _, found, err := shedrun.ReadSeed(loc, "some-slug"); err != nil || found {
+				t.Fatalf("precondition: ReadSeed = (found=%v, err=%v); want (false, nil)", found, err)
+			}
 
-	// loom, not batten: batten's own seed-location rule reaches a git worktree listing, which a
-	// hand-built Location cannot answer and this untagged suite may not spawn.
-	if _, err := writeSeed(loc, "some-slug", "loom", "", nil); err != nil {
-		t.Fatalf("writeSeed = %v; want nil", err)
-	}
+			// loom, not batten: batten's own seed-location rule reaches a git worktree listing, which a
+			// hand-built Location cannot answer and this untagged suite may not spawn.
+			if _, err := writeSeed(loc, "some-slug", "loom", tt.driver, nil); err != nil {
+				t.Fatalf("writeSeed = %v; want nil", err)
+			}
 
-	seed, found, err := shedrun.ReadSeed(loc, "some-slug")
-	if err != nil || !found {
-		t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
-	}
-	if seed.Recipe != "loom" {
-		t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "loom")
-	}
-	if seed.Driver != shedrun.DriverLLM {
-		t.Errorf("seed.Driver = %q; want the default %q", seed.Driver, shedrun.DriverLLM)
+			seed, found, err := shedrun.ReadSeed(loc, "some-slug")
+			if err != nil || !found {
+				t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
+			}
+			if seed.Recipe != "loom" {
+				t.Errorf("seed.Recipe = %q; want %q", seed.Recipe, "loom")
+			}
+			if seed.Driver != tt.wantDriver {
+				t.Errorf("seed.Driver = %q; want %q", seed.Driver, tt.wantDriver)
+			}
+		})
 	}
 }
 
-// TestResolveSeedDriver pins the driver default against the recipe's bootstrap-verb capability: an
-// empty flag defaults to llm where a bootstrap verb can boot the driver session and to go where none
-// can, and a typed value passes through unchanged either way.
+// TestResolveSeedDriver pins the driver default against the recipe's bootstrap-verb capability: an empty flag defaults to llm where a bootstrap verb can boot the driver session and to go where none can, and a typed value passes through unchanged either way.
+//
+//testtiming:keep pins the driver default and pass-through per bootstrap-verb capability, which its covering tests do not
 func TestResolveSeedDriver(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -172,64 +184,36 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	})
 }
 
-// TestWriteSeed_LLMDriverOnTheRealTableRoundTrips covers the real table: seeding the loom recipe
-// with the llm driver succeeds, and the seed reads back carrying that value.
-func TestWriteSeed_LLMDriverOnTheRealTableRoundTrips(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-
-	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverLLM, nil); err != nil {
-		t.Fatalf("writeSeed(driver=llm) = %v; want nil", err)
-	}
-
-	seed, found, err := shedrun.ReadSeed(loc, "some-slug")
-	if err != nil || !found {
-		t.Fatalf("ReadSeed after writeSeed = (found=%v, err=%v); want (true, nil)", found, err)
-	}
-	if seed.Driver != shedrun.DriverLLM {
-		t.Errorf("seed.Driver = %q; want %q", seed.Driver, shedrun.DriverLLM)
-	}
-}
-
-// TestParseSeedParams_MalformedEntryRefuses asserts an entry with no "=" or an empty key refuses.
-func TestParseSeedParams_MalformedEntryRefuses(t *testing.T) {
+// TestParseSeedParams asserts a well-formed set of "key=value" entries parses into the expected map, including a value containing its own "=" (split only on the first), and that an entry with no "=" or an empty key refuses.
+func TestParseSeedParams(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name string
-		raw  []string
+		name    string
+		raw     []string
+		want    map[string]string
+		wantErr bool
 	}{
-		{"NoEquals", []string{"no-equals-sign"}},
-		{"EmptyKey", []string{"=value"}},
+		{"well-formed entries", []string{"slug=some-slug", "child_driver=go", "extra=a=b"}, map[string]string{"slug": "some-slug", "child_driver": "go", "extra": "a=b"}, false},
+		{"NoEquals", []string{"no-equals-sign"}, nil, true},
+		{"EmptyKey", []string{"=value"}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseSeedParams(tt.raw)
-			if err == nil {
-				t.Fatalf("parseSeedParams(%v) = nil; want a refusal", tt.raw)
+			t.Parallel()
+			got, err := parseSeedParams(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseSeedParams(%v) error = %v; want error = %v", tt.raw, err, tt.wantErr)
+			}
+			if !tt.wantErr && !maps.Equal(got, tt.want) {
+				t.Errorf("parseSeedParams(%v) = %v; want exactly %v", tt.raw, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestParseSeedParams_WellFormedEntriesParse asserts a well-formed set of "key=value" entries
-// parses into the expected map, including a value containing its own "=" (split only on the first).
-func TestParseSeedParams_WellFormedEntriesParse(t *testing.T) {
-	got, err := parseSeedParams([]string{"slug=some-slug", "child_driver=go", "extra=a=b"})
-	if err != nil {
-		t.Fatalf("parseSeedParams = %v; want nil", err)
-	}
-	want := map[string]string{"slug": "some-slug", "child_driver": "go", "extra": "a=b"}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("parseSeedParams()[%q] = %q; want %q", k, got[k], v)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("parseSeedParams() = %v; want exactly %v", got, want)
-	}
-}
-
-// TestWriteSeed_IdempotentAgainstAnIdenticalSeed asserts calling writeSeed twice with the identical
-// seed is a no-op the second time.
-func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
+// TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne asserts calling writeSeed twice with the identical seed is a no-op the second time, and that it refuses once an existing seed disagrees with the incoming one.
+func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *testing.T) {
+	t.Parallel()
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
 
@@ -238,16 +222,6 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeed(t *testing.T) {
 	}
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, params); err != nil {
 		t.Fatalf("writeSeed (second, identical) = %v; want nil -- idempotent", err)
-	}
-}
-
-// TestWriteSeed_RefusesADisagreeingSeed asserts writeSeed refuses when an existing seed disagrees
-// with the incoming one.
-func TestWriteSeed_RefusesADisagreeingSeed(t *testing.T) {
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-
-	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, nil); err != nil {
-		t.Fatalf("writeSeed (first) = %v; want nil", err)
 	}
 	if _, err := writeSeed(loc, "some-slug", "loom", shedrun.DriverGo, map[string]string{"parent": "main"}); err == nil {
 		t.Fatal("writeSeed (disagreeing params) = nil; want a refusal")

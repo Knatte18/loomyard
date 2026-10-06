@@ -1,7 +1,6 @@
 // config_test.go — unit tests for boardengine.LoadConfig.
 //
-// Covers: happy-path with template keys present, missing-key error, absolute and relative path
-// resolution, environment variable resolution, and not-initialized error path.
+// Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label refusals, the not-initialized error path, Outputs and Vocabulary.
 
 package boardengine_test
 
@@ -17,165 +16,50 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys
-// present and resolves environment variables.
-// LoadConfig no longer sets Config.Path;
-// the caller does that via fabricengine.BoardDir.
-func TestLoadConfig_HappyPath(t *testing.T) {
-	tmpDir := t.TempDir()
+// TestLoadConfig_ScalarKeysAndTemplateDefaults asserts LoadConfig reads the scalar keys and resolves absent types and labels keys to the template defaults.
+// A path: key of any shape is ignored because Config.Path has yaml:"-":
+// the board data dir is geometry owned by fabricengine.BoardDir, with no relative-path resolution and no env override.
+// It sets an environment variable, so it runs serially.
+func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
+	t.Setenv("TEST_BOARD_PATH", t.TempDir())
+	tests := []struct {
+		name    string
+		pathKey string
+	}{
+		{"no path key", ""},
+		{"absolute path key", "path: " + t.TempDir() + "\n"},
+		{"relative path key", "path: ../custom_board\n"},
+		{"env path key", "path: ${env:TEST_BOARD_PATH}\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := writeBoardConfig(t, tt.pathKey+"readme: Home.md\ndesign_prefix: proposal-\n")
 
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Write a config file with all template keys (path: is not a template key)
-	configFile := configengine.ConfigFile(tmpDir, "board")
-	content := `readme: Home.md
-design_prefix: proposal-
-`
-	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-
-	cfg, err := boardengine.LoadConfig(tmpDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Path is never set by LoadConfig; the caller sets it via fabricengine.BoardDir.
-	if cfg.Path != "" {
-		t.Errorf("expected Path to be empty after LoadConfig; got %q", cfg.Path)
-	}
-	if cfg.Readme != "Home.md" {
-		t.Errorf("expected Readme %q, got %q", "Home.md", cfg.Readme)
-	}
-	if cfg.DesignPrefix != "proposal-" {
-		t.Errorf("expected DesignPrefix %q, got %q", "proposal-", cfg.DesignPrefix)
-	}
-}
-
-// TestLoadConfig_AbsolutePathResolution verifies that a path: key in the config file is ignored by
-// LoadConfig because Config.Path has yaml:"-".
-// The board data dir is geometry owned by fabricengine.BoardDir;
-// the config key is a no-op.
-func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
-	tmpDir := t.TempDir()
-	absBoard := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Write config with an absolute path: key that should be ignored.
-	configFile := configengine.ConfigFile(tmpDir, "board")
-	content := `path: ` + absBoard + `
-readme: Home.md
-design_prefix: proposal-
-`
-	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-
-	cfg, err := boardengine.LoadConfig(tmpDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// yaml:"-" means the path: key in the file is never mapped to Config.Path.
-	if cfg.Path != "" {
-		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
-	}
-}
-
-// TestLoadConfig_RelativePathResolution verifies that a relative path: key in the config file is
-// ignored by LoadConfig because Config.Path has yaml:"-".
-// LoadConfig no longer performs any relative-path resolution;
-// the board data dir is geometry owned by fabricengine.BoardDir.
-func TestLoadConfig_RelativePathResolution(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Write config with a relative path: key that should be ignored.
-	configFile := configengine.ConfigFile(tmpDir, "board")
-	content := `path: ../custom_board
-readme: Home.md
-design_prefix: proposal-
-`
-	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-
-	cfg, err := boardengine.LoadConfig(tmpDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// yaml:"-" means the path: key in the file is never mapped to Config.Path;
-	// no relative-path resolution is performed.
-	if cfg.Path != "" {
-		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
-	}
-}
-
-// TestLoadConfig_EnvResolution verifies that a path: key using ${env:...} syntax in the config file
-// is ignored by LoadConfig because Config.Path has yaml:"-".
-// The env-override mechanism for the board data dir has been removed;
-// the data dir is now geometry owned by fabricengine.BoardDir and is not env-overridable.
-func TestLoadConfig_EnvResolution(t *testing.T) {
-	tmpDir := t.TempDir()
-	absBoard := t.TempDir()
-	t.Setenv("TEST_BOARD_PATH", absBoard)
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Write config with an env-variable path: key that should be ignored.
-	configFile := configengine.ConfigFile(tmpDir, "board")
-	content := `path: ${env:TEST_BOARD_PATH}
-readme: Home.md
-design_prefix: proposal-
-`
-	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-
-	cfg, err := boardengine.LoadConfig(tmpDir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// yaml:"-" means Config.Path is never populated from the config file, even
-	// after env-variable resolution expands the value.
-	if cfg.Path != "" {
-		t.Errorf("expected Path to be empty (yaml:\"-\" ignores config key); got %q", cfg.Path)
+			cfg, err := boardengine.LoadConfig(dir, "board")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Path != "" {
+				t.Errorf("expected Path to be empty; got %q", cfg.Path)
+			}
+			if cfg.Readme != "Home.md" {
+				t.Errorf("expected Readme %q, got %q", "Home.md", cfg.Readme)
+			}
+			if cfg.DesignPrefix != "proposal-" {
+				t.Errorf("expected DesignPrefix %q, got %q", "proposal-", cfg.DesignPrefix)
+			}
+			if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"bug", "enhancement"}) {
+				t.Errorf("type names = %v; want [bug enhancement]", got)
+			}
+			for _, l := range cfg.Types {
+				if l.Description == "" {
+					t.Errorf("template type %q has no description", l.Name)
+				}
+			}
+			if len(cfg.Labels) != 0 {
+				t.Errorf("Labels = %v; want none", cfg.Labels)
+			}
+		})
 	}
 }
 
@@ -304,39 +188,9 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_LabelsDefault asserts absent keys resolve to the template defaults.
-func TestLoadConfig_LabelsDefault(t *testing.T) {
-	dir := writeBoardConfig(t, `readme: Home.md
-design_prefix: proposal-
-`)
-
-	cfg, err := boardengine.LoadConfig(dir, "board")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"bug", "enhancement"}) {
-		t.Errorf("type names = %v; want [bug enhancement]", got)
-	}
-	for _, l := range cfg.Types {
-		if l.Description == "" {
-			t.Errorf("template type %q has no description", l.Name)
-		}
-	}
-	if len(cfg.Labels) != 0 {
-		t.Errorf("Labels = %v; want none", cfg.Labels)
-	}
-}
-
-// TestOutputs_TypesFollowFileOrder asserts Outputs().Types lists the type names in the map's file order.
-func TestOutputs_TypesFollowFileOrder(t *testing.T) {
-	cfg := boardengine.Config{Types: []boardengine.Label{{Name: "idea"}, {Name: "bug"}, {Name: "enhancement"}}}
-	if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"idea", "bug", "enhancement"}) {
-		t.Errorf("Types = %v; want [idea bug enhancement]", got)
-	}
-}
-
-// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the
-// empty vocabulary of a path-only Config.
+// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the empty vocabulary of a path-only Config.
+//
+//testtiming:keep pins the IsType and Known answers for a type, a plain label, an unknown label and the empty vocabulary, which its covering test never asserts
 func TestVocabulary(t *testing.T) {
 	v := boardengine.Config{Types: []boardengine.Label{{Name: "bug"}}, Labels: []boardengine.Label{{Name: "undecided"}}}.Vocabulary()
 	tests := []struct {
@@ -362,25 +216,38 @@ func TestVocabulary(t *testing.T) {
 	}
 }
 
-// TestOutputs tests the Outputs() method on Config.
+// TestOutputs asserts Outputs carries the readme name, the design prefix and the type names in the map's file order.
+//
+//testtiming:keep pins the readme name, design prefix and type order that Outputs carries, which its covering test does not assert
 func TestOutputs(t *testing.T) {
-	cfg := boardengine.Config{
-		Path:         "/some/path",
-		Readme:       "Home.md",
-		DesignPrefix: "proposal-",
-		Types:        []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}},
+	t.Parallel()
+	tests := []struct {
+		name string
+		cfg  boardengine.Config
+		want boardengine.Outputs
+	}{
+		{
+			name: "all fields",
+			cfg: boardengine.Config{
+				Path:         "/some/path",
+				Readme:       "Home.md",
+				DesignPrefix: "proposal-",
+				Types:        []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}},
+			},
+			want: boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-", Types: []string{"bug", "enhancement"}},
+		},
+		{
+			name: "types follow file order",
+			cfg:  boardengine.Config{Types: []boardengine.Label{{Name: "idea"}, {Name: "bug"}, {Name: "enhancement"}}},
+			want: boardengine.Outputs{Types: []string{"idea", "bug", "enhancement"}},
+		},
 	}
-
-	out := cfg.Outputs()
-
-	if !reflect.DeepEqual(out.Types, []string{"bug", "enhancement"}) {
-		t.Errorf("expected Types [bug enhancement], got %v", out.Types)
-	}
-
-	if out.Readme != "Home.md" {
-		t.Errorf("expected Readme %q, got %q", "Home.md", out.Readme)
-	}
-	if out.DesignPrefix != "proposal-" {
-		t.Errorf("expected DesignPrefix %q, got %q", "proposal-", out.DesignPrefix)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.cfg.Outputs(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Outputs() = %+v; want %+v", got, tt.want)
+			}
+		})
 	}
 }

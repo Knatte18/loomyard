@@ -46,39 +46,43 @@ func TestQueueNotice_RefusesMultiLineAndSlashLeading(t *testing.T) {
 	}
 }
 
-func TestQueueNotice_FilesSortByArrivalAndListOldestFirst(t *testing.T) {
-	p := noticePaths(t, "s1")
-	// Queue out of lexical order of content, with later times for later calls.
-	for i, line := range []string{"zulu", "alpha", "mike"} {
-		if queued, err := QueueNotice(p, line, noticeEpoch.Add(time.Duration(i)*time.Nanosecond)); err != nil || !queued {
-			t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
+func TestQueueNotice_ListingOrderAndUniqueness(t *testing.T) {
+	t.Run("files sort by arrival and list oldest first", func(t *testing.T) {
+		t.Parallel()
+		p := noticePaths(t, "s1")
+		// Queue out of lexical order of content, with later times for later calls.
+		for i, line := range []string{"zulu", "alpha", "mike"} {
+			if queued, err := QueueNotice(p, line, noticeEpoch.Add(time.Duration(i)*time.Nanosecond)); err != nil || !queued {
+				t.Fatalf("QueueNotice(%q) = %v, %v", line, queued, err)
+			}
 		}
-	}
-	got, err := ListNotices(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"zulu", "alpha", "mike"}
-	if len(got) != len(want) {
-		t.Fatalf("queue = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i].Line != want[i] {
-			t.Errorf("notice %d = %q, want %q", i, got[i].Line, want[i])
-		}
-	}
-}
-
-func TestQueueNotice_SameInstantNeverShareAFile(t *testing.T) {
-	p := noticePaths(t, "s1")
-	for i := 0; i < 5; i++ {
-		if _, err := QueueNotice(p, "same", noticeEpoch); err != nil {
+		got, err := ListNotices(p)
+		if err != nil {
 			t.Fatal(err)
 		}
-	}
-	if got, _ := ListNotices(p); len(got) != 5 {
-		t.Errorf("queue holds %d notices, want 5", len(got))
-	}
+		want := []string{"zulu", "alpha", "mike"}
+		if len(got) != len(want) {
+			t.Fatalf("queue = %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i].Line != want[i] {
+				t.Errorf("notice %d = %q, want %q", i, got[i].Line, want[i])
+			}
+		}
+	})
+
+	t.Run("same instant never shares a file", func(t *testing.T) {
+		t.Parallel()
+		p := noticePaths(t, "s1")
+		for i := 0; i < 5; i++ {
+			if _, err := QueueNotice(p, "same", noticeEpoch); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got, _ := ListNotices(p); len(got) != 5 {
+			t.Errorf("queue holds %d notices, want 5", len(got))
+		}
+	})
 }
 
 func TestQueueNotice_CapDropsTheOldest(t *testing.T) {
@@ -105,6 +109,7 @@ func TestQueueNotice_CapDropsTheOldest(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that removing an absent notice and dropping an absent queue return nil, which its covering tests do not assert
 func TestRemoveAndDropNotices(t *testing.T) {
 	p := noticePaths(t, "s1")
 	for i, line := range []string{"a", "b"} {

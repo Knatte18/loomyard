@@ -14,86 +14,57 @@ type strictTestValue struct {
 	Name string `json:"name"`
 }
 
-func TestReadJSONStrict_ValidDecode(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "value.json")
-	lockPath := filepath.Join(dir, "value.json.lock")
+func TestReadJSONStrict(t *testing.T) {
+	t.Parallel()
 
-	if err := os.WriteFile(path, []byte(`{"name":"widget"}`), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	tests := []struct {
+		name string
+		// content is written to value.json under a real t.TempDir() parent, so a file miss is a clean os.IsNotExist and not a lock-acquire failure caused by an absent parent directory (flock.RLock fails immediately if the lock file's directory does not exist -- see TestReadJSONStrict_MissingFile_NoMkdirAll below).
+		// A nil content leaves the file absent.
+		content       []byte
+		wantOK        bool
+		wantName      string
+		wantErrDecode bool
+	}{
+		{name: "ValidDecode", content: []byte(`{"name":"widget"}`), wantOK: true, wantName: "widget"},
+		{name: "MissingFileExistingParent", content: nil},
+		{name: "UnknownField", content: []byte(`{"name":"widget","extra":true}`), wantErrDecode: true},
+		{name: "MalformedJSON", content: []byte(`{"name":`), wantErrDecode: true},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	got, ok, err := ReadJSONStrict[strictTestValue](path, lockPath)
-	if err != nil {
-		t.Fatalf("ReadJSONStrict() error = %v; want nil", err)
-	}
-	if !ok {
-		t.Fatalf("ReadJSONStrict() ok = false; want true")
-	}
-	if got.Name != "widget" {
-		t.Errorf("ReadJSONStrict() Name = %q; want %q", got.Name, "widget")
-	}
-}
+			dir := t.TempDir()
+			path := filepath.Join(dir, "value.json")
+			lockPath := filepath.Join(dir, "value.json.lock")
+			if tt.content != nil {
+				if err := os.WriteFile(path, tt.content, 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			}
 
-func TestReadJSONStrict_UnknownField(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "value.json")
-	lockPath := filepath.Join(dir, "value.json.lock")
-
-	if err := os.WriteFile(path, []byte(`{"name":"widget","extra":true}`), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	_, ok, err := ReadJSONStrict[strictTestValue](path, lockPath)
-	if !errors.Is(err, ErrDecode) {
-		t.Errorf("ReadJSONStrict() error = %v; want errors.Is(err, ErrDecode)", err)
-	}
-	if ok {
-		t.Errorf("ReadJSONStrict() ok = true; want false")
-	}
-}
-
-func TestReadJSONStrict_MalformedJSON(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "value.json")
-	lockPath := filepath.Join(dir, "value.json.lock")
-
-	if err := os.WriteFile(path, []byte(`{"name":`), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	_, ok, err := ReadJSONStrict[strictTestValue](path, lockPath)
-	if !errors.Is(err, ErrDecode) {
-		t.Errorf("ReadJSONStrict() error = %v; want errors.Is(err, ErrDecode)", err)
-	}
-	if ok {
-		t.Errorf("ReadJSONStrict() ok = true; want false")
-	}
-}
-
-func TestReadJSONStrict_MissingFile_ExistingParent(t *testing.T) {
-	// Use a real t.TempDir() as the parent so the file miss is a clean
-	// os.IsNotExist, not a lock-acquire failure caused by an absent parent
-	// directory (flock.RLock fails immediately if the lock file's directory
-	// does not exist — see TestReadJSONStrict_MissingFile_NoMkdirAll below).
-	dir := t.TempDir()
-	path := filepath.Join(dir, "value.json")
-	lockPath := filepath.Join(dir, "value.json.lock")
-
-	got, ok, err := ReadJSONStrict[strictTestValue](path, lockPath)
-	if err != nil {
-		t.Fatalf("ReadJSONStrict() error = %v; want nil", err)
-	}
-	if ok {
-		t.Errorf("ReadJSONStrict() ok = true; want false")
-	}
-	var zero strictTestValue
-	if got != zero {
-		t.Errorf("ReadJSONStrict() value = %+v; want zero value", got)
+			got, ok, err := ReadJSONStrict[strictTestValue](path, lockPath)
+			if tt.wantErrDecode {
+				if !errors.Is(err, ErrDecode) {
+					t.Errorf("ReadJSONStrict() error = %v; want errors.Is(err, ErrDecode)", err)
+				}
+			} else if err != nil {
+				t.Fatalf("ReadJSONStrict() error = %v; want nil", err)
+			}
+			if ok != tt.wantOK {
+				t.Errorf("ReadJSONStrict() ok = %v; want %v", ok, tt.wantOK)
+			}
+			if got.Name != tt.wantName {
+				t.Errorf("ReadJSONStrict() Name = %q; want %q", got.Name, tt.wantName)
+			}
+		})
 	}
 }
 
 func TestReadJSONStrict_MissingFile_NoMkdirAll(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	// A subdirectory that is never created ahead of time. Because
 	// ReadJSONStrict deliberately skips os.MkdirAll (unlike ReadJSON), the

@@ -91,6 +91,7 @@ func checkInvocation(t *testing.T, args []string, problems []string, out string)
 }
 
 // TestCLITree_EveryCommand walks newRoot() from a cwd that is not a git repository.
+// It chdirs, which is process-global state, so neither it nor its subtests run in parallel.
 func TestCLITree_EveryCommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -124,18 +125,25 @@ func TestCLITree_EveryCommand(t *testing.T) {
 	if walked < 2 {
 		t.Fatalf("walked %d commands; the tree walk is not reaching the mounted modules", walked)
 	}
-}
 
-// TestCLITree_RootLongNamesEveryModule asserts root.Long names every mounted module.
-func TestCLITree_RootLongNamesEveryModule(t *testing.T) {
-	root := newRoot()
-	children := visibleChildren(root)
-	if len(children) == 0 {
-		t.Fatal("newRoot() mounts no modules")
-	}
-	for _, child := range children {
-		if !strings.Contains(root.Long, child.Name()) {
-			t.Errorf("root.Long does not name mounted module %q; add it to the Available modules list in newRoot()", child.Name())
+	t.Run("root.Long names every mounted module", func(t *testing.T) {
+		children := visibleChildren(root)
+		if len(children) == 0 {
+			t.Fatal("newRoot() mounts no modules")
 		}
-	}
+		for _, child := range children {
+			if !strings.Contains(root.Long, child.Name()) {
+				t.Errorf("root.Long does not name mounted module %q; add it to the Available modules list in newRoot()", child.Name())
+			}
+		}
+	})
+
+	// The root alias for loom's bootstrap verb is named "start"; a surviving "run" child would mean the retired alias is still registered.
+	t.Run("root carries no bare run child", func(t *testing.T) {
+		for _, child := range root.Commands() {
+			if child.Name() == "run" {
+				t.Errorf("newRoot() root tree carries a bare child command named %q; the retired root alias must not survive the rename", child.Name())
+			}
+		}
+	})
 }

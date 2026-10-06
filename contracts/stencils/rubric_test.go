@@ -20,95 +20,40 @@ import (
 // A marker outside this set would sit inside the marker VALUE the Bouncer and Burler prompts interpolate the rubric as, invisible to the fill's required-marker check at the template actually being executed, so it must fail here exactly as loudly as the old no-marker-at-all rule made it fail.
 var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": true}
 
-// assertRubricMarkersWithinAllowlist fails when markers contains any name outside
-// rubricMarkerAllowlist.
-func assertRubricMarkersWithinAllowlist(t *testing.T, rubricName string, markers []string) {
-	t.Helper()
-	for _, marker := range markers {
-		if !rubricMarkerAllowlist[marker] {
-			t.Errorf("%s carries the top-level marker %q, which is outside the marker allowlist %v", rubricName, marker, rubricMarkerAllowlist)
-		}
-	}
-}
+// TestLoomRubrics asserts, for each of the three stencil-sourced rubrics:
+//   - its top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set for all three -- an asymmetric rule across the three is how the next author loses the invariant;
+//   - it renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory, the production render path every Bouncer and Burler rubric read travels.
+//     A marker-set check alone cannot see this failure mode: a bare "{{" an author writes in prose has no marker name to inspect and becomes a runtime parse-template error only once the rubric is actually filled;
+//   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
+//     The comparison is slash-normalised because the rubric text joins with "/" while the rendered prefix uses the OS separator.
+func TestLoomRubrics(t *testing.T) {
+	t.Parallel()
 
-// TestLoomRubricDiscussionReview_MarkersWithinAllowlist asserts LoomRubricDiscussionReview's top-level marker set is a subset of rubricMarkerAllowlist, the same allowed set as the other two rubrics' -- an asymmetric rule across the three is how the next author loses the invariant.
-func TestLoomRubricDiscussionReview_MarkersWithinAllowlist(t *testing.T) {
-	markers, err := stencil.TopLevelMarkers(LoomRubricDiscussionReview)
-	if err != nil {
-		t.Fatalf("stencil.TopLevelMarkers(LoomRubricDiscussionReview) = _, %v; want nil error", err)
-	}
-	assertRubricMarkersWithinAllowlist(t, "LoomRubricDiscussionReview", markers)
-}
-
-// TestLoomRubricPlanReview_MarkersWithinAllowlist asserts LoomRubricPlanReview's top-level marker
-// set is a subset of rubricMarkerAllowlist: this rubric now carries specs_dir, and a second marker
-// would still be invisible at the value-interpolation site, so it must still fail loudly.
-func TestLoomRubricPlanReview_MarkersWithinAllowlist(t *testing.T) {
-	markers, err := stencil.TopLevelMarkers(LoomRubricPlanReview)
-	if err != nil {
-		t.Fatalf("stencil.TopLevelMarkers(LoomRubricPlanReview) = _, %v; want nil error", err)
-	}
-	assertRubricMarkersWithinAllowlist(t, "LoomRubricPlanReview", markers)
-}
-
-// TestLoomRubricWebsterReview_MarkersWithinAllowlist asserts LoomRubricWebsterReview's top-level
-// marker set is a subset of rubricMarkerAllowlist: this rubric now carries specs_dir, and a second
-// marker would still be invisible at the value-interpolation site, so it must still fail loudly.
-func TestLoomRubricWebsterReview_MarkersWithinAllowlist(t *testing.T) {
-	markers, err := stencil.TopLevelMarkers(LoomRubricWebsterReview)
-	if err != nil {
-		t.Fatalf("stencil.TopLevelMarkers(LoomRubricWebsterReview) = _, %v; want nil error", err)
-	}
-	assertRubricMarkersWithinAllowlist(t, "LoomRubricWebsterReview", markers)
-}
-
-// TestLoomRubrics_ParseUnderTheRenderHelper asserts each of the three stencil-sourced rubrics
-// renders successfully through internal/shedadapters.ReadRubric given a non-empty specs directory --
-// the production render path every Bouncer and Burler rubric read actually travels. A marker-set
-// check alone cannot see this failure mode: a bare "{{" an author writes in prose has no marker name
-// to inspect and becomes a runtime parse-template error only once the rubric is actually filled.
-func TestLoomRubrics_ParseUnderTheRenderHelper(t *testing.T) {
 	tests := []struct {
 		name string
 		def  []byte
-	}{
-		{"loom-rubric-discussion-review", LoomRubricDiscussionReview},
-		{"loom-rubric-plan-review", LoomRubricPlanReview},
-		{"loom-rubric-webster-review", LoomRubricWebsterReview},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := stencilstore.Path(dir, tt.name)
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatalf("os.MkdirAll(%q) = %v; want nil error", filepath.Dir(path), err)
-			}
-			if err := os.WriteFile(path, tt.def, 0o644); err != nil {
-				t.Fatalf("os.WriteFile(%q) = %v; want nil error", path, err)
-			}
-
-			if _, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir"); err != nil {
-				t.Errorf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
-			}
-		})
-	}
-}
-
-// TestLoomRubrics_NameTheWriterStencil asserts each review rubric, rendered through internal/shedadapters.ReadRubric, names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
-// The comparison is slash-normalised because the rubric text joins with "/" while the rendered prefix uses the OS separator.
-func TestLoomRubrics_NameTheWriterStencil(t *testing.T) {
-	tests := []struct {
-		name   string
-		def    []byte
+		// writer is the stencil the rendered rubric must name; empty for a rubric that names none.
 		writer string
 	}{
 		{"loom-rubric-discussion-review", LoomRubricDiscussionReview, "loom-template-discussion"},
 		{"loom-rubric-plan-review", LoomRubricPlanReview, "loom-template-plan"},
+		{"loom-rubric-webster-review", LoomRubricWebsterReview, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			markers, err := stencil.TopLevelMarkers(tt.def)
+			if err != nil {
+				t.Fatalf("stencil.TopLevelMarkers(%s) = _, %v; want nil error", tt.name, err)
+			}
+			for _, marker := range markers {
+				if !rubricMarkerAllowlist[marker] {
+					t.Errorf("%s carries the top-level marker %q, which is outside the marker allowlist %v", tt.name, marker, rubricMarkerAllowlist)
+				}
+			}
+
 			dir := t.TempDir()
 			path := stencilstore.Path(dir, tt.name)
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -121,6 +66,9 @@ func TestLoomRubrics_NameTheWriterStencil(t *testing.T) {
 			got, err := shedadapters.ReadRubric(dir, tt.name, "/abs/specs/dir")
 			if err != nil {
 				t.Fatalf("shedadapters.ReadRubric(%q, %q) = _, %v; want nil error", dir, tt.name, err)
+			}
+			if tt.writer == "" {
+				return
 			}
 			want := filepath.ToSlash(stencilstore.Path(dir, tt.writer))
 			if !strings.Contains(filepath.ToSlash(got), want) {

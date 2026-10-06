@@ -9,6 +9,7 @@ import (
 	"github.com/Knatte18/quarry/glyph"
 )
 
+//testtiming:keep pins parseGlyph's Unit/Name split and its failure on a #-free string, which TestCardTargetDirs does not assert
 func TestParseGlyph(t *testing.T) {
 	t.Parallel()
 
@@ -29,37 +30,6 @@ func TestParseGlyph(t *testing.T) {
 			t.Fatalf("parseGlyph() error = nil; want an error for a #-free string")
 		}
 	})
-}
-
-func TestPlanLanguage(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		language string
-		wantLang glyph.Language
-		wantOK   bool
-	}{
-		{name: "go", language: "go", wantLang: glyph.Go, wantOK: true},
-		{name: "absent (zero value) defaults to go", language: "", wantLang: glyph.Go, wantOK: true},
-		{name: "none opts out", language: "none", wantOK: false},
-		{name: "unrecognized value opts out", language: "python", wantOK: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			plan := &Plan{Language: tt.language}
-			gotLang, gotOK := planLanguage(plan)
-			if gotOK != tt.wantOK {
-				t.Errorf("planLanguage(%q) ok = %v; want %v", tt.language, gotOK, tt.wantOK)
-			}
-			if tt.wantOK && gotLang != tt.wantLang {
-				t.Errorf("planLanguage(%q) lang = %v; want %v", tt.language, gotLang, tt.wantLang)
-			}
-		})
-	}
 }
 
 // TestPlanGlyphLanguage asserts Plan.GlyphLanguage — the exported delegate to planLanguage —

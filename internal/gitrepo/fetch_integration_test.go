@@ -1,9 +1,6 @@
 //go:build integration
 
-// fetch_integration_test.go covers Repo.Fetch against real git repositories,
-// reusing push_test.go's bare-remote/clone fixtures (newBareRemote,
-// newRepoWithRemote, cloneFromBare) since Fetch needs the same
-// bare-remote-plus-clones shape those tests already build.
+// fetch_integration_test.go covers Repo.Fetch, and the remote-failure paths of Fetch and Pull, against real git repositories, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since Fetch needs the same bare-remote-plus-clones shape those tests already build.
 
 package gitrepo_test
 
@@ -13,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
 // TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts Fetch's whole point: after a
@@ -20,6 +18,8 @@ import (
 // its remote-tracking ref (`@{u}`) to the new tip while leaving local HEAD completely untouched —
 // unlike Pull, which would fast-forward HEAD itself.
 func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) {
+	t.Parallel()
+
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
 
@@ -29,10 +29,7 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 	if err := repoA.Push(); err != nil {
 		t.Fatalf("Push() (establish upstream) error = %v; want nil", err)
 	}
-	headBefore, err := repoA.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
+	headBefore := requireCurrentSHA(t, repoA)
 
 	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
 	writeFile(t, cloneBPath, "b.txt", "from B")
@@ -64,50 +61,71 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 		t.Errorf("remote-tracking ref after Fetch() = %q; want it to advance to the new tip %q", got, wantTrackingRef)
 	}
 
-	headAfter, err := repoA.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	if headAfter != headBefore {
+	if headAfter := requireCurrentSHA(t, repoA); headAfter != headBefore {
 		t.Errorf("local HEAD after Fetch() = %q; want unchanged %q (Fetch merges nothing)", headAfter, headBefore)
 	}
 }
 
-// TestFetch_NoRemoteConfigured_ErrorNamesRepoPath mirrors
-// TestPull_NoRemoteConfigured_ErrorNamesRepoPath.
-// Measured directly against git 2.53 (see this task's implementation notes): bare `git fetch` with
-// zero remotes configured enumerates the repo's configured remotes and, finding none, exits 0
-// having done nothing — it never needs a merge target the way `git pull --ff-only` does, so it
-// cannot fail this way at all.
-// Fetch()'s error path is instead exercised below against a remote whose URL cannot be reached, the
-// closest real analogue to Pull's no-remote error-path test.
-func TestFetch_NoRemoteConfigured_Succeeds(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "content")
-	commitAll(t, dir, "init")
+// TestRemoteFailurePaths covers how Fetch and Pull report a repository whose remote is missing or unreachable.
+// Bare `git fetch` with zero remotes configured enumerates the configured remotes and, finding none, exits 0 having done nothing — it never needs a merge target the way `git pull --ff-only` does, so it cannot fail that way at all.
+// Fetch's error path is instead exercised against a remote whose URL cannot be reached, the closest real analogue to Pull's no-remote error.
+// Each error must name the repo path (per the documented error style) and must never leak git's raw "fatal:"-prefixed stderr.
+func TestRemoteFailurePaths(t *testing.T) {
+	t.Parallel()
 
-	if err := repo.Fetch(); err != nil {
-		t.Fatalf("Fetch() with no remote configured error = %v; want nil (bare `git fetch` is a documented no-op with zero remotes)", err)
+	tests := []struct {
+		name string
+		// setup receives the repo directory after its first commit.
+		setup   func(t *testing.T, dir string)
+		call    func(repo *gitrepo.Repo) error
+		wantErr bool
+	}{
+		{
+			name:    "Fetch with no remote configured is a no-op",
+			call:    (*gitrepo.Repo).Fetch,
+			wantErr: false,
+		},
+		{
+			name: "Fetch against an unreachable remote errors",
+			setup: func(t *testing.T, dir string) {
+				gitkit.MustRun(t, dir, "git", "remote", "add", "origin", filepath.Join(dir, "does-not-exist.git"))
+			},
+			call:    (*gitrepo.Repo).Fetch,
+			wantErr: true,
+		},
+		{
+			name:    "Pull with no remote configured errors",
+			call:    (*gitrepo.Repo).Pull,
+			wantErr: true,
+		},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak asserts Fetch's error-path style
-// — mirroring Pull's no-stderr-leak error-path test — against a remote git genuinely cannot reach:
-// the error must name the repo path and must never leak git's raw "fatal:"-prefixed stderr.
-func TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "content")
-	commitAll(t, dir, "init")
-	gitkit.MustRun(t, dir, "git", "remote", "add", "origin", filepath.Join(dir, "does-not-exist.git"))
+			dir, repo := newRepo(t)
+			writeFile(t, dir, "a.txt", "content")
+			commitAll(t, dir, "init")
+			if tt.setup != nil {
+				tt.setup(t, dir)
+			}
 
-	err := repo.Fetch()
-	if err == nil {
-		t.Fatal("Fetch() against an unreachable remote error = nil; want an error")
-	}
-	if !strings.Contains(err.Error(), dir) {
-		t.Errorf("Fetch() error = %q; want it to name the repo path %q", err, dir)
-	}
-	if strings.Contains(err.Error(), "fatal:") {
-		t.Errorf("Fetch() error = %q; must not leak raw git stderr", err)
+			err := tt.call(repo)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("call error = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("call error = nil; want an error")
+			}
+			if !strings.Contains(err.Error(), dir) {
+				t.Errorf("error = %q; want it to name the repo path %q", err, dir)
+			}
+			if strings.Contains(err.Error(), "fatal:") {
+				t.Errorf("error = %q; must not leak raw git stderr", err)
+			}
+		})
 	}
 }

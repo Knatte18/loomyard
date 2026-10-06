@@ -18,6 +18,8 @@ import (
 )
 
 // TestDiscussionSpec verifies DiscussionSpec's field mapping for both autonomous values.
+//
+//testtiming:keep pins OutputFiles, Interactive, AwaitOperator, Role, Effort and Timeout for both modes, which TestProducerSpecs_SkillsAndParentDirective does not assert
 func TestDiscussionSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
@@ -83,25 +85,48 @@ func TestDiscussionSpec(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_EmptySlug verifies an empty slug is rejected.
-func TestDiscussionSpec_EmptySlug(t *testing.T) {
-	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
-
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+// TestDiscussionSpec_Refuses verifies DiscussionSpec rejects an empty slug, and, when stencilsDir does not exist, returns an error naming the missing stencil rather than silently falling back to the embedded default, per the missing-board-is-a-hard-error Shared Decision.
+func TestDiscussionSpec_Refuses(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		slug         string
+		missingDir   bool
+		wantErrNames string
+	}{
+		{name: "empty slug", slug: ""},
+		// The parent directive renders before the discussion stencil is read, so it is the first stencil the error names.
+		{name: "missing stencils directory", slug: "add-json-flag", missingDir: true, wantErrNames: "parent-directive-none"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			worktreeRoot := filepath.Join("home", "user", "repo")
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+			cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
+			reg, err := modelspec.LoadRegistry(t.TempDir())
+			if err != nil {
+				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+			}
+			stencilsDir := newTestStencilsDir(t)
+			if tt.missingDir {
+				stencilsDir = filepath.Join(t.TempDir(), "does-not-exist")
+			}
 
-	if _, err := DiscussionSpec(layout, newTestStencilsDir(t), "", cfg, reg, "", false); err == nil {
-		t.Fatal("DiscussionSpec(..., slug=\"\", ...) = _, nil; want non-nil error")
+			_, err = DiscussionSpec(layout, stencilsDir, "", cfg, reg, tt.slug, false)
+			if err == nil {
+				t.Fatalf("DiscussionSpec(slug=%q, missingDir=%v) = _, nil; want non-nil error", tt.slug, tt.missingDir)
+			}
+			if !strings.Contains(err.Error(), tt.wantErrNames) {
+				t.Errorf("DiscussionSpec(slug=%q, missingDir=%v) error = %q; want it to name %q", tt.slug, tt.missingDir, err.Error(), tt.wantErrNames)
+			}
+		})
 	}
 }
 
-// TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit
-// to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared
-// Decision.
+// TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared Decision.
+//
+//testtiming:keep pins that an on-disk edit of the stencil reaches the prompt, which the covering spec test never edits
 func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
@@ -130,33 +155,10 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_MissingStencilsDirIsHardError verifies DiscussionSpec returns an error naming
-// the missing stencil, rather than silently falling back to the embedded default, when stencilsDir
-// does not exist, per the missing-board-is-a-hard-error Shared Decision.
-func TestDiscussionSpec_MissingStencilsDirIsHardError(t *testing.T) {
-	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
-
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
-	}
-
-	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
-	_, err = DiscussionSpec(layout, missingStencilsDir, "", cfg, reg, "add-json-flag", false)
-	if err == nil {
-		t.Fatal("DiscussionSpec(..., stencilsDir=<missing>, ...) = _, nil; want non-nil error")
-	}
-	// The parent directive renders before the discussion stencil is read, so it is the first stencil the error names.
-	if !strings.Contains(err.Error(), "parent-directive-none") {
-		t.Errorf("DiscussionSpec(..., stencilsDir=<missing>, ...) error = %q; want it to name the missing stencil %q", err.Error(), "parent-directive-none")
-	}
-}
-
-// TestDiscussionSpec_PatternDirective proves DiscussionSpec injects the designer directive when
-// PATTERN.md exists at the worktree root, and renders none without it.
+// TestDiscussionSpec_PatternDirective proves DiscussionSpec injects the designer directive when PATTERN.md exists at the worktree root, and renders none without it.
 // It uses a non-"." AnchorRel, so the root the directive reads is told apart from the anchor path.
+//
+//testtiming:keep pins the designer directive text and its place before Step 1 for the discussion prompt, which the covering tests do not assert
 func TestDiscussionSpec_PatternDirective(t *testing.T) {
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
 	reg, err := modelspec.LoadRegistry(t.TempDir())

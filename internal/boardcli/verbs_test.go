@@ -1,7 +1,7 @@
 //go:build integration
 
 // verbs_test.go — tests for the board verbs beyond the store verbs: promote, prune, find, retire-legacy, and the --text listing on list and find.
-// seedCwd is defined in cli_test.go and runCLI in cli_unit_test.go, same package.
+// The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 
 package boardcli_test
 
@@ -50,9 +50,7 @@ func slugsOf(t *testing.T, result map[string]any) []string {
 	return slugs
 }
 
-func TestCLIPromote(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepPromote(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"p","title":"P","labels":["bug"]}`)
 
 	task := runJSON(t, 0, "promote", `{"slug":"p"}`)["task"].(map[string]any)
@@ -81,9 +79,7 @@ func TestCLIPromote(t *testing.T) {
 	}
 }
 
-func TestCLIPromote_Refusals(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"p","title":"P","labels":["bug"]}`)
 
 	for name, payload := range map[string]string{
@@ -107,9 +103,7 @@ func TestCLIPromote_Refusals(t *testing.T) {
 	}
 }
 
-func TestCLIPrune(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepPrune(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"keep","title":"Keep","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"gone","title":"Gone","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"gone","status":"done"}`)
@@ -131,9 +125,7 @@ func TestCLIPrune(t *testing.T) {
 	}
 }
 
-func TestCLIFind(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepFind(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"needle-slug","title":"A","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"b","title":"has Needle title","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"c","title":"C","labels":["bug"],"brief":"needle in brief"}`)
@@ -164,9 +156,8 @@ func seedUndecidedLabel(t *testing.T, cwd string) {
 	seedHubBoardConfig(t, filepath.Dir(cwd), "readme: Home.md\ndesign_prefix: proposal-\nlabels:\n  undecided: Not yet triaged\n")
 }
 
-func TestCLIListAndFindLabelFilter(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedUndecidedLabel(t, seedCwd(t))
+func stepListAndFindLabelFilter(t *testing.T, f *cliFixture) {
+	seedUndecidedLabel(t, f.cwd)
 	mustUpsert(t, `{"slug":"one","title":"One","kind":"note","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"two","title":"Two","kind":"note","labels":["bug","undecided"]}`)
 	mustUpsert(t, `{"slug":"three","title":"Three","kind":"note","labels":["enhancement","undecided"]}`)
@@ -189,9 +180,7 @@ func TestCLIListAndFindLabelFilter(t *testing.T) {
 	}
 }
 
-func TestCLIFind_NoArgumentRefused(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepFind_NoArgumentRefused(t *testing.T, f *cliFixture) {
 
 	result := runJSON(t, 1, "find")
 	if ok, _ := result["ok"].(bool); ok {
@@ -199,9 +188,8 @@ func TestCLIFind_NoArgumentRefused(t *testing.T) {
 	}
 }
 
-func TestCLIListAndFindText(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedUndecidedLabel(t, seedCwd(t))
+func stepListAndFindText(t *testing.T, f *cliFixture) {
+	seedUndecidedLabel(t, f.cwd)
 	mustUpsert(t, `{"slug":"later","title":"Later thing","kind":"note","labels":["enhancement","undecided"]}`)
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
@@ -220,9 +208,8 @@ func TestCLIListAndFindText(t *testing.T) {
 	}
 }
 
-func TestCLIRetireLegacy(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	cwd := seedCwd(t)
+func stepRetireLegacy(t *testing.T, f *cliFixture) {
+	cwd := f.cwd
 	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
 
 	// A board with no legacy files refuses.
@@ -249,9 +236,7 @@ func TestCLIRetireLegacy(t *testing.T) {
 	}
 }
 
-func TestCLIGetAndRemoveByID(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"by-id","title":"By ID","kind":"task","labels":["bug"],"recipe":"loom"}`)
 
 	task := runJSON(t, 0, "get", `{"slug":"by-id"}`)["task"].(map[string]any)
@@ -280,10 +265,8 @@ func formatNumber(f float64) string {
 	return string(b)
 }
 
-// TestCLIUpsertBodyFile drives --body-file with a path and with stdin, then reads the body back with get.
-func TestCLIUpsertBodyFile(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+// stepUpsertBodyFile drives --body-file with a path and with stdin, then reads the body back with get.
+func stepUpsertBodyFile(t *testing.T, f *cliFixture) {
 
 	path := filepath.Join(t.TempDir(), "body.md")
 	fileBody := "# Heading\n\nA \"quoted\" line.\n"
@@ -309,10 +292,8 @@ func TestCLIUpsertBodyFile(t *testing.T) {
 	runJSON(t, 1, "upsert", "-", "--body-file", "-")
 }
 
-// TestCLIMergeBodyFile drives merge --body-file with a path and with stdin, and refuses a body given twice.
-func TestCLIMergeBodyFile(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+// stepMergeBodyFile drives merge --body-file with a path and with stdin, and refuses a body given twice.
+func stepMergeBodyFile(t *testing.T, f *cliFixture) {
 
 	path := filepath.Join(t.TempDir(), "body.md")
 	fileBody := "# Merged\n\nA \"quoted\" line.\n"
@@ -346,10 +327,8 @@ func TestCLIMergeBodyFile(t *testing.T) {
 	}
 }
 
-// TestCLIGetBody prints bodies byte-for-byte, an empty body as nothing, and refuses an absent target.
-func TestCLIGetBody(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+// stepGetBody prints bodies byte-for-byte, an empty body as nothing, and refuses an absent target.
+func stepGetBody(t *testing.T, f *cliFixture) {
 
 	for slug, body := range map[string]string{
 		"multi":    "# Heading\n\nline one\nline two\n",
@@ -381,10 +360,8 @@ func TestCLIGetBody(t *testing.T) {
 	}
 }
 
-// TestCLIGetBodyRoundTrip feeds the bytes of get --body back through upsert --body-file and finds the body unchanged.
-func TestCLIGetBodyRoundTrip(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	seedCwd(t)
+// stepGetBodyRoundTrip feeds the bytes of get --body back through upsert --body-file and finds the body unchanged.
+func stepGetBodyRoundTrip(t *testing.T, f *cliFixture) {
 
 	body := "# Heading\n\n- item \"one\"\n- item two\n\ntail\n"
 	path := filepath.Join(t.TempDir(), "body.md")
@@ -438,9 +415,8 @@ func labelPairs(t *testing.T, result map[string]any, key string) [][2]string {
 	return pairs
 }
 
-func TestCLILabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	cwd := seedCwd(t)
+func stepLabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T, f *cliFixture) {
+	cwd := f.cwd
 	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  enhancement: A new capability\n  bug: Something broken\nlabels:\n  quarry: The code index\n  board: The task board\n"
 	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 
@@ -455,9 +431,8 @@ func TestCLILabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T) {
 	}
 }
 
-func TestCLILabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	cwd := seedCwd(t)
+func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFixture) {
+	cwd := f.cwd
 	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [quarry]\n"
 	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 

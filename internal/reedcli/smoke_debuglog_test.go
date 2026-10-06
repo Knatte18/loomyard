@@ -1,12 +1,7 @@
 //go:build tmux
 
-// smoke_debuglog_test.go exercises the composed live behavior of the
-// debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine
-// tmux verbose server log into the hub's _board/.lyx/logs/ dir, and the
-// boot-time prune must have already trimmed pre-existing logs there down to
-// the newest 2. This is the one live-tmux composed test for this batch;
-// debugLogArgs and planLogPrune's own unit tests already cover the pure
-// planning logic in isolation (see internal/reedengine/serverlog_test.go).
+// smoke_debuglog_test.go exercises the composed live behavior of the debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine tmux verbose server log into the hub's _board/.lyx/logs/ dir, and the boot-time prune must have already trimmed pre-existing logs there down to the newest 2, and repeated crash boots must keep every debug log shape bounded.
+// This is the one live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).
 
 package reedcli
 
@@ -23,60 +18,103 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestSmokeDebugLog arms debug_log via LYX_REED_DEBUG and checks log rotation.
+// TestSmokeDebugLog arms debug_log through LYX_REED_DEBUG on one hub's prime worktree, one step per verbosity.
+// The steps run serially in a fixed order; the second starts from the logs the first left behind, which only tightens its bound.
+// The scenario does not call t.Parallel, because each step sets LYX_REED_DEBUG, which every boot in the process reads.
 func TestSmokeDebugLog(t *testing.T) {
-	tmuxBinaryPath(t)
-
-	t.Setenv("LYX_REED_DEBUG", "1")
+	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.NewHub(t, ".")
-	deferHubRelease(t, h.PrimeWorktree())
-	t.Chdir(h.PrimeWorktree())
+	prime := h.PrimeWorktree()
+	deferHubRelease(t, prime)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
-		RunCLI(&buf, []string{"down"})
+		RunCLIIn(prime, &buf, []string{"down"})
 	})
-
 	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		t.Fatalf("mkdir fake logs dir: %v", err)
+
+	// ArmedBootPrunesOldLogsAndWritesAFreshOne arms debug_log via LYX_REED_DEBUG=1 and checks log rotation: the boot-time prune trims pre-existing logs down to the newest 2, and the fresh boot's own verbose log appears.
+	if !t.Run("ArmedBootPrunesOldLogsAndWritesAFreshOne", func(t *testing.T) {
+		t.Setenv("LYX_REED_DEBUG", "1")
+
+		if err := os.MkdirAll(logsDir, 0o755); err != nil {
+			t.Fatalf("mkdir fake logs dir: %v", err)
+		}
+
+		now := time.Now()
+		fakeOldest := filepath.Join(logsDir, "tmux-server-fake-oldest.log")
+		fakeMiddle := filepath.Join(logsDir, "tmux-server-fake-middle.log")
+		fakeNewest := filepath.Join(logsDir, "tmux-server-fake-newest.log")
+		writeFakeLog(t, fakeOldest, now.Add(-3*time.Hour))
+		writeFakeLog(t, fakeMiddle, now.Add(-2*time.Hour))
+		writeFakeLog(t, fakeNewest, now.Add(-1*time.Hour))
+
+		mustRunReed(t, prime, "up")
+
+		if _, err := os.Stat(fakeOldest); !os.IsNotExist(err) {
+			t.Errorf("fake-oldest server log survived the boot prune (stat err = %v); want removed", err)
+		}
+		if _, err := os.Stat(fakeMiddle); err != nil {
+			t.Errorf("fake-middle server log missing after boot prune: %v", err)
+		}
+		if _, err := os.Stat(fakeNewest); err != nil {
+			t.Errorf("fake-newest server log missing after boot prune: %v", err)
+		}
+
+		// The fresh boot's own verbose log must appear, newer than every fake.
+		// Deadline-based poll: the server writes its log asynchronously relative
+		// to `up` returning, so a fixed sleep would be either flaky or slow.
+		freshLog := waitForFreshServerLog(t, logsDir, now)
+		if freshLog == "" {
+			t.Fatalf("no tmux-server-*.log newer than the fakes appeared in %s within the deadline", logsDir)
+		}
+
+		mustRunReed(t, prime, "down")
+	}) {
+		return
 	}
 
-	now := time.Now()
-	fakeOldest := filepath.Join(logsDir, "tmux-server-fake-oldest.log")
-	fakeMiddle := filepath.Join(logsDir, "tmux-server-fake-middle.log")
-	fakeNewest := filepath.Join(logsDir, "tmux-server-fake-newest.log")
-	writeFakeLog(t, fakeOldest, now.Add(-3*time.Hour))
-	writeFakeLog(t, fakeMiddle, now.Add(-2*time.Hour))
-	writeFakeLog(t, fakeNewest, now.Add(-1*time.Hour))
+	// RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found live-driving debug_log against native tmux (not reproducible against psmux, the Windows dev-box default the original debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux flags on the spawn invocation, and that invocation is simultaneously a CLIENT (the local process issuing the command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously unpruned — it accumulated unbounded across repeated debug-armed boots since pruneServerLogsLocked only ever matched the server-prefixed shape).
+	// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
+	// This step runs at LYX_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an unbounded pile of any of them.
+	t.Run("RepeatedCrashBootsBoundServerClientAndOutLogs", func(t *testing.T) {
+		t.Setenv("LYX_REED_DEBUG", "2")
 
-	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
-		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
-	}
+		mustRunReed(t, prime, "up")
+		socket, session := socketAndSessionIn(t, prime)
 
-	if _, err := os.Stat(fakeOldest); !os.IsNotExist(err) {
-		t.Errorf("fake-oldest server log survived the boot prune (stat err = %v); want removed", err)
-	}
-	if _, err := os.Stat(fakeMiddle); err != nil {
-		t.Errorf("fake-middle server log missing after boot prune: %v", err)
-	}
-	if _, err := os.Stat(fakeNewest); err != nil {
-		t.Errorf("fake-newest server log missing after boot prune: %v", err)
-	}
+		for cycle := 0; cycle < 4; cycle++ {
+			if err := exec.Command(tmuxPath, "-L", socket, "kill-server").Run(); err != nil {
+				t.Fatalf("cycle %d kill-server: %v", cycle, err)
+			}
+			waitServerGone(t, tmuxPath, socket, session)
 
-	// The fresh boot's own verbose log must appear, newer than every fake.
-	// Deadline-based poll: the server writes its log asynchronously relative
-	// to `up` returning, so a fixed sleep would be either flaky or slow.
-	freshLog := waitForFreshServerLog(t, logsDir, now)
-	if freshLog == "" {
-		t.Fatalf("no tmux-server-*.log newer than the fakes appeared in %s within the deadline", logsDir)
-	}
+			mustRunReed(t, prime, "up")
+		}
 
-	out.Reset()
-	if code := RunCLI(&out, []string{"down"}); code != 0 {
-		t.Fatalf("down = %d; want 0, output: %s", code, out.String())
-	}
+		// Deadline-based poll: the fresh server's own log (and its paired client
+		// log) are written asynchronously relative to the last `up` returning.
+		if waitForFreshServerLog(t, logsDir, time.Time{}) == "" {
+			t.Fatalf("no tmux-server-*.log ever appeared in %s", logsDir)
+		}
+		// Give the paired client and out logs the same asynchronous-write grace as
+		// the server log above before counting any prefix.
+		deadline := time.Now().Add(10 * time.Second)
+		for (countLogsWithPrefix(t, logsDir, "tmux-client-") == 0 ||
+			countLogsWithPrefix(t, logsDir, "tmux-out-") == 0) && time.Now().Before(deadline) {
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		if got := countLogsWithPrefix(t, logsDir, "tmux-server-"); got > 3 {
+			t.Errorf("tmux-server-*.log count = %d after 5 debug-armed boots; want <= 3 (pruning must keep this bounded)", got)
+		}
+		if got := countLogsWithPrefix(t, logsDir, "tmux-client-"); got > 3 {
+			t.Errorf("tmux-client-*.log count = %d after 5 debug-armed boots; want <= 3 (the client-side log a debug-armed boot also leaves must be pruned too, not left to accumulate unbounded)", got)
+		}
+		if got := countLogsWithPrefix(t, logsDir, "tmux-out-"); got > 3 {
+			t.Errorf("tmux-out-*.log count = %d after 5 debug-armed boots; want <= 3 (this is the defect this step pins: the -vv-only protocol-output log must be pruned too, not left to accumulate unbounded)", got)
+		}
+	})
 }
 
 // writeFakeLog creates an empty file at path and backdates its mtime to
@@ -138,74 +176,4 @@ func countLogsWithPrefix(t *testing.T, logsDir, prefix string) int {
 		}
 	}
 	return n
-}
-
-// TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found
-// live-driving debug_log against native tmux (not reproducible against psmux, the Windows dev-box
-// default the original debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux
-// flags on the spawn invocation, and that invocation is simultaneously a CLIENT (the local process
-// issuing the command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a
-// tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously
-// unpruned — it accumulated unbounded across repeated debug-armed boots since pruneServerLogsLocked
-// only ever matched the server-prefixed shape).
-// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a
-// THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at
-// -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
-// This test runs at LYX_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so
-// five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an
-// unbounded pile of any of them.
-func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.T) {
-	tmuxPath := tmuxBinaryPath(t)
-	t.Setenv("LYX_REED_DEBUG", "2")
-
-	h := hubforge.NewHub(t, ".")
-	deferHubRelease(t, h.PrimeWorktree())
-	t.Chdir(h.PrimeWorktree())
-	t.Cleanup(func() {
-		var buf bytes.Buffer
-		RunCLI(&buf, []string{"down"})
-	})
-
-	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
-
-	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"up"}); code != 0 {
-		t.Fatalf("initial up = %d; want 0, output: %s", code, out.String())
-	}
-	socket, session := socketAndSession(t)
-
-	for cycle := 0; cycle < 4; cycle++ {
-		if err := exec.Command(tmuxPath, "-L", socket, "kill-server").Run(); err != nil {
-			t.Fatalf("cycle %d kill-server: %v", cycle, err)
-		}
-		waitServerGone(t, tmuxPath, socket, session)
-
-		out.Reset()
-		if code := RunCLI(&out, []string{"up"}); code != 0 {
-			t.Fatalf("cycle %d up = %d; want 0, output: %s", cycle, code, out.String())
-		}
-	}
-
-	// Deadline-based poll: the fresh server's own log (and its paired client
-	// log) are written asynchronously relative to the last `up` returning.
-	if waitForFreshServerLog(t, logsDir, time.Time{}) == "" {
-		t.Fatalf("no tmux-server-*.log ever appeared in %s", logsDir)
-	}
-	// Give the paired client and out logs the same asynchronous-write grace as
-	// the server log above before counting any prefix.
-	deadline := time.Now().Add(10 * time.Second)
-	for (countLogsWithPrefix(t, logsDir, "tmux-client-") == 0 ||
-		countLogsWithPrefix(t, logsDir, "tmux-out-") == 0) && time.Now().Before(deadline) {
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if got := countLogsWithPrefix(t, logsDir, "tmux-server-"); got > 3 {
-		t.Errorf("tmux-server-*.log count = %d after 5 debug-armed boots; want <= 3 (pruning must keep this bounded)", got)
-	}
-	if got := countLogsWithPrefix(t, logsDir, "tmux-client-"); got > 3 {
-		t.Errorf("tmux-client-*.log count = %d after 5 debug-armed boots; want <= 3 (the client-side log a debug-armed boot also leaves must be pruned too, not left to accumulate unbounded)", got)
-	}
-	if got := countLogsWithPrefix(t, logsDir, "tmux-out-"); got > 3 {
-		t.Errorf("tmux-out-*.log count = %d after 5 debug-armed boots; want <= 3 (this is the defect this test pins: the -vv-only protocol-output log must be pruned too, not left to accumulate unbounded)", got)
-	}
 }

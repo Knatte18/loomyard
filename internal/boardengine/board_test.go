@@ -96,81 +96,47 @@ func TestRerender(t *testing.T) {
 	}
 }
 
-func TestHealthCheckPasses(t *testing.T) {
-	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
-	w := boardengine.New(cfg)
-
-	// Create a task to initialize the board directory and tasks.json
-	_, err := w.UpsertTask(map[string]any{
-		"slug":   "test-task",
-		"title":  "Test Task",
-		"labels": bugLabels,
-	})
-	if err != nil {
-		t.Fatalf("UpsertTask failed: %v", err)
+// TestHealthCheck asserts HealthCheck passes while a store file is readable, whatever its content, and fails for an absent board dir or no store file.
+func TestHealthCheck(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// boardDirAbsent points the board at a directory that does not exist.
+		boardDirAbsent bool
+		// upsert writes a task through the facade, which creates board.json.
+		upsert  bool
+		files   map[string]string
+		wantErr bool
+	}{
+		{name: "healthy board", upsert: true},
+		{name: "board dir absent", boardDirAbsent: true, wantErr: true},
+		{name: "no store file", wantErr: true},
+		{name: "legacy file alone", files: map[string]string{"notes.json": "[]"}},
+		{name: "corrupt but readable board.json", files: map[string]string{"board.json": "{invalid json"}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardPath := t.TempDir()
+			if tt.boardDirAbsent {
+				boardPath = filepath.Join(boardPath, "nonexistent")
+			}
+			w := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+			if tt.upsert {
+				if _, err := w.UpsertTask(map[string]any{"slug": "test-task", "title": "Test Task", "labels": bugLabels}); err != nil {
+					t.Fatalf("UpsertTask failed: %v", err)
+				}
+			}
+			for name, content := range tt.files {
+				if err := os.WriteFile(filepath.Join(boardPath, name), []byte(content), 0o644); err != nil {
+					t.Fatalf("write %s: %v", name, err)
+				}
+			}
 
-	// HealthCheck should pass for a healthy board
-	err = w.HealthCheck()
-	if err != nil {
-		t.Fatalf("HealthCheck failed for healthy board: %v", err)
-	}
-}
-
-func TestHealthCheckFailsNoBoardDir(t *testing.T) {
-	boardPath := filepath.Join(t.TempDir(), "nonexistent")
-	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels}
-	w := boardengine.New(cfg)
-
-	// HealthCheck should fail when board directory does not exist
-	err := w.HealthCheck()
-	if err == nil {
-		t.Fatalf("HealthCheck should fail when board directory is absent")
-	}
-}
-
-func TestHealthCheckFailsNoStoreFile(t *testing.T) {
-	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels}
-	w := boardengine.New(cfg)
-
-	// HealthCheck should fail when neither board.json nor a legacy file exists
-	err := w.HealthCheck()
-	if err == nil {
-		t.Fatalf("HealthCheck should fail when no store file is present")
-	}
-}
-
-func TestHealthCheckPassesLegacyFileAlone(t *testing.T) {
-	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels}
-	w := boardengine.New(cfg)
-
-	if err := os.WriteFile(filepath.Join(boardPath, "notes.json"), []byte("[]"), 0o644); err != nil {
-		t.Fatalf("write notes.json: %v", err)
-	}
-	if err := w.HealthCheck(); err != nil {
-		t.Fatalf("HealthCheck failed on a legacy file alone: %v", err)
-	}
-}
-
-func TestHealthCheckPassesCorruptFile(t *testing.T) {
-	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels}
-	w := boardengine.New(cfg)
-
-	// Create a corrupt but readable board.json
-	storePath := filepath.Join(boardPath, "board.json")
-	err := os.WriteFile(storePath, []byte("{invalid json"), 0o644)
-	if err != nil {
-		t.Fatalf("Failed to write corrupt board.json: %v", err)
-	}
-
-	// HealthCheck should pass even if JSON is corrupt, as long as it's readable
-	err = w.HealthCheck()
-	if err != nil {
-		t.Fatalf("HealthCheck failed for corrupt but readable board.json: %v", err)
+			if err := w.HealthCheck(); (err != nil) != tt.wantErr {
+				t.Fatalf("HealthCheck error = %v; wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 
@@ -255,6 +221,13 @@ func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
 	if _, err := w.ListTasksBrief(nil); err != nil {
 		t.Errorf("ListTasksBrief: %v", err)
 	}
+	found, err := w.Find("IDEA", nil)
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if len(found) != 1 || found[0].Slug != "idea" {
+		t.Errorf("Find(IDEA) = %+v; want only idea", found)
+	}
 
 	assertSameFiles(t, before, dataFiles(t, boardPath))
 	if _, err := os.Stat(filepath.Join(boardPath, "board.json")); !os.IsNotExist(err) {
@@ -262,41 +235,42 @@ func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestFirstWriteCreatesBoardJSONAndKeepsLegacyFiles(t *testing.T) {
-	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
+// TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone asserts a first write creates board.json, keeps the legacy files byte-identical, and creates none on a board that had none.
+func TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		files       map[string]string
+		wantEntries int
+	}{
+		{"legacy files present", map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON}, 3},
+		{"fresh board", nil, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w, boardPath := newLegacyBoard(t, tt.files)
 
-	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
+			if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
+				t.Fatalf("UpsertTask: %v", err)
+			}
 
-	files := dataFiles(t, boardPath)
-	if _, ok := files["board.json"]; !ok {
-		t.Fatalf("board.json not created")
-	}
-	if files["tasks.json"] != legacyTasksJSON || files["notes.json"] != legacyNotesJSON {
-		t.Errorf("legacy files must be left in place byte-identical")
-	}
-	tasks, err := w.ListTasksFull()
-	if err != nil || len(tasks) != 3 {
-		t.Errorf("ListTasksFull = %d entries, err %v; want 3", len(tasks), err)
-	}
-}
-
-func TestWriteOnFreshBoardCreatesNoLegacyFiles(t *testing.T) {
-	w, boardPath := newLegacyBoard(t, nil)
-
-	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
-		t.Fatalf("UpsertTask: %v", err)
-	}
-
-	files := dataFiles(t, boardPath)
-	if _, ok := files["board.json"]; !ok {
-		t.Errorf("board.json not created")
-	}
-	for _, legacy := range []string{"tasks.json", "notes.json"} {
-		if _, ok := files[legacy]; ok {
-			t.Errorf("%s must not be created on a board that had none", legacy)
-		}
+			files := dataFiles(t, boardPath)
+			if _, ok := files["board.json"]; !ok {
+				t.Fatalf("board.json not created")
+			}
+			for _, legacy := range []string{"tasks.json", "notes.json"} {
+				want, existed := tt.files[legacy]
+				got, ok := files[legacy]
+				if ok != existed || got != want {
+					t.Errorf("%s = %q (present %v); want %q (present %v), left as it was", legacy, got, ok, want, existed)
+				}
+			}
+			tasks, err := w.ListTasksFull()
+			if err != nil || len(tasks) != tt.wantEntries {
+				t.Errorf("ListTasksFull = %d entries, err %v; want %d", len(tasks), err, tt.wantEntries)
+			}
+		})
 	}
 }
 
@@ -509,24 +483,6 @@ func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
 	}
 	if _, found, _ := w.GetTask("dropped"); !found {
 		t.Errorf("abandoned entry must survive prune")
-	}
-}
-
-func TestFindOnUnmigratedBoardWritesNothing(t *testing.T) {
-	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
-	before := dataFiles(t, boardPath)
-
-	found, err := w.Find("IDEA", nil)
-	if err != nil {
-		t.Fatalf("Find: %v", err)
-	}
-	if len(found) != 1 || found[0].Slug != "idea" {
-		t.Errorf("Find(IDEA) = %+v; want only idea", found)
-	}
-
-	assertSameFiles(t, before, dataFiles(t, boardPath))
-	if _, err := os.Stat(filepath.Join(boardPath, "board.json")); !os.IsNotExist(err) {
-		t.Errorf("board.json must stay absent after Find; stat err = %v", err)
 	}
 }
 

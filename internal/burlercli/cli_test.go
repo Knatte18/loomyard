@@ -23,51 +23,63 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, nil)
+	exitCode := RunCLI(&out, []string{})
 
 	if exitCode != 0 {
-		t.Errorf("RunCLI(nil) outside a git repo = %d; want 0", exitCode)
+		t.Errorf("RunCLI() outside a git repo = %d; want 0", exitCode)
 	}
 }
 
-// TestRunCLI_Run_MissingProfile verifies that "lyx burler run" without --profile fails with run's
-// own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching
-// PersistentPreRunE's engine wiring.
-// This case runs against an uninitialized (non-git) directory, which resolves to standalone mode:
-// the pre-run therefore succeeds and only the verb's own flag error is emitted. XDG_STATE_HOME and
-// LOCALAPPDATA are redirected to the test's own temp tree before RunCLI so the standalone wiring's
-// Derive call and stencil seed land there instead of the operator's real state directory. This test
-// is already not t.Parallel(), which t.Setenv requires; it stays that way.
-func TestRunCLI_Run_MissingProfile(t *testing.T) {
-	t.Chdir(t.TempDir())
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-
-	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"run"})
-
-	if exitCode != 1 {
-		t.Errorf(`RunCLI([run]) = %d; want 1`, exitCode)
-	}
-	if !strings.Contains(out.String(), "--profile is required") {
-		t.Errorf(`RunCLI([run]) output missing "--profile is required"; got: %q`, out.String())
-	}
-}
-
-// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field
-// lands, including the boolean/zero-value edge cases tool-use: true and cluster-fan: ""), a minimal
-// valid profile, an unknown key (rejected per the yaml-strictness-split decision's
-// KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and
-// malformed YAML.
+// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field lands on its Profile field, including the boolean/zero-value edge cases tool-use: true and cluster-fan: "standard" that a zero-value-blind mapping bug could silently drop), a minimal valid profile, an unknown key (rejected per the yaml-strictness-split decision's KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and malformed YAML.
+//
+//testtiming:keep pins every Profile field mapping and the strict-decode rejections, which the run-verb tests covering its blocks only reach through one failing profile
 func TestDecodeProfile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		yaml      string
 		wantErr   bool
 		errSubstr string
+		check     func(t *testing.T, profile burlerengine.Profile)
 	}{
 		{
 			name: "FullValid",
+			check: func(t *testing.T, profile burlerengine.Profile) {
+				if got, want := profile.Target.Paths, []string{"a.md", "b.md"}; !equalStrings(got, want) {
+					t.Errorf("Target.Paths = %v; want %v", got, want)
+				}
+				if profile.Target.Instructions != "review the pair" {
+					t.Errorf("Target.Instructions = %q; want %q", profile.Target.Instructions, "review the pair")
+				}
+				if got, want := profile.Fasit.Paths, []string{"c.md"}; !equalStrings(got, want) {
+					t.Errorf("Fasit.Paths = %v; want %v", got, want)
+				}
+				if profile.Fasit.Instructions != "against c" {
+					t.Errorf("Fasit.Instructions = %q; want %q", profile.Fasit.Instructions, "against c")
+				}
+				if string(profile.FixScope) != "source" {
+					t.Errorf("FixScope = %q; want %q", profile.FixScope, "source")
+				}
+				if !profile.ToolUse {
+					t.Errorf("ToolUse = false; want true")
+				}
+				if profile.ClusterFan != "standard" {
+					t.Errorf("ClusterFan = %q; want %q", profile.ClusterFan, "standard")
+				}
+				if profile.ReviewPath != "review.md" {
+					t.Errorf("ReviewPath = %q; want %q", profile.ReviewPath, "review.md")
+				}
+				if profile.FixerReportPath != "fixer-report.md" {
+					t.Errorf("FixerReportPath = %q; want %q", profile.FixerReportPath, "fixer-report.md")
+				}
+				if got, want := profile.PriorReviews, []string{"prior-review.md"}; !equalStrings(got, want) {
+					t.Errorf("PriorReviews = %v; want %v", got, want)
+				}
+				if got, want := profile.PriorFixerReports, []string{"prior-fixer.md"}; !equalStrings(got, want) {
+					t.Errorf("PriorFixerReports = %v; want %v", got, want)
+				}
+			},
 			yaml: `
 target:
   paths: ["a.md", "b.md"]
@@ -139,6 +151,7 @@ fixer-report-path: fixer-report.md
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			profile, err := decodeProfile([]byte(tt.yaml))
 			if tt.wantErr {
 				if err == nil {
@@ -158,68 +171,10 @@ fixer-report-path: fixer-report.md
 			if profile.ReviewPath == "" || profile.FixerReportPath == "" {
 				t.Errorf("decodeProfile(%q) ReviewPath/FixerReportPath empty; want both set", tt.name)
 			}
+			if tt.check != nil {
+				tt.check(t, profile)
+			}
 		})
-	}
-}
-
-// TestDecodeProfile_FullValidFieldMapping asserts every field of a full valid profile YAML lands on
-// the corresponding Profile field, including the boolean/zero-value edge cases (tool-use: true,
-// cluster-fan: "standard") that a zero-value-blind mapping bug could silently drop.
-func TestDecodeProfile_FullValidFieldMapping(t *testing.T) {
-	data := []byte(`
-target:
-  paths: ["a.md", "b.md"]
-  instructions: "review the pair"
-fasit:
-  paths: ["c.md"]
-  instructions: "against c"
-rubric: "BLOCKING: x. NIT: y."
-fix-scope: source
-tool-use: true
-cluster-fan: "standard"
-review-path: review.md
-fixer-report-path: fixer-report.md
-prior-reviews: ["prior-review.md"]
-prior-fixer-reports: ["prior-fixer.md"]
-`)
-
-	profile, err := decodeProfile(data)
-	if err != nil {
-		t.Fatalf("decodeProfile() unexpected error: %v", err)
-	}
-
-	if got, want := profile.Target.Paths, []string{"a.md", "b.md"}; !equalStrings(got, want) {
-		t.Errorf("Target.Paths = %v; want %v", got, want)
-	}
-	if profile.Target.Instructions != "review the pair" {
-		t.Errorf("Target.Instructions = %q; want %q", profile.Target.Instructions, "review the pair")
-	}
-	if got, want := profile.Fasit.Paths, []string{"c.md"}; !equalStrings(got, want) {
-		t.Errorf("Fasit.Paths = %v; want %v", got, want)
-	}
-	if profile.Fasit.Instructions != "against c" {
-		t.Errorf("Fasit.Instructions = %q; want %q", profile.Fasit.Instructions, "against c")
-	}
-	if string(profile.FixScope) != "source" {
-		t.Errorf("FixScope = %q; want %q", profile.FixScope, "source")
-	}
-	if !profile.ToolUse {
-		t.Errorf("ToolUse = false; want true")
-	}
-	if profile.ClusterFan != "standard" {
-		t.Errorf("ClusterFan = %q; want %q", profile.ClusterFan, "standard")
-	}
-	if profile.ReviewPath != "review.md" {
-		t.Errorf("ReviewPath = %q; want %q", profile.ReviewPath, "review.md")
-	}
-	if profile.FixerReportPath != "fixer-report.md" {
-		t.Errorf("FixerReportPath = %q; want %q", profile.FixerReportPath, "fixer-report.md")
-	}
-	if got, want := profile.PriorReviews, []string{"prior-review.md"}; !equalStrings(got, want) {
-		t.Errorf("PriorReviews = %v; want %v", got, want)
-	}
-	if got, want := profile.PriorFixerReports, []string{"prior-fixer.md"}; !equalStrings(got, want) {
-		t.Errorf("PriorFixerReports = %v; want %v", got, want)
 	}
 }
 

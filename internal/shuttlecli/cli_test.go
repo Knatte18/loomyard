@@ -27,6 +27,7 @@ import (
 // Each case asserts the whole buffer parses as EXACTLY ONE JSON object: the module's contract is one
 // envelope per invocation, and a substring check cannot see a second one.
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		args    []string
@@ -51,6 +52,7 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// A nil runner is deliberate: every case here must be refused by the flag-shape checks
 			// before c.runner is ever dereferenced, and a nil runner is what proves it.
 			c := &shuttleCLI{}
@@ -140,16 +142,18 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt" enforces exactly one
-// positional <guid> argument via cobra's Args validation, which runs before PersistentPreRunE — so
-// this fires even against a non-git directory with no config to resolve.
-func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
+// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>) via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
+// Each subtest changes the process working directory, so none runs in parallel.
+func TestRunCLI_PositionalArgValidation(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 	}{
-		{"NoArgs", []string{"interrupt"}},
-		{"TooManyArgs", []string{"interrupt", "guid-1", "guid-2"}},
+		{"InterruptNoArgs", []string{"interrupt"}},
+		{"InterruptTooManyArgs", []string{"interrupt", "guid-1", "guid-2"}},
+		{"SendNoArgs", []string{"send"}},
+		{"SendOnlyGuid", []string{"send", "guid-1"}},
+		{"SendTooManyArgs", []string{"send", "guid-1", "text", "extra"}},
 	}
 
 	for _, tt := range tests {
@@ -178,7 +182,9 @@ func startupPending(string) shuttleengine.StartupState { return shuttleengine.St
 
 // TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
 // Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
+// That failure happens before any strand exists, so the error envelope must carry none of the run-identity fields (guid, sessionId, runDir) rather than three empty strings.
 func TestRunCmd_EffortFlag(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		args       []string
@@ -198,6 +204,7 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			engine := &shuttlefake.Engine{PrepareErr: errSpecCaptured, StartupFn: startupPending}
 			// Distinct, but in the geometric relation NewRunner validates: the
 			// anchor is always the worktree root or a subdirectory of it.
@@ -227,32 +234,12 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 			if engine.LastSpec.Effort != tt.wantEffort {
 				t.Errorf("Spec.Effort = %q; want %q", engine.LastSpec.Effort, tt.wantEffort)
 			}
-		})
-	}
-}
 
-func TestRunCLI_Send_ArgValidation(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-	}{
-		{"NoArgs", []string{"send"}},
-		{"OnlyGuid", []string{"send", "guid-1"}},
-		{"TooManyArgs", []string{"send", "guid-1", "text", "extra"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Chdir(t.TempDir())
-
-			var out bytes.Buffer
-			exitCode := RunCLI(&out, tt.args)
-
-			if exitCode != 1 {
-				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
-			}
-			if !strings.Contains(out.String(), `"ok":false`) {
-				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			for _, key := range []string{"guid", "sessionId", "runDir"} {
+				if _, present := envelope[key]; present {
+					t.Errorf("envelope carries %q before any strand existed; output: %s", key, out.String())
+				}
 			}
 		})
 	}
@@ -264,6 +251,7 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 // the bare error and no handle at all, while the run directory was still on disk and the strand
 // possibly still live — nothing left for the operator to attach to or tear down.
 func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
+	t.Parallel()
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Dir(anchorPath)
 	// The engine Prepares successfully and never becomes ready,
@@ -306,14 +294,5 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	}
 	if got, _ := envelope["runDir"].(string); got == "" {
 		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
-	}
-}
-
-// TestIdentityFields_NilBeforeAnyStrandExists pins the other half: a failure BEFORE a strand
-// existed (a flag, config, or spec-validation error) must not decorate its envelope with three
-// empty strings.
-func TestIdentityFields_NilBeforeAnyStrandExists(t *testing.T) {
-	if got := identityFields(shuttleengine.Result{}); got != nil {
-		t.Errorf("identityFields(zero Result) = %v; want nil", got)
 	}
 }

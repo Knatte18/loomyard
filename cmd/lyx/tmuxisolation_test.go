@@ -262,6 +262,7 @@ func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	}
 }
 
+//testtiming:keep proves the platform suffix parsing the TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain guard relies on to decide which test files compile
 func TestFileNamePlatform(t *testing.T) {
 	tests := []struct {
 		name, goos, goarch string

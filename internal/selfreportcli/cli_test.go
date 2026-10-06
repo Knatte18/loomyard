@@ -1,12 +1,9 @@
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
-// Tests live in package selfreportcli (same package as the production code) so the local stdin seam
-// can be replaced without exporting it.
-// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected
-// with a real go-github client pointed at an httptest server rather than a fake RunGH -- that
-// server is what lets these tests assert on the actual request shape (method, path, JSON body)
-// instead of an argv slice that no longer exists.
+// Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.
+// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected with a real go-github client pointed at an httptest server rather than a fake RunGH -- that server is what lets these tests assert on the actual request shape (method, path, JSON body) instead of an argv slice that no longer exists.
 // All tests drive the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
+// No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin rows swap the stdin seam.
 
 package selfreportcli
 
@@ -17,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -108,8 +106,12 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 }
 
 // runCLI drives RunCLI into a buffer and returns the exit code and output text.
+// No args are passed as an empty slice, because cobra reads os.Args when handed nil and would then parse a test binary's own -test.* flags.
 func runCLI(t *testing.T, args ...string) (int, string) {
 	t.Helper()
+	if args == nil {
+		args = []string{}
+	}
 	var buf bytes.Buffer
 	code := RunCLI(&buf, args)
 	return code, buf.String()
@@ -130,187 +132,141 @@ func labelsFromBody(body map[string]any) []string {
 	return labels
 }
 
-// contains reports whether s appears in slice.
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-// TestRunCreate_HappyPath drives the normal successful create flow: exit 0, ok:true, url and number
-// match the server's typed response, and the recorded request matches the expected method, path,
-// title, and default "bug" label.
-func TestRunCreate_HappyPath(t *testing.T) {
+// TestRunCreate_Success drives the successful create flow through each flag combination: exit 0, ok:true, the url and number of the server's typed response, and a request whose method, path, title, labels and body field match what the flags asked for.
+func TestRunCreate_Success(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":123}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "My bug title")
-	env := envelope.Decode(t, stdout)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	if !env.OK {
-		t.Errorf("envelope ok = %v; want true", env.OK)
-	}
-	if url, _ := env.Raw["url"].(string); url != issueURL {
-		t.Errorf("envelope url = %q; want %q", url, issueURL)
-	}
-	// JSON numbers decode to float64 in a map[string]any; compare accordingly.
-	if num, _ := env.Raw["number"].(float64); num != float64(123) {
-		t.Errorf("envelope number = %v; want float64(123)", env.Raw["number"])
-	}
-
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	got := captured[0]
-	if got.method != http.MethodPost {
-		t.Errorf("request method = %q; want %q", got.method, http.MethodPost)
-	}
-	if got.path != "/repos/Knatte18/loomyard/issues" {
-		t.Errorf("request path = %q; want %q", got.path, "/repos/Knatte18/loomyard/issues")
-	}
-	if title, _ := got.body["title"].(string); title != "My bug title" {
-		t.Errorf("request body title = %q; want %q", title, "My bug title")
-	}
-	if labels := labelsFromBody(got.body); len(labels) != 1 || labels[0] != "bug" {
-		t.Errorf("request body labels = %v; want [\"bug\"]", labels)
-	}
-	if _, hasBody := got.body["body"]; hasBody {
-		t.Errorf("request body has \"body\" field but none was provided; got %v", got.body)
-	}
-}
-
-// TestRunCreate_CustomLabels verifies that explicit --label flags replace the default "bug" label
-// entirely,
-// and that multiple labels survive in the order they were given.
-func TestRunCreate_CustomLabels(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/99"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":99}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "T", "--label", "enhancement", "--label", "p1")
-	env := envelope.Decode(t, stdout)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	if !env.OK {
-		t.Errorf("envelope ok = %v; want true", env.OK)
-	}
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	labels := labelsFromBody(captured[0].body)
-
-	// Both specified labels must appear in the order given; "bug" must NOT
-	// appear because the default is replaced, not appended, when explicit
-	// labels are provided.
-	if len(labels) != 2 || labels[0] != "enhancement" || labels[1] != "p1" {
-		t.Errorf("request body labels = %v; want [\"enhancement\" \"p1\"] in order", labels)
-	}
-	if contains(labels, "bug") {
-		t.Errorf("labels %v contain \"bug\" but default should be replaced", labels)
-	}
-}
-
-// TestRunCreate_BodyViaFlag verifies that -b/--body passes the flag value directly through as the
-// request body's "body" field.
-func TestRunCreate_BodyViaFlag(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/1"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":1}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, _ := runCLI(t, "create", "T", "-b", "details")
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0", code)
-	}
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	bodyVal, _ := captured[0].body["body"].(string)
-	if bodyVal != "details" {
-		t.Errorf("request body \"body\" field = %q; want %q", bodyVal, "details")
-	}
-}
-
-// TestRunCreate_BodyViaStdin verifies that -b "-" reads the entire stdin seam and passes its
-// content intact as the request body's "body" field, preserving multi-line markdown.
-func TestRunCreate_BodyViaStdin(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/2"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":2}`, &captured)
-	installGitHubClient(t, server.URL)
-
 	const markdownBody = "# Bug Report\n\nThis is a *markdown* body.\nSecond paragraph.\n"
+	withNumber := `{"html_url":"` + issueURL + `","number":123}`
+	withoutNumber := `{"html_url":"` + issueURL + `"}`
 
-	// Swap the stdin seam for this test; restore via t.Cleanup so the seam
-	// is reset before the next test regardless of pass/fail.
-	origStdin := stdin
-	stdin = strings.NewReader(markdownBody)
-	t.Cleanup(func() { stdin = origStdin })
-
-	code, _ := runCLI(t, "create", "T", "-b", "-")
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0", code)
-	}
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	bodyVal, _ := captured[0].body["body"].(string)
-	if bodyVal != markdownBody {
-		t.Errorf("request body \"body\" field = %q; want %q", bodyVal, markdownBody)
-	}
-}
-
-// TestRunCreate_BodyOmitted verifies that when --body is not set the request body carries no "body"
-// field at all,
-// and the command still succeeds.
-func TestRunCreate_BodyOmitted(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/3"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":3}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	if !env.OK {
-		t.Errorf("envelope ok = %v; want true", env.OK)
-	}
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	if _, hasBody := captured[0].body["body"]; hasBody {
-		t.Errorf("request body has \"body\" field but none was provided; got %v", captured[0].body)
-	}
-}
-
-// TestRunCreate_WrongArgCount verifies that cobra's ExactArgs(1) guard rejects both too-few and
-// too-many positional arguments: non-zero exit, the cobra "accepts 1 arg(s)" message in output, and
-// no request ever reaches the transport at all.
-func TestRunCreate_WrongArgCount(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name       string
+		args       []string
+		stdin      string
+		response   string
+		wantTitle  string
+		wantLabels []string
+		// wantBody is the request's "body" field; nil means the field must be absent.
+		wantBody *string
+		// wantNumber is the envelope's number; nil means the field must be absent.
+		wantNumber *float64
 	}{
-		{"too_few", []string{"create"}},
-		{"too_many", []string{"create", "a", "b"}},
+		{"defaults", []string{"create", "My bug title"}, "", withNumber, "My bug title", []string{"bug"}, nil, new(123.0)},
+		// Explicit labels replace the default "bug" entirely and keep the order given.
+		{"custom labels replace default", []string{"create", "T", "--label", "enhancement", "--label", "p1"}, "", withNumber, "T", []string{"enhancement", "p1"}, nil, new(123.0)},
+		{"body via flag", []string{"create", "T", "-b", "details"}, "", withNumber, "T", []string{"bug"}, new("details"), new(123.0)},
+		{"body via stdin", []string{"create", "T", "-b", "-"}, markdownBody, withNumber, "T", []string{"bug"}, new(markdownBody), new(123.0)},
+		// The surviving form of the old unparseable-URL convention: a response without a number.
+		{"number omitted when response has none", []string{"create", "T"}, "", withoutNumber, "T", []string{"bug"}, nil, nil},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured []requestCapture
+			server := newIssueServer(t, http.StatusCreated, tt.response, &captured)
+			installGitHubClient(t, server.URL)
+			if tt.stdin != "" {
+				origStdin := stdin
+				stdin = strings.NewReader(tt.stdin)
+				t.Cleanup(func() { stdin = origStdin })
+			}
 
+			code, stdout := runCLI(t, tt.args...)
+			env := envelope.Decode(t, stdout)
+
+			if code != 0 {
+				t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
+			}
+			if !env.OK {
+				t.Errorf("envelope ok = %v; want true", env.OK)
+			}
+			if url, _ := env.Raw["url"].(string); url != issueURL {
+				t.Errorf("envelope url = %q; want %q", url, issueURL)
+			}
+			// JSON numbers decode to float64 in a map[string]any.
+			num, hasNumber := env.Raw["number"]
+			switch {
+			case tt.wantNumber == nil && hasNumber:
+				t.Errorf("envelope has number = %v but the response carried none; want number absent", num)
+			case tt.wantNumber != nil && num != *tt.wantNumber:
+				t.Errorf("envelope number = %v (%T); want %v", num, num, *tt.wantNumber)
+			}
+
+			if len(captured) != 1 {
+				t.Fatalf("request count = %d; want 1", len(captured))
+			}
+			got := captured[0]
+			if got.method != http.MethodPost {
+				t.Errorf("request method = %q; want %q", got.method, http.MethodPost)
+			}
+			if got.path != "/repos/Knatte18/loomyard/issues" {
+				t.Errorf("request path = %q; want %q", got.path, "/repos/Knatte18/loomyard/issues")
+			}
+			if title, _ := got.body["title"].(string); title != tt.wantTitle {
+				t.Errorf("request body title = %q; want %q", title, tt.wantTitle)
+			}
+			if labels := labelsFromBody(got.body); !slices.Equal(labels, tt.wantLabels) {
+				t.Errorf("request body labels = %v; want %v", labels, tt.wantLabels)
+			}
+			gotBody, hasBody := got.body["body"]
+			switch {
+			case tt.wantBody == nil && hasBody:
+				t.Errorf("request has \"body\" field %v but none was provided", gotBody)
+			case tt.wantBody != nil && gotBody != *tt.wantBody:
+				t.Errorf("request body \"body\" field = %q; want %q", gotBody, *tt.wantBody)
+			}
+		})
+	}
+}
+
+// TestRunCreate_Failure verifies that each way the create call can fail yields ok:false with exit 1 and an error message naming the cause: a client factory that cannot resolve a token, a non-2xx response (the message text surfaces) and a connection refused (a non-empty message distinct from an API rejection).
+func TestRunCreate_Failure(t *testing.T) {
+	tests := []struct {
+		name    string
+		install func(t *testing.T)
+		// wantError is a substring of the envelope error; empty means any non-empty error.
+		wantError string
+	}{
+		{"token not resolvable", func(t *testing.T) { installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable) }, "token"},
+		{"non-success response", func(t *testing.T) {
+			var captured []requestCapture
+			server := newIssueServer(t, http.StatusUnprocessableEntity, `{"message":"Validation Failed"}`, &captured)
+			installGitHubClient(t, server.URL)
+		}, "Validation Failed"},
+		{"network failure", installGitHubClientPointedAtDeadAddress, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.install(t)
+
+			code, stdout := runCLI(t, "create", "T")
+			env := envelope.Decode(t, stdout)
+
+			if code != 1 {
+				t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
+			}
+			if env.OK {
+				t.Errorf("envelope ok = true; want false")
+			}
+			if env.Error == "" || !strings.Contains(env.Error, tt.wantError) {
+				t.Errorf("error %q does not contain %q", env.Error, tt.wantError)
+			}
+		})
+	}
+}
+
+// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group: a bare invocation lists create, an unknown subcommand gets the shared envelope, and a wrong positional count gets cobra's "accepts 1 arg(s)" message; none of them reaches the transport.
+func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantExit   int
+		wantOutput string
+	}{
+		{"bare lists create", nil, 0, "create"},
+		{"unknown subcommand", []string{"bogus"}, 1, "unknown subcommand"},
+		{"too few args", []string{"create"}, 1, "accepts 1 arg"},
+		{"too many args", []string{"create", "a", "b"}, 1, "accepts 1 arg"},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var captured []requestCapture
@@ -319,160 +275,15 @@ func TestRunCreate_WrongArgCount(t *testing.T) {
 
 			code, stdout := runCLI(t, tt.args...)
 
-			if code == 0 {
-				t.Errorf("RunCLI(%v) exit = 0; want non-zero", tt.args)
+			if code != tt.wantExit {
+				t.Errorf("RunCLI(%v) exit = %d; want %d\nstdout: %s", tt.args, code, tt.wantExit, stdout)
 			}
-			// Cobra writes "Error: accepts 1 arg(s), received N" to the error
-			// writer (merged into out by clihelp.Execute).
-			if !strings.Contains(stdout, "accepts 1 arg") {
-				t.Errorf("output does not contain cobra arg-count message; stdout: %q", stdout)
+			if !strings.Contains(stdout, tt.wantOutput) {
+				t.Errorf("output does not contain %q; stdout: %q", tt.wantOutput, stdout)
 			}
-			// The transport must never be reached when cobra's validation
-			// rejects the args.
 			if len(captured) != 0 {
 				t.Errorf("request count = %d; want 0", len(captured))
 			}
 		})
-	}
-}
-
-// TestGroup_UnknownSubcommandRefuses verifies that an unknown subcommand under the selfreport group exits 1
-// with the shared unknown-subcommand envelope.
-func TestGroup_UnknownSubcommandRefuses(t *testing.T) {
-	code, stdout := runCLI(t, "bogus")
-
-	if code != 1 {
-		t.Errorf("RunCLI(bogus) exit = %d; want 1\nstdout: %s", code, stdout)
-	}
-	if !strings.Contains(stdout, "unknown subcommand") {
-		t.Errorf("output does not contain %q; stdout: %q", "unknown subcommand", stdout)
-	}
-}
-
-// TestGroup_BareListsCreate verifies that a bare selfreport invocation exits 0 and lists create.
-func TestGroup_BareListsCreate(t *testing.T) {
-	code, stdout := runCLI(t)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	if !strings.Contains(stdout, "create") {
-		t.Errorf("output does not name create; stdout: %q", stdout)
-	}
-}
-
-// TestRunCreate_TokenNotResolvable verifies that when the GitHub client factory itself fails -- the
-// CLI-level analogue of the old "gh binary not found on PATH" case -- the envelope is ok:false with
-// exit 1 and the error message surfaces the underlying token-resolution failure.
-func TestRunCreate_TokenNotResolvable(t *testing.T) {
-	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 1 {
-		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
-	}
-	if env.OK {
-		t.Errorf("envelope ok = true; want false")
-	}
-	if !strings.Contains(env.Error, "token") {
-		t.Errorf("error %q does not mention the token-resolution failure", env.Error)
-	}
-}
-
-// TestRunCreate_NonSuccessResponse verifies that when GitHub responds with a non-2xx status the
-// envelope is ok:false with exit 1,
-// and the error message surfaces the response's message text -- the go-github equivalent of the old
-// "gh issue create failed: <stderr>" case.
-func TestRunCreate_NonSuccessResponse(t *testing.T) {
-	const errMessage = "Validation Failed"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusUnprocessableEntity, `{"message":"`+errMessage+`"}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 1 {
-		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
-	}
-	if env.OK {
-		t.Errorf("envelope ok = true; want false")
-	}
-	if !strings.Contains(env.Error, errMessage) {
-		t.Errorf("error %q does not contain response message %q", env.Error, errMessage)
-	}
-}
-
-// TestRunCreate_NetworkFailure verifies that a network-level failure (the server address refuses
-// the connection) surfaces distinctly from an API rejection: still ok:false with exit 1,
-// but without the response-message text a non-2xx case would carry.
-func TestRunCreate_NetworkFailure(t *testing.T) {
-	installGitHubClientPointedAtDeadAddress(t)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 1 {
-		t.Errorf("RunCLI() exit = %d; want 1\nstdout: %s", code, stdout)
-	}
-	if env.OK {
-		t.Errorf("envelope ok = true; want false")
-	}
-	if env.Error == "" {
-		t.Errorf("envelope error is empty; want a network-failure message")
-	}
-}
-
-// TestRunCreate_NumberOmittedWhenZero verifies that when the server's typed response carries no
-// issue number at all, the envelope's "number" field is absent -- the surviving form of the old
-// unparseable-URL convention, now exercised through go-github's own nil-number case rather than a
-// URL suffix parse.
-func TestRunCreate_NumberOmittedWhenZero(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/999"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`"}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	if !env.OK {
-		t.Errorf("envelope ok = %v; want true", env.OK)
-	}
-	if _, hasURL := env.Raw["url"]; !hasURL {
-		t.Errorf("envelope missing url field; got %v", env)
-	}
-	if _, hasNum := env.Raw["number"]; hasNum {
-		t.Errorf("envelope has number = %v but the response carried none; want number absent", env.Raw["number"])
-	}
-}
-
-// TestRunCreate_NumberParsing verifies that a 201 response carrying number 123 produces number ==
-// 123 in the success envelope.
-// JSON unmarshal into map[string]any decodes all numbers as float64, so the comparison is against
-// float64(123).
-func TestRunCreate_NumberParsing(t *testing.T) {
-	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":123}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	code, stdout := runCLI(t, "create", "T")
-	env := envelope.Decode(t, stdout)
-
-	if code != 0 {
-		t.Errorf("RunCLI() exit = %d; want 0\nstdout: %s", code, stdout)
-	}
-	num, ok := env.Raw["number"].(float64)
-	if !ok {
-		t.Fatalf("envelope number type = %T; want float64", env.Raw["number"])
-	}
-	if num != float64(123) {
-		t.Errorf("envelope number = %v; want float64(123)", num)
 	}
 }

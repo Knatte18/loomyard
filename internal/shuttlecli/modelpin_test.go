@@ -49,6 +49,8 @@ var spawnSiteOpeners = []struct {
 //
 // Round 1 pinned all four smoke spawns to the cheap model via a shared constant but added nothing that fails when a site stops referencing it:
 // deleting `"--model", smokeClaudeModel,` from any one call left build, vet, and the whole hermetic suite green, and the only symptom was a larger bill on the next `-tags llm` run — a defect that is invisible precisely while it is costing money.
+//
+//testtiming:keep a guard that fires when a real-claude spawn site omits the model pin, which no covering test asserts
 func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 	smokeFiles, err := filepath.Glob("smoke_*_test.go")
 	if err != nil {
@@ -94,10 +96,10 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 	}
 }
 
-// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty pins the other half: the constant every site
-// threads must actually exist and carry a value.
-// Without this, deleting the declaration and the references together would leave the scan above
-// finding nothing to complain about.
+// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty pins the other half: the constant every site threads must actually exist and carry a value.
+// Without this, deleting the declaration and the references together would leave the scan above finding nothing to complain about.
+//
+//testtiming:keep a guard that fires when the model-pin constant is missing or empty, which no covering test asserts
 func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {
 	smokeFiles, err := filepath.Glob("smoke_*_test.go")
 	if err != nil {

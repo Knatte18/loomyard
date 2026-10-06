@@ -60,6 +60,7 @@ var testBounds = RetentionBounds{Count: 3, MaxAge: 14 * 24 * time.Hour}
 
 // TestDefaultRetentionBounds pins the compiled-in defaults.
 func TestDefaultRetentionBounds(t *testing.T) {
+	t.Parallel()
 	got := DefaultRetentionBounds()
 	want := RetentionBounds{Count: 200, MaxAge: 14 * 24 * time.Hour}
 	if got != want {
@@ -69,6 +70,7 @@ func TestDefaultRetentionBounds(t *testing.T) {
 
 // TestSweep_AgeBound verifies groups with no recent activity are deleted.
 func TestSweep_AgeBound(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
 
@@ -86,6 +88,7 @@ func TestSweep_AgeBound(t *testing.T) {
 // TestSweep_CountBoundKeepsNewestGroupsWhole verifies the newest Count groups by activity survive with every file,
 // and every file of each older group is deleted.
 func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	base := time.Now().Add(-time.Minute)
 
@@ -115,6 +118,7 @@ func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
 
 // TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a group holding a live-pid file keeps all its files past the age bound and does not consume count budget.
 func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
 
@@ -140,6 +144,7 @@ func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 
 // TestSweep_LongRunningStepSurvivesByMtime verifies a group whose filename timestamp is the oldest but whose mtime is the newest survives a count-bound sweep that deletes groups with later filename timestamps and older mtimes.
 func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
 
@@ -170,6 +175,7 @@ func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 // TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is deleted though Count would keep it,
 // and a live group past MaxAge is kept.
 func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := time.Now().Add(-20 * 24 * time.Hour)
 
@@ -188,6 +194,7 @@ func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
 // TestSweep_StatFailureFallsBackToFilenameTimestamp verifies a file whose stat fails ranks by its filename timestamp,
 // and the sweep still returns nil and processes the rest.
 func TestSweep_StatFailureFallsBackToFilenameTimestamp(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
 
@@ -214,6 +221,7 @@ func TestSweep_StatFailureFallsBackToFilenameTimestamp(t *testing.T) {
 
 // TestSweep_GrammarScope verifies non-matching files and subdirectories are never deleted.
 func TestSweep_GrammarScope(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	foreign := filepath.Join(dir, "tmux-server-1234.log")
@@ -242,6 +250,7 @@ func TestSweep_GrammarScope(t *testing.T) {
 
 // TestSweep_DeleteFailureTolerance verifies delete failures are silently tolerated.
 func TestSweep_DeleteFailureTolerance(t *testing.T) {
+	t.Parallel()
 	if os.Getuid() == 0 {
 		t.Skip("running as root: directory permissions do not block unlink, cannot simulate a delete failure this way")
 	}
@@ -263,7 +272,9 @@ func TestSweep_DeleteFailureTolerance(t *testing.T) {
 
 // TestSweep_EmptyOrAbsentDirectory verifies empty or absent directories return nil.
 func TestSweep_EmptyOrAbsentDirectory(t *testing.T) {
+	t.Parallel()
 	t.Run("Empty", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		if err := Sweep(dir, testBounds); err != nil {
 			t.Errorf("Sweep(%s) = %v; want nil", dir, err)
@@ -271,33 +282,10 @@ func TestSweep_EmptyOrAbsentDirectory(t *testing.T) {
 	})
 
 	t.Run("Absent", func(t *testing.T) {
+		t.Parallel()
 		dir := filepath.Join(t.TempDir(), "does-not-exist")
 		if err := Sweep(dir, testBounds); err != nil {
 			t.Errorf("Sweep(%s) = %v; want nil", dir, err)
 		}
 	})
-}
-
-// TestSweep_LivenessSkipsSelfProcess verifies the current process's file is never deleted.
-func TestSweep_LivenessSkipsSelfProcess(t *testing.T) {
-	dir := t.TempDir()
-	selfFile := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), os.Getpid())
-
-	if err := Sweep(dir, testBounds); err != nil {
-		t.Fatalf("Sweep(%s) = %v; want nil", dir, err)
-	}
-
-	assertExists(t, selfFile)
-}
-
-// TestSweep_LivenessDeletesDeadPID verifies dead PIDs are deleted normally.
-func TestSweep_LivenessDeletesDeadPID(t *testing.T) {
-	dir := t.TempDir()
-	deadFile := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), deadTestPID)
-
-	if err := Sweep(dir, testBounds); err != nil {
-		t.Fatalf("Sweep(%s) = %v; want nil", dir, err)
-	}
-
-	assertAbsent(t, deadFile)
 }

@@ -1,63 +1,89 @@
-// stencilstore_test.go covers NormalizeLF, BodyHash, ParseStamp, ApplyStamp, and Classify against
-// hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch disk.
+// stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify against hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch disk.
 
 package stencilstore
 
 import "testing"
 
-func TestNormalizeLF_CRLFHashesLikeLF(t *testing.T) {
-	lf := []byte("line one\nline two\n")
-	crlf := []byte("line one\r\nline two\r\n")
+//testtiming:keep pins that CRLF and a changed banner hash like their LF and old-banner twins while a changed body does not, which no covering test asserts
+func TestBodyHash(t *testing.T) {
+	t.Parallel()
 
-	if BodyHash(lf) != BodyHash(crlf) {
-		t.Errorf("BodyHash(lf) = %q; want it to equal BodyHash(crlf) = %q", BodyHash(lf), BodyHash(crlf))
+	tests := []struct {
+		name      string
+		a, b      string
+		wantEqual bool
+	}{
+		{
+			name:      "CRLFHashesLikeLF",
+			a:         "line one\nline two\n",
+			b:         "line one\r\nline two\r\n",
+			wantEqual: true,
+		},
+		{
+			name:      "IgnoresBannerChange",
+			a:         "<!-- lyx-stencil: sha256=aaaa -->\nbody unchanged\n",
+			b:         "<!-- lyx-stencil: sha256=bbbb -->\nbody unchanged\n",
+			wantEqual: true,
+		},
+		{
+			name:      "ReactsToBodyChange",
+			a:         "<!-- lyx-stencil: sha256=aaaa -->\nbody unchanged\n",
+			b:         "<!-- lyx-stencil: sha256=aaaa -->\nbody changed\n",
+			wantEqual: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			hashA, hashB := BodyHash([]byte(tt.a)), BodyHash([]byte(tt.b))
+			if (hashA == hashB) != tt.wantEqual {
+				t.Errorf("BodyHash(%q) = %q, BodyHash(%q) = %q; want equal = %v", tt.a, hashA, tt.b, hashB, tt.wantEqual)
+			}
+		})
 	}
 }
 
-func TestBodyHash_IgnoresBannerChangesOnly(t *testing.T) {
-	base := "<!-- lyx-stencil: sha256=aaaa -->\nbody unchanged\n"
-	bannerChanged := "<!-- lyx-stencil: sha256=bbbb -->\nbody unchanged\n"
-	bodyChanged := "<!-- lyx-stencil: sha256=aaaa -->\nbody changed\n"
+//testtiming:keep pins that a stamp is replaced in place or prepended with the body hash unchanged, where the restamp test reaches only the replacing case
+func TestApplyStamp(t *testing.T) {
+	t.Parallel()
 
-	if BodyHash([]byte(base)) != BodyHash([]byte(bannerChanged)) {
-		t.Errorf("BodyHash ignored a banner-only change: base=%q changed=%q", BodyHash([]byte(base)), BodyHash([]byte(bannerChanged)))
+	tests := []struct {
+		name     string
+		original string
+		hash     string
+	}{
+		{
+			name:     "ReplacesExistingBannerInPlace",
+			original: "<!-- lyx-stencil: sha256=" + fakeHash('a') + " -->\nbody\n",
+			hash:     fakeHash('b'),
+		},
+		{
+			name:     "PrependsNewBannerWhenAbsent",
+			original: "body with no banner\n",
+			hash:     fakeHash('c'),
+		},
 	}
-	if BodyHash([]byte(base)) == BodyHash([]byte(bodyChanged)) {
-		t.Errorf("BodyHash did not react to a body change: base=%q changed=%q", BodyHash([]byte(base)), BodyHash([]byte(bodyChanged)))
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestApplyStamp_ReplacesExistingBannerInPlace(t *testing.T) {
-	original := []byte("<!-- lyx-stencil: sha256=" + fakeHash('a') + " -->\nbody\n")
-	newHash := fakeHash('b')
+			got := ApplyStamp([]byte(tt.original), tt.hash)
 
-	got := ApplyStamp(original, newHash)
-
-	stamp, ok := ParseStamp(got)
-	if !ok || stamp != newHash {
-		t.Fatalf("ParseStamp(ApplyStamp(...)) = (%q, %v); want (%q, true)", stamp, ok, newHash)
-	}
-	if BodyHash(got) != BodyHash(original) {
-		t.Errorf("ApplyStamp changed the body: BodyHash(got) = %q; want %q", BodyHash(got), BodyHash(original))
-	}
-}
-
-func TestApplyStamp_PrependsNewBannerWhenAbsent(t *testing.T) {
-	original := []byte("body with no banner\n")
-	hash := fakeHash('c')
-
-	got := ApplyStamp(original, hash)
-
-	stamp, ok := ParseStamp(got)
-	if !ok || stamp != hash {
-		t.Fatalf("ParseStamp(ApplyStamp(...)) = (%q, %v); want (%q, true)", stamp, ok, hash)
-	}
-	if BodyHash(got) != BodyHash(original) {
-		t.Errorf("ApplyStamp changed the body: BodyHash(got) = %q; want %q", BodyHash(got), BodyHash(original))
+			stamp, ok := ParseStamp(got)
+			if !ok || stamp != tt.hash {
+				t.Fatalf("ParseStamp(ApplyStamp(...)) = (%q, %v); want (%q, true)", stamp, ok, tt.hash)
+			}
+			if BodyHash(got) != BodyHash([]byte(tt.original)) {
+				t.Errorf("ApplyStamp changed the body: BodyHash(got) = %q; want %q", BodyHash(got), BodyHash([]byte(tt.original)))
+			}
+		})
 	}
 }
 
 func TestParseStamp(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		content string
@@ -81,6 +107,8 @@ func TestParseStamp(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, ok := ParseStamp([]byte(tt.content))
 			if ok != tt.wantOK {
 				t.Errorf("ParseStamp(%q) ok = %v; want %v", tt.content, ok, tt.wantOK)
@@ -89,7 +117,10 @@ func TestParseStamp(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the state each on-disk shape classifies to, which the reconcile tests observe only through the file outcome
 func TestClassify(t *testing.T) {
+	t.Parallel()
+
 	shipped := []byte("shipped body\n")
 	shippedHash := BodyHash(shipped)
 	edited := []byte("edited body\n")
@@ -124,25 +155,23 @@ func TestClassify(t *testing.T) {
 			exists: true,
 			want:   StateEdited,
 		},
+		{
+			name:   "ReconciledBeatsStaleStamp",
+			onDisk: ApplyStamp(shipped, BodyHash([]byte("some other old default\n"))),
+			exists: true,
+			want:   StateReconciled,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := Classify(tt.onDisk, tt.exists, shipped)
 			if got != tt.want {
 				t.Errorf("Classify(...) = %v; want %v", got, tt.want)
 			}
 		})
 	}
-
-	t.Run("ReconciledBeatsStaleStamp", func(t *testing.T) {
-		staleHash := BodyHash([]byte("some other old default\n"))
-		onDisk := ApplyStamp(shipped, staleHash)
-
-		got := Classify(onDisk, true, shipped)
-		if got != StateReconciled {
-			t.Errorf("Classify(body==shipped, stale stamp) = %v; want %v", got, StateReconciled)
-		}
-	})
 }
 
 // TestRelPath pins the family-from-first-token derivation over both stencil and specs names.
@@ -151,6 +180,8 @@ func TestClassify(t *testing.T) {
 // performs the derivation, so a future change to the family rule fails here and not only in the
 // specs package.
 func TestRelPath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		want string
@@ -161,6 +192,8 @@ func TestRelPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := RelPath(tt.name)
 			if got != tt.want {
 				t.Errorf("RelPath(%q) = %q; want %q", tt.name, got, tt.want)

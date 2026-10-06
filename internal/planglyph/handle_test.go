@@ -63,51 +63,129 @@ func readCardFile(t *testing.T, dir string, n int, slug string) string {
 	return string(data)
 }
 
-func TestCanonicalizeHandles_BatchedCallCoversBothSources(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Old"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
+// TestCanonicalizeHandles_Rewrites covers CanonicalizeHandles rewriting the draft handles of a plan into their canonical spelling without a finding.
+// Create declarations and a Rename-derived declaration ride one batched call; each declaration is matched back to its own handle by position, so a handle sorting after another's whose declared identifier differs from its member name must not be cross-wired; the rewrite lands on every card referencing the handle; a Rename's unit comes from the old side's resolved glyph, never from the draft, so a misspelled unit does not survive; and a method rename derives a method declaration, where the receiver clause once produced "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep, so no method could be renamed through the glyph alphabet at all.
+func TestCanonicalizeHandles_Rewrites(t *testing.T) {
+	t.Parallel()
+
+	oldFoo := map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"}
+
+	cases := []struct {
+		name string
+		// files, when set, is the repository the targets of resolve are answered against.
+		files   map[string]string
+		resolve []string
+		cards   map[int]string
+		// wantPresent and wantAbsent map a card number to substrings its file must and must not contain afterwards.
+		wantPresent map[int][]string
+		wantAbsent  map[int][]string
+	}{
+		{
+			// Each Create declaration's own draft handle already names its computed identifier verbatim (plan:sub#A -> func A() {}), so canonicalization is a no-op rewrite for those three; the point is that all four sources rode the same batched call and none reported a finding.
+			name:    "batched call covers both sources",
+			files:   oldFoo,
+			resolve: []string{"sub#Old"},
+			cards: map[int]string{
+				1: "**Create:**\n- `plan:sub#A` -> `func A() {}`\n\n**Intent:** one\n",
+				2: "**Create:**\n- `plan:sub#B` -> `func B() {}`\n\n**Intent:** two\n",
+				3: "**Create:**\n- `plan:sub#C` -> `func C() {}`\n\n**Intent:** three\n",
+				4: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** four\n\n## Rename mechanic\n",
+			},
+			wantPresent: map[int][]string{1: {"plan:sub#"}, 2: {"plan:sub#"}, 3: {"plan:sub#"}, 4: {"plan:sub#"}},
+		},
+		{
+			// Card 1's handle sorts after card 2's ("Z" > "A"), and each declared identifier deliberately
+			// differs from its own handle's member name: a positional mismatch in matching Name's results
+			// back to their sources would cross-wire these two and produce a detectably wrong rewrite.
+			name: "positional matching out of order",
+			cards: map[int]string{
+				1: "**Create:**\n- `plan:sub#Z` -> `func ActualZ() {}`\n\n**Intent:** one\n",
+				2: "**Create:**\n- `plan:sub#A` -> `func ActualA() {}`\n\n**Intent:** two\n",
+			},
+			wantPresent: map[int][]string{1: {"plan:sub#ActualZ"}, 2: {"plan:sub#ActualA"}},
+		},
+		{
+			// The draft to-side deliberately misspells the unit half ("wrongpkg" instead of "sub", where
+			// the old side actually resolved): canonicalization derives the Unit from Old's own resolved
+			// glyph, never from the draft, so the wrong unit must not survive the rewrite.
+			name:    "rename draft spelling wrong still rewrites",
+			files:   oldFoo,
+			resolve: []string{"sub#Old"},
+			cards: map[int]string{
+				1: "**Rename:**\n- `sub#Old` -> `plan:wrongpkg#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+			},
+			wantPresent: map[int][]string{1: {"plan:sub#New"}},
+			wantAbsent:  map[int][]string{1: {"plan:wrongpkg#New"}},
+		},
+		{
+			name: "rename of a method derives a method declaration",
+			files: map[string]string{
+				"sub/a.go": "package sub\n\ntype Counter struct{ n int }\n\nfunc (c *Counter) Count() int { return c.n }\n",
+			},
+			resolve: []string{"sub#Counter.Count"},
+			cards: map[int]string{
+				1: "**Rename:**\n- `sub#Counter.Count` -> `plan:sub#Counter.Tally`\n\n**Intent:** one\n\n## Rename mechanic\n",
+			},
+			wantPresent: map[int][]string{1: {"plan:sub#Counter.Tally"}},
+		},
+		{
+			// The declared identifier ("ActualNew") deliberately differs from the draft handle's own member name ("New"), so the rewrite is verifiable against a changed string on both the declaring card and the referencing card.
+			name: "rewrite lands on every referencing card",
+			cards: map[int]string{
+				1: "**Create:**\n- `plan:sub#New` -> `func ActualNew() {}`\n\n**Intent:** one\n",
+				2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
+			},
+			wantAbsent: map[int][]string{1: {"plan:sub#New"}, 2: {"plan:sub#New"}},
+		},
 	}
 
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Create:**\n- `plan:sub#A` -> `func A() {}`\n\n**Intent:** one\n",
-		2: "**Create:**\n- `plan:sub#B` -> `func B() {}`\n\n**Intent:** two\n",
-		3: "**Create:**\n- `plan:sub#C` -> `func C() {}`\n\n**Intent:** three\n",
-		4: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** four\n\n## Rename mechanic\n",
-	})
-	// plan.Dir must equal dir for CanonicalizeHandles's caller shape; ParsePlan already stamps it.
-	if plan.Dir != dir {
-		t.Fatalf("plan.Dir = %q; want %q", plan.Dir, dir)
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	findings, _, err := CanonicalizeHandles(plan, dir, results)
-	if err != nil {
-		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
-	}
-	for _, f := range findings {
-		t.Errorf("unexpected finding: %+v", f)
-	}
+			var results []quarry.ResolveResult
+			if tc.files != nil {
+				root := writeFixtureRepo(t, tc.files)
+				repo, err := openRepo(root)
+				if err != nil {
+					t.Fatalf("openRepo(%q) returned error: %v", root, err)
+				}
+				results, err = resolveTargets(repo, tc.resolve)
+				if err != nil {
+					t.Fatalf("resolveTargets(...) returned error: %v", err)
+				}
+			}
+			dir, plan := writePlanFixture(t, tc.cards)
+			// plan.Dir must equal dir for CanonicalizeHandles's caller shape; ParsePlan already stamps it.
+			if plan.Dir != dir {
+				t.Fatalf("plan.Dir = %q; want %q", plan.Dir, dir)
+			}
 
-	// Each Create declaration's own draft handle already names its computed identifier verbatim
-	// (plan:sub#A -> func A() {}), so canonicalization is a no-op rewrite for those three; the
-	// point of this test is that all four sources -- three Create declarations plus one
-	// Rename-derived declaration -- rode the same batched call and none reported a finding.
-	got1 := readCardFile(t, dir, 1, "card1")
-	got2 := readCardFile(t, dir, 2, "card2")
-	got3 := readCardFile(t, dir, 3, "card3")
-	got4 := readCardFile(t, dir, 4, "card4")
-	for i, got := range []string{got1, got2, got3} {
-		if !strings.Contains(got, "plan:sub#") {
-			t.Errorf("card %d lost its handle prefix entirely: %s", i+1, got)
-		}
-	}
-	if !strings.Contains(got4, "plan:sub#") {
-		t.Errorf("card 4 lost its handle prefix entirely: %s", got4)
+			findings, _, err := CanonicalizeHandles(plan, dir, results)
+			if err != nil {
+				t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("findings = %+v; want none", findings)
+			}
+
+			for n, wants := range tc.wantPresent {
+				got := readCardFile(t, dir, n, fmt.Sprintf("card%d", n))
+				for _, want := range wants {
+					if !strings.Contains(got, want) {
+						t.Errorf("card %d lacks %q after canonicalization: %s", n, want, got)
+					}
+				}
+			}
+			for n, unwanted := range tc.wantAbsent {
+				got := readCardFile(t, dir, n, fmt.Sprintf("card%d", n))
+				for _, bad := range unwanted {
+					if strings.Contains(got, bad) {
+						t.Errorf("card %d still carries %q after canonicalization: %s", n, bad, got)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -150,68 +228,6 @@ func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) 
 	}
 	if got := readCardFile(t, dir, 2, "card2"); got != before2 {
 		t.Errorf("card 2 was rewritten:\nbefore: %s\nafter: %s", before2, got)
-	}
-}
-
-func TestCanonicalizeHandles_PositionalMatchingOutOfOrder(t *testing.T) {
-	// Card 1's handle sorts after card 2's ("Z" > "A"), and each declared identifier deliberately
-	// differs from its own handle's member name: a positional mismatch in matching Name's results
-	// back to their sources would cross-wire these two and produce a detectably wrong rewrite.
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Create:**\n- `plan:sub#Z` -> `func ActualZ() {}`\n\n**Intent:** one\n",
-		2: "**Create:**\n- `plan:sub#A` -> `func ActualA() {}`\n\n**Intent:** two\n",
-	})
-
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
-	if err != nil {
-		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
-	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none", findings)
-	}
-
-	got1 := readCardFile(t, dir, 1, "card1")
-	got2 := readCardFile(t, dir, 2, "card2")
-	if !strings.Contains(got1, "plan:sub#ActualZ") {
-		t.Errorf("card 1's own handle did not canonicalize to plan:sub#ActualZ: %s", got1)
-	}
-	if !strings.Contains(got2, "plan:sub#ActualA") {
-		t.Errorf("card 2's own handle did not canonicalize to plan:sub#ActualA: %s", got2)
-	}
-}
-
-func TestCanonicalizeHandles_RenameDraftSpellingWrongStillRewrites(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Old"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-
-	// The draft to-side deliberately misspells the unit half ("wrongpkg" instead of "sub", where
-	// the old side actually resolved): canonicalization derives the Unit from Old's own resolved
-	// glyph, never from the draft, so the wrong unit must not survive the rewrite.
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Rename:**\n- `sub#Old` -> `plan:wrongpkg#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
-	})
-
-	findings, _, err := CanonicalizeHandles(plan, dir, results)
-	if err != nil {
-		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
-	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none", findings)
-	}
-
-	got := readCardFile(t, dir, 1, "card1")
-	if strings.Contains(got, "plan:wrongpkg#New") {
-		t.Errorf("draft spelling %q survived canonicalization: %s", "plan:wrongpkg#New", got)
-	}
-	if !strings.Contains(got, "plan:sub#New") {
-		t.Errorf("canonical handle plan:sub#New missing after rewrite: %s", got)
 	}
 }
 
@@ -294,41 +310,6 @@ func TestRenameSignature(t *testing.T) {
 				t.Errorf("renameSignature(%q, %q, %q) = %q; want %q", tc.signature, tc.oldName, tc.newName, got, tc.want)
 			}
 		})
-	}
-}
-
-// TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration proves a method Rename pair
-// canonicalizes end to end against a real repository. Before renameSignature this produced the
-// declaration "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep,
-// so no method could be renamed through the glyph alphabet at all.
-func TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n\ntype Counter struct{ n int }\n\nfunc (c *Counter) Count() int { return c.n }\n",
-	})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Counter.Count"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Rename:**\n- `sub#Counter.Count` -> `plan:sub#Counter.Tally`\n\n**Intent:** one\n\n## Rename mechanic\n",
-	})
-
-	findings, _, err := CanonicalizeHandles(plan, dir, results)
-	if err != nil {
-		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
-	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none — a method rename must canonicalize cleanly", findings)
-	}
-
-	got := readCardFile(t, dir, 1, "card1")
-	if !strings.Contains(got, "plan:sub#Counter.Tally") {
-		t.Errorf("canonical method handle plan:sub#Counter.Tally missing after rewrite: %s", got)
 	}
 }
 
@@ -438,33 +419,6 @@ func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
 	got2 := readCardFile(t, dir, 2, "card2")
 	if !strings.Contains(got1, "plan:sub#One") || !strings.Contains(got2, "plan:sub#Two") {
 		t.Errorf("a colliding handle was rewritten despite the collision:\n%s\n%s", got1, got2)
-	}
-}
-
-func TestCanonicalizeHandles_RewriteLandsOnEveryReferencingCard(t *testing.T) {
-	// The declared identifier ("ActualNew") deliberately differs from the draft handle's own
-	// member name ("New"), so the resulting rewrite is verifiable against a changed string on
-	// both the declaring card and the referencing card.
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Create:**\n- `plan:sub#New` -> `func ActualNew() {}`\n\n**Intent:** one\n",
-		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
-	})
-
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
-	if err != nil {
-		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
-	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none", findings)
-	}
-
-	got1 := readCardFile(t, dir, 1, "card1")
-	got2 := readCardFile(t, dir, 2, "card2")
-	if strings.Contains(got1, "plan:sub#New") {
-		t.Errorf("declaring card 1 still carries the draft spelling: %s", got1)
-	}
-	if strings.Contains(got2, "plan:sub#New") {
-		t.Errorf("referencing card 2 still carries the draft spelling: %s", got2)
 	}
 }
 

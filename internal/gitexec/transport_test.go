@@ -11,6 +11,8 @@ import (
 )
 
 func TestIsTransportFailure(t *testing.T) {
+	t.Parallel()
+
 	phrases := []string{
 		"fatal: unable to access 'x': Could not resolve host: example.com",
 		"ssh: connect to host h port 22: Connection refused",

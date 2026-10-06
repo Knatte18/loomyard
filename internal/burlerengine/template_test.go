@@ -1,13 +1,6 @@
-// template_test.go is the machine half of the PATTERN-review-round: it pins each
-// of the four shipped round-prompt assets' load-bearing statements as substring assertions — the
-// orchestrator's sequencing statements, instruction 3's fix-everything/ never-push statements,
-// instruction 2's cluster/origin statements — it proves each asset actually fills through stencil
-// with its own required marker subset, and it guards that the orchestrator never carries a
-// downstream instruction body back into itself.
-// The four assets are read from the top-level stencils package's exported embedded defaults
-// (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted
-// package-private vars — a cross-package import, not a rename, since composePrompt itself reads its
-// four prompts from disk at call time via stencilstore.Read (see prompt.go).
+// template_test.go proves each of the four shipped round-prompt assets actually fills through stencil with its own required marker subset, that the three optional directives of instruction 1 render cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round prompt from disk at call time.
+// The assets' load-bearing statements and the orchestrator's exclusion of downstream bodies are pinned from a full composePrompt render in prompt_test.go (PATTERN-review-round's machine half).
+// The four assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since composePrompt itself reads its four prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine
 
@@ -20,67 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
-
-// TestTemplate_StatesClusterForkDiscipline pins the cluster round's load-bearing fork-discipline
-// statements — the single-message fork spawn, the unnamed-fork rule, the fork's read-only/no-git
-// discipline, that consolidation happens before job B, the origin labels, and the Rejected section
-// — following this file's existing pin style but sourced from a full composePrompt render for a
-// cluster profile rather than the static template bytes: this content is composed dynamically by
-// clusterRulesBlock (prompt.go) into instruction 2, not baked into burler-step-2-review.md
-// itself.
-// An edit that silently waters any of these statements down fails this test rather than only a
-// human review.
-func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
-	p := newComposableProfile(t)
-	stencilsDir := newTestStencilsDir(t)
-	p.ClusterFan = "standard"
-	p.clusterLenses = []Lens{
-		{Name: "style", Text: "pay extra attention to style"},
-	}
-
-	_, files, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-
-	got := files[1].Content
-
-	requireContains(t, got, "SINGLE message")
-	requireContains(t, got, "subagent_type")
-	requireContains(t, got, "never pass a `name`")
-	requireContains(t, got, "READ-ONLY")
-	requireContains(t, got, "never run any git command")
-	requireContains(t, got, "never call the Agent tool")
-	requireContains(t, got, "HOLISTIC")
-	requireContains(t, got, "before job B touches anything")
-	requireContains(t, got, "origin:")
-	requireContains(t, got, "Rejected")
-}
-
-// TestTemplate_OrchestratorExcludesDownstreamBodies guards that the orchestrator handed to the
-// shuttle never carries a downstream instruction body back into itself.
-// The five tokens below are disjoint from the orchestrator's retained two-jobs framing (including
-// the retained job-B one-liner, "even if the verdict was APPROVED — non-blocking polish still gets
-// fixed"): each appears only inside a downstream instruction file's body (instruction 3's
-// fix-everything prose, instruction 2's review-file YAML keys and cluster fork-spawn prose), so a
-// regression that inlines a downstream body back into the orchestrator trips this guard on the
-// first offending token, without colliding with the orchestrator's legitimate bare-word "verdict"/
-// "findings" usage.
-func TestTemplate_OrchestratorExcludesDownstreamBodies(t *testing.T) {
-	p := newComposableProfile(t)
-	stencilsDir := newTestStencilsDir(t)
-
-	orchestrator, _, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-
-	requireNotContains(t, orchestrator, "not whether it gets fixed")
-	requireNotContains(t, orchestrator, "verdict:")
-	requireNotContains(t, orchestrator, "findings:")
-	requireNotContains(t, orchestrator, "SINGLE message")
-	requireNotContains(t, orchestrator, "subagent_type")
-}
 
 // requireContains fails the test, naming the missing needle, if text does
 // not contain it. Shared across this package's tests (prompt_test.go
@@ -210,132 +142,77 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_PatternDirectiveOptional asserts pattern_directive behaves as an optional marker on
-// instruction 1: an empty value renders cleanly with no leftover `{{`, no orphan `## Constraints`
-// heading, and no stray blank-line block where the directive would have sat, and a non-empty value
-// places the directive block ahead of the first work instruction ("## What to review (the
-// target)").
-func TestTemplate_PatternDirectiveOptional(t *testing.T) {
-	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "focus_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-		if strings.Contains(text, "## Constraints") {
-			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
-		}
-		if strings.Contains(text, "\n\n\n\n") {
-			t.Errorf("rendered output contains a stray blank-line block: %q", text)
-		}
-	})
+// TestTemplate_OptionalDirectives asserts pattern_directive, friction_directive and focus_directive each behave as an optional marker on instruction 1: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## What to review (the target)").
+// A marker-free template (the literal {{.friction_directive}} stripped from the shipped bytes) still fills cleanly while a non-empty directive value is supplied -- the composer's optional-marker guarantee runs one direction only (see stencil.FillOptional's own doc comment), so a marker's absence from the template must never be an error.
+func TestTemplate_OptionalDirectives(t *testing.T) {
+	t.Parallel()
 
-	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "focus_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		directiveIdx := strings.Index(text, values["pattern_directive"])
-		workIdx := strings.Index(text, "## What to review (the target)")
-		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
-		}
-	})
-}
+	optional := []string{"pattern_directive", "friction_directive", "focus_directive"}
+	tests := []struct {
+		marker            string
+		orphanHeading     string
+		noStrayBlankBlock bool
+	}{
+		{marker: "pattern_directive", orphanHeading: "## Constraints", noStrayBlankBlock: true},
+		{marker: "friction_directive"},
+		{marker: "focus_directive", orphanHeading: "## Focus directive"},
+	}
 
-// TestTemplate_FrictionDirectiveOptional asserts friction_directive behaves as an optional marker on
-// instruction 1, mirroring TestTemplate_PatternDirectiveOptional above: an empty value renders
-// cleanly with no leftover `{{`, a non-empty value places the directive block ahead of the first work
-// instruction, and a marker-free template (the literal {{.friction_directive}} stripped from the
-// shipped bytes) still fills cleanly while a non-empty directive value is supplied — the composer's
-// optional-marker guarantee runs one direction only (see stencil.FillOptional's own doc comment), so
-// a marker's absence from the template must never be an error.
-func TestTemplate_FrictionDirectiveOptional(t *testing.T) {
-	t.Run("empty friction_directive renders cleanly", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		values["friction_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive", "focus_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.marker, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("non-empty friction_directive precedes the first work instruction", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive", "friction_directive", "focus_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		directiveIdx := strings.Index(text, values["friction_directive"])
-		workIdx := strings.Index(text, "## What to review (the target)")
-		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-			t.Errorf("friction_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
-		}
-	})
+			t.Run("empty value renders cleanly", func(t *testing.T) {
+				t.Parallel()
+				values := instruction1MarkerValues()
+				values[tt.marker] = ""
+				got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
+				if err != nil {
+					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+				}
+				text := string(got)
+				if strings.Contains(text, "{{") {
+					t.Errorf("rendered output contains leftover {{: %q", text)
+				}
+				if tt.orphanHeading != "" && strings.Contains(text, tt.orphanHeading) {
+					t.Errorf("rendered output contains an orphan %s heading: %q", tt.orphanHeading, text)
+				}
+				if tt.noStrayBlankBlock && strings.Contains(text, "\n\n\n\n") {
+					t.Errorf("rendered output contains a stray blank-line block: %q", text)
+				}
+			})
+
+			t.Run("non-empty value precedes the first work instruction", func(t *testing.T) {
+				t.Parallel()
+				values := instruction1MarkerValues()
+				got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
+				if err != nil {
+					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+				}
+				text := string(got)
+				directiveIdx := strings.Index(text, values[tt.marker])
+				workIdx := strings.Index(text, "## What to review (the target)")
+				if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
+					t.Errorf("%s (idx %d) does not precede the first work instruction (idx %d)", tt.marker, directiveIdx, workIdx)
+				}
+			})
+		})
+	}
 
 	t.Run("marker-free template still fills while a directive value is supplied", func(t *testing.T) {
+		t.Parallel()
 		markerFree := strings.ReplaceAll(string(stencils.BurlerStep1Explore), "{{.friction_directive}}", "")
 		values := instruction1MarkerValues()
-		if _, err := stencil.FillOptional([]byte(markerFree), values, []string{"pattern_directive", "friction_directive", "focus_directive"}); err != nil {
+		if _, err := stencil.FillOptional([]byte(markerFree), values, optional); err != nil {
 			t.Fatalf("stencil.FillOptional() on a marker-free template = %v; want nil", err)
 		}
 	})
 }
 
-// TestTemplate_FocusDirectiveOptional asserts focus_directive behaves as an optional marker on instruction 1, mirroring its two siblings:
-// an empty value renders cleanly, and a non-empty value places the directive block ahead of the first work instruction.
-func TestTemplate_FocusDirectiveOptional(t *testing.T) {
-	optional := []string{"pattern_directive", "friction_directive", "focus_directive"}
-
-	t.Run("empty focus_directive renders cleanly", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		values["focus_directive"] = ""
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-		if strings.Contains(text, "## Focus directive") {
-			t.Errorf("rendered output contains an orphan focus heading: %q", text)
-		}
-	})
-
-	t.Run("non-empty focus_directive precedes the first work instruction", func(t *testing.T) {
-		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, optional)
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		directiveIdx := strings.Index(text, values["focus_directive"])
-		workIdx := strings.Index(text, "## What to review (the target)")
-		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-			t.Errorf("focus_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
-		}
-	})
-}
-
-// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from
-// stencilsDir on every call rather than from any compiled-in default: overwriting
-// burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the
-// shipped defaults, must have that modified text — not the shipped default's own text — reach the
-// composed instruction 2 file. This pins the runtime-read-not-embed Shared Decision at the
-// burlerengine call site.
+// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from stencilsDir on every call rather than from any compiled-in default: overwriting burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the shipped defaults, must have that modified text — not the shipped default's own text — reach the composed instruction 2 file.
+// This pins the runtime-read-not-embed Shared Decision at the burlerengine call site.
+//
+//testtiming:keep pins that an edited on-disk instruction-2 body reaches the composed instruction 2 file, which the cluster test covering its blocks never edits
 func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,8 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 func runVerb(t *testing.T, cmd *cobra.Command) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := clihelp.Execute(cmd, &out, nil)
+	// An empty, non-nil slice keeps cobra from reading the test binary's own flags as arguments.
+	code := clihelp.Execute(cmd, &out, []string{})
 	var env map[string]any
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
@@ -78,83 +80,81 @@ func TestRefuseNonPrime(t *testing.T) {
 	}
 }
 
-func TestStatus_ReportsPopulatedState(t *testing.T) {
+func TestStatus_Envelope(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeStrands{strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}}
-	c := newTestCLI(t, fake)
-	err := orchengine.SaveState(c.paths, orchengine.State{
-		Strand: "g1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
-		CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", Stuck: "busy", WatcherExit: "gone",
-		PhaseEnteredAt: time.Unix(0, 0), CycleTrigger: orchengine.TriggerSoft,
-		LastDeferral: time.Date(2026, 10, 1, 12, 30, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatal(err)
+	const tooShort = "orch pane too short for the idle probe; resize or use the larger client"
+	liveOrch := []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}
+	cases := []struct {
+		name    string
+		strands []reedengine.StrandStatus
+		// state is the saved state; nil leaves none on disk.
+		state *orchengine.State
+		// want maps an envelope key to its value, nil meaning a present JSON null.
+		want func(c *orchCLI) map[string]any
+	}{
+		{
+			name:    "populated state",
+			strands: liveOrch,
+			state: &orchengine.State{
+				Strand: "g1", Phase: orchengine.PhaseClearing, LastContextTokens: 999, LastContextKnown: true,
+				CycleCount: 4, LastHandoff: "h.md", LastAbortReason: "why", Stuck: "busy", WatcherExit: "gone",
+				PhaseEnteredAt: time.Unix(0, 0), CycleTrigger: orchengine.TriggerSoft,
+				LastDeferral: time.Date(2026, 10, 1, 12, 30, 0, 0, time.UTC),
+			},
+			want: func(c *orchCLI) map[string]any {
+				return map[string]any{
+					"strand": "g1", "strand_live": true, "watcher_live": false, "context_tokens": float64(999),
+					"threshold_tokens": float64(1234), "phase": "clearing", "cycle_count": float64(4),
+					"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
+					"soft_threshold_tokens": float64(c.cfg.SoftThreshold()), "cycle_trigger": "soft",
+					"last_deferral": "2026-10-01T12:30:00Z",
+				}
+			},
+		},
+		{
+			name:    "too short pane under stuck",
+			strands: liveOrch,
+			state:   &orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, Stuck: tooShort},
+			want: func(*orchCLI) map[string]any {
+				return map[string]any{"stuck": tooShort, "phase": "idle"}
+			},
+		},
+		{
+			name: "unknown tokens are null",
+			want: func(*orchCLI) map[string]any {
+				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": ""}
+			},
+		},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	code, env := runVerb(t, c.statusCmd())
-	if code != 0 {
-		t.Fatalf("exit = %d; env %v", code, env)
-	}
-	want := map[string]any{
-		"strand": "g1", "strand_live": true, "watcher_live": false, "context_tokens": float64(999),
-		"threshold_tokens": float64(1234), "phase": "clearing", "cycle_count": float64(4),
-		"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
-		"soft_threshold_tokens": float64(c.cfg.SoftThreshold()), "cycle_trigger": "soft",
-		"last_deferral": "2026-10-01T12:30:00Z",
-	}
-	for k, v := range want {
-		if env[k] != v {
-			t.Errorf("status[%q] = %v; want %v", k, env[k], v)
-		}
-	}
-}
+			c := newTestCLI(t, &fakeStrands{strands: tc.strands})
+			if tc.state != nil {
+				if err := orchengine.SaveState(c.paths, *tc.state); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-func TestStatus_ReportsTooShortPaneUnderStuck(t *testing.T) {
-	t.Parallel()
-
-	const reason = "orch pane too short for the idle probe; resize or use the larger client"
-	fake := &fakeStrands{strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}}
-	c := newTestCLI(t, fake)
-	if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, Stuck: reason}); err != nil {
-		t.Fatal(err)
-	}
-	code, env := runVerb(t, c.statusCmd())
-	if code != 0 {
-		t.Fatalf("exit = %d; env %v", code, env)
-	}
-	if env["stuck"] != reason || env["phase"] != "idle" {
-		t.Errorf("status = stuck %v, phase %v; want the too-short reason in phase idle", env["stuck"], env["phase"])
-	}
-}
-
-func TestStatus_UnknownTokensAreNull(t *testing.T) {
-	t.Parallel()
-
-	c := newTestCLI(t, &fakeStrands{})
-	code, env := runVerb(t, c.statusCmd())
-	if code != 0 {
-		t.Fatalf("exit = %d; env %v", code, env)
-	}
-	if v, present := env["context_tokens"]; !present || v != nil {
-		t.Errorf("context_tokens = %v (present %v); want null", v, present)
-	}
-	if env["strand_live"] != false {
-		t.Errorf("strand_live = %v; want false", env["strand_live"])
-	}
-	if v, present := env["last_deferral"]; !present || v != nil {
-		t.Errorf("last_deferral = %v (present %v); want null for a zero deferral", v, present)
-	}
-	if env["cycle_trigger"] != "" {
-		t.Errorf("cycle_trigger = %v; want empty before the first cycle", env["cycle_trigger"])
+			code, env := runVerb(t, c.statusCmd())
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			for k, v := range tc.want(c) {
+				if got, present := env[k]; !present || got != v {
+					t.Errorf("status[%q] = %v (present %v); want %v", k, got, present, v)
+				}
+			}
+		})
 	}
 }
 
 func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	verbs := []struct {
 		name string
 		verb func(*orchCLI) *cobra.Command
 		want string
@@ -162,8 +162,8 @@ func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 		{"refresh clears", (*orchCLI).refreshCmd, orchengine.CycleClear},
 		{"distill compacts", (*orchCLI).distillCmd, orchengine.CycleCompact},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tc := range verbs {
+		t.Run(tc.name+" with a live watcher", func(t *testing.T) {
 			t.Parallel()
 
 			c := newTestCLI(t, &fakeStrands{})
@@ -196,18 +196,12 @@ func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 				t.Errorf("request = %+v; want mode %q and a request time", req, tc.want)
 			}
 		})
-	}
-}
 
-func TestRefreshAndDistill_NoWatcherLeavesNoMarker(t *testing.T) {
-	t.Parallel()
-
-	for name, verb := range map[string]func(*orchCLI) *cobra.Command{"refresh": (*orchCLI).refreshCmd, "distill": (*orchCLI).distillCmd} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name+" without a watcher leaves no marker", func(t *testing.T) {
 			t.Parallel()
 
 			c := newTestCLI(t, &fakeStrands{})
-			code, env := runVerb(t, verb(c))
+			code, env := runVerb(t, tc.verb(c))
 			if code != 0 {
 				t.Fatalf("exit = %d; env %v", code, env)
 			}
@@ -221,46 +215,45 @@ func TestRefreshAndDistill_NoWatcherLeavesNoMarker(t *testing.T) {
 	}
 }
 
-func TestStop_RemovesTrackedStrand(t *testing.T) {
+func TestStop(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeStrands{strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch"}}}
-	c := newTestCLI(t, fake)
-	if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name    string
+		strands []reedengine.StrandStatus
+		// recorded is the strand saved in state; empty leaves no state on disk.
+		recorded    string
+		wantRemoved bool
+		wantStrand  string
+		wantCalls   []string
+	}{
+		{"removes the tracked strand", []reedengine.StrandStatus{{GUID: "g1", Name: "orch"}}, "g1", true, "g1", []string{"g1"}},
+		{"reports a recorded but untracked strand as not removed", nil, "gone", false, "", nil},
+		{"reports an unrecorded strand as not removed", nil, "", false, "", nil},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	_, env := runVerb(t, c.stopCmd())
-	if env["removed"] != true || env["strand"] != "g1" {
-		t.Errorf("stop envelope = %v; want removed true, strand g1", env)
-	}
-	if len(fake.removed) != 1 || fake.removed[0] != "g1" {
-		t.Errorf("removed = %v; want [g1]", fake.removed)
-	}
-}
+			fake := &fakeStrands{strands: tc.strands}
+			c := newTestCLI(t, fake)
+			if tc.recorded != "" {
+				if err := orchengine.SaveState(c.paths, orchengine.State{Strand: tc.recorded, Phase: orchengine.PhaseIdle}); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-func TestStop_UntrackedStrandReportsNotRemoved(t *testing.T) {
-	t.Parallel()
-
-	fake := &fakeStrands{}
-	c := newTestCLI(t, fake)
-	if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "gone", Phase: orchengine.PhaseIdle}); err != nil {
-		t.Fatal(err)
-	}
-
-	code, env := runVerb(t, c.stopCmd())
-	if code != 0 || env["removed"] != false {
-		t.Errorf("stop = exit %d, %v; want exit 0, removed false", code, env)
-	}
-	if len(fake.removed) != 0 {
-		t.Errorf("removed = %v; want none", fake.removed)
-	}
-
-	// An unrecorded strand behaves the same.
-	c2 := newTestCLI(t, fake)
-	_, env = runVerb(t, c2.stopCmd())
-	if env["removed"] != false {
-		t.Errorf("unrecorded stop envelope = %v; want removed false", env)
+			code, env := runVerb(t, c.stopCmd())
+			if code != 0 || env["removed"] != tc.wantRemoved {
+				t.Errorf("stop = exit %d, %v; want exit 0, removed %v", code, env, tc.wantRemoved)
+			}
+			if tc.wantStrand != "" && env["strand"] != tc.wantStrand {
+				t.Errorf("stop envelope strand = %v; want %s", env["strand"], tc.wantStrand)
+			}
+			if !slices.Equal(fake.removed, tc.wantCalls) {
+				t.Errorf("removed = %v; want %v", fake.removed, tc.wantCalls)
+			}
+		})
 	}
 }
 

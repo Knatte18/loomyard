@@ -12,6 +12,7 @@ import (
 )
 
 func TestValidateDescription_Table(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		content *string
@@ -29,6 +30,7 @@ func TestValidateDescription_Table(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			path := filepath.Join(t.TempDir(), "summary.md")
 			if tt.content != nil {
 				if err := os.WriteFile(path, []byte(*tt.content), 0o644); err != nil {
@@ -51,6 +53,7 @@ func TestValidateDescription_Table(t *testing.T) {
 }
 
 func TestValidateDescription_ReadErrorIsError(t *testing.T) {
+	t.Parallel()
 	// A directory at the path is a read failure other than not-exist.
 	if _, err := summaryparser.ValidateDescription(t.TempDir()); err == nil {
 		t.Fatal("error = nil; want a read error")
@@ -58,6 +61,7 @@ func TestValidateDescription_ReadErrorIsError(t *testing.T) {
 }
 
 func TestFinding_Error(t *testing.T) {
+	t.Parallel()
 	if got := (summaryparser.Finding{Check: "a", Detail: "b"}).Error(); got != "a: b" {
 		t.Errorf("Error() = %q", got)
 	}
@@ -65,6 +69,7 @@ func TestFinding_Error(t *testing.T) {
 }
 
 func TestLandingMessage(t *testing.T) {
+	t.Parallel()
 	s := &summaryparser.Summary{Title: "T", Body: "\nbody\n"}
 	want := "T\n\nbody\n\n\nCo-Authored-By: A <a@b>"
 	if got := s.LandingMessage("A <a@b>"); got != want || strings.Count(got, "Co-Authored-By:") != 1 {

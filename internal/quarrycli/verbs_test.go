@@ -32,29 +32,31 @@ func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// TestRunCLIIn_EachVerb_Success drives each of the four verbs against a fixture repository and
-// asserts exit 0 and a parseable JSON payload.
-func TestRunCLIIn_EachVerb_Success(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
+// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository and asserts exit 0 and a parseable JSON payload for a positive answer, and a non-zero exit for expand on a directory, which is not a type and answers not_found.
+func TestRunCLIIn_EachVerb_Answers(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n\ntype T struct{}\n"})
 
 	tests := []struct {
-		name string
-		args []string
+		name      string
+		args      []string
+		wantExit0 bool
 	}{
-		{"toc", []string{"toc", "sub"}},
-		{"glyphs", []string{"glyphs", "sub"}},
-		{"resolve", []string{"resolve", "sub#Foo"}},
-		{"expand", []string{"expand", "sub"}},
+		{"toc", []string{"toc", "sub"}, true},
+		{"glyphs", []string{"glyphs", "sub"}, true},
+		{"resolve", []string{"resolve", "sub#Foo"}, true},
+		{"expand a type glyph", []string{"expand", "sub#T"}, true},
+		{"expand a directory", []string{"expand", "sub"}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var out bytes.Buffer
 			exitCode := RunCLIIn(root, &out, tt.args)
 
-			if tt.name == "expand" {
-				// sub is a directory, not a type: expand rejects it as not_found -- this case
-				// covers the negative-answer path, not the success one.
+			if !tt.wantExit0 {
 				if exitCode == 0 {
 					t.Errorf("RunCLIIn(%v) = 0; want non-zero for a non-type target", tt.args)
 				}
@@ -70,24 +72,6 @@ func TestRunCLIIn_EachVerb_Success(t *testing.T) {
 				t.Fatalf("RunCLIIn(%v) output is not valid JSON: %v; got: %q", tt.args, err, out.String())
 			}
 		})
-	}
-}
-
-// TestRunCLIIn_Expand_Success drives expand against a real type glyph and asserts exit 0 and a
-// parseable JSON payload.
-func TestRunCLIIn_Expand_Success(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\ntype T struct{}\n"})
-
-	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"expand", "sub#T"})
-
-	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(expand sub#T) = %d; want 0; output: %s", exitCode, out.String())
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-		t.Fatalf("RunCLIIn(expand sub#T) output is not valid JSON: %v; got: %q", err, out.String())
 	}
 }
 
@@ -196,62 +180,54 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	})
 }
 
-// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes are byte-identical to the
-// facade's own RenderGlyphsJSON rendering of the same answer, computed directly against
-// quarry.Open/Glyphs -- the copied-verbatim guarantee this verb exists to provide.
+// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes, as JSON and as --text, are byte-identical to the facade's own RenderGlyphsJSON and RenderGlyphsText rendering of the same answer, computed directly against quarry.Open/Glyphs -- the copied-verbatim guarantee this verb exists to provide.
 func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
+	t.Parallel()
+
 	root := writeFixtureRepo(t, map[string]string{
 		"sub/a.go": "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n",
 	})
 
-	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"glyphs", "sub"})
-	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(glyphs sub) = %d; want 0; output: %s", exitCode, out.String())
+	tests := []struct {
+		name   string
+		args   []string
+		render func(t *testing.T, answer quarry.GlyphsAnswer) string
+	}{
+		{"json", []string{"glyphs", "sub"}, func(t *testing.T, answer quarry.GlyphsAnswer) string {
+			data, err := quarry.RenderGlyphsJSON(answer)
+			if err != nil {
+				t.Fatalf("quarry.RenderGlyphsJSON(...) failed: %v", err)
+			}
+			return string(data)
+		}},
+		{"text", []string{"glyphs", "--text", "sub"}, func(t *testing.T, answer quarry.GlyphsAnswer) string {
+			return quarry.RenderGlyphsText(answer)
+		}},
 	}
 
-	repo, err := quarry.Open(root)
-	if err != nil {
-		t.Fatalf("quarry.Open(%q) failed: %v", root, err)
-	}
-	want, err := repo.Glyphs("sub")
-	if err != nil {
-		t.Fatalf("repo.Glyphs(%q) failed: %v", "sub", err)
-	}
-	wantBytes, err := quarry.RenderGlyphsJSON(want)
-	if err != nil {
-		t.Fatalf("quarry.RenderGlyphsJSON(...) failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			exitCode := RunCLIIn(root, &out, tt.args)
+			if exitCode != 0 {
+				t.Fatalf("RunCLIIn(%v) = %d; want 0; output: %s", tt.args, exitCode, out.String())
+			}
 
-	if !bytes.Equal(out.Bytes(), wantBytes) {
-		t.Errorf("RunCLIIn(glyphs sub) output = %q; want byte-identical to facade rendering %q", out.String(), string(wantBytes))
-	}
-}
+			repo, err := quarry.Open(root)
+			if err != nil {
+				t.Fatalf("quarry.Open(%q) failed: %v", root, err)
+			}
+			answer, err := repo.Glyphs("sub")
+			if err != nil {
+				t.Fatalf("repo.Glyphs(%q) failed: %v", "sub", err)
+			}
+			want := tt.render(t, answer)
 
-// TestRunCLIIn_GlyphsText_GoldenAgainstFacade asserts glyphs --text emits exactly the facade's own RenderGlyphsText rendering of the same answer, and exits 0.
-func TestRunCLIIn_GlyphsText_GoldenAgainstFacade(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n",
-	})
-
-	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "sub"})
-	if exitCode != 0 {
-		t.Fatalf("RunCLIIn(glyphs --text sub) = %d; want 0; output: %s", exitCode, out.String())
-	}
-
-	repo, err := quarry.Open(root)
-	if err != nil {
-		t.Fatalf("quarry.Open(%q) failed: %v", root, err)
-	}
-	answer, err := repo.Glyphs("sub")
-	if err != nil {
-		t.Fatalf("repo.Glyphs(%q) failed: %v", "sub", err)
-	}
-	want := quarry.RenderGlyphsText(answer)
-
-	if out.String() != want {
-		t.Errorf("RunCLIIn(glyphs --text sub) output = %q; want byte-identical to facade rendering %q", out.String(), want)
+			if out.String() != want {
+				t.Errorf("RunCLIIn(%v) output = %q; want byte-identical to facade rendering %q", tt.args, out.String(), want)
+			}
+		})
 	}
 }
 
@@ -311,34 +287,43 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_GlyphsText_MissingDir asserts a failing query under --text still emits the JSON error envelope and exits non-zero.
-func TestRunCLIIn_GlyphsText_MissingDir(t *testing.T) {
+// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero: a failing glyphs query under --text still emits the JSON error envelope, and --text is glyphs-only so the other verbs reject it.
+func TestRunCLIIn_TextFlagRefusals(t *testing.T) {
+	t.Parallel()
+
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
 
-	var out bytes.Buffer
-	exitCode := RunCLIIn(root, &out, []string{"glyphs", "--text", "missing"})
-	if exitCode == 0 {
-		t.Fatalf("RunCLIIn(glyphs --text missing) = 0; want non-zero; output: %s", out.String())
+	tests := []struct {
+		name         string
+		args         []string
+		wantEnvelope bool
+	}{
+		{"glyphs on a missing directory", []string{"glyphs", "--text", "missing"}, true},
+		{"toc rejects the flag", []string{"toc", "--text", "sub"}, false},
 	}
 
-	var payload map[string]any
-	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
-		t.Fatalf("output is not a JSON document: %v; got: %q", err, out.String())
-	}
-	if payload["ok"] != false {
-		t.Errorf("ok = %v; want false", payload["ok"])
-	}
-	if _, has := payload["error"]; !has {
-		t.Errorf("payload lacks an error key; got: %v", payload)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			exitCode := RunCLIIn(root, &out, tt.args)
+			if exitCode == 0 {
+				t.Fatalf("RunCLIIn(%v) = 0; want non-zero; output: %s", tt.args, out.String())
+			}
+			if !tt.wantEnvelope {
+				return
+			}
 
-// TestRunCLIIn_TOC_RejectsTextFlag asserts --text is glyphs-only: the other verbs reject it.
-func TestRunCLIIn_TOC_RejectsTextFlag(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
-
-	var out bytes.Buffer
-	if exitCode := RunCLIIn(root, &out, []string{"toc", "--text", "sub"}); exitCode == 0 {
-		t.Errorf("RunCLIIn(toc --text sub) = 0; want non-zero; output: %s", out.String())
+			var payload map[string]any
+			if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+				t.Fatalf("output is not a JSON document: %v; got: %q", err, out.String())
+			}
+			if payload["ok"] != false {
+				t.Errorf("ok = %v; want false", payload["ok"])
+			}
+			if _, has := payload["error"]; !has {
+				t.Errorf("payload lacks an error key; got: %v", payload)
+			}
+		})
 	}
 }

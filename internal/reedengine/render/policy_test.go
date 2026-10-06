@@ -3,65 +3,59 @@
 
 package render
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestPartitionByAnchor(t *testing.T) {
-	t.Run("HiddenStrandsDropped", func(t *testing.T) {
-		strands := []Strand{
-			{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-			{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorHidden}},
-		}
-		stack := partitionByAnchor(strands)
-		if len(stack) != 1 || stack[0].GUID != "a" {
-			t.Errorf("stack = %+v, want only strand a", stack)
-		}
-	})
-
-	t.Run("NotLiveOrEmptyPaneIDDropped", func(t *testing.T) {
-		strands := []Strand{
-			{GUID: "stack-not-live", PaneID: "%1", Live: false, Display: Display{Anchor: AnchorBelowParent}},
-			{GUID: "stack-no-pane", PaneID: "", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-			{GUID: "stack-ok", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
-		}
-		stack := partitionByAnchor(strands)
-		if len(stack) != 1 || stack[0].GUID != "stack-ok" {
-			t.Errorf("stack = %+v, want only strand stack-ok", stack)
-		}
-	})
-
-	t.Run("OwnWindowNotPlaced", func(t *testing.T) {
-		strands := []Strand{
-			{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
-		}
-		stack := partitionByAnchor(strands)
-		if len(stack) != 0 {
-			t.Errorf("partitionByAnchor(own-window) = %v, want empty", stack)
-		}
-	})
-}
-
-func TestOrderStackSiblingInsertionOrder(t *testing.T) {
-	// The parent chain plays no part: a child inserted before its parent stays
-	// before it, and every strand keeps its input position.
-	strands := []Strand{
-		{GUID: "c", Parent: "a"},
-		{GUID: "a", Parent: ""},
-		{GUID: "d", Parent: ""},
-		{GUID: "b", Parent: "a"},
+	t.Parallel()
+	tests := []struct {
+		name    string
+		strands []Strand
+		want    []string
+	}{
+		{
+			name: "HiddenStrandsDropped",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorHidden}},
+			},
+			want: []string{"a"},
+		},
+		{
+			name: "NotLiveOrEmptyPaneIDDropped",
+			strands: []Strand{
+				{GUID: "stack-not-live", PaneID: "%1", Live: false, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "stack-no-pane", PaneID: "", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "stack-ok", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			want: []string{"stack-ok"},
+		},
+		{
+			name: "OwnWindowNotPlaced",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorOwnWindow}},
+			},
+			want: nil,
+		},
 	}
-	ordered := orderStack(strands)
-
-	if len(ordered) != len(strands) {
-		t.Fatalf("orderStack returned %d strands, want %d", len(ordered), len(strands))
-	}
-	for i, s := range strands {
-		if ordered[i].GUID != s.GUID {
-			t.Errorf("ordered[%d] = %q, want %q (insertion order)", i, ordered[i].GUID, s.GUID)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got []string
+			for _, s := range partitionByAnchor(tt.strands) {
+				got = append(got, s.GUID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("partitionByAnchor() placed %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestBreakCyclesTerminatesAndKeepsEveryStrand(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		strands []Strand
@@ -85,9 +79,20 @@ func TestBreakCyclesTerminatesAndKeepsEveryStrand(t *testing.T) {
 				{GUID: "b", Parent: "a"},
 			},
 		},
+		{
+			// The parent chain plays no part in ordering: a child inserted before its parent stays before it, and every strand keeps its input position.
+			"AcyclicChildBeforeParentKeepsInsertionOrder",
+			[]Strand{
+				{GUID: "c", Parent: "a"},
+				{GUID: "a", Parent: ""},
+				{GUID: "d", Parent: ""},
+				{GUID: "b", Parent: "a"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fixed := breakCycles(tt.strands)
 			if len(fixed) != len(tt.strands) {
 				t.Fatalf("breakCycles returned %d strands, want %d", len(fixed), len(tt.strands))
@@ -122,11 +127,15 @@ func TestBreakCyclesTerminatesAndKeepsEveryStrand(t *testing.T) {
 				}
 			}
 
-			// orderStack must also produce a total ordering (every strand
-			// exactly once) over the repaired chain.
+			// orderStack must also produce a total ordering (every strand exactly once) over the repaired chain, in insertion order.
 			ordered := orderStack(fixed)
 			if len(ordered) != len(tt.strands) {
 				t.Fatalf("orderStack(breakCycles(...)) returned %d strands, want %d", len(ordered), len(tt.strands))
+			}
+			for i, s := range tt.strands {
+				if ordered[i].GUID != s.GUID {
+					t.Errorf("ordered[%d] = %q, want %q (insertion order)", i, ordered[i].GUID, s.GUID)
+				}
 			}
 		})
 	}

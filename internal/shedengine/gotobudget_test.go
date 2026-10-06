@@ -19,62 +19,32 @@ func stuckHistory(names ...string) []HistoryEntry {
 	return h
 }
 
-func TestEpisodeStuckCount_GotoResetsSegment(t *testing.T) {
+// TestEpisodeStuckCount_GotoResets pins which producers' stuck episodes a goto history entry ends:
+// the target's whole segment, only the target row when it has no segment, nothing for an absent target, and a stuck after a goto counts from one.
+func TestEpisodeStuckCount_GotoResets(t *testing.T) {
+	t.Parallel()
 	ps := gotoTestProducers()
-	h := stuckHistory("A1", "A2", "A1", "A2")
-	h = append(h, HistoryEntry{Producer: "A1", Outcome: OutcomeGoto})
-	for _, def := range ps[:2] {
-		if got := episodeStuckCount(h, def, ps); got != 0 {
-			t.Errorf("%s count = %d; want 0 after goto into its segment", def.Name, got)
-		}
+	gotoTo := func(producer string) HistoryEntry { return HistoryEntry{Producer: producer, Outcome: OutcomeGoto} }
+	tests := []struct {
+		name    string
+		history []HistoryEntry
+		// want maps a producer's index in gotoTestProducers to its expected stuck count.
+		want map[int]int
+	}{
+		{"goto into a segment resets the whole segment", append(stuckHistory("A1", "A2", "A1", "A2"), gotoTo("A1")), map[int]int{0: 0, 1: 0}},
+		{"goto into another segment resets neither", append(stuckHistory("A1", "A2", "A1"), gotoTo("B")), map[int]int{0: 2, 1: 1}},
+		{"goto an unsegmented row resets only that row", append(stuckHistory("Solo", "A1"), gotoTo("Solo")), map[int]int{3: 0, 0: 1}},
+		{"goto an absent target resets nothing", append(stuckHistory("A1", "Solo"), gotoTo("Gone")), map[int]int{0: 1, 3: 1}},
+		{"stuck after a goto counts from one", append(append(stuckHistory("A1", "A2"), gotoTo("A2")), stuckHistory("A1")...), map[int]int{0: 1, 1: 0}},
 	}
-}
-
-func TestEpisodeStuckCount_GotoOtherSegmentResetsNeither(t *testing.T) {
-	ps := gotoTestProducers()
-	h := stuckHistory("A1", "A2", "A1")
-	h = append(h, HistoryEntry{Producer: "B", Outcome: OutcomeGoto})
-	if got := episodeStuckCount(h, ps[0], ps); got != 2 {
-		t.Errorf("A1 count = %d; want 2", got)
-	}
-	if got := episodeStuckCount(h, ps[1], ps); got != 1 {
-		t.Errorf("A2 count = %d; want 1", got)
-	}
-}
-
-func TestEpisodeStuckCount_GotoUnsegmentedResetsOnlyThatRow(t *testing.T) {
-	ps := gotoTestProducers()
-	h := stuckHistory("Solo", "A1")
-	h = append(h, HistoryEntry{Producer: "Solo", Outcome: OutcomeGoto})
-	if got := episodeStuckCount(h, ps[3], ps); got != 0 {
-		t.Errorf("Solo count = %d; want 0", got)
-	}
-	if got := episodeStuckCount(h, ps[0], ps); got != 1 {
-		t.Errorf("A1 count = %d; want 1", got)
-	}
-}
-
-func TestEpisodeStuckCount_GotoAbsentTargetResetsNothing(t *testing.T) {
-	ps := gotoTestProducers()
-	h := stuckHistory("A1", "Solo")
-	h = append(h, HistoryEntry{Producer: "Gone", Outcome: OutcomeGoto})
-	if got := episodeStuckCount(h, ps[0], ps); got != 1 {
-		t.Errorf("A1 count = %d; want 1", got)
-	}
-	if got := episodeStuckCount(h, ps[3], ps); got != 1 {
-		t.Errorf("Solo count = %d; want 1", got)
-	}
-}
-
-func TestEpisodeStuckCount_StuckAfterGotoCountsFromOne(t *testing.T) {
-	ps := gotoTestProducers()
-	h := stuckHistory("A1", "A2")
-	h = append(h, HistoryEntry{Producer: "A2", Outcome: OutcomeGoto})
-	h = append(h, stuckHistory("A1")...)
-	if got := episodeStuckCount(h, ps[0], ps); got != 1 {
-		t.Errorf("A1 count = %d; want 1", got)
-	}
-	if got := episodeStuckCount(h, ps[1], ps); got != 0 {
-		t.Errorf("A2 count = %d; want 0", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for i, want := range tt.want {
+				if got := episodeStuckCount(tt.history, ps[i], ps); got != want {
+					t.Errorf("%s count = %d; want %d", ps[i].Name, got, want)
+				}
+			}
+		})
 	}
 }

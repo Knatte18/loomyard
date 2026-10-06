@@ -1,18 +1,12 @@
-// cliwire_test.go pins the shared wiring prologue's behaviour at tier 1: every case is untagged,
-// spawns no process, and resolves no cwd.
+// cliwire_test.go pins the shared wiring prologue's behaviour at tier 1: every case is untagged, spawns no process, and resolves no cwd.
 //
-// websterFixture and burlerFixture are test fixtures mirroring the real descriptors declared in
-// webstercli and burlercli. They exist so this package's own tests never import either caller
-// package -- the descriptor-carries-variance split would otherwise force cliwire's tests to depend
-// on the very packages it must stay ignorant of.
+// The ResolveStandalone tests stay serial: each redirects XDG_STATE_HOME and LOCALAPPDATA, and the logger's durable sink, which are process-global state.
 //
-// A divergence between a fixture here and its real descriptor is NOT caught by these tests, nor by
-// the existing composition tests in webstercli/burlercli, nor by either package's
-// cli_integration_test.go: after batch 2, no surviving test in either CLI package asserts a
-// descriptor field's text (the retained TestWire_TargetDirRefusedInHubMode there only checks that
-// the error mentions --target-dir). What catches it is the per-package
-// TestWireModule_DescriptorIsVerbatim test batch 2 cards 6 and 7 add, which pins each real
-// wireModule's own field values and produced refusals.
+// websterFixture and burlerFixture are test fixtures mirroring the real descriptors declared in webstercli and burlercli.
+// They exist so this package's own tests never import either caller package -- the descriptor-carries-variance split would otherwise force cliwire's tests to depend on the very packages it must stay ignorant of.
+//
+// A divergence between a fixture here and its real descriptor is NOT caught by these tests, nor by the existing composition tests in webstercli/burlercli, nor by either package's cli_integration_test.go: after batch 2, no surviving test in either CLI package asserts a descriptor field's text (the retained TestWire_TargetDirRefusedInHubMode there only checks that the error mentions --target-dir).
+// What catches it is the per-package TestWireModule_DescriptorIsVerbatim test batch 2 cards 6 and 7 add, which pins each real wireModule's own field values and produced refusals.
 
 package cliwire
 
@@ -26,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // websterFixture stands in for webstercli's own wireModule descriptor, including webster's plan
@@ -184,10 +179,9 @@ func TestModule_ResolveStandaloneTarget(t *testing.T) {
 	}
 }
 
-// TestRepositoryRootOf covers the repository-root lift: a subdirectory resolves to the repository
-// root, the nearest ".git" wins over the topmost, a directory with no repository above it is
-// returned unchanged, and a ".git" FILE (as a linked worktree records it) counts as a repository
-// root.
+// TestRepositoryRootOf covers the repository-root lift: a subdirectory resolves to the repository root, the nearest ".git" wins over the topmost, a directory with no repository above it is returned unchanged, and a ".git" FILE (as a linked worktree records it) counts as a repository root.
+//
+//testtiming:keep pins the nearest-wins and .git-file lift rules, which the target-resolution cases never reach
 func TestRepositoryRootOf(t *testing.T) {
 	t.Parallel()
 
@@ -240,8 +234,8 @@ func TestRepositoryRootOf(t *testing.T) {
 	})
 }
 
-// TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures,
-// asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
+// TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures, asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
+// It also carries R6-15's regression: the target has already been through standalonestate.Normalize with every symlink resolved, while the derived state directory had not, so a state home that reaches INSIDE the target only through a symlink used to read as disjoint -- and lyx then wrote its state tree, run locks and trace logs into the operator's own checkout, which is precisely what this guard exists to prevent.
 func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 	t.Parallel()
 
@@ -281,41 +275,31 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 					t.Errorf("refuseNestedStandaloneGeometry() = %v; want nil for disjoint paths", err)
 				}
 			})
+
+			t.Run("SeesThroughASymlinkedStateHome", func(t *testing.T) {
+				// The leaf (<stateHome>/lyx/<hash8>) is deliberately absent: a first run's own leaf does not exist yet, which is exactly when plain EvalSymlinks gives up and falls back to Clean.
+				target := standalonestate.Normalize(t.TempDir())
+				inside := filepath.Join(target, "state-home")
+				if err := os.MkdirAll(inside, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) error = %v", inside, err)
+				}
+				link := filepath.Join(t.TempDir(), "link")
+				if err := os.Symlink(inside, link); err != nil {
+					t.Skipf("symlinks unavailable on this host: %v", err)
+				}
+				stateDir := filepath.Join(link, "lyx", "abcd1234")
+
+				if err := fixture.refuseNestedStandaloneGeometry(target, stateDir); err == nil {
+					t.Errorf("refuseNestedStandaloneGeometry(%q, %q) = nil; want a refusal -- the state home is nested under the target through a symlink", target, stateDir)
+				}
+			})
 		})
 	}
 }
 
-// TestModule_RefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome is R6-15's regression
-// test. The target has already been through standalonestate.Normalize with every symlink resolved,
-// while the derived state directory had not, so a state home that reaches INSIDE the target only
-// through a symlink used to read as disjoint -- and lyx then wrote its state tree, run locks and
-// trace logs into the operator's own checkout, which is precisely what this guard exists to
-// prevent. The leaf (<stateHome>/lyx/<hash8>) is deliberately absent: a first run's own leaf does
-// not exist yet, which is exactly when plain EvalSymlinks gives up and falls back to Clean.
-func TestModule_RefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome(t *testing.T) {
-	t.Parallel()
-
-	target := standalonestate.Normalize(t.TempDir())
-	inside := filepath.Join(target, "state-home")
-	if err := os.MkdirAll(inside, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) error = %v", inside, err)
-	}
-	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(inside, link); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	stateDir := filepath.Join(link, "lyx", "abcd1234")
-
-	if err := websterFixture.refuseNestedStandaloneGeometry(target, stateDir); err == nil {
-		t.Errorf("refuseNestedStandaloneGeometry(%q, %q) = nil; want a refusal -- the state home is nested under the target through a symlink", target, stateDir)
-	}
-}
-
-// TestSamePlanDirAndResolvePlanDir covers the default-vs-override recognition rules both functions
-// share: a "." or trailing-separator spelling of the default is the default, not an override; a
-// symlinked spelling of the default likewise (the second half of R6-15); an empty told value
-// resolves to the default with overridden false; and a genuinely different told directory resolves
-// to itself with overridden true.
+// TestSamePlanDirAndResolvePlanDir covers the default-vs-override recognition rules both functions share: a "." or trailing-separator spelling of the default is the default, not an override; a symlinked spelling of the default likewise (the second half of R6-15); an empty told value resolves to the default with overridden false; and a genuinely different told directory resolves to itself with overridden true.
+//
+//testtiming:keep pins the default-versus-override spellings and the overridden flag, which the plan-rule refusals never reach
 func TestSamePlanDirAndResolvePlanDir(t *testing.T) {
 	t.Parallel()
 
@@ -538,10 +522,32 @@ func TestResolveStandalone_SinkRedirectOrdering(t *testing.T) {
 	})
 }
 
-// TestResolveStandalone_Stencils covers the stencils resolve-and-seed step: the derived default is
-// seeded on disk, an explicitly-told stencils directory is returned as given and gains no entries,
-// and a seed failure on the derived default is a hard error naming both the module and the
-// directory.
+// requireSpecsSeeded asserts a successful standalone resolve populated Standalone.SpecsDir: at standalonegeom.SpecsDir(res.StateDir), as an absolute path (a deployed spec lives outside the agent's own worktree, so the rendered marker must be absolute for the agent to open it at all), with every registered spec on disk and carrying a parseable stamp.
+// A resolvable-but-empty specs directory would reproduce the original dead reference while looking correct from a path assertion alone, which is what asserting file existence catches.
+func requireSpecsSeeded(t *testing.T, res Standalone) {
+	t.Helper()
+
+	wantDir := standalonegeom.SpecsDir(res.StateDir)
+	if res.SpecsDir != wantDir {
+		t.Errorf("ResolveStandalone() SpecsDir = %q; want %q", res.SpecsDir, wantDir)
+	}
+	if !filepath.IsAbs(res.SpecsDir) {
+		t.Errorf("ResolveStandalone() SpecsDir = %q; want an absolute path", res.SpecsDir)
+	}
+	for _, name := range []string{"loom-plan-spec"} {
+		path := stencilstore.Path(res.SpecsDir, name)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("read %s: %v; want the seeded spec %q to exist", path, err, name)
+			continue
+		}
+		if hash, ok := stencilstore.ParseStamp(content); !ok || hash == "" {
+			t.Errorf("stencilstore.ParseStamp(%s) = %q, %v; want a parseable, non-empty hash", path, hash, ok)
+		}
+	}
+}
+
+// TestResolveStandalone_Stencils covers the stencils and specs resolve-and-seed steps: the derived default is seeded on disk, an explicitly-told stencils directory is returned as given and gains no entries, a told stencils directory never suppresses the specs seed (which has no override flag of its own and inherits the stencils skip only if that inheritance is a bug), a told directory that is absent or a file is refused, and a seed failure on the derived default is a hard error naming both the module and the directory.
 func TestResolveStandalone_Stencils(t *testing.T) {
 	t.Run("DerivedDefaultIsSeeded", func(t *testing.T) {
 		setStandaloneStateRoot(t)
@@ -565,6 +571,7 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		if len(entries) == 0 {
 			t.Error("derived stencils directory is empty; want it seeded")
 		}
+		requireSpecsSeeded(t, result)
 	})
 
 	t.Run("ExplicitlyToldStencilsDirIsReturnedAsGivenAndGainsNoEntries", func(t *testing.T) {
@@ -575,6 +582,10 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		seedPlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
 
 		told := t.TempDir()
+		curatedName := "curated-marker.md"
+		if err := os.WriteFile(filepath.Join(told, curatedName), []byte("curated prompt set"), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
 		result, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
 		if err != nil {
 			t.Fatalf("ResolveStandalone() = %v; want nil", err)
@@ -586,46 +597,55 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadDir(%s) error = %v", told, err)
 		}
-		if len(entries) != 0 {
-			t.Errorf("told stencils directory gained entries %v; want it left untouched -- an explicit override is read, never written", entries)
+		if len(entries) != 1 || entries[0].Name() != curatedName {
+			t.Errorf("told stencils directory entries = %v; want only the curated %q, unmodified -- an explicit override is read, never written", entries, curatedName)
 		}
+		requireSpecsSeeded(t, result)
 	})
 
-	t.Run("AbsentToldStencilsDirIsRefused", func(t *testing.T) {
-		// R7-F2's regression test: --stencils-dir was the one told-directory flag with no check at
-		// the wiring boundary, so a typo'd value was honoured silently and failed only at the first
-		// prompt render — after the run lock and (standalone) the reed session's tmux boot.
-		setStandaloneStateRoot(t)
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		target := t.TempDir()
+	// R7-F2's regression rows: --stencils-dir was the one told-directory flag with no check at the wiring boundary, so a typo'd value was honoured silently and failed only at the first prompt render -- after the run lock and (standalone) the reed session's tmux boot.
+	refusals := []struct {
+		name         string
+		makeTold     func(t *testing.T) string
+		wantContains func(told string) []string
+	}{
+		{
+			name: "AbsentToldStencilsDirIsRefused",
+			makeTold: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "no-such-stencils")
+			},
+			wantContains: func(told string) []string { return []string{"webster", told} },
+		},
+		{
+			name: "FileToldStencilsDirIsRefused",
+			makeTold: func(t *testing.T) string {
+				told := filepath.Join(t.TempDir(), "stencils-as-file")
+				if err := os.WriteFile(told, []byte("x"), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+				return told
+			},
+			wantContains: func(string) []string { return []string{"is not a directory"} },
+		},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			setStandaloneStateRoot(t)
+			t.Cleanup(func() { logger.SetDurableSinkDir("") })
+			target := t.TempDir()
 
-		told := filepath.Join(t.TempDir(), "no-such-stencils")
-		_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
-		if err == nil {
-			t.Fatal("ResolveStandalone() error = nil; want the unreadable --stencils-dir refusal")
-		}
-		if !strings.Contains(err.Error(), "webster") || !strings.Contains(err.Error(), told) {
-			t.Errorf("ResolveStandalone() error = %q; want it to name the module and the told stencils directory %q", err.Error(), told)
-		}
-	})
-
-	t.Run("FileToldStencilsDirIsRefused", func(t *testing.T) {
-		setStandaloneStateRoot(t)
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		target := t.TempDir()
-
-		told := filepath.Join(t.TempDir(), "stencils-as-file")
-		if err := os.WriteFile(told, []byte("x"), 0o644); err != nil {
-			t.Fatalf("WriteFile() error = %v", err)
-		}
-		_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
-		if err == nil {
-			t.Fatal("ResolveStandalone() error = nil; want the not-a-directory --stencils-dir refusal")
-		}
-		if !strings.Contains(err.Error(), "is not a directory") {
-			t.Errorf("ResolveStandalone() error = %q; want the not-a-directory refusal", err.Error())
-		}
-	})
+			told := tt.makeTold(t)
+			_, err := websterFixture.ResolveStandalone(StandaloneRequest{Cwd: target, StencilsDirFlag: told})
+			if err == nil {
+				t.Fatal("ResolveStandalone() error = nil; want the unusable --stencils-dir refusal")
+			}
+			for _, want := range tt.wantContains(told) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("ResolveStandalone() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
 
 	t.Run("SeedFailureOnTheDerivedDefaultIsAHardErrorNamingModuleAndDirectory", func(t *testing.T) {
 		setStandaloneStateRoot(t)

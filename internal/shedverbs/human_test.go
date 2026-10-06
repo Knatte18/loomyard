@@ -28,10 +28,17 @@ func humanRouting() shedengine.Routing {
 }
 
 func TestRenderStatusHuman(t *testing.T) {
+	t.Parallel()
 	stuckHistory := []shedengine.HistoryEntry{{Producer: "Plan", Outcome: shedengine.Stuck}}
+	type renderArgs struct {
+		label, runID, waiting string
+		routing               shedengine.Routing
+	}
 	tests := []struct {
 		name string
 		st   shedengine.Status
+		// args overrides the default loom/self rendering over humanRouting.
+		args *renderArgs
 		want string
 	}{
 		{
@@ -85,32 +92,31 @@ func TestRenderStatusHuman(t *testing.T) {
 				"now  done\n" +
 				"last Ship → done\n",
 		},
+		{
+			name: "no routing omits progress",
+			st:   shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}},
+			args: &renderArgs{label: "batten"},
+			want: "batten | running\nnow  working\n",
+		},
+		{
+			name: "waiting note replaces state",
+			st:   shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}},
+			args: &renderArgs{label: "loom", runID: "self", waiting: "the parent's review of round 2"},
+			want: "loom self | waiting the parent's review of round 2\nnow  working\n",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := RenderStatusHuman("loom", "self", tc.st, humanRouting(), "")
+			t.Parallel()
+			args := tc.args
+			if args == nil {
+				args = &renderArgs{label: "loom", runID: "self", routing: humanRouting()}
+			}
+			got := RenderStatusHuman(args.label, args.runID, tc.st, args.routing, args.waiting)
 			if got != tc.want {
 				t.Errorf("RenderStatusHuman =\n%q\nwant\n%q", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestRenderStatusHuman_NoRoutingOmitsProgress(t *testing.T) {
-	st := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}}
-	got := RenderStatusHuman("batten", "", st, shedengine.Routing{}, "")
-	want := "batten | running\nnow  working\n"
-	if got != want {
-		t.Errorf("RenderStatusHuman = %q; want %q", got, want)
-	}
-}
-
-func TestRenderStatusHuman_WaitingNoteReplacesState(t *testing.T) {
-	st := shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}}
-	got := RenderStatusHuman("loom", "self", st, shedengine.Routing{}, "the parent's review of round 2")
-	want := "loom self | waiting the parent's review of round 2\nnow  working\n"
-	if got != want {
-		t.Errorf("RenderStatusHuman = %q; want %q", got, want)
 	}
 }
 

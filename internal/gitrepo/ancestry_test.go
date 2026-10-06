@@ -17,6 +17,8 @@ import (
 // with no hermetic git test-binary requirement, so a call that actually reached git would fail this
 // file's own build/run contract.
 func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
+	t.Parallel()
+
 	repo := New(t.TempDir())
 
 	tests := []struct {
@@ -30,6 +32,8 @@ func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := repo.IsAncestor(tt.sha, tt.ref)
 			if !errors.Is(err, ErrInvalidSHA) {
 				t.Errorf("IsAncestor(%q, %q) error = %v; want errors.Is(err, ErrInvalidSHA)", tt.sha, tt.ref, err)

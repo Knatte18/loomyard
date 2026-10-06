@@ -17,76 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// TestRenderToDisk verifies that RenderToDisk writes expected files and removes orphaned design-doc
-// files via the manifest.
-// Subtests cover the default prefix and a custom prefix.
-// The ghost file is pre-seeded into the manifest so the manifest-based cleanup removes it on the
-// single RenderToDisk call (the manifest only removes files it previously recorded, so a first
-// render with no prior manifest seeds and removes nothing — see TestRenderToDiskManifestCleanup for
-// that scenario).
-//
-// Folds: TestRenderToDiskWritesAndCleansOrphans, TestRenderToDiskWithCustomProposalPrefix
-func TestRenderToDisk(t *testing.T) {
-	tests := []struct {
-		name         string
-		out          boardengine.Outputs
-		ghostFile    string // stale design-doc filename to pre-create and pre-seed in manifest
-		wantProposal string // expected design-doc file after render
-	}{
-		{
-			name:         "TestRenderToDiskWritesAndCleansOrphans",
-			out:          boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"},
-			ghostFile:    "proposal-ghost.md",
-			wantProposal: "proposal-a.md",
-		},
-		{
-			name:         "TestRenderToDiskWithCustomProposalPrefix",
-			out:          boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"},
-			ghostFile:    "prop-ghost.md",
-			wantProposal: "prop-a.md",
-		},
-	}
-
-	tasks := []boardengine.Task{
-		{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "proposal A"},
-		{ID: 1, Slug: "b", Title: "B", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}, // no body → no design-doc file
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-
-			// A stale design doc from a previous render that should be cleaned up.
-			ghost := filepath.Join(dir, tt.ghostFile)
-			if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			// Pre-seed the manifest to simulate a prior render that produced the ghost
-			// file; the manifest-based cleanup removes it in the next RenderToDisk call.
-			seedManifest(t, dir, []string{tt.ghostFile})
-
-			if err := boardengine.RenderToDisk(dir, tasks, tt.out); err != nil {
-				t.Fatalf("RenderToDisk: %v", err)
-			}
-
-			if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
-				t.Errorf("Home.md not written: %v", err)
-			}
-			if b, err := os.ReadFile(filepath.Join(dir, tt.wantProposal)); err != nil || !strings.HasSuffix(string(b), "proposal A") {
-				t.Errorf("%s: got %q, err %v", tt.wantProposal, b, err)
-			}
-			noBodyProposal := filepath.Join(dir, tt.out.DesignPrefix+"b.md")
-			if _, err := os.Stat(noBodyProposal); !os.IsNotExist(err) {
-				t.Errorf("%sb.md should not exist (task has no body)", tt.out.DesignPrefix)
-			}
-			if _, err := os.Stat(ghost); !os.IsNotExist(err) {
-				t.Errorf("orphan %s should have been removed", tt.ghostFile)
-			}
-		})
-	}
-}
-
 // seedManifest writes a .board-rendered.json manifest into dir listing names,
 // simulating the sidecar that a prior render would have left behind.
 func seedManifest(t *testing.T, dir string, names []string) {
@@ -100,10 +30,41 @@ func seedManifest(t *testing.T, dir string, names []string) {
 	}
 }
 
-// TestRenderToDiskManifestCleanup covers the manifest-based cleanup scenarios: renamed outputs
-// removed across consecutive renders, body loss removing a design doc, unrelated files left
-// untouched, and graceful degradation for missing/corrupt manifests.
+// TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup scenarios:
+// a pre-seeded orphan removed with a custom design prefix, renamed outputs removed across consecutive renders, body loss removing a design doc, unrelated files left untouched, and graceful degradation for missing/corrupt manifests.
 func TestRenderToDiskManifestCleanup(t *testing.T) {
+	t.Run("SeededManifestRemovesOrphanAndWritesOutputs", func(t *testing.T) {
+		dir := t.TempDir()
+		tasks := []boardengine.Task{
+			{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}, Body: "proposal A"},
+			{ID: 1, Slug: "b", Title: "B", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}, // no body → no design-doc file
+		}
+
+		// A stale design doc from a previous render, pre-seeded into the manifest, so the one RenderToDisk call removes it: a first render with no prior manifest removes nothing.
+		ghost := filepath.Join(dir, "prop-ghost.md")
+		if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		seedManifest(t, dir, []string{"prop-ghost.md"})
+
+		if err := boardengine.RenderToDisk(dir, tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"}); err != nil {
+			t.Fatalf("RenderToDisk: %v", err)
+		}
+
+		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
+			t.Errorf("Home.md not written: %v", err)
+		}
+		if b, err := os.ReadFile(filepath.Join(dir, "prop-a.md")); err != nil || !strings.HasSuffix(string(b), "proposal A") {
+			t.Errorf("prop-a.md: got %q, err %v", b, err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "prop-b.md")); !os.IsNotExist(err) {
+			t.Errorf("prop-b.md should not exist (task has no body)")
+		}
+		if _, err := os.Stat(ghost); !os.IsNotExist(err) {
+			t.Errorf("orphan prop-ghost.md should have been removed")
+		}
+	})
+
 	t.Run("ReadmeRename", func(t *testing.T) {
 		dir := t.TempDir()
 		tasks := []boardengine.Task{{ID: 0, Slug: "a", Title: "A", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}}
@@ -267,105 +228,109 @@ func readmeFixture() []boardengine.Task {
 }
 
 // TestRenderReadmeGolden pins the README for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, labels on every line, After and Before lines that leave out a done dependency, an isolated task, and a two-layer chain.
+// A second row pins that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 func TestRenderReadmeGolden(t *testing.T) {
-	result, err := boardengine.Render(readmeFixture(), boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
-	if err != nil {
-		t.Fatalf("Render: %v", err)
+	t.Parallel()
+	tests := []struct {
+		name  string
+		tasks []boardengine.Task
+		want  string
+	}{
+		{
+			name:  "tasks, notes, done and abandoned entries",
+			tasks: readmeFixture(),
+			want: "# Board\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Tasks\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"### Layer A\n" +
+				"\n" +
+				"Waits on nothing open; can start now, in parallel.\n" +
+				"\n" +
+				"1. **Base work** — `base` · enhancement\n" +
+				"   - The foundation.\n" +
+				"   - **Before:** `top`\n" +
+				"\n" +
+				"### Layer B\n" +
+				"\n" +
+				"Starts when every entry it names under After is done.\n" +
+				"\n" +
+				"1. **Top work** — [`top`](design-top.md) · bug, area · running\n" +
+				"   - Builds on base.\n" +
+				"   - **After:** `base`\n" +
+				"\n" +
+				"### Independent\n" +
+				"\n" +
+				"Depends on nothing and nothing depends on it, by design.\n" +
+				"\n" +
+				"1. **Alone work** — `alone` · enhancement\n" +
+				"\n" +
+				"## Notes\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"### Bugs\n" +
+				"\n" +
+				"1. **Dropped idea** — `dropped` · bug · abandoned\n" +
+				"   - No longer wanted.\n" +
+				"\n" +
+				"### Enhancements\n" +
+				"\n" +
+				"1. **An idea** — `idea` · enhancement, undecided\n" +
+				"\n" +
+				"### Other\n" +
+				"\n" +
+				"1. **Stray note** — `stray` · retired\n" +
+				"\n" +
+				"## Done\n" +
+				"\n" +
+				"Finished, awaiting `lyx board prune`.\n" +
+				"\n" +
+				"1. **Shipped work** — `shipped` · enhancement · done\n",
+		},
+		{
+			name:  "no done section and no empty notes subsections",
+			tasks: []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}},
+			want: "# Board\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Tasks\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"## Notes\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"### Enhancements\n" +
+				"\n" +
+				"1. **A** — `a` · enhancement\n",
+		},
 	}
-
-	want := "# Board\n" +
-		"\n" +
-		"Tasks are grouped by dependency layer and notes by type.\n" +
-		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
-		"\n" +
-		"## Tasks\n" +
-		"\n" +
-		"Concrete and claimable; only a task can run.\n" +
-		"\n" +
-		"### Layer A\n" +
-		"\n" +
-		"Waits on nothing open; can start now, in parallel.\n" +
-		"\n" +
-		"1. **Base work** — `base` · enhancement\n" +
-		"   - The foundation.\n" +
-		"   - **Before:** `top`\n" +
-		"\n" +
-		"### Layer B\n" +
-		"\n" +
-		"Starts when every entry it names under After is done.\n" +
-		"\n" +
-		"1. **Top work** — [`top`](design-top.md) · bug, area · running\n" +
-		"   - Builds on base.\n" +
-		"   - **After:** `base`\n" +
-		"\n" +
-		"### Independent\n" +
-		"\n" +
-		"Depends on nothing and nothing depends on it, by design.\n" +
-		"\n" +
-		"1. **Alone work** — `alone` · enhancement\n" +
-		"\n" +
-		"## Notes\n" +
-		"\n" +
-		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-		"\n" +
-		"### Bugs\n" +
-		"\n" +
-		"1. **Dropped idea** — `dropped` · bug · abandoned\n" +
-		"   - No longer wanted.\n" +
-		"\n" +
-		"### Enhancements\n" +
-		"\n" +
-		"1. **An idea** — `idea` · enhancement, undecided\n" +
-		"\n" +
-		"### Other\n" +
-		"\n" +
-		"1. **Stray note** — `stray` · retired\n" +
-		"\n" +
-		"## Done\n" +
-		"\n" +
-		"Finished, awaiting `lyx board prune`.\n" +
-		"\n" +
-		"1. **Shipped work** — `shipped` · enhancement · done\n"
-	if got := result["README.md"]; got != want {
-		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
-	}
-	for _, retired := range []string{"Next Up", "tier", "Tier"} {
-		if strings.Contains(result["README.md"], retired) {
-			t.Errorf("README still mentions %q", retired)
-		}
-	}
-}
-
-// TestRenderReadmeNoDoneSection asserts the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
-func TestRenderReadmeNoDoneSection(t *testing.T) {
-	tasks := []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}}
-	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-
-	want := "# Board\n" +
-		"\n" +
-		"Tasks are grouped by dependency layer and notes by type.\n" +
-		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
-		"\n" +
-		"## Tasks\n" +
-		"\n" +
-		"Concrete and claimable; only a task can run.\n" +
-		"\n" +
-		"## Notes\n" +
-		"\n" +
-		"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
-		"\n" +
-		"### Enhancements\n" +
-		"\n" +
-		"1. **A** — `a` · enhancement\n"
-	got := result["README.md"]
-	if got != want {
-		t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", want, got)
-	}
-	if strings.Contains(got, "## Done") || strings.Contains(got, "### Bugs") || strings.Contains(got, "### Other") {
-		t.Errorf("README should omit ## Done and empty Notes subsections:\n%s", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := boardengine.Render(tt.tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes})
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			got := result["README.md"]
+			if got != tt.want {
+				t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", tt.want, got)
+			}
+			for _, retired := range []string{"Next Up", "tier", "Tier"} {
+				if strings.Contains(got, retired) {
+					t.Errorf("README still mentions %q", retired)
+				}
+			}
+		})
 	}
 }
 
@@ -409,10 +374,11 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 	}
 }
 
-// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both
-// a custom Readme filename and a custom design prefix.
+// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both a custom Readme filename and a custom design prefix.
 //
 // Folds: TestRenderConfigurableHomeFilename, TestRenderConfigurableProposalPrefix
+//
+//testtiming:keep pins the result keys and design-doc links for a custom readme name and design prefix, which its covering test does not assert
 func TestRenderCustomOutputs(t *testing.T) {
 	t.Run("TestRenderConfigurableHomeFilename", func(t *testing.T) {
 		// Test that Render uses configured Readme filename instead of "Home.md"

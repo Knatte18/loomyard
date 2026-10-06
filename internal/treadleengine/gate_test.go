@@ -49,63 +49,39 @@ func TestConverged(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand_Pass proves a zero-exit command reports success.
-func TestExecGateCommand_Pass(t *testing.T) {
-	dir := t.TempDir()
-	output, exitZero, err := execGateCommand([]string{"go", "version"}, dir, 30*time.Second)
-	if err != nil {
-		t.Fatalf("execGateCommand() error = %v; want nil", err)
-	}
-	if !exitZero {
-		t.Errorf("execGateCommand() exitZero = false; want true")
-	}
-	if len(output) == 0 {
-		t.Errorf("execGateCommand() output is empty; want go version's banner")
-	}
-}
+// TestExecGateCommand table-drives execGateCommand over a zero-exit command (success), a non-zero exit (failure, not an error), a command that cannot run (an error) and a timed-out command (a failing gate carrying a timeout note, not an infrastructure error).
+// "go version" reliably finishes well inside 30s but a 1-nanosecond timeout guarantees the deadline fires before the process can even be scheduled, without a platform-specific long-running command.
+func TestExecGateCommand(t *testing.T) {
+	t.Parallel()
 
-// TestExecGateCommand_Fail proves a non-zero-exit command reports failure.
-func TestExecGateCommand_Fail(t *testing.T) {
-	dir := t.TempDir()
-	output, exitZero, err := execGateCommand([]string{"go", "bogus-subcommand"}, dir, 30*time.Second)
-	if err != nil {
-		t.Fatalf("execGateCommand() error = %v; want nil for a non-zero exit", err)
+	tests := []struct {
+		name         string
+		argv         []string
+		timeout      time.Duration
+		wantErr      bool
+		wantExitZero bool
+		wantOutput   string
+	}{
+		{name: "zero exit", argv: []string{"go", "version"}, timeout: 30 * time.Second, wantExitZero: true, wantOutput: "go version"},
+		{name: "non-zero exit", argv: []string{"go", "bogus-subcommand"}, timeout: 30 * time.Second, wantOutput: "unknown command"},
+		{name: "not found", argv: []string{"treadle-gate-command-does-not-exist-xyz"}, timeout: 30 * time.Second, wantErr: true},
+		{name: "timeout", argv: []string{"go", "version"}, timeout: time.Nanosecond, wantOutput: "timed out after"},
 	}
-	if exitZero {
-		t.Errorf("execGateCommand() exitZero = true; want false")
-	}
-	if len(output) == 0 {
-		t.Errorf("execGateCommand() output is empty; want go's unknown-subcommand message")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			output, exitZero, err := execGateCommand(tt.argv, t.TempDir(), tt.timeout)
 
-// TestExecGateCommand_NotFound proves a could-not-run command reports error.
-func TestExecGateCommand_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	_, exitZero, err := execGateCommand([]string{"treadle-gate-command-does-not-exist-xyz"}, dir, 30*time.Second)
-	if err == nil {
-		t.Fatalf("execGateCommand() error = nil; want a could-not-run error")
-	}
-	if exitZero {
-		t.Errorf("execGateCommand() exitZero = true; want false")
-	}
-}
-
-// TestExecGateCommand_Timeout proves a timed-out command reports as a failing gate.
-func TestExecGateCommand_Timeout(t *testing.T) {
-	dir := t.TempDir()
-	// "go version" reliably finishes well inside 30s but a 1-nanosecond
-	// timeout guarantees the deadline fires before the process can even be
-	// scheduled, without a platform-specific long-running command.
-	output, exitZero, err := execGateCommand([]string{"go", "version"}, dir, 1*time.Nanosecond)
-	if err != nil {
-		t.Fatalf("execGateCommand() error = %v; want nil — a timeout is a failing gate, not an infrastructure error", err)
-	}
-	if exitZero {
-		t.Errorf("execGateCommand() exitZero = true; want false")
-	}
-	if !strings.Contains(string(output), "timed out after") {
-		t.Errorf("execGateCommand() output = %q; want it to carry the timeout note", output)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("execGateCommand() error = %v; want error: %v", err, tt.wantErr)
+			}
+			if exitZero != tt.wantExitZero {
+				t.Errorf("execGateCommand() exitZero = %v; want %v", exitZero, tt.wantExitZero)
+			}
+			if !strings.Contains(string(output), tt.wantOutput) {
+				t.Errorf("execGateCommand() output = %q; want it to contain %q", output, tt.wantOutput)
+			}
+		})
 	}
 }
 

@@ -56,104 +56,143 @@ func (f *fakeSubstrates) teardown() *Teardown {
 
 var busy = quietState{driver: "tst:slug:driver"}
 
-func TestEndSession_BusyDriverAtBoundRefusesWithoutTouchingAnything(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{busy}}
-	_, err := f.teardown().EndSession(context.Background(), Request{Slug: "slug", QuietWait: 3 * time.Second, RefuseWhenBusy: true})
+// TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
+func TestTeardown_CallSequence(t *testing.T) {
+	t.Parallel()
 
-	if !errors.Is(err, ErrDriverBusy) {
-		t.Fatalf("EndSession error = %v, want ErrDriverBusy", err)
-	}
-	for _, want := range []string{"tst:slug:driver", "lyx reed attach", "lyx reed down"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("busy error %q lacks %q", err.Error(), want)
-		}
-	}
-	for _, call := range f.calls {
-		if call != "quiet" {
-			t.Errorf("busy refusal made call %q, want only quiet probes", call)
-		}
-	}
-	if wantProbes := 4; len(f.calls) != wantProbes || f.sleeps != wantProbes-1 {
-		t.Errorf("probes = %d, sleeps = %d, want %d probes and %d sleeps", len(f.calls), f.sleeps, wantProbes, wantProbes-1)
-	}
-}
-
-func TestEndSession_DriverTurningRetiringProceedsAfterCountedSleeps(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{busy, busy, {quiet: true}}}
-	res, err := f.teardown().EndSession(context.Background(), Request{Slug: "slug", QuietWait: time.Minute, RefuseWhenBusy: true})
-	if err != nil {
-		t.Fatalf("EndSession = %v, want nil", err)
-	}
-	if f.sleeps != 2 {
-		t.Errorf("sleeps = %d, want 2", f.sleeps)
-	}
-	if res.DriverWasLive || !res.Ended {
-		t.Errorf("result = %+v, want Ended and not DriverWasLive", res)
-	}
-}
-
-func TestEndSession_ZeroWaitWithoutRefuseProceedsAndReportsDriverWasLive(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{busy}}
-	res, err := f.teardown().EndSession(context.Background(), Request{Slug: "slug"})
-	if err != nil {
-		t.Fatalf("EndSession = %v, want nil", err)
-	}
-	if !res.DriverWasLive || !res.Ended {
-		t.Errorf("result = %+v, want Ended and DriverWasLive", res)
-	}
-	if f.sleeps != 0 {
-		t.Errorf("sleeps = %d, want 0", f.sleeps)
-	}
-}
-
-func TestEndSession_RefusalProbeErrorNeverEndsTheSession(t *testing.T) {
 	refusal := errors.New("worktree has uncommitted changes")
-	f := &fakeSubstrates{quiets: []quietState{{quiet: true}}, refusalErr: refusal}
-	_, err := f.teardown().EndSession(context.Background(), Request{Slug: "slug"})
-	if !errors.Is(err, refusal) {
-		t.Fatalf("EndSession error = %v, want the probe's refusal unchanged", err)
+	tests := []struct {
+		name string
+		// run selects Teardown.Run over Teardown.EndSession.
+		run        bool
+		quiets     []quietState
+		refusalErr error
+		endErr     error
+		// gone makes the task worktree read as gone.
+		gone    bool
+		request Request
+		// wantErrIs is a sentinel the error must wrap; wantErrContains are substrings it must hold.
+		wantErrIs       error
+		wantErrContains []string
+		// wantAnyError requires an error without naming it.
+		wantAnyError bool
+		// wantCalls is the comma-joined substrate call order.
+		wantCalls  string
+		wantSleeps int
+		// wantSession, when set, is the Ended and DriverWasLive of the returned session result.
+		wantSession *SessionResult
+		// wantSawGone requires the session end to have been told the task worktree is gone.
+		wantSawGone bool
+	}{
+		{
+			name:            "BusyDriverAtBoundRefusesWithoutTouchingAnything",
+			quiets:          []quietState{busy},
+			request:         Request{Slug: "slug", QuietWait: 3 * time.Second, RefuseWhenBusy: true},
+			wantErrIs:       ErrDriverBusy,
+			wantErrContains: []string{"tst:slug:driver", "lyx reed attach", "lyx reed down"},
+			wantCalls:       "quiet,quiet,quiet,quiet",
+			wantSleeps:      3,
+		},
+		{
+			name:        "DriverTurningRetiringProceedsAfterCountedSleeps",
+			quiets:      []quietState{busy, busy, {quiet: true}},
+			request:     Request{Slug: "slug", QuietWait: time.Minute, RefuseWhenBusy: true},
+			wantCalls:   "quiet,quiet,quiet,refusal,end",
+			wantSleeps:  2,
+			wantSession: &SessionResult{Ended: true, DriverWasLive: false},
+		},
+		{
+			name:        "ZeroWaitWithoutRefuseProceedsAndReportsDriverWasLive",
+			quiets:      []quietState{busy},
+			request:     Request{Slug: "slug"},
+			wantCalls:   "quiet,refusal,end",
+			wantSession: &SessionResult{Ended: true, DriverWasLive: true},
+		},
+		{
+			name:       "RefusalProbeErrorNeverEndsTheSession",
+			quiets:     []quietState{{quiet: true}},
+			refusalErr: refusal,
+			request:    Request{Slug: "slug"},
+			wantErrIs:  refusal,
+			wantCalls:  "quiet,refusal",
+		},
+		{
+			name:         "SessionEndErrorNeverRemoves",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			endErr:       errors.New("tmux down"),
+			request:      Request{Slug: "slug"},
+			wantAnyError: true,
+			wantCalls:    "quiet,refusal,end",
+		},
+		{
+			name:      "CallsQuietProbeEndAndRemoveInOrder",
+			run:       true,
+			quiets:    []quietState{{quiet: true}},
+			request:   Request{Slug: "slug"},
+			wantCalls: "quiet,refusal,end,remove",
+		},
+		{
+			name:        "GonePairSkipsQuietWaitAndEndsByName",
+			quiets:      []quietState{busy},
+			gone:        true,
+			request:     Request{Slug: "slug", RefuseWhenBusy: true},
+			wantCalls:   "refusal",
+			wantSawGone: true,
+		},
 	}
-	if got := strings.Join(f.calls, ","); got != "quiet,refusal" {
-		t.Errorf("calls = %s, want quiet,refusal", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestRun_SessionEndErrorNeverRemoves(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{{quiet: true}}, endErr: errors.New("tmux down")}
-	if _, err := f.teardown().Run(context.Background(), Request{Slug: "slug"}); err == nil {
-		t.Fatal("Run = nil, want the session-end error")
-	}
-	if got := strings.Join(f.calls, ","); got != "quiet,refusal,end" {
-		t.Errorf("calls = %s, want quiet,refusal,end", got)
-	}
-}
+			f := &fakeSubstrates{quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr}
+			td := f.teardown()
+			var sawGone bool
+			if tt.gone {
+				td.gone = func(string) (bool, error) { return true, nil }
+				td.endSession = func(_ string, gone bool) (bool, string, error) {
+					sawGone = gone
+					return true, "", nil
+				}
+			}
 
-func TestRun_CallsQuietProbeEndAndRemoveInOrder(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{{quiet: true}}}
-	if _, err := f.teardown().Run(context.Background(), Request{Slug: "slug"}); err != nil {
-		t.Fatalf("Run = %v, want nil", err)
-	}
-	if got := strings.Join(f.calls, ","); got != "quiet,refusal,end,remove" {
-		t.Errorf("calls = %s, want quiet,refusal,end,remove", got)
-	}
-}
+			var session SessionResult
+			var err error
+			if tt.run {
+				_, err = td.Run(context.Background(), tt.request)
+			} else {
+				session, err = td.EndSession(context.Background(), tt.request)
+			}
 
-func TestEndSession_GonePairSkipsQuietWaitAndEndsByName(t *testing.T) {
-	f := &fakeSubstrates{quiets: []quietState{busy}}
-	td := f.teardown()
-	td.gone = func(string) (bool, error) { return true, nil }
-	var sawGone bool
-	td.endSession = func(_ string, gone bool) (bool, string, error) {
-		sawGone = gone
-		return true, "", nil
-	}
-	if _, err := td.EndSession(context.Background(), Request{Slug: "slug", RefuseWhenBusy: true}); err != nil {
-		t.Fatalf("EndSession = %v, want nil", err)
-	}
-	if !sawGone {
-		t.Error("session end was not told the task worktree is gone")
-	}
-	if got := strings.Join(f.calls, ","); got != "refusal" {
-		t.Errorf("calls = %s, want only the refusal probe", got)
+			switch {
+			case tt.wantErrIs != nil:
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Fatalf("error = %v, want one wrapping %v", err, tt.wantErrIs)
+				}
+			case tt.wantAnyError:
+				if err == nil {
+					t.Fatal("error = nil, want one")
+				}
+			case err != nil:
+				t.Fatalf("error = %v, want nil", err)
+			}
+			for _, want := range tt.wantErrContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err.Error(), want)
+				}
+			}
+			if got := strings.Join(f.calls, ","); got != tt.wantCalls {
+				t.Errorf("calls = %s, want %s", got, tt.wantCalls)
+			}
+			if f.sleeps != tt.wantSleeps {
+				t.Errorf("sleeps = %d, want %d", f.sleeps, tt.wantSleeps)
+			}
+			if tt.wantSession != nil && (session.Ended != tt.wantSession.Ended || session.DriverWasLive != tt.wantSession.DriverWasLive) {
+				t.Errorf("session = %+v, want Ended %v and DriverWasLive %v", session, tt.wantSession.Ended, tt.wantSession.DriverWasLive)
+			}
+			if sawGone != tt.wantSawGone {
+				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
+			}
+		})
 	}
 }

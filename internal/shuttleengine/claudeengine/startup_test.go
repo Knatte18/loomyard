@@ -28,6 +28,8 @@ const realBypassGateCapture = `  WARNING: Claude Code running in Bypass Permissi
   Enter to confirm · Esc to cancel`
 
 func TestStartup_Classification(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		capture string
@@ -85,6 +87,7 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupReady,
 		},
 		{
+			// Startup reads its "shortcuts" needle directly rather than through ReadyFooterFixture, so this row is what ties the exported fixture to Startup's classification: a rewording of the needle would otherwise leave the fixture stale, noticed only by a live-substrate caller built from it.
 			name:    "ready_shortcuts_footer",
 			capture: ReadyFooterFixture,
 			want:    shuttleengine.StartupReady,
@@ -163,6 +166,11 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupTrustPrompt,
 		},
 		{
+			name:    "ready_agent_prose_asking_whether_to_trust_the_files_in_this_folder",
+			capture: "● Do you trust the files in this folder? I do.\n\n❯\n? for shortcuts",
+			want:    shuttleengine.StartupReady,
+		},
+		{
 			// R7-F1's first shape: ONE prose line that is a markdown list item beginning with an
 			// accept phrase supplies both the gate needle and (before the adjacency rule) the
 			// accepting-option-line evidence by itself. The only caret is the healthy pane's own
@@ -185,26 +193,14 @@ func TestStartup_Classification(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c := New()
 			got := c.Startup(tt.capture)
 			if got != tt.want {
 				t.Errorf("Startup(%q) = %v; want %v", tt.capture, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestReadyFooterFixture_ClassifiesReady pins ReadyFooterFixture to Startup's own classification.
-// The constant's own doc comment claims it matches Startup's "shortcuts" needle, but Startup reads
-// that needle directly rather than through the constant, so nothing else in this file ties the two
-// together -- a future rewording of the needle could silently leave the exported fixture stale, and
-// only a caller building a live-substrate fixture from it (e.g. loomcli's driver-strand smoke test,
-// gated behind -tags tmux) would ever notice, and only at that cost. This test is untagged so it
-// runs at Tier 1.
-func TestReadyFooterFixture_ClassifiesReady(t *testing.T) {
-	c := New()
-	if got := c.Startup(ReadyFooterFixture); got != shuttleengine.StartupReady {
-		t.Errorf("Startup(ReadyFooterFixture) = %v; want %v", got, shuttleengine.StartupReady)
 	}
 }
 
@@ -317,6 +313,29 @@ func TestTrustDismissSequence(t *testing.T) {
 			capture: "● Here is my assessment:\n\n- Yes, I accept the risk of merging now\n- The suite is green\n\n❯\n? for shortcuts",
 			want:    nil,
 		},
+		{
+			// R6-1's shape: a healthy, ready pane whose agent transcript happens to render a gate phrase must get NO pane input at all.
+			// The defect was not that the wrong key was chosen — it was that any key was sent.
+			// TestStartup_Classification pins the same captures as Ready.
+			name:    "live pane whose agent prose names the files in this folder presses nothing",
+			capture: "● I'll start by reading the files in this folder.\n\n❯\n⏵⏵ bypass permissions on (shift+tab to cycle)",
+			want:    nil,
+		},
+		{
+			name:    "live pane whose agent prose names trust this folder presses nothing",
+			capture: "● You asked whether to trust this folder; I'd say yes.\n\n❯\n? for shortcuts",
+			want:    nil,
+		},
+		{
+			name:    "live pane whose agent prose quotes the accept label presses nothing",
+			capture: "● The modal's accepting option reads yes, i accept — noted.\n\n❯\n? for shortcuts",
+			want:    nil,
+		},
+		{
+			name:    "live pane whose agent prose asks about the files in this folder presses nothing",
+			capture: "● Do you trust the files in this folder? I do.\n\n❯\n? for shortcuts",
+			want:    nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -333,44 +352,6 @@ func TestTrustDismissSequence(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept is the sabotage-proof for the
-// defect's actual shape: whatever the sequence is, an Enter must never be reachable while the caret
-// is still on an option the accepting-option needles do not match.
-func TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept(t *testing.T) {
-	t.Parallel()
-
-	got := New().TrustDismissSequence(realTrustGateCapture)
-	if len(got) == 0 {
-		t.Fatal("TrustDismissSequence() returned nothing for the real, recognized gate; want a caret move plus Enter")
-	}
-	if got[0].Key == "Enter" {
-		t.Fatalf("TrustDismissSequence() confirms as its FIRST step (%+v) while the caret is on %q; that confirms the refusing option and quits claude", got[0], "No, exit")
-	}
-}
-
-// TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane is the sabotage-proof for R6-1's actual
-// shape: a healthy, ready pane whose agent transcript happens to render a gate phrase must produce NO
-// pane input at all. The defect was not that the wrong key was chosen — it was that any key was sent.
-func TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane(t *testing.T) {
-	t.Parallel()
-
-	livePaneCaptures := []string{
-		"● I'll start by reading the files in this folder.\n\n❯\n⏵⏵ bypass permissions on (shift+tab to cycle)",
-		"● You asked whether to trust this folder; I'd say yes.\n\n❯\n? for shortcuts",
-		"● The modal's accepting option reads yes, i accept — noted.\n\n❯\n? for shortcuts",
-		"● Do you trust the files in this folder? I do.\n\n❯\n? for shortcuts",
-	}
-	for _, capture := range livePaneCaptures {
-		c := New()
-		if got := c.Startup(capture); got != shuttleengine.StartupReady {
-			t.Errorf("Startup(%q) = %v; want StartupReady — a live agent's own transcript is not a gate", capture, got)
-		}
-		if got := c.TrustDismissSequence(capture); len(got) != 0 {
-			t.Errorf("TrustDismissSequence(%q) = %+v; want no inputs — those keys land in a working agent's pane", capture, got)
-		}
 	}
 }
 

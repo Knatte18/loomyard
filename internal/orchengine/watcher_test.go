@@ -1206,31 +1206,33 @@ func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 	}
 }
 
-func TestWatcher_FailingRoleRenderAbortsWithoutClear(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	if err := os.WriteFile(stencilstore.Path(e.stDir, roleStencilName), []byte("{{.nope}}"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, roleStencilName) {
-		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
-	}
-}
+func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
+	t.Parallel()
 
-func TestWatcher_FailingResumeRenderAbortsWithoutClear(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	breakStencil(t, e.stDir, resumeStencilName)
-	e.writeHandoff()
-	e.s.events = append(e.s.events, stop("handoff"))
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, resumeStencilName) {
-		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	cases := []struct {
+		name    string
+		stencil string
+		content string
+	}{
+		{"role", roleStencilName, "{{.nope}}"},
+		{"resume", resumeStencilName, "line one\nline two\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.injectHandoff()
+			if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			e.writeHandoff()
+			e.s.events = append(e.s.events, stop("handoff"))
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, c.stencil) {
+				t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+			}
+		})
 	}
 }
 

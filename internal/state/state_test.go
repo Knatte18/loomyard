@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
@@ -16,8 +17,12 @@ type sample struct {
 	N    int
 }
 
-// TestRoundTrip writes a value, reads it back, and verifies equality.
-func TestRoundTrip(t *testing.T) {
+// TestWriteJSON_RoundTripOverwriteAndLayout writes a value, reads it back, overwrites it with a different one, and verifies the second read returns the new value, the file is JSON indented by two spaces, and the directory holds only the data file and its lock file at exactly path + ".lock", with no .tmp- entries left behind.
+//
+//testtiming:keep pins the two-space indentation and the data-plus-lock-only directory layout, which no covering test asserts
+func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
 	lockPath := path + ".lock"
@@ -37,11 +42,50 @@ func TestRoundTrip(t *testing.T) {
 	if got != orig {
 		t.Errorf("ReadJSON() = %+v; want %+v", got, orig)
 	}
+
+	replacement := sample{Name: "second", N: 2}
+	if err := state.WriteJSON(path, lockPath, replacement); err != nil {
+		t.Fatalf("second WriteJSON() error: %v", err)
+	}
+	got, found, err = state.ReadJSON[sample](path, lockPath)
+	if err != nil {
+		t.Fatalf("ReadJSON() after overwrite error: %v", err)
+	}
+	if !found {
+		t.Fatal("ReadJSON() after overwrite found = false; want true")
+	}
+	if got != replacement {
+		t.Errorf("ReadJSON() after overwrite = %+v; want %+v", got, replacement)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	wantData, _ := json.MarshalIndent(replacement, "", "  ")
+	if string(data) != string(wantData) {
+		t.Errorf("JSON formatting mismatch:\ngot:\n%s\nwant:\n%s", string(data), string(wantData))
+	}
+
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir() error: %v", err)
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	if want := []string{"state.json", "state.json.lock"}; !slices.Equal(names, want) {
+		t.Errorf("directory entries = %v; want exactly %v", names, want)
+	}
 }
 
-// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent
-// dir and lock file now exist.
+// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent dir and lock file now exist.
+//
+//testtiming:keep pins the parent directory and lock file ReadJSON creates for a missing path, which the UpdateJSON tests never assert
 func TestMissingFile(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "subdir", "missing.json")
 	lockPath := path + ".lock"
@@ -68,14 +112,19 @@ func TestMissingFile(t *testing.T) {
 	}
 }
 
-// TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error.
+// TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error, and that UpdateJSON aborts the same way without running mutate or touching the file.
+//
+//testtiming:keep named by internal/loomcli's smoke test as the lenient read's decode-failure pin
 func TestCorruptFile(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "corrupt.json")
 	lockPath := path + ".lock"
 
 	// Write corrupt JSON.
-	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+	corrupt := []byte("{not json")
+	if err := os.WriteFile(path, corrupt, 0o644); err != nil {
 		t.Fatalf("setup: WriteFile() error: %v", err)
 	}
 
@@ -104,146 +153,11 @@ func TestCorruptFile(t *testing.T) {
 	if mutateCalled {
 		t.Error("UpdateJSON() called mutate on a corrupt file; want it to abort before mutate so the file is left untouched")
 	}
-}
-
-// TestNoTempLeak verifies that after WriteJSON, the directory contains only the data file and
-// <path>.lock, with no .tmp- entries.
-func TestNoTempLeak(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "state.json")
-	lockPath := path + ".lock"
-
-	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, lockPath, v); err != nil {
-		t.Fatalf("WriteJSON() error: %v", err)
-	}
-
-	// List all files in tmpDir.
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		t.Fatalf("ReadDir() error: %v", err)
-	}
-
-	// Check that we have exactly two files: state.json and state.json.lock.
-	if len(entries) != 2 {
-		names := make([]string, len(entries))
-		for i, e := range entries {
-			names[i] = e.Name()
-		}
-		t.Errorf("expected 2 files; found %d: %v", len(entries), names)
-	}
-
-	found := map[string]bool{}
-	for _, e := range entries {
-		found[e.Name()] = true
-	}
-
-	if !found["state.json"] {
-		t.Error("state.json not found in directory")
-	}
-	if !found["state.json.lock"] {
-		t.Error("state.json.lock not found in directory")
-	}
-}
-
-// TestOverwrite writes a value, then writes a different value, and verifies ReadJSON returns the
-// new value.
-func TestOverwrite(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "state.json")
-	lockPath := path + ".lock"
-
-	v1 := sample{Name: "first", N: 1}
-	if err := state.WriteJSON(path, lockPath, v1); err != nil {
-		t.Fatalf("first WriteJSON() error: %v", err)
-	}
-
-	v2 := sample{Name: "second", N: 2}
-	if err := state.WriteJSON(path, lockPath, v2); err != nil {
-		t.Fatalf("second WriteJSON() error: %v", err)
-	}
-
-	got, found, err := state.ReadJSON[sample](path, lockPath)
-	if err != nil {
-		t.Fatalf("ReadJSON() error: %v", err)
-	}
-	if !found {
-		t.Fatal("ReadJSON() found = false; want true")
-	}
-	if got != v2 {
-		t.Errorf("ReadJSON() = %+v; want %+v", got, v2)
-	}
-}
-
-// TestLockFileLocation verifies that the lock file is placed at exactly path + ".lock".
-func TestLockFileLocation(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "data.json")
-	lockPath := path + ".lock"
-
-	// Write and read to ensure lock files are created.
-	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, lockPath, v); err != nil {
-		t.Fatalf("WriteJSON() error: %v", err)
-	}
-
-	if _, _, err := state.ReadJSON[sample](path, lockPath); err != nil {
-		t.Fatalf("ReadJSON() error: %v", err)
-	}
-
-	// Verify lock file exists at the expected path.
-	if _, err := os.Stat(lockPath); err != nil {
-		t.Errorf("lock file not found at %s: %v", lockPath, err)
-	}
-
-	// Verify the data file and lock are the only files in tmpDir.
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		t.Fatalf("ReadDir() error: %v", err)
-	}
-
-	expected := map[string]bool{"data.json": true, "data.json.lock": true}
-	found := map[string]bool{}
-	for _, e := range entries {
-		found[e.Name()] = true
-	}
-
-	if len(found) != len(expected) {
-		t.Errorf("expected %d files; found %d", len(expected), len(found))
-	}
-	for name := range expected {
-		if !found[name] {
-			t.Errorf("expected file %q not found", name)
-		}
-	}
-}
-
-// TestJSONFormatting verifies that JSON is written with proper indentation (2 spaces).
-func TestJSONFormatting(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "state.json")
-	lockPath := path + ".lock"
-
-	v := sample{Name: "test", N: 42}
-	if err := state.WriteJSON(path, lockPath, v); err != nil {
-		t.Fatalf("WriteJSON() error: %v", err)
-	}
-
-	// Read raw file and check formatting.
-	data, err := os.ReadFile(path)
+	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
 	}
-
-	// Verify it's valid JSON and matches the indented format.
-	var parsed sample
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("JSON unmarshal error: %v", err)
-	}
-
-	// Check that the formatted version matches what we'd expect.
-	expectedData, _ := json.MarshalIndent(v, "", "  ")
-	if string(data) != string(expectedData) {
-		t.Errorf("JSON formatting mismatch:\ngot:\n%s\nwant:\n%s", string(data), string(expectedData))
+	if string(after) != string(corrupt) {
+		t.Errorf("UpdateJSON() modified a corrupt file:\nbefore:\n%s\nafter:\n%s", corrupt, after)
 	}
 }

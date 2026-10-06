@@ -3,6 +3,7 @@ package discussionparser
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -33,89 +34,143 @@ func writeFixture(t *testing.T, dir, decisionContent, supportContent string) (st
 	return decisionPath, supportPath
 }
 
-func TestValidate_AllSectionsPresent(t *testing.T) {
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, allSectionsContent(), "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none", findings)
-	}
-}
-
-func TestValidate_EachHeadingMissingIndividually(t *testing.T) {
-	for _, missing := range requiredDiscussionSections {
-		missing := missing
-		t.Run(missing, func(t *testing.T) {
-			var b strings.Builder
-			for _, h := range requiredDiscussionSections {
-				if h == missing {
-					continue
-				}
-				b.WriteString(h)
-				b.WriteString("\n\nbody text.\n\n")
-			}
-
-			dir := t.TempDir()
-			decisionPath, supportPath := writeFixture(t, dir, b.String(), "log")
-
-			findings, err := Validate(decisionPath, supportPath)
-			if err != nil {
-				t.Fatalf("Validate() error = %v; want nil", err)
-			}
-			if len(findings) != 1 {
-				t.Fatalf("Validate() findings = %v; want exactly one finding", findings)
-			}
-			if findings[0].Check != checkSectionMissing {
-				t.Errorf("findings[0].Check = %q; want %q", findings[0].Check, checkSectionMissing)
-			}
-			if findings[0].Path != decisionPath {
-				t.Errorf("findings[0].Path = %q; want %q", findings[0].Path, decisionPath)
-			}
-			if !strings.Contains(findings[0].Detail, missing) {
-				t.Errorf("findings[0].Detail = %q; want it to name %q", findings[0].Detail, missing)
-			}
-		})
-	}
-}
-
-func TestValidate_SeveralHeadingsMissingAtOnce(t *testing.T) {
-	skip := map[string]bool{
-		requiredDiscussionSections[0]: true,
-		requiredDiscussionSections[2]: true,
-		requiredDiscussionSections[5]: true,
-	}
-
+// sectionsWithout returns a decision record carrying every required heading except the given ones.
+func sectionsWithout(skip ...string) string {
 	var b strings.Builder
 	for _, h := range requiredDiscussionSections {
-		if skip[h] {
+		if slices.Contains(skip, h) {
 			continue
 		}
 		b.WriteString(h)
 		b.WriteString("\n\nbody text.\n\n")
 	}
+	return b.String()
+}
 
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, b.String(), "log")
+// TestValidate_CleanRecords asserts a record carrying every required heading yields no finding, whatever else the file holds: trailing whitespace on a heading, headings in any order, an extra heading, the optional notes section absent, and a directory standing in for the support log.
+//
+//testtiming:keep pins that a record with every required heading yields no finding across whitespace, order, extra-heading and support-directory variants, which its covering test does not assert
+func TestValidate_CleanRecords(t *testing.T) {
+	t.Parallel()
 
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
+	reversed := slices.Clone(requiredDiscussionSections)
+	slices.Reverse(reversed)
+	var outOfOrder strings.Builder
+	for _, h := range reversed {
+		outOfOrder.WriteString(h)
+		outOfOrder.WriteString("\n\nbody text.\n\n")
 	}
-	if len(findings) != len(skip) {
-		t.Fatalf("Validate() findings = %v; want %d findings, one per missing heading", findings, len(skip))
+
+	var padded strings.Builder
+	for _, h := range requiredDiscussionSections {
+		padded.WriteString(h + "  \t \r")
+		padded.WriteString("\n\nbody text.\n\n")
 	}
-	for _, f := range findings {
-		if f.Check != checkSectionMissing {
-			t.Errorf("finding.Check = %q; want %q", f.Check, checkSectionMissing)
+
+	tests := []struct {
+		name         string
+		content      string
+		supportIsDir bool
+	}{
+		{name: "all sections present", content: allSectionsContent()},
+		{name: "heading with trailing whitespace still counts", content: padded.String()},
+		{name: "headings out of order are not validated", content: outOfOrder.String()},
+		{name: "extra unexpected heading", content: allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"},
+		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively "both files exist"; an is-regular-file test would be a new check.
+		{name: "support log path is a directory", content: allSectionsContent(), supportIsDir: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			decisionPath, supportPath := writeFixture(t, dir, tt.content, "log")
+			if tt.supportIsDir {
+				supportPath = filepath.Join(dir, "support-dir")
+				if err := os.Mkdir(supportPath, 0o755); err != nil {
+					t.Fatalf("mkdir support log: %v", err)
+				}
+			}
+
+			findings, err := Validate(decisionPath, supportPath)
+			if err != nil {
+				t.Fatalf("Validate() error = %v; want nil", err)
+			}
+			if len(findings) != 0 {
+				t.Errorf("Validate() findings = %v; want none", findings)
+			}
+		})
+	}
+}
+
+// TestValidate_MissingHeadings asserts one section-missing finding per absent required heading, each at the decision record's path and naming its heading, in heading order.
+//
+//testtiming:keep pins the section-missing finding per absent heading with its path and detail, which its covering test does not assert
+func TestValidate_MissingHeadings(t *testing.T) {
+	t.Parallel()
+
+	fenced := requiredDiscussionSections[0]
+	midSentence := requiredDiscussionSections[1]
+	var hidden strings.Builder
+	for _, h := range requiredDiscussionSections {
+		switch h {
+		case fenced:
+			// Indented by two leading spaces, as a fenced example block quoting the heading
+			// format typically would be -- missingSections right-trims but never left-trims, so
+			// this line is not an exact match for h and must not count as present.
+			hidden.WriteString("```\n  " + h + "\n```\n\n")
+		case midSentence:
+			hidden.WriteString("See " + h + " above for details.\n\n")
+		default:
+			hidden.WriteString(h + "\n\nbody text.\n\n")
 		}
+	}
+
+	several := []string{requiredDiscussionSections[0], requiredDiscussionSections[2], requiredDiscussionSections[5]}
+	tests := []struct {
+		name        string
+		content     string
+		wantMissing []string
+	}{
+		{name: "several at once", content: sectionsWithout(several...), wantMissing: several},
+		{name: "in a fence or mid-sentence", content: hidden.String(), wantMissing: []string{fenced, midSentence}},
+	}
+	for _, missing := range requiredDiscussionSections {
+		tests = append(tests, struct {
+			name        string
+			content     string
+			wantMissing []string
+		}{name: "only " + missing, content: sectionsWithout(missing), wantMissing: []string{missing}})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.content, "log")
+
+			findings, err := Validate(decisionPath, supportPath)
+			if err != nil {
+				t.Fatalf("Validate() error = %v; want nil", err)
+			}
+			if len(findings) != len(tt.wantMissing) {
+				t.Fatalf("Validate() findings = %v; want %d, one per missing heading", findings, len(tt.wantMissing))
+			}
+			for i, f := range findings {
+				if f.Check != checkSectionMissing {
+					t.Errorf("findings[%d].Check = %q; want %q", i, f.Check, checkSectionMissing)
+				}
+				if f.Path != decisionPath {
+					t.Errorf("findings[%d].Path = %q; want %q", i, f.Path, decisionPath)
+				}
+				if !strings.Contains(f.Detail, tt.wantMissing[i]) {
+					t.Errorf("findings[%d].Detail = %q; want it to name %q", i, f.Detail, tt.wantMissing[i])
+				}
+			}
+		})
 	}
 }
 
 func TestValidate_DecisionRecordAbsent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	decisionPath := filepath.Join(dir, "decision-record.md")
 	supportPath := filepath.Join(dir, "support-log.md")
@@ -139,6 +194,7 @@ func TestValidate_DecisionRecordAbsent(t *testing.T) {
 }
 
 func TestValidate_SupportLogAbsent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	supportPath := filepath.Join(dir, "support-log.md")
 	// decisionPath is deliberately a directory, not a file: if Validate ever read it despite the
@@ -165,113 +221,8 @@ func TestValidate_SupportLogAbsent(t *testing.T) {
 	}
 }
 
-func TestValidate_HeadingWithTrailingWhitespaceStillCounts(t *testing.T) {
-	var b strings.Builder
-	for _, h := range requiredDiscussionSections {
-		b.WriteString(h + "  \t \r")
-		b.WriteString("\n\nbody text.\n\n")
-	}
-
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, b.String(), "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none", findings)
-	}
-}
-
-func TestValidate_HeadingInFenceOrMidSentenceDoesNotCount(t *testing.T) {
-	fenced := requiredDiscussionSections[0]
-	midSentence := requiredDiscussionSections[1]
-
-	var b strings.Builder
-	for _, h := range requiredDiscussionSections {
-		switch h {
-		case fenced:
-			// Indented by two leading spaces, as a fenced example block quoting the heading
-			// format typically would be -- missingSections right-trims but never left-trims, so
-			// this line is not an exact match for h and must not count as present.
-			b.WriteString("```\n  ")
-			b.WriteString(h)
-			b.WriteString("\n```\n\n")
-		case midSentence:
-			b.WriteString("See " + h + " above for details.\n\n")
-		default:
-			b.WriteString(h)
-			b.WriteString("\n\nbody text.\n\n")
-		}
-	}
-
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, b.String(), "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 2 {
-		t.Fatalf("Validate() findings = %v; want exactly two findings (fenced + mid-sentence)", findings)
-	}
-}
-
-func TestValidate_NotesForThePlanWriterAbsentIsNotAFinding(t *testing.T) {
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, allSectionsContent(), "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none (## Notes for the plan writer is optional)", findings)
-	}
-}
-
-func TestValidate_HeadingsOutOfOrderIsNotAFinding(t *testing.T) {
-	reversed := make([]string, len(requiredDiscussionSections))
-	copy(reversed, requiredDiscussionSections)
-	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
-		reversed[i], reversed[j] = reversed[j], reversed[i]
-	}
-
-	var b strings.Builder
-	for _, h := range reversed {
-		b.WriteString(h)
-		b.WriteString("\n\nbody text.\n\n")
-	}
-
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, b.String(), "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none (section order is not validated)", findings)
-	}
-}
-
-func TestValidate_ExtraUnexpectedHeadingIsNotAFinding(t *testing.T) {
-	content := allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"
-
-	dir := t.TempDir()
-	decisionPath, supportPath := writeFixture(t, dir, content, "log")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none (an extra heading is not a violation)", findings)
-	}
-}
-
 func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	decisionPath := filepath.Join(dir, "decision-record.md")
 	if err := os.Mkdir(decisionPath, 0o755); err != nil {
@@ -291,34 +242,10 @@ func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
 	}
 }
 
-// TestValidate_SupportLogPathIsDirectory preserves today's behaviour deliberately rather than
-// tightening it: os.Stat accepts a directory as "exists", so the support-log check is exhaustively
-// "both files exist" -- nothing more. An is-regular-file test would be a new check smuggled in
-// under an extraction, which this batch does not do.
-func TestValidate_SupportLogPathIsDirectory(t *testing.T) {
-	dir := t.TempDir()
-	supportPath := filepath.Join(dir, "support-log")
-	if err := os.Mkdir(supportPath, 0o755); err != nil {
-		t.Fatalf("mkdir support log: %v", err)
-	}
-	decisionPath, _ := writeFixture(t, dir, allSectionsContent(), "unused")
-
-	findings, err := Validate(decisionPath, supportPath)
-	if err != nil {
-		t.Fatalf("Validate() error = %v; want nil (a directory counts as present)", err)
-	}
-	if len(findings) != 0 {
-		t.Errorf("Validate() findings = %v; want none", findings)
-	}
-}
-
 // TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt is R6-28's regression test.
-// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only
-// through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet,
-// entirely ordinary in an agent-written discussion document, made every heading below it report
-// missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against
-// the still-live session, holding the handoff until the gate passes or its attempt budget escalates
-// to a human.
+// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet, entirely ordinary in an agent-written discussion document, made every heading below it report missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against the still-live session, holding the handoff until the gate passes or its attempt budget escalates to a human.
+//
+//testtiming:keep pins the R6-28 regression that a line over 64 KB does not hide the headings below it, which its covering test does not assert
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {
 	t.Parallel()
 

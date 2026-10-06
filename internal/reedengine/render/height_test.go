@@ -1,7 +1,6 @@
 // height_test.go exercises the derived height policy in height.go: the heights-fill-the-box
 // invariant, the uniform collapsed_rows rule with the remainder going to the bottom-most pane, the
 // too-short-window clamp order, and the band-vs-window height clamp (clampBandHeight).
-// It also exercises layout.go's buildStackBody/wrapLayout over the resulting placements.
 
 package render
 
@@ -17,52 +16,58 @@ func stackOf(n int) []Strand {
 	return stack
 }
 
-func heightsOf(placements []placement) []int {
-	out := make([]int, len(placements))
-	for i, pl := range placements {
-		out[i] = pl.height
-	}
-	return out
-}
+func TestStackHeights(t *testing.T) {
+	t.Parallel()
 
-func TestStackHeightsFillBoxAndCollapsedEqualsParam(t *testing.T) {
 	tests := []struct {
 		name          string
-		collapsedRows int
+		strands       int
 		boxH          int
+		collapsedRows int
+		wantHeights   []int
+		// unfillable marks a window shorter than the pane count, where the heights cannot sum to the box.
+		unfillable bool
 	}{
-		{"rows1", 1, 15},
-		{"rows2", 2, 15},
-		{"rows4", 4, 20},
-		{"rows6", 6, 30},
+		{name: "OneStrandGetsTheWholeBox", strands: 1, boxH: 20, collapsedRows: 3, wantHeights: []int{20}},
+		// usable 20 - 1 divider = 19; 3 collapsed, 16 rest.
+		{name: "TwoStrandsGetCollapsedPlusRest", strands: 2, boxH: 20, collapsedRows: 3, wantHeights: []int{3, 16}},
+		// Adding a third keeps the first pane's height and collapses the previous bottom-most.
+		{name: "ThreeStrandsKeepTheFirstPaneHeightOfTwo", strands: 3, boxH: 30, collapsedRows: 3, wantHeights: []int{3, 3, 22}},
+		// Removing the bottom-most expands the one above: usable 30 - 1 divider = 29, minus the collapsed 3.
+		{name: "TwoStrandsInTheSameBoxExpandTheOneAbove", strands: 2, boxH: 30, collapsedRows: 3, wantHeights: []int{3, 26}},
+		{name: "CollapsedRowsOneFillsTheBox", strands: 3, boxH: 15, collapsedRows: 1, wantHeights: []int{1, 1, 11}},
+		{name: "CollapsedRowsTwoFillsTheBox", strands: 3, boxH: 15, collapsedRows: 2, wantHeights: []int{2, 2, 9}},
+		{name: "CollapsedRowsFourFillsTheBox", strands: 3, boxH: 20, collapsedRows: 4, wantHeights: []int{4, 4, 10}},
+		{name: "CollapsedRowsSixFillsTheBox", strands: 3, boxH: 30, collapsedRows: 6, wantHeights: []int{6, 6, 16}},
+		// Three collapsed placements each demanding 3 rows plus a bottom-most pane in 5 usable rows:
+		// the natural split would drive the bottom-most pane negative, so the collapsed ones yield.
+		{name: "TooShortWindowReclaimsFromTheCollapsedFirst", strands: 4, boxH: 8, collapsedRows: 3, wantHeights: []int{1, 1, 2, 1}},
+		// usable 6 - 3 dividers = 3, less than the 4 panes: not exactly fillable, still never non-positive.
+		{name: "ImpossibleWindowNeverYieldsANonPositiveHeight", strands: 4, boxH: 6, collapsedRows: 3, wantHeights: []int{1, 1, 1, 1}, unfillable: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stack := stackOf(3)
+			t.Parallel()
+			stack := stackOf(tt.strands)
 			box := Box{X: 0, Y: 0, W: 100, H: tt.boxH}
-			p := Params{CollapsedRows: tt.collapsedRows, MinFullRows: 3}
 
-			placements := stackHeights(stack, box, p)
+			placements := stackHeights(stack, box, Params{CollapsedRows: tt.collapsedRows, MinFullRows: 3})
 			if len(placements) != len(stack) {
 				t.Fatalf("stackHeights returned %d placements, want %d", len(placements), len(stack))
 			}
 
 			sum := 0
-			for _, pl := range placements {
+			for i, pl := range placements {
+				if pl.height != tt.wantHeights[i] {
+					t.Errorf("placement[%d].height = %d, want %d (all heights %v)", i, pl.height, tt.wantHeights[i], tt.wantHeights)
+				}
 				if pl.height <= 0 {
 					t.Errorf("placement %+v has non-positive height", pl)
 				}
 				sum += pl.height
 			}
-			dividers := len(stack) - 1
-			if sum+dividers != box.H {
+			if dividers := len(stack) - 1; !tt.unfillable && sum+dividers != box.H {
 				t.Errorf("heights sum + dividers = %d, want box.H %d", sum+dividers, box.H)
-			}
-
-			for i := 0; i < len(stack)-1; i++ {
-				if placements[i].height != tt.collapsedRows || !placements[i].strip {
-					t.Errorf("placement[%d] = %+v, want collapsed at %d", i, placements[i], tt.collapsedRows)
-				}
 			}
 			if last := placements[len(placements)-1]; last.strip {
 				t.Errorf("bottom-most placement %+v must not be collapsed", last)
@@ -71,95 +76,11 @@ func TestStackHeightsFillBoxAndCollapsedEqualsParam(t *testing.T) {
 	}
 }
 
-func TestStackHeightsOneStrandGetsTheWholeBox(t *testing.T) {
-	got := heightsOf(stackHeights(stackOf(1), Box{W: 100, H: 20}, Params{CollapsedRows: 3, MinFullRows: 3}))
-	if len(got) != 1 || got[0] != 20 {
-		t.Errorf("heights = %v, want [20]", got)
-	}
-}
-
-func TestStackHeightsTwoStrandsGetCollapsedPlusRest(t *testing.T) {
-	got := heightsOf(stackHeights(stackOf(2), Box{W: 100, H: 20}, Params{CollapsedRows: 3, MinFullRows: 3}))
-	want := []int{3, 16} // usable 20 - 1 divider = 19; 3 collapsed, 16 rest
-	if got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("heights = %v, want %v", got, want)
-	}
-}
-
-func TestStackHeightsAddingAThirdKeepsTheFirstPaneHeight(t *testing.T) {
-	p := Params{CollapsedRows: 3, MinFullRows: 3}
-	box := Box{W: 100, H: 30}
-	two := heightsOf(stackHeights(stackOf(2), box, p))
-	three := heightsOf(stackHeights(stackOf(3), box, p))
-
-	if two[0] != three[0] {
-		t.Errorf("first pane height changed from %d to %d when a third strand was added", two[0], three[0])
-	}
-	if three[1] != 3 {
-		t.Errorf("previous bottom-most height = %d, want it collapsed to 3", three[1])
-	}
-	want := 30 - 2 - 3 - 3 // usable minus the two collapsed
-	if three[2] != want {
-		t.Errorf("bottom-most height = %d, want %d", three[2], want)
-	}
-}
-
-func TestStackHeightsRemovingTheBottomMostExpandsTheOneAbove(t *testing.T) {
-	p := Params{CollapsedRows: 3, MinFullRows: 3}
-	box := Box{W: 100, H: 30}
-	three := heightsOf(stackHeights(stackOf(3), box, p))
-	two := heightsOf(stackHeights(stackOf(2), box, p))
-
-	if two[1] <= three[1] {
-		t.Errorf("strand above the removed bottom-most did not expand: %d -> %d", three[1], two[1])
-	}
-	if want := 30 - 1 - 3; two[1] != want {
-		t.Errorf("new bottom-most height = %d, want %d", two[1], want)
-	}
-}
-
-func TestStackHeightsClampYieldsOnlyPositiveHeightsInTooShortWindow(t *testing.T) {
-	// Three collapsed placements each demanding CollapsedRows=3 plus one bottom-most pane, but the
-	// window only has 5 usable rows for 4 panes — the natural split would drive the bottom-most
-	// pane negative. clampToFit must reclaim rows from the collapsed placements first and still
-	// land on an exact, all-positive split.
-	stack := stackOf(4)
-	dividers := len(stack) - 1
-	usable := 5
-	box := Box{X: 0, Y: 0, W: 100, H: usable + dividers}
-	p := Params{CollapsedRows: 3, MinFullRows: 3}
-
-	placements := stackHeights(stack, box, p)
-	sum := 0
-	for _, pl := range placements {
-		if pl.height <= 0 {
-			t.Errorf("placement %+v has non-positive height under clamp", pl)
-		}
-		sum += pl.height
-	}
-	if sum+dividers != box.H {
-		t.Errorf("heights sum + dividers = %d, want box.H %d", sum+dividers, box.H)
-	}
-}
-
-func TestStackHeightsExtremelyShortWindowNeverNonPositive(t *testing.T) {
-	// A window shorter than the pane count cannot be filled exactly (each
-	// pane needs at least 1 row), but stackHeights must still never return
-	// a non-positive height even in that impossible-to-satisfy case.
-	box := Box{X: 0, Y: 0, W: 100, H: 6} // usable = 6 - 3 dividers = 3, less than 4 panes
-	p := Params{CollapsedRows: 3, MinFullRows: 3}
-
-	for _, pl := range stackHeights(stackOf(4), box, p) {
-		if pl.height <= 0 {
-			t.Errorf("placement %+v has non-positive height in an impossible-to-fit window", pl)
-		}
-	}
-}
-
 // TestClampBandHeight covers the window-split clamp: the band yields rows first so the
 // strand-stack region never shrinks below MinFullRows (floored at 1) total rows, distinct from
 // clampToFit's job of distributing rows AMONG strands inside an already-shrunk box.
 func TestClampBandHeight(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		bandRows     int
@@ -199,7 +120,9 @@ func TestClampBandHeight(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := clampBandHeight(tt.bandRows, tt.windowRows, tt.minStackRows); got != tt.want {
+			t.Parallel()
+			got := clampBandHeight(tt.bandRows, tt.windowRows, tt.minStackRows)
+			if got != tt.want {
 				t.Errorf("clampBandHeight(%d, %d, %d) = %d, want %d", tt.bandRows, tt.windowRows, tt.minStackRows, got, tt.want)
 			}
 			// Invariant every case must hold: the stack region resulting
@@ -208,28 +131,9 @@ func TestClampBandHeight(t *testing.T) {
 			if floor < 1 {
 				floor = 1
 			}
-			got := clampBandHeight(tt.bandRows, tt.windowRows, tt.minStackRows)
 			if stackRows := tt.windowRows - got; stackRows < floor && tt.windowRows >= floor {
 				t.Errorf("clampBandHeight(%d, %d, %d) left only %d stack rows, want >= floor %d", tt.bandRows, tt.windowRows, tt.minStackRows, stackRows, floor)
 			}
 		})
-	}
-}
-
-func TestStackHeightsAndBuildStackBodyIntegration(t *testing.T) {
-	// Exercises stackHeights together with buildStackBody/wrapLayout turning
-	// the resulting placements into a checksum-prefixed layout string.
-	stack := stackOf(3)
-	box := Box{X: 0, Y: 0, W: 100, H: 15}
-	p := Params{CollapsedRows: 2, MinFullRows: 3}
-	placements := stackHeights(stack, box, p)
-
-	body := buildStackBody(box, placements)
-	full := wrapLayout(body)
-	if got, want := full[:4], layoutChecksum(body); got != want {
-		t.Errorf("layout checksum prefix = %q, want %q", got, want)
-	}
-	if full[4] != ',' {
-		t.Errorf("layout string = %q, want checksum then comma then body", full)
 	}
 }

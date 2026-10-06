@@ -73,37 +73,78 @@ func bareRemoteHead(t *testing.T, bareRemote string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestSync_DirtyBoard_CommitsAndPushes asserts a dirty board commits and pushes.
-func TestSync_DirtyBoard_CommitsAndPushes(t *testing.T) {
+// syncFixture is the one bare remote and board repository the steps of TestSync_Scenario share.
+type syncFixture struct {
+	bareRemote string
+	boardPath  string
+}
+
+// TestSync_Scenario runs Sync's contract against one board repository and bare remote, in the order below.
+// It calls t.Parallel and no step does: the steps share the one repository, so they run serially.
+// The skip-push step runs first because it asserts the remote is still empty, each later step relies on the repository the earlier steps left behind, and the retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
+func TestSync_Scenario(t *testing.T) {
+	t.Parallel()
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
-	boardPath := newBoardRepo(t, container, "board", bareRemote)
+	fixture := &syncFixture{bareRemote: bareRemote, boardPath: newBoardRepo(t, container, "board", bareRemote)}
 
-	writeBoardFile(t, boardPath, "tasks.json", `{"tasks":[]}`)
+	steps := []struct {
+		name string
+		run  func(t *testing.T, f *syncFixture)
+	}{
+		{"SkipPush_CommitsLocallyButDoesNotPush", stepSyncSkipPushCommitsLocallyButDoesNotPush},
+		{"DirtyBoard_CommitsAndPushes", stepSyncDirtyBoardCommitsAndPushes},
+		{"SeedsGitignoreWithLockAndManifestPatterns", stepSyncSeedsGitignoreWithLockAndManifestPatterns},
+		{"ConcurrentCallSerializesOnBoardPushLock", stepSyncConcurrentCallSerializesOnBoardPushLock},
+		{"RetireLegacy_CommitsBoardJSONAndLegacyDeletions", stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions},
+	}
+	for _, step := range steps {
+		if !t.Run(step.name, func(t *testing.T) { step.run(t, fixture) }) {
+			return
+		}
+	}
+}
 
-	if err := Sync(boardPath, false, false); err != nil {
+// stepSyncSkipPushCommitsLocallyButDoesNotPush asserts skipPush commits locally but doesn't push.
+func stepSyncSkipPushCommitsLocallyButDoesNotPush(t *testing.T, f *syncFixture) {
+	writeBoardFile(t, f.boardPath, "tasks.json", `{"tasks":[]}`)
+
+	if err := Sync(f.boardPath, false, true); err != nil {
+		t.Fatalf("Sync() (skipPush) error = %v; want nil", err)
+	}
+
+	if got := bareRemoteHead(t, f.bareRemote); got != "" {
+		t.Errorf("bare remote main after skipPush Sync() = %q; want \"\" (nothing pushed)", got)
+	}
+
+	stdout, stderr, code, err := gitexec.RunGit([]string{"log", "--oneline"}, f.boardPath)
+	if err != nil {
+		t.Fatalf("git log error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git log exited %d: %s", code, stderr)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		t.Fatal("git log --oneline after skipPush Sync() = \"\"; want a local commit")
+	}
+}
+
+// stepSyncDirtyBoardCommitsAndPushes asserts a dirty board commits and pushes.
+func stepSyncDirtyBoardCommitsAndPushes(t *testing.T, f *syncFixture) {
+	writeBoardFile(t, f.boardPath, "tasks.json", `{"tasks":["dirty"]}`)
+
+	if err := Sync(f.boardPath, false, false); err != nil {
 		t.Fatalf("Sync() error = %v; want nil", err)
 	}
 
-	if got := bareRemoteHead(t, bareRemote); got == "" {
+	if got := bareRemoteHead(t, f.bareRemote); got == "" {
 		t.Fatal("bare remote main after Sync() = \"\"; want the dirty commit pushed")
 	}
 }
 
-// TestSync_SeedsGitignoreWithLockAndManifestPatterns asserts Sync seeds .gitignore with lock and
-// manifest patterns.
-func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-	boardPath := newBoardRepo(t, container, "board", bareRemote)
-
-	writeBoardFile(t, boardPath, "tasks.json", `{"tasks":[]}`)
-
-	if err := Sync(boardPath, false, false); err != nil {
-		t.Fatalf("Sync() error = %v; want nil", err)
-	}
-
-	got, err := os.ReadFile(filepath.Join(boardPath, ".gitignore"))
+// stepSyncSeedsGitignoreWithLockAndManifestPatterns asserts Sync seeded .gitignore with lock and manifest patterns.
+func stepSyncSeedsGitignoreWithLockAndManifestPatterns(t *testing.T, f *syncFixture) {
+	got, err := os.ReadFile(filepath.Join(f.boardPath, ".gitignore"))
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
@@ -114,27 +155,17 @@ func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
 	}
 }
 
-// TestSync_ConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on
-// board.push.lock.
-func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-	boardPath := newBoardRepo(t, container, "board", bareRemote)
-
-	writeBoardFile(t, boardPath, "tasks.json", `{"tasks":[]}`)
-	if err := Sync(boardPath, false, false); err != nil {
-		t.Fatalf("Sync() (seed) error = %v; want nil", err)
-	}
-
-	held, err := lock.AcquireWriteLock(filepath.Join(boardPath, "board.push.lock"))
+// stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on board.push.lock.
+func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixture) {
+	held, err := lock.AcquireWriteLock(filepath.Join(f.boardPath, "board.push.lock"))
 	if err != nil {
 		t.Fatalf("AcquireWriteLock() error = %v", err)
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		writeBoardFile(t, boardPath, "tasks.json", `{"tasks":["one"]}`)
-		done <- Sync(boardPath, false, false)
+		writeBoardFile(t, f.boardPath, "tasks.json", `{"tasks":["one"]}`)
+		done <- Sync(f.boardPath, false, false)
 	}()
 
 	select {
@@ -153,55 +184,23 @@ func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
 	}
 }
 
-// TestSync_SkipPush_CommitsLocallyButDoesNotPush asserts skipPush commits locally but doesn't push.
-func TestSync_SkipPush_CommitsLocallyButDoesNotPush(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-	boardPath := newBoardRepo(t, container, "board", bareRemote)
-
-	writeBoardFile(t, boardPath, "tasks.json", `{"tasks":[]}`)
-
-	if err := Sync(boardPath, false, true); err != nil {
-		t.Fatalf("Sync() (skipPush) error = %v; want nil", err)
-	}
-
-	if got := bareRemoteHead(t, bareRemote); got != "" {
-		t.Errorf("bare remote main after skipPush Sync() = %q; want \"\" (nothing pushed)", got)
-	}
-
-	stdout, stderr, code, err := gitexec.RunGit([]string{"log", "--oneline"}, boardPath)
-	if err != nil {
-		t.Fatalf("git log error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git log exited %d: %s", code, stderr)
-	}
-	if strings.TrimSpace(stdout) == "" {
-		t.Fatal("git log --oneline after skipPush Sync() = \"\"; want a local commit")
-	}
-}
-
-// TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
-func TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-	boardPath := newBoardRepo(t, container, "board", bareRemote)
-
-	writeBoardFile(t, boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
-	writeBoardFile(t, boardPath, legacyNotesFile, `[]`)
-	if err := Sync(boardPath, false, false); err != nil {
+// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
+func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syncFixture) {
+	writeBoardFile(t, f.boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
+	writeBoardFile(t, f.boardPath, legacyNotesFile, `[]`)
+	if err := Sync(f.boardPath, false, false); err != nil {
 		t.Fatalf("initial Sync() error = %v", err)
 	}
 
-	b := New(Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true})
+	b := New(Config{Path: f.boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true})
 	if err := b.RetireLegacy(); err != nil {
 		t.Fatalf("RetireLegacy() error = %v", err)
 	}
-	if err := Sync(boardPath, false, false); err != nil {
+	if err := Sync(f.boardPath, false, false); err != nil {
 		t.Fatalf("Sync() after retire error = %v", err)
 	}
 
-	tracked, _, _, err := gitexec.RunGit([]string{"ls-files"}, boardPath)
+	tracked, _, _, err := gitexec.RunGit([]string{"ls-files"}, f.boardPath)
 	if err != nil {
 		t.Fatalf("git ls-files error = %v", err)
 	}
@@ -213,7 +212,7 @@ func TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions(t *testing.T) {
 			t.Errorf("tracked files = %q; want %s deletion committed", tracked, name)
 		}
 	}
-	status, _, _, err := gitexec.RunGit([]string{"status", "--porcelain"}, boardPath)
+	status, _, _, err := gitexec.RunGit([]string{"status", "--porcelain"}, f.boardPath)
 	if err != nil {
 		t.Fatalf("git status error = %v", err)
 	}

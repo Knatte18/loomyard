@@ -10,7 +10,12 @@ func validRejection() Rejection {
 	return Rejection{PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-01-02T03:04:05Z", Findings: "fix the thing"}
 }
 
+// TestRejection_RoundTripAndOverwrite pins every Rejection field surviving the file, and a second write replacing the first.
+//
+//testtiming:keep round-trips each Rejection field and the overwrite through the real file, which the PRGate tests covering its blocks never read back
 func TestRejection_RoundTripAndOverwrite(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "sub", "rejection.json")
 	want := validRejection()
 	if err := WriteRejection(path, want); err != nil {
@@ -30,47 +35,50 @@ func TestRejection_RoundTripAndOverwrite(t *testing.T) {
 	}
 }
 
-func TestReadRejection_Absent(t *testing.T) {
-	_, found, err := ReadRejection(filepath.Join(t.TempDir(), "none.json"))
-	if err != nil || found {
-		t.Fatalf("found=%v err=%v", found, err)
-	}
-}
+func TestReadRejection_AbsentOrInvalid(t *testing.T) {
+	t.Parallel()
 
-func TestReadRejection_Invalid(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "r.json")
-	if err := os.WriteFile(path, []byte("{nope"), 0o644); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name    string
+		write   func(path string) error
+		wantErr bool
+	}{
+		{"absent", func(string) error { return nil }, false},
+		{"malformed", func(path string) error { return os.WriteFile(path, []byte("{nope"), 0o644) }, true},
+		{"missing pr", writeMutatedRejection(func(r *Rejection) { r.PRNumber = 0 }), true},
+		{"missing sha", writeMutatedRejection(func(r *Rejection) { r.HeadSHA = "" }), true},
+		{"missing rejected_at", writeMutatedRejection(func(r *Rejection) { r.RejectedAt = "" }), true},
+		{"missing findings", writeMutatedRejection(func(r *Rejection) { r.Findings = "" }), true},
+		{"blank findings", writeMutatedRejection(func(r *Rejection) { r.Findings = " \n\t" }), true},
 	}
-	if _, _, err := ReadRejection(path); err == nil {
-		t.Fatal("want error")
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestReadRejection_MissingFields(t *testing.T) {
-	cases := map[string]func(*Rejection){
-		"pr":       func(r *Rejection) { r.PRNumber = 0 },
-		"sha":      func(r *Rejection) { r.HeadSHA = "" },
-		"at":       func(r *Rejection) { r.RejectedAt = "" },
-		"findings": func(r *Rejection) { r.Findings = "" },
-		"blank":    func(r *Rejection) { r.Findings = " \n\t" },
-	}
-	for name, mutate := range cases {
-		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "r.json")
-			r := validRejection()
-			mutate(&r)
-			if err := WriteRejection(path, r); err != nil {
+			if err := tc.write(path); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := ReadRejection(path); err == nil {
-				t.Fatal("want error")
+			_, found, err := ReadRejection(path)
+			if found || (err != nil) != tc.wantErr {
+				t.Fatalf("found=%v err=%v; want found=false, error=%v", found, err, tc.wantErr)
 			}
 		})
 	}
 }
 
+// writeMutatedRejection returns a writer of validRejection with mutate applied, for a record that fails validation on read.
+func writeMutatedRejection(mutate func(*Rejection)) func(path string) error {
+	return func(path string) error {
+		r := validRejection()
+		mutate(&r)
+		return WriteRejection(path, r)
+	}
+}
+
 func TestRemoveRecord(t *testing.T) {
+	t.Parallel()
+
 	path := filepath.Join(t.TempDir(), "r.json")
 	if err := WriteRejection(path, validRejection()); err != nil {
 		t.Fatal(err)

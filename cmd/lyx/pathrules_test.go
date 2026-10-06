@@ -48,10 +48,9 @@ type pathRule struct {
 
 // pathRules is the union of every constructor the path guards exercise.
 //
-// The planparser rows pass l.AnchorPath() in and are checked against an anchor-derived rule,
-// so they are tautological with respect to anchoring and cannot catch a production call site that passes the wrong root.
+// The planparser rows pass l.AnchorPath() in and are checked against an anchor-derived rule, so they are tautological with respect to anchoring and cannot catch a production call site that passes the wrong root.
 // That proof lives in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in internal/webstercli/verbs_test.go.
-// pattern.File has no row: the overview sits at the worktree root, not in `_lyx` content, and `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` in internal/loomengine/plan_test.go proves its call site's root.
+// pattern.File has no row: the overview sits at the worktree root, not in `_lyx` content, and `TestPlanSpec_PatternDirective` in internal/loomengine/plan_test.go proves its call site's root.
 var pathRules = []pathRule{
 	{name: "planparser.PlanDir", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanDir(l.AnchorPath()) }},
 	{name: "planparser.PlanOverview", class: classDurable, path: func(l *lyxcwd.Location) string { return planparser.PlanOverview(l.AnchorPath()) }},

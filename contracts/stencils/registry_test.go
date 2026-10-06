@@ -51,10 +51,12 @@ func stencilNamesOnDisk(t *testing.T) []string {
 	return names
 }
 
-// TestRegistry_MatchesOnDiskTree verifies the registry and the on-disk *.md tree name exactly the
-// same stencils in both directions: a .md present but unregistered fails, and a registered name with
-// no .md fails.
+// TestRegistry_MatchesOnDiskTree verifies the registry and the on-disk *.md tree name exactly the same stencils in both directions: a .md present but unregistered fails, and a registered name with no .md fails.
+//
+//testtiming:keep pins that the registry and the on-disk stencil tree name the same stencils in both directions, which no other test compares
 func TestRegistry_MatchesOnDiskTree(t *testing.T) {
+	t.Parallel()
+
 	onDisk := stencilNamesOnDisk(t)
 	registered := Registry().Names()
 
@@ -90,10 +92,18 @@ func TestRegistry_MatchesOnDiskTree(t *testing.T) {
 	}
 }
 
-// TestRegistry_IncludesBouncerStencils pins the two generic Bouncer prompt templates by name, so a
-// later accidental removal fails with a message naming the Bouncer rather than as a diff in the
-// generic on-disk-tree comparison TestRegistry_MatchesOnDiskTree already performs.
-func TestRegistry_IncludesBouncerStencils(t *testing.T) {
+// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path -- pinning the family-from-first-token derivation against the on-disk layout.
+// It also pins the generic Bouncer prompt templates by name, so a later accidental removal fails with a message naming the Bouncer rather than as a diff in the generic on-disk-tree comparison TestRegistry_MatchesOnDiskTree performs.
+//
+//testtiming:keep pins that RelPath resolves each registered name to its real file and that the Bouncer templates stay registered, which the scans over stencil bodies do not
+func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {
+	t.Parallel()
+
+	packageDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() = _, %v; want nil error", err)
+	}
+
 	reg := Registry()
 
 	names := reg.Names()
@@ -101,32 +111,12 @@ func TestRegistry_IncludesBouncerStencils(t *testing.T) {
 	for _, name := range names {
 		nameSet[name] = true
 	}
-
 	for _, name := range []string{"bouncer-template-seed", "bouncer-template-judge", "bouncer-template-escalation", "bouncer-template-parent-notice"} {
 		if !nameSet[name] {
 			t.Errorf("Registry().Names() = %v; want it to contain %q", names, name)
-			continue
-		}
-		def, known := reg.Default(name)
-		if !known {
-			t.Errorf("Registry().Default(%q) = _, false; want true", name)
-		}
-		if len(def) == 0 {
-			t.Errorf("Registry().Default(%q) = <empty>, %v; want non-empty bytes", name, known)
 		}
 	}
-}
 
-// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns
-// non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path --
-// pinning the family-from-first-token derivation against the on-disk layout.
-func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {
-	packageDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("os.Getwd() = _, %v; want nil error", err)
-	}
-
-	reg := Registry()
 	for _, name := range reg.Names() {
 		def, known := reg.Default(name)
 		if !known {

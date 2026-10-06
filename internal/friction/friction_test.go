@@ -18,25 +18,29 @@ func newTestStencilsDir(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
-// TestDirective_AllRolesReturnOwnStencilText covers all four roles: each returns its own stencil's
-// text, containing the told note path verbatim -- the assertion that catches a composer wiring the
-// wrong path.
-func TestDirective_AllRolesReturnOwnStencilText(t *testing.T) {
+// TestDirective_PerRole covers all four roles.
+// Against a seeded stencils directory each role returns its own stencil's text, containing the told note path verbatim -- the assertion that catches a composer wiring the wrong path.
+// Against a stencils directory that carries none of the four friction stencils each role fails loud with a non-nil error naming its missing stencil.
+func TestDirective_PerRole(t *testing.T) {
+	t.Parallel()
 	stencilsDir := newTestStencilsDir(t)
+	emptyStencilsDir := t.TempDir()
 	notePath := "/anchor/_lyx/friction/some-note.md"
 
 	tests := []struct {
-		name string
-		role Role
-		want []byte
+		name    string
+		role    Role
+		want    []byte
+		stencil string
 	}{
-		{"Implementer", RoleImplementer, stencils.FrictionDirectiveImplementer},
-		{"ReviewFix", RoleReviewFix, stencils.FrictionDirectiveReviewFix},
-		{"Orchestrator", RoleOrchestrator, stencils.FrictionDirectiveOrchestrator},
-		{"Interview", RoleInterview, stencils.FrictionDirectiveInterview},
+		{"Implementer", RoleImplementer, stencils.FrictionDirectiveImplementer, implementerDirectiveStencil},
+		{"ReviewFix", RoleReviewFix, stencils.FrictionDirectiveReviewFix, reviewFixDirectiveStencil},
+		{"Orchestrator", RoleOrchestrator, stencils.FrictionDirectiveOrchestrator, orchestratorDirectiveStencil},
+		{"Interview", RoleInterview, stencils.FrictionDirectiveInterview, interviewDirectiveStencil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Directive(notePath, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(%v) = _, %v; want nil error", tt.role, err)
@@ -47,69 +51,8 @@ func TestDirective_AllRolesReturnOwnStencilText(t *testing.T) {
 			if strings.Contains(got, "<!--") {
 				t.Errorf("Directive(%v) = %q; want no leftover banner content", tt.role, got)
 			}
-		})
-	}
-}
 
-// TestDirective_EmptyNotePath pins the empty-notePath guard: no stencil read is attempted at all,
-// asserted by pointing stencilsDir at a path that does not exist, so any attempted read would
-// surface as an error.
-func TestDirective_EmptyNotePath(t *testing.T) {
-	missingStencilsDir := t.TempDir() + "/does-not-exist"
-
-	got, err := Directive("", missingStencilsDir, RoleImplementer)
-	if err != nil {
-		t.Fatalf("Directive(\"\", RoleImplementer) = _, %v; want nil error", err)
-	}
-	if got != "" {
-		t.Errorf("Directive(\"\", RoleImplementer) = %q; want \"\"", got)
-	}
-}
-
-// TestDirective_UnknownRole pins the unknown/zero Role behaviour: no directive text and no read
-// attempted, even with a non-empty notePath.
-func TestDirective_UnknownRole(t *testing.T) {
-	missingStencilsDir := t.TempDir() + "/does-not-exist"
-
-	tests := []struct {
-		name string
-		role Role
-	}{
-		{"ZeroRole", Role(0)},
-		{"OutOfRangeRole", Role(99)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive("/anchor/note.md", missingStencilsDir, tt.role)
-			if err != nil {
-				t.Fatalf("Directive(%v) = _, %v; want nil error", tt.role, err)
-			}
-			if got != "" {
-				t.Errorf("Directive(%v) = %q; want \"\"", tt.role, got)
-			}
-		})
-	}
-}
-
-// TestDirective_MissingStencilErrors pins the fail-loud posture on a read failure: a non-empty
-// notePath, plus a stencilsDir that exists but carries none of the four friction stencils, returns a
-// non-nil error naming the missing stencil, for every role.
-func TestDirective_MissingStencilErrors(t *testing.T) {
-	emptyStencilsDir := t.TempDir()
-
-	tests := []struct {
-		name    string
-		role    Role
-		stencil string
-	}{
-		{"Implementer", RoleImplementer, implementerDirectiveStencil},
-		{"ReviewFix", RoleReviewFix, reviewFixDirectiveStencil},
-		{"Orchestrator", RoleOrchestrator, orchestratorDirectiveStencil},
-		{"Interview", RoleInterview, interviewDirectiveStencil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive("/anchor/note.md", emptyStencilsDir, tt.role)
+			got, err = Directive(notePath, emptyStencilsDir, tt.role)
 			if err == nil {
 				t.Fatalf("Directive(%v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
 			}
@@ -120,42 +63,42 @@ func TestDirective_MissingStencilErrors(t *testing.T) {
 	}
 }
 
-// TestWarnIfMarkerAbsent_ReportsAbsentAndPresent covers the marker-detection half: absent for
-// template bytes with no "{{.friction_directive}}" literal, present for bytes carrying it. Since
-// WarnIfMarkerAbsent returns nothing, this test only pins that it does not panic on either input --
-// the fires-only-when-enabled behaviour is pinned separately below.
-func TestWarnIfMarkerAbsent_ReportsAbsentAndPresent(t *testing.T) {
-	WarnIfMarkerAbsent([]byte("no marker here"), "some-stencil", "a directive")
-	WarnIfMarkerAbsent([]byte("has {{.friction_directive}} right here"), "some-stencil", "a directive")
-}
+// TestDirective_NoDirectiveAttemptsNoRead pins the two guards that return no directive text and attempt no stencil read: an empty notePath, and an unknown or zero Role with a non-empty notePath.
+// Each is asserted by pointing stencilsDir at a path that does not exist, so any attempted read would surface as an error.
+func TestDirective_NoDirectiveAttemptsNoRead(t *testing.T) {
+	t.Parallel()
+	missingStencilsDir := t.TempDir() + "/does-not-exist"
 
-// TestWarnIfMarkerAbsent_NoOpsOnEmptyDirective pins that WarnIfMarkerAbsent never fires when
-// directive is empty -- both the Tier-2-off case and the swallowed-read-error case -- regardless of
-// whether the marker is present in template.
-func TestWarnIfMarkerAbsent_NoOpsOnEmptyDirective(t *testing.T) {
-	WarnIfMarkerAbsent([]byte("no marker here"), "some-stencil", "")
-	WarnIfMarkerAbsent([]byte("has {{.friction_directive}} right here"), "some-stencil", "")
-}
-
-// TestReportFileName_DerivationsAgree asserts ReportFileName is the single exported constant both a
-// note-scan exclusion and an OutputFiles entry can be derived from. It derives an OutputFiles-style
-// absolute path from ReportFileName and a note-scan-style stem-collision check via NotePath's own
-// sanitization, and asserts the two derivations agree with each other -- never two string literals
-// asserted independently.
-func TestReportFileName_DerivationsAgree(t *testing.T) {
-	dir := t.TempDir()
-
-	// An OutputFiles-style consumer joins ReportFileName onto the friction dir directly.
-	outputFilesEntry := dir + "/" + ReportFileName
-
-	// A note-scan-style consumer derives the stem it must never collide with by trimming
-	// ReportFileName's own ".md" suffix, then confirms NotePath's own sanitization rejects that
-	// exact stem -- the same guarantee the note-scan exclusion depends on.
-	stem := strings.TrimSuffix(ReportFileName, ".md")
-	if got := NotePath(dir, stem); got != "" {
-		t.Errorf("NotePath(%q, %q) = %q; want \"\" since %q+\".md\" collides with ReportFileName %q", dir, stem, got, stem, ReportFileName)
+	tests := []struct {
+		name     string
+		notePath string
+		role     Role
+	}{
+		{"EmptyNotePath", "", RoleImplementer},
+		{"ZeroRole", "/anchor/note.md", Role(0)},
+		{"OutOfRangeRole", "/anchor/note.md", Role(99)},
 	}
-	if !strings.HasSuffix(outputFilesEntry, ReportFileName) {
-		t.Errorf("outputFilesEntry %q does not end with ReportFileName %q", outputFilesEntry, ReportFileName)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := Directive(tt.notePath, missingStencilsDir, tt.role)
+			if err != nil {
+				t.Fatalf("Directive(%q, %v) = _, %v; want nil error", tt.notePath, tt.role, err)
+			}
+			if got != "" {
+				t.Errorf("Directive(%q, %v) = %q; want \"\"", tt.notePath, tt.role, got)
+			}
+		})
+	}
+}
+
+// TestWarnIfMarkerAbsent_DoesNotPanic covers the marker-detection half: absent for template bytes with no "{{.friction_directive}}" literal, present for bytes carrying it, each with a directive and with an empty one.
+// Since WarnIfMarkerAbsent returns nothing, this test only pins that it does not panic on any input.
+func TestWarnIfMarkerAbsent_DoesNotPanic(t *testing.T) {
+	t.Parallel()
+	for _, template := range []string{"no marker here", "has {{.friction_directive}} right here"} {
+		for _, directive := range []string{"a directive", ""} {
+			WarnIfMarkerAbsent([]byte(template), "some-stencil", directive)
+		}
 	}
 }

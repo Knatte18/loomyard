@@ -10,6 +10,8 @@ import (
 )
 
 func TestRoutingOf_MatchesNewShedRowForRow(t *testing.T) {
+	t.Parallel()
+
 	const recipeYAML = `
 version: 1
 entry: row1
@@ -65,6 +67,8 @@ producers:
 
 // TestRoutingOf_ParseErrorSurfaces asserts a malformed recipe returns Parse's error.
 func TestRoutingOf_ParseErrorSurfaces(t *testing.T) {
+	t.Parallel()
+
 	if _, err := RoutingOf([]byte("version: [")); err == nil {
 		t.Fatal("RoutingOf(malformed) = _, nil; want an error")
 	}

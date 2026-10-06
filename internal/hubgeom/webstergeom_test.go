@@ -17,7 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+//testtiming:keep pins every WebsterGeometry directory against the accessors of the packages that own them, which the integration test covering its blocks never reads
 func TestWebsterGeometry(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		anchorRel string
@@ -27,6 +30,8 @@ func TestWebsterGeometry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			root := t.TempDir()
 			hub := filepath.Join(root, "some-hub-LYXHUB")
 			worktreeName := "some-worktree"

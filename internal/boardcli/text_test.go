@@ -11,63 +11,67 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-func TestRenderCompact_AlignsColumns(t *testing.T) {
-	got := boardcli.RenderCompact([]boardengine.BriefTask{
-		{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Short", Status: strPtr("active")},
-		{Kind: "note", Labels: []string{"enhancement", "area"}, Slug: "long-slug", Title: "Longer title", Status: strPtr("done")},
-	})
-	want := "task  a          Short         bug               [active]\n" +
-		"note  long-slug  Longer title  enhancement,area  [done]\n"
-	if got != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
+// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+//
+//testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
+func TestRenderCompact(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   []boardengine.BriefTask
+		want string
+	}{
+		{
+			name: "columns align",
+			in: []boardengine.BriefTask{
+				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Short", Status: strPtr("active")},
+				{Kind: "note", Labels: []string{"enhancement", "area"}, Slug: "long-slug", Title: "Longer title", Status: strPtr("done")},
+			},
+			want: "task  a          Short         bug               [active]\n" +
+				"note  long-slug  Longer title  enhancement,area  [done]\n",
+		},
+		{
+			name: "multi-byte titles align",
+			in: []boardengine.BriefTask{
+				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Fix — now", Status: strPtr("active")},
+				{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Plain one", Status: strPtr("done")},
+			},
+			want: "task  a  Fix — now  bug  [active]\n" +
+				"task  b  Plain one  bug  [done]\n",
+		},
+		{
+			name: "status bracket only when set",
+			in: []boardengine.BriefTask{
+				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "One"},
+				{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Two", Status: strPtr("")},
+			},
+			want: "task  a  One  bug\ntask  b  Two  bug\n",
+		},
+		{
+			name: "no labels leaves no trailing gap",
+			in:   []boardengine.BriefTask{{Kind: "note", Slug: "a", Title: "One"}},
+			want: "note  a  One\n",
+		},
+		{
+			name: "input order is preserved",
+			in: []boardengine.BriefTask{
+				{Kind: "note", Labels: []string{"bug"}, Slug: "z", Title: "Z"},
+				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "A"},
+			},
+			want: "note  z  Z  bug\ntask  a  A  bug\n",
+		},
+		{
+			name: "empty input prints nothing",
+			in:   nil,
+			want: "",
+		},
 	}
-}
-
-func TestRenderCompact_AlignsMultiByteTitles(t *testing.T) {
-	got := boardcli.RenderCompact([]boardengine.BriefTask{
-		{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Fix — now", Status: strPtr("active")},
-		{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Plain one", Status: strPtr("done")},
-	})
-	want := "task  a  Fix — now  bug  [active]\n" +
-		"task  b  Plain one  bug  [done]\n"
-	if got != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestRenderCompact_StatusBracketOnlyWhenSet(t *testing.T) {
-	got := boardcli.RenderCompact([]boardengine.BriefTask{
-		{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "One"},
-		{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Two", Status: strPtr("")},
-	})
-	want := "task  a  One  bug\ntask  b  Two  bug\n"
-	if got != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestRenderCompact_NoLabelsLeavesNoTrailingGap(t *testing.T) {
-	got := boardcli.RenderCompact([]boardengine.BriefTask{
-		{Kind: "note", Slug: "a", Title: "One"},
-	})
-	if want := "note  a  One\n"; got != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestRenderCompact_PreservesInputOrder(t *testing.T) {
-	got := boardcli.RenderCompact([]boardengine.BriefTask{
-		{Kind: "note", Labels: []string{"bug"}, Slug: "z", Title: "Z"},
-		{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "A"},
-	})
-	want := "note  z  Z  bug\ntask  a  A  bug\n"
-	if got != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestRenderCompact_EmptyInputPrintsNothing(t *testing.T) {
-	if got := boardcli.RenderCompact(nil); got != "" {
-		t.Fatalf("got %q, want empty", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := boardcli.RenderCompact(tt.in); got != tt.want {
+				t.Fatalf("got:\n%q\nwant:\n%q", got, tt.want)
+			}
+		})
 	}
 }

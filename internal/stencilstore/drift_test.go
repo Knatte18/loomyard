@@ -17,6 +17,8 @@ func stampedBody(body string) []byte {
 
 // TestClassifyPortBackDrift pins each of the four classes' message and remedy.
 func TestClassifyPortBackDrift(t *testing.T) {
+	t.Parallel()
+
 	const embedded = "embedded body\n"
 	const ahead = "source ahead body\n"
 
@@ -62,6 +64,8 @@ func TestClassifyPortBackDrift(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			class, msg := classifyPortBackDrift(tt.board, []byte(tt.source), []byte(embedded))
 			if class != tt.wantClass {
 				t.Errorf("class = %v; want %v", class, tt.wantClass)
@@ -80,6 +84,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 
 // TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil drives the warning end to end:
 // a differing stencil warns once naming the stencil and its class, an equal one warns nothing.
+// It captures the logger's output, which is process-global state, so it stays serial.
 func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) {
 	baseDir := t.TempDir()
 	sourceDir := t.TempDir()

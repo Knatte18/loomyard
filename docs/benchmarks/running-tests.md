@@ -90,6 +90,7 @@ Exit code mirrors `go test`: `0` on success, `1` if any package fails to build o
 
 `go run ./cmd/testtiming -redundancy` writes the per-test coverage redundancy report; the committed report is [test-redundancy.md](test-redundancy.md).
 The before and after measurement of the six-package prune is [test-suite-prune-core.md](test-suite-prune-core.md).
+The before and after measurement of the `test-suite-prune-rest` task is [test-suite-prune-rest.md](test-suite-prune-rest.md).
 The report judges a test unless it may run this module's code in another process.
 What that excludes, and the hand check that backs up the static scan, are in `pattern/PATTERN-test-economy.md`.
 A candidate the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.

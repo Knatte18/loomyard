@@ -2,48 +2,32 @@ package shedrun
 
 import "testing"
 
-func TestValidateRunID(t *testing.T) {
+// TestRunIDVocabulary pins which run-ids are valid and which one is reserved.
+func TestRunIDVocabulary(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name    string
-		runID   string
-		wantErr bool
+		name         string
+		runID        string
+		wantInvalid  bool
+		wantReserved bool
 	}{
-		{"dotdot", "..", true},
-		{"nested_slash", "a/b", true},
-		{"absolute", "/abs", true},
-		{"empty", "", true},
-		{"self", "self", false},
-		{"ordinary_slug", "seeded-shed-core", false},
-		{"dot", ".", true},
-		{"backslash", `a\b`, true},
+		{"dotdot", "..", true, false},
+		{"nested_slash", "a/b", true, false},
+		{"absolute", "/abs", true, false},
+		{"empty", "", true, false},
+		{"self", "self", false, true},
+		{"ordinary_slug", "seeded-shed-core", false, false},
+		{"dot", ".", true, false},
+		{"backslash", `a\b`, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateRunID(tt.runID)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateRunID(%q) = %v; want error = %v", tt.runID, err, tt.wantErr)
+			t.Parallel()
+			if err := ValidateRunID(tt.runID); (err != nil) != tt.wantInvalid {
+				t.Errorf("ValidateRunID(%q) = %v; want error = %v", tt.runID, err, tt.wantInvalid)
 			}
-		})
-	}
-}
-
-func TestIsReserved(t *testing.T) {
-	tests := []struct {
-		name  string
-		runID string
-		want  bool
-	}{
-		{"dotdot", "..", false},
-		{"nested_slash", "a/b", false},
-		{"absolute", "/abs", false},
-		{"empty", "", false},
-		{"self", "self", true},
-		{"ordinary_slug", "seeded-shed-core", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsReserved(tt.runID); got != tt.want {
-				t.Errorf("IsReserved(%q) = %v; want %v", tt.runID, got, tt.want)
+			if got := IsReserved(tt.runID); got != tt.wantReserved {
+				t.Errorf("IsReserved(%q) = %v; want %v", tt.runID, got, tt.wantReserved)
 			}
 		})
 	}

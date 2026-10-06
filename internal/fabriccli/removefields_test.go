@@ -10,91 +10,107 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 )
 
-func TestRemoveFields_WarpBranchDeleted(t *testing.T) {
-	f := removeFields(fabricengine.RemoveResult{Slug: "s", WarpBranchDeleted: true}, pairteardown.SessionResult{})
-	if got, ok := f["warp_branch_deleted"]; !ok || got != true {
-		t.Fatalf("warp_branch_deleted = %v (present %v), want true", got, ok)
-	}
-	if _, ok := f["warp_branch_kept_reason"]; ok {
-		t.Fatalf("warp_branch_kept_reason present for a deleted branch: %v", f)
-	}
-}
+func TestRemoveFields(t *testing.T) {
+	t.Parallel()
 
-func TestRemoveFields_WarpBranchKept(t *testing.T) {
-	f := removeFields(fabricengine.RemoveResult{Slug: "s", WarpBranchKeptReason: "unmerged commits"}, pairteardown.SessionResult{})
-	if got, ok := f["warp_branch_deleted"]; !ok || got != false {
-		t.Fatalf("warp_branch_deleted = %v (present %v), want false", got, ok)
+	tests := []struct {
+		name    string
+		result  fabricengine.RemoveResult
+		session pairteardown.SessionResult
+		// wantFields are keys that must be present with exactly this value.
+		wantFields map[string]any
+		// wantAbsent are keys that must not be present.
+		wantAbsent []string
+		// wantKeyCount, when non-zero, is the exact number of keys.
+		wantKeyCount int
+	}{
+		{
+			name:       "WarpBranchDeleted",
+			result:     fabricengine.RemoveResult{Slug: "s", WarpBranchDeleted: true},
+			wantFields: map[string]any{"warp_branch_deleted": true},
+			wantAbsent: []string{"warp_branch_kept_reason"},
+		},
+		{
+			name:   "WarpBranchKept",
+			result: fabricengine.RemoveResult{Slug: "s", WarpBranchKeptReason: "unmerged commits"},
+			wantFields: map[string]any{
+				"warp_branch_deleted":     false,
+				"warp_branch_kept_reason": "unmerged commits",
+			},
+		},
+		{
+			name: "ExistingKeysUnchanged",
+			result: fabricengine.RemoveResult{
+				Slug:                "s",
+				Path:                "/p",
+				LinksRemoved:        2,
+				RemoteBranchDeleted: true,
+				RemoteBranchError:   "boom",
+				RemoteSkippedReason: "no origin",
+			},
+			wantFields: map[string]any{
+				"slug":                  "s",
+				"path":                  "/p",
+				"links_removed":         2,
+				"remote_branch_deleted": true,
+				"remote_branch_error":   "boom",
+				"remote_skipped_reason": "no origin",
+			},
+		},
+		{
+			name: "TeardownKeys",
+			result: fabricengine.RemoveResult{
+				Slug:                       "s",
+				Steps:                      []string{"a", "b"},
+				Finished:                   true,
+				StrayPath:                  "/stray",
+				RemoteWarpBranchDeleted:    true,
+				RemoteWarpBranchKeptReason: "not landed",
+			},
+			session: pairteardown.SessionResult{Ended: true, AbandonedSession: "other"},
+			wantFields: map[string]any{
+				"finished":                       true,
+				"stray_path":                     "/stray",
+				"remote_warp_branch_deleted":     true,
+				"remote_warp_branch_kept_reason": "not landed",
+				"session_ended":                  true,
+				"abandoned_session":              "other",
+			},
+		},
+		{
+			name:   "ConditionalKeysAbsentWhenEmpty",
+			result: fabricengine.RemoveResult{Slug: "s"},
+			wantAbsent: []string{
+				"stray_path", "abandoned_session", "remote_warp_branch_kept_reason", "warp_branch_kept_reason",
+			},
+			// The always-present key set: the existing keys plus steps, finished, remote_warp_branch_deleted and session_ended.
+			wantKeyCount: 7 + 4,
+		},
 	}
-	if got := f["warp_branch_kept_reason"]; got != "unmerged commits" {
-		t.Fatalf("warp_branch_kept_reason = %v, want %q", got, "unmerged commits")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestRemoveFields_ExistingKeysUnchanged(t *testing.T) {
-	f := removeFields(fabricengine.RemoveResult{
-		Slug:                "s",
-		Path:                "/p",
-		LinksRemoved:        2,
-		RemoteBranchDeleted: true,
-		RemoteBranchError:   "boom",
-		RemoteSkippedReason: "no origin",
-	}, pairteardown.SessionResult{})
-	want := map[string]any{
-		"slug":                  "s",
-		"path":                  "/p",
-		"links_removed":         2,
-		"remote_branch_deleted": true,
-		"remote_branch_error":   "boom",
-		"remote_skipped_reason": "no origin",
-	}
-	for k, v := range want {
-		if f[k] != v {
-			t.Errorf("%s = %v, want %v", k, f[k], v)
-		}
-	}
-}
+			f := removeFields(tt.result, tt.session)
 
-func TestRemoveFields_TeardownKeys(t *testing.T) {
-	f := removeFields(fabricengine.RemoveResult{
-		Slug:                       "s",
-		Steps:                      []string{"a", "b"},
-		Finished:                   true,
-		StrayPath:                  "/stray",
-		RemoteWarpBranchDeleted:    true,
-		RemoteWarpBranchKeptReason: "not landed",
-	}, pairteardown.SessionResult{Ended: true, AbandonedSession: "other"})
-	if steps, _ := f["steps"].([]string); len(steps) != 2 {
-		t.Errorf("steps = %v, want two entries", f["steps"])
-	}
-	want := map[string]any{
-		"finished":                       true,
-		"stray_path":                     "/stray",
-		"remote_warp_branch_deleted":     true,
-		"remote_warp_branch_kept_reason": "not landed",
-		"session_ended":                  true,
-		"abandoned_session":              "other",
-	}
-	for k, v := range want {
-		if f[k] != v {
-			t.Errorf("%s = %v, want %v", k, f[k], v)
-		}
-	}
-}
-
-func TestRemoveFields_ConditionalKeysAbsentWhenEmpty(t *testing.T) {
-	f := removeFields(fabricengine.RemoveResult{Slug: "s"}, pairteardown.SessionResult{})
-	for _, k := range []string{"stray_path", "abandoned_session", "remote_warp_branch_kept_reason", "warp_branch_kept_reason"} {
-		if _, ok := f[k]; ok {
-			t.Errorf("%s present although empty: %v", k, f)
-		}
-	}
-	steps, ok := f["steps"].([]string)
-	if !ok || steps == nil {
-		t.Errorf("steps = %#v, want a non-nil array", f["steps"])
-	}
-	// The always-present key set: the existing keys plus steps, finished, remote_warp_branch_deleted and session_ended.
-	const wantKeys = 7 + 4
-	if len(f) != wantKeys {
-		t.Errorf("key count = %d, want %d: %v", len(f), wantKeys, f)
+			for key, want := range tt.wantFields {
+				got, present := f[key]
+				if !present || got != want {
+					t.Errorf("%s = %v (present %v), want %v", key, got, present, want)
+				}
+			}
+			for _, key := range tt.wantAbsent {
+				if _, present := f[key]; present {
+					t.Errorf("%s present although empty: %v", key, f)
+				}
+			}
+			steps, ok := f["steps"].([]string)
+			if !ok || steps == nil || len(steps) != len(tt.result.Steps) {
+				t.Errorf("steps = %#v, want a non-nil array of %d entries", f["steps"], len(tt.result.Steps))
+			}
+			if tt.wantKeyCount != 0 && len(f) != tt.wantKeyCount {
+				t.Errorf("key count = %d, want %d: %v", len(f), tt.wantKeyCount, f)
+			}
+		})
 	}
 }

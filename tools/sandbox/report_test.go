@@ -1,6 +1,6 @@
-// report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport
-// validate/stamp/fetch pipeline.
+// report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport validate/stamp/fetch pipeline.
 // All tests use t.TempDir() -- no real lyx, claude, or network calls are made.
+// The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call t.Parallel; the fetchReport tests touch no seam and run in parallel.
 
 package main
 
@@ -47,189 +47,143 @@ func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 	return len(entries) == 0
 }
 
-// TestFetchReport_HappyPath verifies a valid report is fetched and meta is stamped.
-func TestFetchReport_HappyPath(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
+// TestFetchReport_AcceptsValidReport verifies a valid report is fetched into a .scratch directory that fetchReport creates, with its meta stamped from the binary's fingerprint over whatever meta the report carried; a present but empty items array is accepted, not rejected as malformed.
+//
+//testtiming:keep pins the stamped fingerprint and the decoded items of a fetched report, which TestRunFetch_StampsTheResolvedBinary reads only as far as the source
+func TestFetchReport_AcceptsValidReport(t *testing.T) {
+	t.Parallel()
 
-	writeReport(t, repoDir, `{
-		"source": "sandbox-report",
-		"meta": {"fingerprint": {"path": "stale", "sha256": "stale", "size": 0, "modtime": "stale"}},
-		"items": [{"ref": "S6", "title": "bad error", "body": "verdict: WARN\n\nrepro steps"}]
-	}`)
-
-	if _, _, err := fetchReport(repoDir, loomyardRoot, info); err != nil {
-		t.Fatalf("fetchReport() error: %v", err)
-	}
-
-	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
-	raw, err := os.ReadFile(destPath)
-	if err != nil {
-		t.Fatalf("read fetched report %s: %v", destPath, err)
-	}
-
-	var got sandboxReport
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("decode fetched report: %v", err)
-	}
-
-	wantFingerprint := reportFingerprint{
-		Path:    info.Path,
-		SHA256:  info.SHA256,
-		Size:    info.Size,
-		ModTime: info.ModTime.Format(time.RFC3339),
-		Source:  info.Source,
-	}
-	if got.Meta.Fingerprint != wantFingerprint {
-		t.Errorf("Meta.Fingerprint = %+v; want %+v", got.Meta.Fingerprint, wantFingerprint)
-	}
-	if got.Meta.Fingerprint.Source != "prod" {
-		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "prod")
-	}
-
-	if got.Items == nil || len(*got.Items) != 1 {
-		t.Fatalf("Items = %v; want 1 item", got.Items)
-	}
-	gotItem := (*got.Items)[0]
-	wantItem := reportItem{Ref: "S6", Title: "bad error", Body: "verdict: WARN\n\nrepro steps"}
-	if gotItem != wantItem {
-		t.Errorf("Items[0] = %+v; want %+v", gotItem, wantItem)
-	}
-}
-
-// TestFetchReport_EmptyItemsPresent verifies that a report with a present but empty items array is
-// accepted and written, not rejected as malformed.
-func TestFetchReport_EmptyItemsPresent(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
-
-	writeReport(t, repoDir, `{"source": "sandbox-report", "items": []}`)
-
-	if _, _, err := fetchReport(repoDir, loomyardRoot, info); err != nil {
-		t.Fatalf("fetchReport() error: %v", err)
-	}
-
-	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
-	if _, err := os.Stat(destPath); err != nil {
-		t.Errorf("fetched report not written: %v", err)
-	}
-}
-
-// TestFetchReport_ItemsKeyAbsent verifies reports missing items are rejected.
-func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
-
-	writeReport(t, repoDir, `{"source": "sandbox-report"}`)
-
-	_, _, err := fetchReport(repoDir, loomyardRoot, info)
-	if err == nil {
-		t.Fatal("fetchReport() error = nil; want error for missing items key")
-	}
-	if !strings.Contains(err.Error(), "items") {
-		t.Errorf("error = %q; want it to mention items", err.Error())
-	}
-	if !scratchIsEmpty(t, loomyardRoot) {
-		t.Error(".scratch was written to despite a rejected report")
-	}
-}
-
-// TestFetchReport_MalformedJSON verifies that truncated/non-JSON input produces a parse error
-// mentioning the source path,
-// and writes nothing.
-func TestFetchReport_MalformedJSON(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
-
-	writeReport(t, repoDir, `{"source": "sandbox-report", "items": [`)
-
-	_, _, err := fetchReport(repoDir, loomyardRoot, info)
-	if err == nil {
-		t.Fatal("fetchReport() error = nil; want parse error for malformed JSON")
-	}
-	wantPath := filepath.Join(repoDir, reportFileName)
-	if !strings.Contains(err.Error(), wantPath) {
-		t.Errorf("error = %q; want it to mention path %q", err.Error(), wantPath)
-	}
-	if !scratchIsEmpty(t, loomyardRoot) {
-		t.Error(".scratch was written to despite a malformed report")
-	}
-}
-
-// TestFetchReport_WrongSource verifies that a structurally valid report with a missing or incorrect
-// "source" field is rejected by validation.
-func TestFetchReport_WrongSource(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
+		name      string
+		body      string
+		wantItems []reportItem
 	}{
-		{"wrong_value", `{"source": "something-else", "items": []}`},
-		{"missing_field", `{"items": []}`},
+		{
+			name: "items and stale meta",
+			body: `{
+			"source": "sandbox-report",
+			"meta": {"fingerprint": {"path": "stale", "sha256": "stale", "size": 0, "modtime": "stale"}},
+			"items": [{"ref": "S6", "title": "bad error", "body": "verdict: WARN\n\nrepro steps"}]
+		}`,
+			wantItems: []reportItem{{Ref: "S6", Title: "bad error", Body: "verdict: WARN\n\nrepro steps"}},
+		},
+		{
+			name:      "empty items array",
+			body:      `{"source": "sandbox-report", "items": []}`,
+			wantItems: []reportItem{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			repoDir := t.TempDir()
 			loomyardRoot := t.TempDir()
 			info := fakeBinaryInfo()
 
+			scratchDir := filepath.Join(loomyardRoot, ".scratch")
+			if _, err := os.Stat(scratchDir); !os.IsNotExist(err) {
+				t.Fatalf(".scratch unexpectedly pre-exists: %v", err)
+			}
+
 			writeReport(t, repoDir, tt.body)
 
-			_, _, err := fetchReport(repoDir, loomyardRoot, info)
-			if err == nil {
-				t.Fatal("fetchReport() error = nil; want validation error for wrong source")
+			if _, _, err := fetchReport(repoDir, loomyardRoot, info); err != nil {
+				t.Fatalf("fetchReport() error: %v", err)
 			}
-			if !strings.Contains(err.Error(), "source") {
-				t.Errorf("error = %q; want it to mention source", err.Error())
+
+			destPath := filepath.Join(scratchDir, "sandbox-report-"+info.SHA256+".json")
+			raw, err := os.ReadFile(destPath)
+			if err != nil {
+				t.Fatalf("read fetched report %s: %v", destPath, err)
+			}
+
+			var got sandboxReport
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("decode fetched report: %v", err)
+			}
+
+			wantFingerprint := reportFingerprint{
+				Path:    info.Path,
+				SHA256:  info.SHA256,
+				Size:    info.Size,
+				ModTime: info.ModTime.Format(time.RFC3339),
+				Source:  info.Source,
+			}
+			if got.Meta.Fingerprint != wantFingerprint {
+				t.Errorf("Meta.Fingerprint = %+v; want %+v", got.Meta.Fingerprint, wantFingerprint)
+			}
+			if got.Meta.Fingerprint.Source != "prod" {
+				t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "prod")
+			}
+
+			if got.Items == nil || len(*got.Items) != len(tt.wantItems) {
+				t.Fatalf("Items = %v; want %d items", got.Items, len(tt.wantItems))
+			}
+			for i, wantItem := range tt.wantItems {
+				if gotItem := (*got.Items)[i]; gotItem != wantItem {
+					t.Errorf("Items[%d] = %+v; want %+v", i, gotItem, wantItem)
+				}
 			}
 		})
 	}
 }
 
-// TestFetchReport_MissingReport verifies that an absent sandbox-report.json produces a missing-file
-// error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from
-// "the agent wrote garbage".
-func TestFetchReport_MissingReport(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
+// TestFetchReport_RejectsInvalidReport verifies every unusable report is refused with an error that names the cause, and that nothing is written to .scratch: a missing items key, truncated JSON (the error names the source path), a missing or incorrect "source" field, and an absent file (a missing-file error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from "the agent wrote garbage").
+func TestFetchReport_RejectsInvalidReport(t *testing.T) {
+	t.Parallel()
 
-	_, _, err := fetchReport(repoDir, loomyardRoot, info)
-	if err == nil {
-		t.Fatal("fetchReport() error = nil; want error for missing report file")
+	tests := []struct {
+		name string
+		// body is the report text; a nil body leaves the report file absent.
+		body *string
+		// wantInErr is a substring the error must carry.
+		wantInErr string
+		// wantPathInErr additionally requires the error to name the report's path.
+		wantPathInErr bool
+		// wantNotInErr is a substring the error must not carry.
+		wantNotInErr string
+	}{
+		{name: "items key absent", body: ptr(`{"source": "sandbox-report"}`), wantInErr: "items"},
+		{name: "malformed JSON", body: ptr(`{"source": "sandbox-report", "items": [`), wantPathInErr: true},
+		{name: "wrong source value", body: ptr(`{"source": "something-else", "items": []}`), wantInErr: "source"},
+		{name: "missing source field", body: ptr(`{"items": []}`), wantInErr: "source"},
+		{name: "report absent", wantInErr: "not found", wantNotInErr: "parse"},
 	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error = %q; want it to mention the report was not found", err.Error())
-	}
-	if strings.Contains(err.Error(), "parse") {
-		t.Errorf("error = %q; missing-report error should not look like a parse error", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repoDir := t.TempDir()
+			loomyardRoot := t.TempDir()
+			info := fakeBinaryInfo()
+
+			if tt.body != nil {
+				writeReport(t, repoDir, *tt.body)
+			}
+
+			_, _, err := fetchReport(repoDir, loomyardRoot, info)
+			if err == nil {
+				t.Fatal("fetchReport() error = nil; want a rejection")
+			}
+			if !strings.Contains(err.Error(), tt.wantInErr) {
+				t.Errorf("error = %q; want it to mention %q", err.Error(), tt.wantInErr)
+			}
+			if wantPath := filepath.Join(repoDir, reportFileName); tt.wantPathInErr && !strings.Contains(err.Error(), wantPath) {
+				t.Errorf("error = %q; want it to mention path %q", err.Error(), wantPath)
+			}
+			if tt.wantNotInErr != "" && strings.Contains(err.Error(), tt.wantNotInErr) {
+				t.Errorf("error = %q; want it not to mention %q", err.Error(), tt.wantNotInErr)
+			}
+			if !scratchIsEmpty(t, loomyardRoot) {
+				t.Error(".scratch was written to despite a rejected report")
+			}
+		})
 	}
 }
 
-// TestFetchReport_ScratchDirCreated verifies that fetchReport creates loomyardRoot/.scratch when it
-// does not already exist.
-func TestFetchReport_ScratchDirCreated(t *testing.T) {
-	repoDir := t.TempDir()
-	loomyardRoot := t.TempDir()
-	info := fakeBinaryInfo()
-
-	scratchDir := filepath.Join(loomyardRoot, ".scratch")
-	if _, err := os.Stat(scratchDir); !os.IsNotExist(err) {
-		t.Fatalf(".scratch unexpectedly pre-exists: %v", err)
-	}
-
-	writeReport(t, repoDir, `{"source": "sandbox-report", "items": []}`)
-
-	if _, _, err := fetchReport(repoDir, loomyardRoot, info); err != nil {
-		t.Fatalf("fetchReport() error: %v", err)
-	}
-	if _, err := os.Stat(scratchDir); err != nil {
-		t.Errorf(".scratch was not created: %v", err)
-	}
-}
+// ptr returns a pointer to s.
+func ptr(s string) *string { return &s }
 
 // makeFetchHubRepo builds the Hub repo layout and returns parentDir and repoDir.
 func makeFetchHubRepo(t *testing.T) (parentDir, repoDir string) {
@@ -260,89 +214,83 @@ func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	}
 }
 
-// TestRunFetch_HappyPath verifies runFetch fetches a valid report.
-func TestRunFetch_HappyPath(t *testing.T) {
-	parentDir, repoDir := makeFetchHubRepo(t)
-	loomyardRoot := t.TempDir()
+// TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with the fingerprint of the binary resolveLyx picked: the on-PATH binary as prod, or the dev binary as dev without consulting PATH at all.
+func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantSource string
+		// stubSeams installs the resolveLyx seams and returns the binary runFetch must resolve.
+		stubSeams func(t *testing.T, parentDir string) string
+	}{
+		{
+			name:       "on-PATH binary is prod",
+			wantSource: sourceProd,
+			stubSeams: func(t *testing.T, parentDir string) string {
+				fakeLyx := filepath.Join(parentDir, "lyx.exe")
+				if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
+					t.Fatalf("write fake lyx: %v", err)
+				}
+				t.Cleanup(stubLyxLookPath(t, fakeLyx))
+				return fakeLyx
+			},
+		},
+		{
+			name:       "dev binary skips the PATH fallback",
+			wantSource: sourceDev,
+			stubSeams: func(t *testing.T, parentDir string) string {
+				devBinDir := filepath.Join(parentDir, ".dev-bin")
+				if err := os.MkdirAll(devBinDir, 0o755); err != nil {
+					t.Fatalf("mkdir dev-bin dir: %v", err)
+				}
+				devLyx := filepath.Join(devBinDir, "lyx")
+				if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
+					t.Fatalf("write fake dev lyx: %v", err)
+				}
 
-	fakeLyx := filepath.Join(parentDir, "lyx.exe")
-	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake lyx: %v", err)
-	}
-	restore := stubLyxLookPath(t, fakeLyx)
-	defer restore()
+				oldDevBinPath := devBinPath
+				t.Cleanup(func() { devBinPath = oldDevBinPath })
+				devBinPath = func() (string, error) { return devLyx, nil }
 
-	writeReport(t, repoDir, `{"source": "sandbox-report", "items": []}`)
+				oldLookPath := lookPath
+				t.Cleanup(func() { lookPath = oldLookPath })
+				lookPath = func(name string) (string, error) {
+					t.Errorf("unexpected lookPath call for %q; a resolvable dev binary should skip the PATH fallback", name)
+					return "", fmt.Errorf("not found on PATH: %s", name)
+				}
+				return devLyx
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parentDir, repoDir := makeFetchHubRepo(t)
+			loomyardRoot := t.TempDir()
+			binPath := tt.stubSeams(t, parentDir)
 
-	if err := runFetch(parentDir, loomyardRoot); err != nil {
-		t.Fatalf("runFetch() error: %v", err)
-	}
+			writeReport(t, repoDir, `{"source": "sandbox-report", "items": []}`)
 
-	// The destination name embeds the SHA256 of the on-PATH binary runFetch hashed.
-	info, err := binaryFingerprint(fakeLyx, sourceProd)
-	if err != nil {
-		t.Fatalf("binaryFingerprint: %v", err)
-	}
-	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
-	raw, err := os.ReadFile(destPath)
-	if err != nil {
-		t.Fatalf("fetched report not found at %s: %v", destPath, err)
-	}
-	var got sandboxReport
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("decode fetched report: %v", err)
-	}
-	if got.Meta.Fingerprint.Source != "prod" {
-		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "prod")
-	}
-}
+			if err := runFetch(parentDir, loomyardRoot); err != nil {
+				t.Fatalf("runFetch() error: %v", err)
+			}
 
-// TestRunFetch_DevBinary verifies runFetch resolves a dev binary and stamps it.
-func TestRunFetch_DevBinary(t *testing.T) {
-	parentDir, repoDir := makeFetchHubRepo(t)
-	loomyardRoot := t.TempDir()
-
-	devBinDir := filepath.Join(parentDir, ".dev-bin")
-	if err := os.MkdirAll(devBinDir, 0o755); err != nil {
-		t.Fatalf("mkdir dev-bin dir: %v", err)
-	}
-	devLyx := filepath.Join(devBinDir, "lyx")
-	if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
-		t.Fatalf("write fake dev lyx: %v", err)
-	}
-
-	oldDevBinPath := devBinPath
-	defer func() { devBinPath = oldDevBinPath }()
-	devBinPath = func() (string, error) { return devLyx, nil }
-
-	oldLookPath := lookPath
-	defer func() { lookPath = oldLookPath }()
-	lookPath = func(name string) (string, error) {
-		t.Errorf("unexpected lookPath call for %q; a resolvable dev binary should skip the PATH fallback", name)
-		return "", fmt.Errorf("not found on PATH: %s", name)
-	}
-
-	writeReport(t, repoDir, `{"source": "sandbox-report", "items": []}`)
-
-	if err := runFetch(parentDir, loomyardRoot); err != nil {
-		t.Fatalf("runFetch() error: %v", err)
-	}
-
-	info, err := binaryFingerprint(devLyx, sourceDev)
-	if err != nil {
-		t.Fatalf("binaryFingerprint: %v", err)
-	}
-	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
-	raw, err := os.ReadFile(destPath)
-	if err != nil {
-		t.Fatalf("fetched report not found at %s: %v", destPath, err)
-	}
-	var got sandboxReport
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("decode fetched report: %v", err)
-	}
-	if got.Meta.Fingerprint.Source != "dev" {
-		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "dev")
+			// The destination name embeds the SHA256 of the binary runFetch hashed.
+			info, err := binaryFingerprint(binPath, tt.wantSource)
+			if err != nil {
+				t.Fatalf("binaryFingerprint: %v", err)
+			}
+			destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
+			raw, err := os.ReadFile(destPath)
+			if err != nil {
+				t.Fatalf("fetched report not found at %s: %v", destPath, err)
+			}
+			var got sandboxReport
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("decode fetched report: %v", err)
+			}
+			if got.Meta.Fingerprint.Source != tt.wantSource {
+				t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, tt.wantSource)
+			}
+		})
 	}
 }
 

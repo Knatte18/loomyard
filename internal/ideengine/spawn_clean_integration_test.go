@@ -1,8 +1,8 @@
 //go:build integration
 
-// spawn_clean_integration_test.go drives Spawn against real hubs from hubforge.NewHub and hubforge.AddPair:
-// the interactive chain, a clean tree through info/exclude, the overwrite of an untracked tasks.json and the tracked-tasks.json skip.
-// Serial by design, because every test swaps the package-level CodeLauncher.
+// spawn_clean_integration_test.go holds the interactive-chain Spawn checks that run against task pairs and the prime of one hubforge hub:
+// a clean tree through info/exclude, the overwrite of an untracked tasks.json and the tracked-tasks.json skip.
+// Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
 
@@ -19,8 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-const cleanSlug = "some-task"
 
 // commitFile writes content to rel under dir and commits it, force-adding because the path may be ignored.
 func commitFile(t *testing.T, dir, rel, content string) {
@@ -70,60 +68,46 @@ func assertInteractiveChain(t *testing.T, anchorDir string) {
 	}
 }
 
-// TestSpawnTaskPairStaysCleanThroughExclude asserts a repo with a tracked .gitignore stays clean after Spawn, with .vscode/ ignored through info/exclude or already ignored by the repo.
-func TestSpawnTaskPairStaysCleanThroughExclude(t *testing.T) {
-	cases := []struct {
-		name        string
-		gitignore   string
-		wantExclude bool
-	}{
-		{"unrelated gitignore", "build/\n", true},
-		{"repo already ignores .vscode", ".vscode/\n", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := hubforge.NewHub(t, ".")
-			l := h.Location
-			launched := recordLauncher(t)
-			hubforge.AddPair(t, h, cleanSlug)
-			worktreeDir := fabricengine.WorktreePath(l, cleanSlug)
-			commitFile(t, worktreeDir, ".gitignore", tc.gitignore)
-			excludePath := sharedExcludePath(t, worktreeDir)
-			excludeBefore, _ := os.ReadFile(excludePath)
+// checkTaskPairStaysClean asserts a repo with a tracked .gitignore stays clean after Spawn, with .vscode/ ignored through info/exclude or already ignored by the repo.
+func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore string, wantExclude bool) {
+	l := h.Location
+	launched := recordLauncher(t)
+	hubforge.AddPair(t, h, slug)
+	worktreeDir := fabricengine.WorktreePath(l, slug)
+	commitFile(t, worktreeDir, ".gitignore", gitignore)
+	excludePath := sharedExcludePath(t, worktreeDir)
+	excludeBefore, _ := os.ReadFile(excludePath)
 
-			if err := Spawn(l, cleanSlug); err != nil {
-				t.Fatalf("Spawn: %v", err)
-			}
-
-			anchorDir := filepath.Join(worktreeDir, l.AnchorRel)
-			if len(*launched) != 1 || (*launched)[0] != anchorDir {
-				t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, anchorDir)
-			}
-			if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
-				t.Errorf("git status --porcelain not empty:\n%s", status)
-			}
-			if out := gitkit.Git(t, worktreeDir, "check-ignore", ".vscode/"); out == "" {
-				t.Errorf("check-ignore reported .vscode/ not ignored")
-			}
-			excludeAfter, _ := os.ReadFile(excludePath)
-			if got := strings.Contains(string(excludeAfter), "/.vscode/"); got != tc.wantExclude {
-				t.Errorf("info/exclude carries the .vscode line = %v, want %v:\n%s", got, tc.wantExclude, excludeAfter)
-			}
-			if !tc.wantExclude && !bytes.Equal(excludeBefore, excludeAfter) {
-				t.Errorf("info/exclude changed:\n%s", excludeAfter)
-			}
-			assertInteractiveChain(t, anchorDir)
-		})
+	if err := Spawn(l, slug); err != nil {
+		t.Fatalf("Spawn: %v", err)
 	}
+
+	anchorDir := filepath.Join(worktreeDir, l.AnchorRel)
+	if len(*launched) != 1 || (*launched)[0] != anchorDir {
+		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, anchorDir)
+	}
+	if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
+		t.Errorf("git status --porcelain not empty:\n%s", status)
+	}
+	if out := gitkit.Git(t, worktreeDir, "check-ignore", ".vscode/"); out == "" {
+		t.Errorf("check-ignore reported .vscode/ not ignored")
+	}
+	excludeAfter, _ := os.ReadFile(excludePath)
+	if got := strings.Contains(string(excludeAfter), "/.vscode/"); got != wantExclude {
+		t.Errorf("info/exclude carries the .vscode line = %v, want %v:\n%s", got, wantExclude, excludeAfter)
+	}
+	if !wantExclude && !bytes.Equal(excludeBefore, excludeAfter) {
+		t.Errorf("info/exclude changed:\n%s", excludeAfter)
+	}
+	assertInteractiveChain(t, anchorDir)
 }
 
-// TestSpawnOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json is untouched.
-func TestSpawnOverwritesTasksKeepsSettings(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkOverwritesTasksKeepsSettings asserts an untracked tasks.json holding an old chain is replaced and an existing settings.json is untouched.
+func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	recordLauncher(t)
-	hubforge.AddPair(t, h, cleanSlug)
-	vscodeDir := filepath.Join(fabricengine.WorktreePath(l, cleanSlug), l.AnchorRel, ".vscode")
+	hubforge.AddPair(t, h, slug)
+	vscodeDir := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, ".vscode")
 	if err := os.MkdirAll(vscodeDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -136,7 +120,7 @@ func TestSpawnOverwritesTasksKeepsSettings(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	if err := Spawn(l, cleanSlug); err != nil {
+	if err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -150,84 +134,77 @@ func TestSpawnOverwritesTasksKeepsSettings(t *testing.T) {
 	}
 }
 
-// TestSpawnSkipsTrackedVSCode asserts a committed tasks.json is left alone, no settings.json or exclude line is written, and the launch still happens, on a task pair and on the prime.
-func TestSpawnSkipsTrackedVSCode(t *testing.T) {
-	for _, onPrime := range []bool{false, true} {
-		name := "task pair"
-		if onPrime {
-			name = "prime"
+// checkSkipsTrackedVSCode asserts a committed tasks.json is left alone, no settings.json or exclude line is written, and the launch still happens, on a task pair and on the prime.
+// It commits to the prime when onPrime is set, so no later step may rely on a clean prime.
+func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime bool) {
+	l := h.Location
+	launched := recordLauncher(t)
+	prime := primeOf(t, h)
+	if onPrime {
+		resetPrimeEditorState(t, h)
+		slug = prime
+	} else {
+		hubforge.AddPair(t, h, slug)
+	}
+	worktreeDir := fabricengine.WorktreePath(l, slug)
+	anchorDir := filepath.Join(worktreeDir, l.AnchorRel)
+	committed := `{"version":"2.0.0","tasks":[]}`
+	commitFile(t, worktreeDir, filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode", "tasks.json")), committed)
+	excludePath := sharedExcludePath(t, worktreeDir)
+	excludeBefore, _ := os.ReadFile(excludePath)
+	logBuf := logcapture.Capture(t)
+
+	if err := Spawn(l, slug); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	got, _ := os.ReadFile(filepath.Join(anchorDir, ".vscode", "tasks.json"))
+	if string(got) != committed {
+		t.Errorf("tracked tasks.json changed:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(anchorDir, ".vscode", "settings.json")); !os.IsNotExist(err) {
+		t.Errorf("settings.json written despite the tracked tasks.json (stat err = %v)", err)
+	}
+	excludeAfter, _ := os.ReadFile(excludePath)
+	if !bytes.Equal(excludeBefore, excludeAfter) {
+		t.Errorf("info/exclude changed:\n%s", excludeAfter)
+	}
+	if !strings.Contains(logBuf.String(), "tracked .vscode/tasks.json") {
+		t.Errorf("no tracked-skip warning logged:\n%s", logBuf.String())
+	}
+	want := anchorDir
+	if onPrime {
+		want = fabricengine.HubWorkspacePath(l, prime)
+		if _, err := os.Stat(want); err != nil {
+			t.Errorf("hub workspace file not written: %v", err)
 		}
-		t.Run(name, func(t *testing.T) {
-			h := hubforge.NewHub(t, ".")
-			l := h.Location
-			launched := recordLauncher(t)
-			prime := primeOf(t, h)
-			slug := cleanSlug
-			if onPrime {
-				slug = prime
-			} else {
-				hubforge.AddPair(t, h, cleanSlug)
-			}
-			worktreeDir := fabricengine.WorktreePath(l, slug)
-			anchorDir := filepath.Join(worktreeDir, l.AnchorRel)
-			committed := `{"version":"2.0.0","tasks":[]}`
-			commitFile(t, worktreeDir, filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode", "tasks.json")), committed)
-			excludePath := sharedExcludePath(t, worktreeDir)
-			excludeBefore, _ := os.ReadFile(excludePath)
-			logBuf := logcapture.Capture(t)
-
-			if err := Spawn(l, slug); err != nil {
-				t.Fatalf("Spawn: %v", err)
-			}
-
-			got, _ := os.ReadFile(filepath.Join(anchorDir, ".vscode", "tasks.json"))
-			if string(got) != committed {
-				t.Errorf("tracked tasks.json changed:\n%s", got)
-			}
-			if _, err := os.Stat(filepath.Join(anchorDir, ".vscode", "settings.json")); !os.IsNotExist(err) {
-				t.Errorf("settings.json written despite the tracked tasks.json (stat err = %v)", err)
-			}
-			excludeAfter, _ := os.ReadFile(excludePath)
-			if !bytes.Equal(excludeBefore, excludeAfter) {
-				t.Errorf("info/exclude changed:\n%s", excludeAfter)
-			}
-			if !strings.Contains(logBuf.String(), "tracked .vscode/tasks.json") {
-				t.Errorf("no tracked-skip warning logged:\n%s", logBuf.String())
-			}
-			want := anchorDir
-			if onPrime {
-				want = fabricengine.HubWorkspacePath(l, prime)
-				if _, err := os.Stat(want); err != nil {
-					t.Errorf("hub workspace file not written: %v", err)
-				}
-			}
-			if len(*launched) != 1 || (*launched)[0] != want {
-				t.Errorf("CodeLauncher calls = %v, want [%s]", *launched, want)
-			}
-		})
+	}
+	if len(*launched) != 1 || (*launched)[0] != want {
+		t.Errorf("CodeLauncher calls = %v, want [%s]", *launched, want)
 	}
 }
 
-// TestSpawnPrimeNameFailureOpensBareFolder asserts a Location whose worktree is not a git checkout logs the resolve-prime-name warning and launches the pair's bare folder.
-func TestSpawnPrimeNameFailureOpensBareFolder(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkPrimeNameFailureOpensBareFolder asserts a Location whose worktree is not a git checkout logs the resolve-prime-name warning and launches the pair's bare folder.
+func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	launched := recordLauncher(t)
-	hubforge.AddPair(t, h, cleanSlug)
+	hubforge.AddPair(t, h, slug)
 	notGit := "not-a-checkout"
-	if err := os.MkdirAll(filepath.Join(h.Path, notGit), 0o755); err != nil {
+	notGitDir := filepath.Join(h.Path, notGit)
+	if err := os.MkdirAll(notGitDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.RemoveAll(notGitDir) })
 	l := &lyxcwd.Location{RepoName: h.Location.RepoName, HubPath: h.Path, WorktreeName: notGit, AnchorRel: h.Location.AnchorRel}
 	logBuf := logcapture.Capture(t)
 
-	if err := Spawn(l, cleanSlug); err != nil {
+	if err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
 	if !strings.Contains(logBuf.String(), "resolve prime name") {
 		t.Errorf("no resolve prime name warning logged:\n%s", logBuf.String())
 	}
-	want := filepath.Join(fabricengine.WorktreePath(h.Location, cleanSlug), h.Location.AnchorRel)
+	want := filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel)
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Errorf("CodeLauncher calls = %v, want [%s]", *launched, want)
 	}

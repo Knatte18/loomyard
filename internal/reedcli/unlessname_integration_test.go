@@ -57,7 +57,10 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	return string(out)
 }
 
-func TestUnlessName_LiveOrchSkipsAndDisturbsNothing(t *testing.T) {
+// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today, a live orch makes the add a no-op, and a dead orch pane lets the add proceed.
+// The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
+func TestUnlessName(t *testing.T) {
+	t.Parallel()
 	h := hubforge.NewHub(t, ".")
 	skipWithoutMultiplexer(t, h)
 	worktree := h.PrimeWorktree()
@@ -71,97 +74,75 @@ func TestUnlessName_LiveOrchSkipsAndDisturbsNothing(t *testing.T) {
 	}
 	socket := reedengine.ServerName(h.Path)
 
-	code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())
-	if code != 0 {
-		t.Fatalf("add orch = %d, envelope: %v", code, orch)
-	}
-	orchGUID, _ := orch["guid"].(string)
-	orchName, _ := orch["name"].(string)
-
-	guidsBefore, session, _ := unlessStatus(t, worktree, orchName)
-	panesBefore := unlessPanes(t, cfg.Tmux, socket, session)
-
-	code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude", "--cmd", coldAddLaunchCmd())
-	if code != 0 {
-		t.Fatalf("add --unless-name orch = %d, envelope: %v", code, env)
-	}
-	if skipped, _ := env["skipped"].(bool); !skipped {
-		t.Fatalf("envelope = %v, want skipped: true", env)
-	}
-	unless, _ := env["unless"].(map[string]any)
-	if guid, _ := unless["guid"].(string); guid != orchGUID {
-		t.Errorf("unless.guid = %q, want the orch strand's %q", guid, orchGUID)
+	if !t.Run("NoOrchAddsAsToday", func(t *testing.T) {
+		code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude", "--cmd", coldAddLaunchCmd())
+		if code != 0 {
+			t.Fatalf("add --unless-name orch with no orch = %d, envelope: %v", code, env)
+		}
+		if skipped, _ := env["skipped"].(bool); skipped {
+			t.Fatalf("envelope = %v, want an ordinary add", env)
+		}
+		if name, _ := env["name"].(string); name != hubforge.TestShortname+":claude" {
+			t.Errorf("name = %q, want the claude strand", name)
+		}
+	}) {
+		return
 	}
 
-	guidsAfter, _, _ := unlessStatus(t, worktree, orchName)
-	if strings.Join(guidsAfter, ",") != strings.Join(guidsBefore, ",") {
-		t.Errorf("strand list after skip = %v, want unchanged %v", guidsAfter, guidsBefore)
-	}
-	if panesAfter := unlessPanes(t, cfg.Tmux, socket, session); panesAfter != panesBefore {
-		t.Errorf("panes after skip = %q, want unchanged %q (height and active pane included)", panesAfter, panesBefore)
-	}
-}
+	// The orch strand stays behind for the dead-orch step, whose session the claude strand of the first step keeps alive once the orch pane is gone.
+	var orchName string
+	if !t.Run("LiveOrchSkipsAndDisturbsNothing", func(t *testing.T) {
+		code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())
+		if code != 0 {
+			t.Fatalf("add orch = %d, envelope: %v", code, orch)
+		}
+		orchGUID, _ := orch["guid"].(string)
+		orchName, _ = orch["name"].(string)
 
-func TestUnlessName_NoOrchAddsAsToday(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
-	skipWithoutMultiplexer(t, h)
-	worktree := h.PrimeWorktree()
-	t.Cleanup(func() {
-		var buf bytes.Buffer
-		RunCLIIn(worktree, &buf, []string{"down"})
+		guidsBefore, session, _ := unlessStatus(t, worktree, orchName)
+		panesBefore := unlessPanes(t, cfg.Tmux, socket, session)
+
+		code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude-live", "--cmd", coldAddLaunchCmd())
+		if code != 0 {
+			t.Fatalf("add --unless-name orch = %d, envelope: %v", code, env)
+		}
+		if skipped, _ := env["skipped"].(bool); !skipped {
+			t.Fatalf("envelope = %v, want skipped: true", env)
+		}
+		unless, _ := env["unless"].(map[string]any)
+		if guid, _ := unless["guid"].(string); guid != orchGUID {
+			t.Errorf("unless.guid = %q, want the orch strand's %q", guid, orchGUID)
+		}
+
+		guidsAfter, _, _ := unlessStatus(t, worktree, orchName)
+		if strings.Join(guidsAfter, ",") != strings.Join(guidsBefore, ",") {
+			t.Errorf("strand list after skip = %v, want unchanged %v", guidsAfter, guidsBefore)
+		}
+		if panesAfter := unlessPanes(t, cfg.Tmux, socket, session); panesAfter != panesBefore {
+			t.Errorf("panes after skip = %q, want unchanged %q (height and active pane included)", panesAfter, panesBefore)
+		}
+	}) {
+		return
+	}
+
+	t.Run("DeadOrchPaneAdds", func(t *testing.T) {
+		_, _, orchPane := unlessStatus(t, worktree, orchName)
+		if orchPane == "" {
+			t.Fatalf("no pane id for %q in status", orchName)
+		}
+		if err := exec.Command(cfg.Tmux, "-L", socket, "kill-pane", "-t", orchPane).Run(); err != nil {
+			t.Fatalf("tmux kill-pane: %v", err)
+		}
+
+		code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude-dead", "--cmd", coldAddLaunchCmd())
+		if code != 0 {
+			t.Fatalf("add --unless-name orch with a dead orch = %d, envelope: %v", code, env)
+		}
+		if skipped, _ := env["skipped"].(bool); skipped {
+			t.Fatalf("envelope = %v, want the add to proceed past a dead orch pane", env)
+		}
+		if name, _ := env["name"].(string); name != hubforge.TestShortname+":claude-dead" {
+			t.Errorf("name = %q, want the claude-dead strand", name)
+		}
 	})
-
-	code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude", "--cmd", coldAddLaunchCmd())
-	if code != 0 {
-		t.Fatalf("add --unless-name orch with no orch = %d, envelope: %v", code, env)
-	}
-	if skipped, _ := env["skipped"].(bool); skipped {
-		t.Fatalf("envelope = %v, want an ordinary add", env)
-	}
-	if name, _ := env["name"].(string); name != hubforge.TestShortname+":claude" {
-		t.Errorf("name = %q, want the claude strand", name)
-	}
-}
-
-func TestUnlessName_DeadOrchPaneAdds(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
-	skipWithoutMultiplexer(t, h)
-	worktree := h.PrimeWorktree()
-	t.Cleanup(func() {
-		var buf bytes.Buffer
-		RunCLIIn(worktree, &buf, []string{"down"})
-	})
-	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
-	socket := reedengine.ServerName(h.Path)
-
-	code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())
-	if code != 0 {
-		t.Fatalf("add orch = %d, envelope: %v", code, orch)
-	}
-	// A second strand keeps the session alive once the orch pane is gone.
-	if code, env := unlessRun(t, worktree, "add", "--name", "keeper", "--cmd", coldAddLaunchCmd()); code != 0 {
-		t.Fatalf("add keeper = %d, envelope: %v", code, env)
-	}
-	orchName, _ := orch["name"].(string)
-	_, _, orchPane := unlessStatus(t, worktree, orchName)
-	if orchPane == "" {
-		t.Fatalf("no pane id for %q in status", orchName)
-	}
-	if err := exec.Command(cfg.Tmux, "-L", socket, "kill-pane", "-t", orchPane).Run(); err != nil {
-		t.Fatalf("tmux kill-pane: %v", err)
-	}
-
-	code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude", "--cmd", coldAddLaunchCmd())
-	if code != 0 {
-		t.Fatalf("add --unless-name orch with a dead orch = %d, envelope: %v", code, env)
-	}
-	if skipped, _ := env["skipped"].(bool); skipped {
-		t.Fatalf("envelope = %v, want the add to proceed past a dead orch pane", env)
-	}
-	if name, _ := env["name"].(string); name != hubforge.TestShortname+":claude" {
-		t.Errorf("name = %q, want the claude strand", name)
-	}
 }

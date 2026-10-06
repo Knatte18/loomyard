@@ -4,14 +4,15 @@
 package envsource
 
 import (
-	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from
-// hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
+// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
+//
+//testtiming:keep pins the ".env" filename token itself, which the covering Build rows only read back through DotEnv
 func TestDotEnv(t *testing.T) {
 	t.Parallel()
 
@@ -25,6 +26,7 @@ func TestDotEnv(t *testing.T) {
 }
 
 func TestBuild_DotEnvParsing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		content string
@@ -75,9 +77,18 @@ VAR2=  leading  space`,
 				"VAR2": "  leading  space",
 			},
 		},
+		{
+			name:    "TrailingSpaceAndEmptyValueArePreserved",
+			content: "VAR_WITH_SPACE= exact value \nVAR_EMPTY=",
+			want: map[string]string{
+				"VAR_WITH_SPACE": " exact value ",
+				"VAR_EMPTY":      "",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tmpDir := t.TempDir()
 			dotEnvPath := filepath.Join(tmpDir, ".env")
 			if err := os.WriteFile(dotEnvPath, []byte(tt.content), 0o644); err != nil {
@@ -89,117 +100,52 @@ VAR2=  leading  space`,
 				t.Fatalf("readDotEnv() = %v; want nil", err)
 			}
 
-			if !mapsEqual(got, tt.want) {
+			if !maps.Equal(got, tt.want) {
 				t.Errorf("readDotEnv() = %v; want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestBuild_AbsentDotEnv(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Set a test environment variable
-	t.Setenv("TEST_VAR", "test_value")
-
-	got, err := Build(tmpDir)
-	if err != nil {
-		t.Fatalf("Build() = %v; want nil", err)
-	}
-
-	// Absent .env should still return OS vars
-	if val, ok := got["TEST_VAR"]; !ok {
-		t.Errorf("Build() missing TEST_VAR; want test_value")
-	} else if val != "test_value" {
-		t.Errorf("Build()[TEST_VAR] = %q; want %q", val, "test_value")
-	}
-}
-
-func TestBuild_OSOverlay(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Create a .env file with a variable
-	dotEnvContent := `SHARED_KEY=dotenv_value
-DOTENV_ONLY=from_dotenv`
-	dotEnvPath := filepath.Join(tmpDir, ".env")
-	if err := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o644); err != nil {
-		t.Fatalf("write .env: %v", err)
-	}
-
-	// Set OS environment variable that overlaps
-	t.Setenv("SHARED_KEY", "os_value")
-	t.Setenv("OS_ONLY", "from_os")
-
-	got, err := Build(tmpDir)
-	if err != nil {
-		t.Fatalf("Build() = %v; want nil", err)
-	}
-
-	// OS should win over .env for the shared key
-	if val, ok := got["SHARED_KEY"]; !ok {
-		t.Errorf("Build() missing SHARED_KEY")
-	} else if val != "os_value" {
-		t.Errorf("Build()[SHARED_KEY] = %q; want %q", val, "os_value")
-	}
-
-	// .env-only key should survive
-	if val, ok := got["DOTENV_ONLY"]; !ok {
-		t.Errorf("Build() missing DOTENV_ONLY")
-	} else if val != "from_dotenv" {
-		t.Errorf("Build()[DOTENV_ONLY] = %q; want %q", val, "from_dotenv")
-	}
-
-	// OS-only key should be present
-	if val, ok := got["OS_ONLY"]; !ok {
-		t.Errorf("Build() missing OS_ONLY")
-	} else if val != "from_os" {
-		t.Errorf("Build()[OS_ONLY] = %q; want %q", val, "from_os")
-	}
-}
-
-func TestBuild_MultipleScenarios(t *testing.T) {
+// TestBuild pins the merged environment: .env entries and OS variables both appear, the OS value wins a shared key, and an absent or empty .env leaves just the OS variables.
+// It serializes its rows because they set process environment variables.
+func TestBuild(t *testing.T) {
 	tests := []struct {
 		name       string
 		dotEnvBody string
 		osEnvVars  map[string]string
-		check      func(t *testing.T, got map[string]string)
+		want       map[string]string
 	}{
 		{
-			name:       "EmptyDotEnv",
-			dotEnvBody: "",
-			osEnvVars: map[string]string{
-				"VAR_A": "value_a",
-			},
-			check: func(t *testing.T, got map[string]string) {
-				if val, ok := got["VAR_A"]; !ok || val != "value_a" {
-					t.Errorf("EmptyDotEnv: missing or wrong VAR_A")
-				}
-			},
+			name:      "AbsentDotEnv",
+			osEnvVars: map[string]string{"TEST_VAR": "test_value"},
+			want:      map[string]string{"TEST_VAR": "test_value"},
 		},
 		{
-			name: "DotEnvOnly",
-			dotEnvBody: `KEY1=val1
-KEY2=val2`,
-			osEnvVars: map[string]string{},
-			check: func(t *testing.T, got map[string]string) {
-				if val, ok := got["KEY1"]; !ok || val != "val1" {
-					t.Errorf("DotEnvOnly: missing or wrong KEY1")
-				}
-				if val, ok := got["KEY2"]; !ok || val != "val2" {
-					t.Errorf("DotEnvOnly: missing or wrong KEY2")
-				}
-			},
+			name:      "EmptyDotEnv",
+			osEnvVars: map[string]string{"VAR_A": "value_a"},
+			want:      map[string]string{"VAR_A": "value_a"},
+		},
+		{
+			name:       "DotEnvOnly",
+			dotEnvBody: "KEY1=val1\nKEY2=val2",
+			want:       map[string]string{"KEY1": "val1", "KEY2": "val2"},
+		},
+		{
+			name:       "OSWinsSharedKeyAndBothSidesKeepTheirOwn",
+			dotEnvBody: "SHARED_KEY=dotenv_value\nDOTENV_ONLY=from_dotenv",
+			osEnvVars:  map[string]string{"SHARED_KEY": "os_value", "OS_ONLY": "from_os"},
+			want:       map[string]string{"SHARED_KEY": "os_value", "DOTENV_ONLY": "from_dotenv", "OS_ONLY": "from_os"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			if tt.dotEnvBody != "" {
-				dotEnvPath := filepath.Join(tmpDir, ".env")
-				if err := os.WriteFile(dotEnvPath, []byte(tt.dotEnvBody), 0o644); err != nil {
+				if err := os.WriteFile(DotEnv(tmpDir), []byte(tt.dotEnvBody), 0o644); err != nil {
 					t.Fatalf("write .env: %v", err)
 				}
 			}
-
-			// Set OS env vars
 			for key, val := range tt.osEnvVars {
 				t.Setenv(key, val)
 			}
@@ -209,49 +155,11 @@ KEY2=val2`,
 				t.Fatalf("Build() = %v; want nil", err)
 			}
 
-			tt.check(t, got)
+			for key, want := range tt.want {
+				if val, ok := got[key]; !ok || val != want {
+					t.Errorf("Build()[%s] = %q (present %v); want %q", key, val, ok, want)
+				}
+			}
 		})
-	}
-}
-
-// mapsEqual reports whether two string maps are equal.
-func mapsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		bv, ok := b[k]
-		if !ok || bv != v {
-			return false
-		}
-	}
-	return true
-}
-
-// TestBuild_PrecisionValuePreservation verifies that values are not trimmed and special characters
-// are preserved exactly as written.
-func TestBuild_PrecisionValuePreservation(t *testing.T) {
-	tmpDir := t.TempDir()
-	dotEnvContent := fmt.Sprintf("VAR_WITH_SPACE= exact value \nVAR_EMPTY=%s", "")
-	dotEnvPath := filepath.Join(tmpDir, ".env")
-	if err := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o644); err != nil {
-		t.Fatalf("write .env: %v", err)
-	}
-
-	got, err := readDotEnv(dotEnvPath)
-	if err != nil {
-		t.Fatalf("readDotEnv() = %v; want nil", err)
-	}
-
-	if val, ok := got["VAR_WITH_SPACE"]; !ok {
-		t.Error("readDotEnv() missing VAR_WITH_SPACE")
-	} else if val != " exact value " {
-		t.Errorf("readDotEnv()[VAR_WITH_SPACE] = %q; want %q", val, " exact value ")
-	}
-
-	if val, ok := got["VAR_EMPTY"]; !ok {
-		t.Error("readDotEnv() missing VAR_EMPTY")
-	} else if val != "" {
-		t.Errorf("readDotEnv()[VAR_EMPTY] = %q; want %q", val, "")
 	}
 }

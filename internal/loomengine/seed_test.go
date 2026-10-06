@@ -55,177 +55,170 @@ func coherentFreshProduct() Status {
 	}
 }
 
-func TestCheckSeed_StatusFileMissing(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if report.OK {
-		t.Errorf("CheckSeed(...).OK = true; want false")
-	}
-	if !containsCheck(report.Failures, CheckSeedMissing) {
-		t.Errorf("CheckSeed(...).Failures = %+v; want to contain %q", report.Failures, CheckSeedMissing)
-	}
-}
-
-func TestCheckSeed_MalformedJSON(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	if err := os.WriteFile(statusPath, []byte("{not valid json"), 0o644); err != nil {
-		t.Fatalf("write malformed status file: %v", err)
-	}
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if !containsCheck(report.Failures, CheckSeedIncoherent) {
-		t.Errorf("CheckSeed(...).Failures = %+v; want to contain %q", report.Failures, CheckSeedIncoherent)
-	}
-}
-
-func TestCheckSeed_UnknownTopLevelField(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	body := `{"current_producer":"Loom-Preflight","state":"running","error":"","pause_requested":false,"activity":{"now":"","last":"","wait":""},"history":[],"product":{},"bogus_field":true}`
-	if err := os.WriteFile(statusPath, []byte(body), 0o644); err != nil {
-		t.Fatalf("write status file with unknown field: %v", err)
-	}
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if !containsCheck(report.Failures, CheckSeedIncoherent) {
-		t.Errorf("CheckSeed(...).Failures = %+v; want to contain %q", report.Failures, CheckSeedIncoherent)
-	}
-}
-
-func TestCheckSeed_ProductDoesNotDecodeAsLoomStatus(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	shed := coherentFreshShed("Loom-Preflight", "Loom-Preflight")
-	shed.Product = []byte(`{"slug": 7}`)
-	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
-		t.Fatalf("create status lock parent dir: %v", err)
-	}
-	if err := state.WriteJSON(statusPath, statusLockPath, shed); err != nil {
-		t.Fatalf("state.WriteJSON(...) = %v", err)
-	}
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	found := false
-	for _, f := range report.Failures {
-		if f.Check == CheckSeedIncoherent && strings.Contains(f.Reason, "product does not decode as loom's status shape") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("CheckSeed(...).Failures = %+v; want a %q entry whose reason contains %q", report.Failures, CheckSeedIncoherent, "product does not decode as loom's status shape")
-	}
-}
-
-// TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward writes the status file a broken adapter leaves behind (Shed records its outcome verbatim), asserts the failure ends in the seed-a-new-run way forward, and takes it:
-// a fresh seed is coherent.
-func TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	shed := coherentFreshShed("Loom-Preflight", "Preflight")
-	shed.History[0].Outcome = "weird"
-	writeSeed(t, statusPath, statusLockPath, shed, coherentFreshProduct())
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if report.OK || len(report.Failures) != 1 {
-		t.Fatalf("CheckSeed(...) = %+v; want one failure", report)
-	}
-	f := report.Failures[0]
-	if f.Check != CheckSeedIncoherent || !strings.HasSuffix(f.Reason, "way forward: seed a new run") {
-		t.Errorf("failure = %+v; want seed-incoherent ending in the seed-a-new-run way forward", f)
-	}
-
-	writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
-	report, err = CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil || !report.OK {
-		t.Errorf("CheckSeed(fresh seed) = (%+v, %v); want OK", report, err)
-	}
-}
-
-func TestCheckSeed_CoherentPostRow1Seed(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if !report.OK {
-		t.Errorf("CheckSeed(...) = %+v; want OK true, no failures", report)
-	}
-}
-
-func TestCheckSeed_MkdirAllGuardRegression(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	// statusLockPath sits several directory levels deep in a tree that does not exist yet --
-	// the guard is what stops a worktree with no ephemeral tree from escalating this to an
-	// infra error.
-	statusLockPath := filepath.Join(dir, "a", "b", "c", "d", "status.json.lock")
-
-	shed := coherentFreshShed("Loom-Preflight", "Preflight")
-	product := coherentFreshProduct()
-	raw, err := json.Marshal(product)
-	if err != nil {
-		t.Fatalf("marshal product: %v", err)
-	}
-	shed.Product = raw
-	// The status file itself is written to an already-existing directory -- only the lock
-	// parent is missing, since that is what the guard exists to create.
-	if err := state.WriteJSON(statusPath, filepath.Join(dir, "seed.lock"), shed); err != nil {
-		t.Fatalf("state.WriteJSON(...) = %v", err)
+// TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row ("Loom-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
+// A coherent seed reports OK; each incoherent one reports the failure that names its defect:
+// a missing file, a file that does not decode (malformed JSON, an unknown top-level field), a product that does not decode as loom's status shape, an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim) whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
+// The deep-lock-parent row is the MkdirAll guard's regression: only the lock parent is missing, and that guard stops a worktree with no ephemeral tree from escalating the verdict to an infra error.
+func TestCheckSeed(t *testing.T) {
+	t.Parallel()
+	loomRowTolerated := []string{"Preflight", "Loom-Preflight"}
+	tests := []struct {
+		name string
+		// setup writes the status file under dir and returns the status and lock paths.
+		setup      func(t *testing.T, dir string) (statusPath, statusLockPath string)
+		producer   string
+		tolerated  []string
+		wantOK     bool
+		wantCheck  CheckID
+		wantReason string
+		// wantWayForward, when set, also requires exactly one failure whose reason ends with it.
+		wantWayForward string
+	}{
+		{
+			name: "status file missing",
+			setup: func(t *testing.T, dir string) (string, string) {
+				return filepath.Join(dir, "status.json"), filepath.Join(dir, "ephemeral", "status.json.lock")
+			},
+			wantCheck: CheckSeedMissing,
+		},
+		{
+			name: "malformed JSON",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				if err := os.WriteFile(statusPath, []byte("{not valid json"), 0o644); err != nil {
+					t.Fatalf("write malformed status file: %v", err)
+				}
+				return statusPath, filepath.Join(dir, "ephemeral", "status.json.lock")
+			},
+			wantCheck: CheckSeedIncoherent,
+		},
+		{
+			name: "unknown top-level field",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				body := `{"current_producer":"Loom-Preflight","state":"running","error":"","pause_requested":false,"activity":{"now":"","last":"","wait":""},"history":[],"product":{},"bogus_field":true}`
+				if err := os.WriteFile(statusPath, []byte(body), 0o644); err != nil {
+					t.Fatalf("write status file with unknown field: %v", err)
+				}
+				return statusPath, filepath.Join(dir, "ephemeral", "status.json.lock")
+			},
+			wantCheck: CheckSeedIncoherent,
+		},
+		{
+			name: "product does not decode as loom's status",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
+				shed := coherentFreshShed("Loom-Preflight", "Loom-Preflight")
+				shed.Product = []byte(`{"slug": 7}`)
+				if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+					t.Fatalf("create status lock parent dir: %v", err)
+				}
+				if err := state.WriteJSON(statusPath, statusLockPath, shed); err != nil {
+					t.Fatalf("state.WriteJSON(...) = %v", err)
+				}
+				return statusPath, statusLockPath
+			},
+			wantCheck:  CheckSeedIncoherent,
+			wantReason: "product does not decode as loom's status shape",
+		},
+		{
+			name: "out-of-vocabulary outcome names the way forward",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
+				shed := coherentFreshShed("Loom-Preflight", "Preflight")
+				shed.History[0].Outcome = "weird"
+				writeSeed(t, statusPath, statusLockPath, shed, coherentFreshProduct())
+				return statusPath, statusLockPath
+			},
+			wantCheck:      CheckSeedIncoherent,
+			wantWayForward: "way forward: seed a new run",
+		},
+		{
+			name: "coherent post-row-1 seed",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
+				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
+				return statusPath, statusLockPath
+			},
+			wantOK: true,
+		},
+		{
+			name: "lock parent several levels deep and missing",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				// The status file itself is written to an already-existing directory -- only the lock
+				// parent is missing, since that is what the guard exists to create.
+				shed := coherentFreshShed("Loom-Preflight", "Preflight")
+				raw, err := json.Marshal(coherentFreshProduct())
+				if err != nil {
+					t.Fatalf("marshal product: %v", err)
+				}
+				shed.Product = raw
+				if err := state.WriteJSON(statusPath, filepath.Join(dir, "seed.lock"), shed); err != nil {
+					t.Fatalf("state.WriteJSON(...) = %v", err)
+				}
+				return statusPath, filepath.Join(dir, "a", "b", "c", "d", "status.json.lock")
+			},
+			wantOK: true,
+		},
+		{
+			name: "told producer names are genuinely told",
+			setup: func(t *testing.T, dir string) (string, string) {
+				statusPath := filepath.Join(dir, "status.json")
+				statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
+				writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
+				return statusPath, statusLockPath
+			},
+			producer:  "Some-Other-Producer",
+			tolerated: []string{"Some-Other-Producer"},
+			wantCheck: CheckSeedIncoherent,
+		},
 	}
 
-	report, err := CheckSeed(statusPath, statusLockPath, "Loom-Preflight", []string{"Preflight", "Loom-Preflight"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil (a determined verdict, not an infra error)", err)
-	}
-	if !report.OK {
-		t.Errorf("CheckSeed(...) = %+v; want OK true, no failures", report)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			statusPath, statusLockPath := tt.setup(t, t.TempDir())
+			producer, tolerated := tt.producer, tt.tolerated
+			if producer == "" {
+				producer, tolerated = "Loom-Preflight", loomRowTolerated
+			}
 
-func TestCheckSeed_ToldNamesAreGenuinelyTold(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "ephemeral", "status.json.lock")
-
-	writeSeed(t, statusPath, statusLockPath, coherentFreshShed("Loom-Preflight", "Preflight"), coherentFreshProduct())
-
-	report, err := CheckSeed(statusPath, statusLockPath, "Some-Other-Producer", []string{"Some-Other-Producer"})
-	if err != nil {
-		t.Fatalf("CheckSeed(...) error = %v; want nil", err)
-	}
-	if !containsCheck(report.Failures, CheckSeedIncoherent) {
-		t.Errorf("CheckSeed(...).Failures = %+v; want to contain %q", report.Failures, CheckSeedIncoherent)
+			report, err := CheckSeed(statusPath, statusLockPath, producer, tolerated)
+			if err != nil {
+				t.Fatalf("CheckSeed(...) error = %v; want nil (a determined verdict, not an infra error)", err)
+			}
+			if tt.wantOK {
+				if !report.OK || len(report.Failures) != 0 {
+					t.Errorf("CheckSeed(...) = %+v; want OK true, no failures", report)
+				}
+				return
+			}
+			if report.OK {
+				t.Errorf("CheckSeed(...).OK = true; want false")
+			}
+			if !containsCheck(report.Failures, tt.wantCheck) {
+				t.Errorf("CheckSeed(...).Failures = %+v; want to contain %q", report.Failures, tt.wantCheck)
+			}
+			if tt.wantReason != "" {
+				found := false
+				for _, f := range report.Failures {
+					if f.Check == tt.wantCheck && strings.Contains(f.Reason, tt.wantReason) {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("CheckSeed(...).Failures = %+v; want a %q entry whose reason contains %q", report.Failures, tt.wantCheck, tt.wantReason)
+				}
+			}
+			if tt.wantWayForward != "" {
+				if len(report.Failures) != 1 || !strings.HasSuffix(report.Failures[0].Reason, tt.wantWayForward) {
+					t.Errorf("CheckSeed(...).Failures = %+v; want exactly one failure ending in %q", report.Failures, tt.wantWayForward)
+				}
+			}
+		})
 	}
 }

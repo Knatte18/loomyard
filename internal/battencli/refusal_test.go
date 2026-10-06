@@ -7,12 +7,15 @@ import (
 )
 
 func TestRefuseNonPrime(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		worktreeName string
 		primeName    string
 		primeNameErr error
 		wantErr      bool
+		wantSubstrs  []string
 	}{
 		{
 			name:         "PrimeNameErrRefusesRegardlessOfNames",
@@ -34,29 +37,32 @@ func TestRefuseNonPrime(t *testing.T) {
 			primeName:    "hub-repo",
 			primeNameErr: nil,
 			wantErr:      true,
+			wantSubstrs:  []string{"task-slug", "hub-repo"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := refuseNonPrime(tt.worktreeName, tt.primeName, tt.primeNameErr)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("refuseNonPrime(%q, %q, %v) error = %v; wantErr %v", tt.worktreeName, tt.primeName, tt.primeNameErr, err, tt.wantErr)
 			}
+			if err == nil {
+				return
+			}
+			for _, want := range tt.wantSubstrs {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refuseNonPrime(%q, %q, %v) = %q; want it to name %q", tt.worktreeName, tt.primeName, tt.primeNameErr, err.Error(), want)
+				}
+			}
 		})
 	}
-}
 
-func TestRefuseNonPrime_MessagesAreDistinguishable(t *testing.T) {
-	errFromPrimeNameErr := refuseNonPrime("some-worktree", "some-worktree", errors.New("no main worktree found"))
-	errFromNameMismatch := refuseNonPrime("task-slug", "hub-repo", nil)
-
-	if errFromPrimeNameErr == nil || errFromNameMismatch == nil {
-		t.Fatalf("both refusals must be non-nil; got %v and %v", errFromPrimeNameErr, errFromNameMismatch)
-	}
-	if errFromPrimeNameErr.Error() == errFromNameMismatch.Error() {
-		t.Errorf("the two refusal messages must be distinguishable; both read %q", errFromPrimeNameErr.Error())
-	}
-	if !strings.Contains(errFromNameMismatch.Error(), "task-slug") || !strings.Contains(errFromNameMismatch.Error(), "hub-repo") {
-		t.Errorf("name-mismatch refusal = %q; want it to name both %q and %q", errFromNameMismatch.Error(), "task-slug", "hub-repo")
+	// The two refusal causes must read differently to the operator.
+	fromPrimeNameErr := refuseNonPrime(tests[0].worktreeName, tests[0].primeName, tests[0].primeNameErr)
+	fromNameMismatch := refuseNonPrime(tests[2].worktreeName, tests[2].primeName, tests[2].primeNameErr)
+	if fromPrimeNameErr.Error() == fromNameMismatch.Error() {
+		t.Errorf("the prime-name-error and name-mismatch refusal messages must be distinguishable; both read %q", fromNameMismatch.Error())
 	}
 }

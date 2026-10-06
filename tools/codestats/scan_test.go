@@ -282,11 +282,7 @@ func TestBuild_SplitsSourceFromProse(t *testing.T) {
 	if got := pct(r.Test.Code, r.Source.Code); got != "38.5%" {
 		t.Errorf("test share = %s; want 38.5%% (5 of 13)", got)
 	}
-}
-
-// TestPct_ZeroWholeIsDash asserts an empty bucket prints a dash: a language with no lines
-// has no comment share, and 0.0%% would read as one measured at zero.
-func TestPct_ZeroWholeIsDash(t *testing.T) {
+	// An empty bucket prints a dash: a language with no lines has no comment share, and 0.0% would read as one measured at zero.
 	if got := pct(0, 0); got != "-" {
 		t.Errorf("pct(0, 0) = %q; want %q", got, "-")
 	}

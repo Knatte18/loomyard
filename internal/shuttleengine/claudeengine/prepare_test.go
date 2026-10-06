@@ -1,9 +1,4 @@
-// prepare_test.go covers Prepare's effort and model/version handling: an unrealizable effort is
-// rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's
-// before-artifacts guarantee), a valid effort ends up in the returned Launch.Cmd, an empty effort
-// emits no --effort flag at all, a bare-word model plus version composes into the pinned model id
-// in Launch.Cmd, a dashed model plus version is rejected before any artifact is written, and
-// Spec.ForkSubagents threads through to Launch.Cmd's CLAUDE_CODE_FORK_SUBAGENT env prefix.
+// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the --append-system-prompt notice, ResumeSessionID adoption, and the skills-deferred prompt pointer.
 
 package claudeengine
 
@@ -16,143 +11,120 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestPrepare_BadEffortRejectedBeforeArtifacts proves an unrealizable effort value fails Prepare
-// before prompt.md/settings.json are written — the same before-artifacts guarantee
-// TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would
-// look resumable to a later diagnosis pass.
-func TestPrepare_BadEffortRejectedBeforeArtifacts(t *testing.T) {
-	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", Effort: "bogus"}
-	cfg := shuttleengine.Config{}
+// TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare before prompt.md/settings.json are written — the same before-artifacts guarantee TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would look resumable to a later diagnosis pass.
+// A dashed model with a Version is a contradiction: the id already pins its own version.
+func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
+	t.Parallel()
 
-	c := New()
-	_, err := c.Prepare(runDir, spec, cfg)
-	if err == nil {
-		t.Fatal("Prepare() with an unrealizable effort = nil error; want the validateEffort rejection")
-	}
-	if !strings.Contains(err.Error(), "bogus") {
-		t.Errorf("Prepare() error = %q; want it to name the invalid effort value", err)
-	}
-
-	if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); !os.IsNotExist(statErr) {
-		t.Errorf("prompt.md exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
-	}
-	if _, statErr := os.Stat(filepath.Join(runDir, "settings.json")); !os.IsNotExist(statErr) {
-		t.Errorf("settings.json exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
-	}
-}
-
-// TestPrepare_ValidEffortLandsInLaunchCmd proves a valid effort survives Prepare's validation and
-// is threaded into buildLaunchCmd, appearing in the returned Launch.Cmd exactly as buildLaunchCmd
-// would render it.
-func TestPrepare_ValidEffortLandsInLaunchCmd(t *testing.T) {
-	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", Effort: "high"}
-	cfg := shuttleengine.Config{}
-
-	c := New()
-	launch, err := c.Prepare(runDir, spec, cfg)
-	if err != nil {
-		t.Fatalf("Prepare() with a valid effort error: %v; want nil", err)
-	}
-	if !strings.Contains(launch.Cmd, "--effort 'high'") {
-		t.Errorf("Launch.Cmd = %q; want it to contain --effort 'high'", launch.Cmd)
-	}
-}
-
-// TestPrepare_EmptyEffortEmitsNoFlag proves the zero-value Effort (the common case — no operator
-// override) succeeds and emits no --effort flag at all, deferring entirely to claude's own default.
-func TestPrepare_EmptyEffortEmitsNoFlag(t *testing.T) {
-	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing"}
-	cfg := shuttleengine.Config{}
-
-	c := New()
-	launch, err := c.Prepare(runDir, spec, cfg)
-	if err != nil {
-		t.Fatalf("Prepare() with an empty effort error: %v; want nil", err)
-	}
-	if strings.Contains(launch.Cmd, "--effort") {
-		t.Errorf("Launch.Cmd = %q; want no --effort flag for an empty Spec.Effort", launch.Cmd)
-	}
-}
-
-// TestPrepare_ModelAndVersionComposePinnedID proves Prepare threads spec.Model and spec.Version
-// through resolveModelID, so a Spec naming a bare-word model plus a dotted version produces a
-// launch Cmd containing the pinned model id ("sonnet" + "4.5" -> "claude-sonnet-4-5"), not the
-// bare-word model.
-func TestPrepare_ModelAndVersionComposePinnedID(t *testing.T) {
-	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "sonnet", Version: "4.5"}
-	cfg := shuttleengine.Config{}
-
-	c := New()
-	launch, err := c.Prepare(runDir, spec, cfg)
-	if err != nil {
-		t.Fatalf("Prepare() with model+version error: %v; want nil", err)
-	}
-	if !strings.Contains(launch.Cmd, "--model 'claude-sonnet-4-5'") {
-		t.Errorf("Launch.Cmd = %q; want it to contain --model 'claude-sonnet-4-5'", launch.Cmd)
-	}
-}
-
-// TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts proves a full model id (already
-// containing a dash) combined with a non-empty Version fails Prepare — the id already pins its own
-// version, so a second pin is a contradiction — and that the rejection happens before any run
-// artifact is written, mirroring TestPrepare_BadEffortRejectedBeforeArtifacts's before-artifacts
-// guarantee.
-func TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts(t *testing.T) {
-	runDir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "claude-sonnet-4-5", Version: "4.5"}
-	cfg := shuttleengine.Config{}
-
-	c := New()
-	_, err := c.Prepare(runDir, spec, cfg)
-	if err == nil {
-		t.Fatal("Prepare() with a dashed model + version = nil error; want the resolveModelID rejection")
-	}
-
-	if _, statErr := os.Stat(filepath.Join(runDir, "prompt.md")); !os.IsNotExist(statErr) {
-		t.Errorf("prompt.md exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
-	}
-	if _, statErr := os.Stat(filepath.Join(runDir, "settings.json")); !os.IsNotExist(statErr) {
-		t.Errorf("settings.json exists after a rejected Prepare (stat err=%v); want no artifacts written", statErr)
-	}
-}
-
-// TestPrepare_ForkSubagentsThreadsIntoLaunchCmd proves Prepare threads spec.ForkSubagents through
-// to buildLaunchCmd: a true value produces a Launch.Cmd containing the CLAUDE_CODE_FORK_SUBAGENT
-// env prefix,
-// and a false value (the zero value) produces a Launch.Cmd with no such prefix.
-func TestPrepare_ForkSubagentsThreadsIntoLaunchCmd(t *testing.T) {
 	tests := []struct {
-		name          string
-		forkSubagents bool
-		wantContains  bool
+		name            string
+		spec            shuttleengine.Spec
+		wantErrContains string
 	}{
-		{"fork_mode_on", true, true},
-		{"fork_mode_off", false, false},
+		{"bad_effort", shuttleengine.Spec{Effort: "bogus"}, "bogus"},
+		{"dashed_model_with_version", shuttleengine.Spec{Model: "claude-sonnet-4-5", Version: "4.5"}, ""},
+		{"permission_prompt_on_autonomous", shuttleengine.Spec{PermissionMode: "prompt"}, ""},
+		{"permission_unknown_value", shuttleengine.Spec{PermissionMode: "yolo", Interactive: true}, ""},
+		{"session_id_too_short", shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d"}, ""},
+		{"session_id_uppercase", shuttleengine.Spec{ResumeSessionID: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}, ""},
+		{"session_id_quote", shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"}, ""},
+		{"session_id_no_hyphens", shuttleengine.Spec{ResumeSessionID: "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runDir := t.TempDir()
-			spec := shuttleengine.Spec{Prompt: "do the thing", ForkSubagents: tt.forkSubagents}
-			cfg := shuttleengine.Config{}
+			t.Parallel()
 
-			c := New()
-			launch, err := c.Prepare(runDir, spec, cfg)
-			if err != nil {
-				t.Fatalf("Prepare() error: %v; want nil", err)
+			runDir := t.TempDir()
+			tt.spec.Prompt = "do the thing"
+			_, err := New().Prepare(runDir, tt.spec, shuttleengine.Config{})
+			if err == nil {
+				t.Fatalf("Prepare(%+v) = nil error; want a validation rejection", tt.spec)
 			}
-			gotContains := strings.Contains(launch.Cmd, "CLAUDE_CODE_FORK_SUBAGENT")
-			if gotContains != tt.wantContains {
-				t.Errorf("Launch.Cmd = %q; contains CLAUDE_CODE_FORK_SUBAGENT = %v, want %v", launch.Cmd, gotContains, tt.wantContains)
+			if !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("Prepare() error = %q; want it to contain %q", err, tt.wantErrContains)
+			}
+			for _, name := range []string{"prompt.md", "settings.json"} {
+				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
+					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
+				}
 			}
 		})
 	}
 }
 
+// flagExpectation names the substrings a command line must and must not contain.
+type flagExpectation struct {
+	present []string
+	absent  []string
+}
+
+// TestPrepare_ThreadsSpecIntoLaunchCmds proves Prepare threads the spec into the commands it returns.
+// A valid effort is rendered as buildLaunchCmd would; an empty effort emits no --effort flag at all, deferring entirely to claude's own default;
+// a bare-word model plus a dotted version composes the pinned id ("sonnet" + "4.5" -> "claude-sonnet-4-5") rather than the bare-word model;
+// ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix, and AllowAgentTool does not remove it;
+// an empty ResumeSessionID mints a session as before;
+// and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
+func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
+	t.Parallel()
+
+	const skipPermissions = "--dangerously-skip-permissions"
+	tests := []struct {
+		name        string
+		spec        shuttleengine.Spec
+		cfg         shuttleengine.Config
+		onLaunch    flagExpectation
+		onBothLines flagExpectation
+	}{
+		{name: "valid_effort", spec: shuttleengine.Spec{Effort: "high"}, onLaunch: flagExpectation{present: []string{"--effort 'high'"}}},
+		{name: "empty_effort", spec: shuttleengine.Spec{}, onLaunch: flagExpectation{absent: []string{"--effort"}}},
+		{name: "model_and_version", spec: shuttleengine.Spec{Model: "sonnet", Version: "4.5"}, onLaunch: flagExpectation{present: []string{"--model 'claude-sonnet-4-5'"}}},
+		{name: "fork_subagents_on", spec: shuttleengine.Spec{ForkSubagents: true}, onLaunch: flagExpectation{present: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
+		{name: "fork_subagents_off", spec: shuttleengine.Spec{ForkSubagents: false}, onLaunch: flagExpectation{absent: []string{"CLAUDE_CODE_FORK_SUBAGENT"}}},
+		{
+			name:     "fork_env_wrapping_stays_under_allow_agent_tool",
+			spec:     shuttleengine.Spec{ForkSubagents: true, AllowAgentTool: true},
+			cfg:      shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true},
+			onLaunch: flagExpectation{present: []string{"CLAUDE_CODE_FORK_SUBAGENT"}},
+		},
+		{name: "empty_resume_session_id_mints_session", spec: shuttleengine.Spec{}, onLaunch: flagExpectation{present: []string{"--session-id"}, absent: []string{"--resume"}}},
+		{name: "permission_interactive_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: true}, onBothLines: flagExpectation{present: []string{skipPermissions}}},
+		{name: "permission_interactive_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: true}, onBothLines: flagExpectation{absent: []string{skipPermissions}}},
+		{name: "permission_autonomous_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: false}, onBothLines: flagExpectation{present: []string{skipPermissions}}},
+		{name: "permission_autonomous_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: false}, onBothLines: flagExpectation{present: []string{skipPermissions}}},
+		{name: "permission_interactive_prompt", spec: shuttleengine.Spec{PermissionMode: "prompt", Interactive: true}, onBothLines: flagExpectation{absent: []string{skipPermissions}}},
+	}
+	check := func(t *testing.T, label, line string, want flagExpectation) {
+		t.Helper()
+		for _, s := range want.present {
+			if !strings.Contains(line, s) {
+				t.Errorf("%s = %q; want it to contain %q", label, line, s)
+			}
+		}
+		for _, s := range want.absent {
+			if strings.Contains(line, s) {
+				t.Errorf("%s = %q; want it NOT to contain %q", label, line, s)
+			}
+		}
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.spec.Prompt = "do the thing"
+			launch, err := New().Prepare(t.TempDir(), tt.spec, tt.cfg)
+			if err != nil {
+				t.Fatalf("Prepare() error: %v; want nil", err)
+			}
+			check(t, "Launch.Cmd", launch.Cmd, tt.onLaunch)
+			check(t, "Launch.Cmd", launch.Cmd, tt.onBothLines)
+			check(t, "Launch.ResumeCmd", launch.ResumeCmd, tt.onBothLines)
+		})
+	}
+}
+
 // TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt if and only if buildDenyNotice is non-empty, and carry its sentences.
+//
+//testtiming:keep pins --append-system-prompt equal to the notice on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
@@ -181,66 +153,9 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	}
 }
 
-// TestPrepare_PermissionModeThreadsIntoBothLines proves the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
-func TestPrepare_PermissionModeThreadsIntoBothLines(t *testing.T) {
-	const flag = "--dangerously-skip-permissions"
-	tests := []struct {
-		name        string
-		mode        string
-		interactive bool
-		wantFlag    bool
-	}{
-		{"interactive_bypass", "bypass", true, true},
-		{"interactive_empty", "", true, false},
-		{"autonomous_empty", "", false, true},
-		{"autonomous_bypass", "bypass", false, true},
-		{"interactive_prompt", "prompt", true, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
-			launch, err := New().Prepare(t.TempDir(), spec, shuttleengine.Config{})
-			if err != nil {
-				t.Fatalf("Prepare() error: %v; want nil", err)
-			}
-			if got := strings.Contains(launch.Cmd, flag); got != tt.wantFlag {
-				t.Errorf("Launch.Cmd = %q; contains %s = %v, want %v", launch.Cmd, flag, got, tt.wantFlag)
-			}
-			if got := strings.Contains(launch.ResumeCmd, flag); got != tt.wantFlag {
-				t.Errorf("Launch.ResumeCmd = %q; contains %s = %v, want %v", launch.ResumeCmd, flag, got, tt.wantFlag)
-			}
-		})
-	}
-}
-
-// TestPrepare_BadPermissionModeRejectedBeforeArtifacts proves an unrealizable permission mode fails Prepare before prompt.md/settings.json are written.
-func TestPrepare_BadPermissionModeRejectedBeforeArtifacts(t *testing.T) {
-	tests := []struct {
-		name        string
-		mode        string
-		interactive bool
-	}{
-		{"prompt_on_autonomous", "prompt", false},
-		{"unknown_value", "yolo", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runDir := t.TempDir()
-			spec := shuttleengine.Spec{Prompt: "do the thing", PermissionMode: tt.mode, Interactive: tt.interactive}
-			if _, err := New().Prepare(runDir, spec, shuttleengine.Config{}); err == nil {
-				t.Fatal("Prepare() = nil error; want the validatePermissionMode rejection")
-			}
-			for _, name := range []string{"prompt.md", "settings.json"} {
-				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
-					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
-				}
-			}
-		})
-	}
-}
-
-// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume
-// and names the same id on the resume line and in Launch.SessionID.
+// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume and names the same id on the resume line and in Launch.SessionID.
+//
+//testtiming:keep pins that a ResumeSessionID launches with --resume, no --session-id, and the same id on the resume line and in Launch.SessionID, which its covering tests do not assert
 func TestPrepare_ResumeSessionID(t *testing.T) {
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	spec := shuttleengine.Spec{
@@ -269,41 +184,6 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 	}
 	if !strings.Contains(launch.ResumeCmd, "--resume") || !strings.Contains(launch.ResumeCmd, id) {
 		t.Errorf("Launch.ResumeCmd = %q; want --resume naming %q", launch.ResumeCmd, id)
-	}
-}
-
-// TestPrepare_EmptyResumeSessionIDKeepsSessionIDLine proves an empty ResumeSessionID mints a session as before.
-func TestPrepare_EmptyResumeSessionIDKeepsSessionIDLine(t *testing.T) {
-	launch, err := New().Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "x"}, shuttleengine.Config{})
-	if err != nil {
-		t.Fatalf("Prepare() error: %v; want nil", err)
-	}
-	if !strings.Contains(launch.Cmd, "--session-id") || strings.Contains(launch.Cmd, "--resume") {
-		t.Errorf("Launch.Cmd = %q; want --session-id and no --resume", launch.Cmd)
-	}
-}
-
-// TestPrepare_BadResumeSessionIDRejectedBeforeArtifacts proves a malformed id fails Prepare before prompt.md/settings.json are written.
-func TestPrepare_BadResumeSessionIDRejectedBeforeArtifacts(t *testing.T) {
-	tests := []struct{ name, id string }{
-		{"too_short", "0a1b2c3d-4e5f-4a6b-8c7d"},
-		{"uppercase", "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"},
-		{"quote", "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"},
-		{"no_hyphens", "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runDir := t.TempDir()
-			spec := shuttleengine.Spec{Prompt: "x", ResumeSessionID: tt.id}
-			if _, err := New().Prepare(runDir, spec, shuttleengine.Config{}); err == nil {
-				t.Fatal("Prepare() = nil error; want the validateSessionID rejection")
-			}
-			for _, name := range []string{"prompt.md", "settings.json"} {
-				if _, statErr := os.Stat(filepath.Join(runDir, name)); !os.IsNotExist(statErr) {
-					t.Errorf("%s exists after a rejected Prepare (stat err=%v); want no artifacts written", name, statErr)
-				}
-			}
-		})
 	}
 }
 

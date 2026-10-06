@@ -77,6 +77,8 @@ func importsFabricEngine(file *ast.File) bool {
 }
 
 // TestEnforcement_PairTeardownScanIsNotVacuous feeds the scan one offending and one clean snippet.
+//
+//testtiming:keep guard self-check: pins that the chokepoint scan fires on an offending four-argument Remove call, which no other test of the package exercises
 func TestEnforcement_PairTeardownScanIsNotVacuous(t *testing.T) {
 	const offending = `package x
 import "github.com/Knatte18/loomyard/internal/fabricengine"

@@ -18,9 +18,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedcli"
 )
 
-// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic
-// *cobra.Command values.
+// reedStatuslineCommand returns the "statusline" subcommand of reedcli.Command(), failing t when it is absent.
+func reedStatuslineCommand(t *testing.T) *cobra.Command {
+	t.Helper()
+	for _, sub := range reedcli.Command().Commands() {
+		if sub.Name() == "statusline" {
+			return sub
+		}
+	}
+	t.Fatal("reedcli.Command() has no \"statusline\" subcommand")
+	return nil
+}
+
+// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lyx reed statusline" command, which must carry the annotation or the gate is worthless.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		cmd  *cobra.Command
@@ -57,31 +70,19 @@ func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 			cmd:  nil,
 			want: false,
 		},
+		{
+			name: "reed statusline carries the annotation",
+			cmd:  reedStatuslineCommand(t),
+			want: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := skipStencilSeed(tt.cmd); got != tt.want {
 				t.Errorf("skipStencilSeed(%+v) = %v; want %v", tt.cmd, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestReedStatuslineCarriesTheStencilSeedSkipAnnotation walks reedcli.Command()'s subcommands for
-// "statusline" and asserts it carries clihelp.SkipStencilSeedAnnotation set to clihelp.AnnotationEnabled.
-func TestReedStatuslineCarriesTheStencilSeedSkipAnnotation(t *testing.T) {
-	var statusline *cobra.Command
-	for _, sub := range reedcli.Command().Commands() {
-		if sub.Name() == "statusline" {
-			statusline = sub
-			break
-		}
-	}
-	if statusline == nil {
-		t.Fatal("reedcli.Command() has no \"statusline\" subcommand")
-	}
-	if got := statusline.Annotations[clihelp.SkipStencilSeedAnnotation]; got != clihelp.AnnotationEnabled {
-		t.Errorf("reed statusline Annotations[%q] = %q; want %q -- the annotation was silently dropped, making the gate worthless",
-			clihelp.SkipStencilSeedAnnotation, got, clihelp.AnnotationEnabled)
 	}
 }

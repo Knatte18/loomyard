@@ -23,35 +23,33 @@ func handlerReturning(code int) func(io.Writer, []string) int {
 	return func(_ io.Writer, _ []string) int { return code }
 }
 
-func TestExecute_SuccessHandlerReturnsZero(t *testing.T) {
+// TestExecute_HandlerExitCode verifies that Execute returns the exit code of a WrapRun handler.
+func TestExecute_HandlerExitCode(t *testing.T) {
 	t.Parallel()
 
-	root := &cobra.Command{Use: "root", Short: "test root"}
-	root.AddCommand(&cobra.Command{
-		Use:  "ok",
-		RunE: WrapRun(handlerReturning(0)),
-	})
-
-	var buf bytes.Buffer
-	got := Execute(root, &buf, []string{"ok"})
-	if got != 0 {
-		t.Errorf("Execute(ok) = %d; want 0", got)
+	tests := []struct {
+		name string
+		code int
+	}{
+		{"ok", 0},
+		{"fail", 1},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestExecute_FailHandlerReturnsOne(t *testing.T) {
-	t.Parallel()
+			root := &cobra.Command{Use: "root", Short: "test root"}
+			root.AddCommand(&cobra.Command{
+				Use:  tt.name,
+				RunE: WrapRun(handlerReturning(tt.code)),
+			})
 
-	root := &cobra.Command{Use: "root", Short: "test root"}
-	root.AddCommand(&cobra.Command{
-		Use:  "fail",
-		RunE: WrapRun(handlerReturning(1)),
-	})
-
-	var buf bytes.Buffer
-	got := Execute(root, &buf, []string{"fail"})
-	if got != 1 {
-		t.Errorf("Execute(fail) = %d; want 1", got)
+			var buf bytes.Buffer
+			got := Execute(root, &buf, []string{tt.name})
+			if got != tt.code {
+				t.Errorf("Execute(%s) = %d; want %d", tt.name, got, tt.code)
+			}
+		})
 	}
 }
 
@@ -81,35 +79,49 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 	}
 }
 
-func TestWrapRun_ShortCircuitsAfterAbort(t *testing.T) {
+// TestWrap_ShortCircuitsAfterAbort verifies that a WrapRun- or WrapRunCtx-wrapped handler short-circuits without running when Abort was called on the command's context before the leaf fired, and that Execute reports the aborted code.
+func TestWrap_ShortCircuitsAfterAbort(t *testing.T) {
 	t.Parallel()
 
-	// Track whether the leaf RunE body ran.
-	ran := false
-
-	root := &cobra.Command{
-		Use:   "root",
-		Short: "test root",
-		// PersistentPreRunE signals abort before any leaf RunE fires.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			Abort(cmd.Context(), 2)
-			return nil
-		},
+	tests := []struct {
+		name string
+		wrap func(ran *bool) func(*cobra.Command, []string) error
+	}{
+		{"WrapRun", func(ran *bool) func(*cobra.Command, []string) error {
+			return WrapRun(func(_ io.Writer, _ []string) int { *ran = true; return 0 })
+		}},
+		{"WrapRunCtx", func(ran *bool) func(*cobra.Command, []string) error {
+			return WrapRunCtx(func(_ context.Context, _ io.Writer, _ []string) int { *ran = true; return 0 })
+		}},
 	}
-	sub := &cobra.Command{
-		Use:  "leaf",
-		RunE: WrapRun(func(_ io.Writer, _ []string) int { ran = true; return 0 }),
-	}
-	root.AddCommand(sub)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	var buf bytes.Buffer
-	code := Execute(root, &buf, []string{"leaf"})
+			// Track whether the leaf RunE body ran.
+			ran := false
 
-	if ran {
-		t.Error("WrapRun: leaf body ran after Abort; want short-circuit")
-	}
-	if code != 2 {
-		t.Errorf("Execute after Abort = %d; want 2", code)
+			root := &cobra.Command{
+				Use:   "root",
+				Short: "test root",
+				// PersistentPreRunE signals abort before any leaf RunE fires.
+				PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+					Abort(cmd.Context(), 2)
+					return nil
+				},
+			}
+			root.AddCommand(&cobra.Command{Use: "leaf", RunE: tt.wrap(&ran)})
+
+			var buf bytes.Buffer
+			code := Execute(root, &buf, []string{"leaf"})
+
+			if ran {
+				t.Errorf("%s: leaf body ran after Abort; want short-circuit", tt.name)
+			}
+			if code != 2 {
+				t.Errorf("Execute after Abort = %d; want 2", code)
+			}
+		})
 	}
 }
 
@@ -287,41 +299,5 @@ func TestWrapRunCtx_ReceivesCommandContext(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("WrapRunCtx handler observed cwd = %q; want %q", got, want)
-	}
-}
-
-// TestWrapRunCtx_ShortCircuitsAfterAbort verifies that a WrapRunCtx-wrapped
-// handler short-circuits without running when Abort was called on the
-// command's context.
-func TestWrapRunCtx_ShortCircuitsAfterAbort(t *testing.T) {
-	t.Parallel()
-
-	ran := false
-
-	root := &cobra.Command{
-		Use:   "root",
-		Short: "test root",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			Abort(cmd.Context(), 2)
-			return nil
-		},
-	}
-	sub := &cobra.Command{
-		Use: "leaf",
-		RunE: WrapRunCtx(func(_ context.Context, _ io.Writer, _ []string) int {
-			ran = true
-			return 0
-		}),
-	}
-	root.AddCommand(sub)
-
-	var buf bytes.Buffer
-	code := Execute(root, &buf, []string{"leaf"})
-
-	if ran {
-		t.Error("WrapRunCtx: leaf body ran after Abort; want short-circuit")
-	}
-	if code != 2 {
-		t.Errorf("Execute after Abort = %d; want 2", code)
 	}
 }

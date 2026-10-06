@@ -102,6 +102,8 @@ func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 }
 
 // TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant proves the scan helpers fire on an offending source and stay quiet on a compliant or commented one.
+//
+//testtiming:keep proves the scan helpers of the TestVerifiedTree_* guards fire on an offending source and stay quiet on a compliant or commented one
 func TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant(t *testing.T) {
 	tests := []struct {
 		name  string

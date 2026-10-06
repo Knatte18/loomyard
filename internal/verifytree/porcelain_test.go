@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins every porcelain record shape (renames, copies, special characters) over literal input, which the git-backed scenario covering its blocks reaches with one rename and one special name
 func TestParsePorcelainZ(t *testing.T) {
 	tests := []struct {
 		name string

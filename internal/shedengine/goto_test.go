@@ -29,6 +29,7 @@ func gotoShed(t *testing.T) (*Shed, *funcProducer, *funcProducer) {
 	return shed, a, b
 }
 
+//testtiming:keep pins that goto clears Error, Transient and PauseRequested and records the goto history entry and activity, which its covering tests do not
 func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	shed, _, _ := gotoShed(t)
 	seed := commonSeed("B")
@@ -98,67 +99,85 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 	}
 }
 
-func TestGoto_UnknownTargetListsValidNames(t *testing.T) {
-	shed, _, _ := gotoShed(t)
-	seed := commonSeed("B")
-	seed.State = StateBlocked
-	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
-	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
+// TestGoto_RefusalNamesWayForward pins that a refused goto names its way forward and leaves the status file untouched, and that taking the way forward (where one exists) moves the run.
+func TestGoto_RefusalNamesWayForward(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		state   State
+		target  string
+		wantMsg string
+		// recoverTo is the target a goto takes after the refusal; empty when the refusal is terminal.
+		recoverTo string
+	}{
+		{"unknown target lists valid names in list order", StateBlocked, "Z", "way forward: re-run goto with --to naming one of: A, B", "A"},
+		{"done run names seeding a new run", StateDone, "A", "seed a new run", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, _, _ := gotoShed(t)
+			seed := commonSeed("B")
+			seed.State = tt.state
+			seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+			before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
 
-	_, err := Goto(gotoRequest(shed, "Z"))
-	if err == nil {
-		t.Fatal("Goto(...) = nil error; want a refusal")
-	}
-	if !strings.Contains(err.Error(), "way forward: re-run goto with --to naming one of: A, B") {
-		t.Errorf("error %q does not end in a way forward listing the valid names in list order", err)
-	}
-	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
-		t.Errorf("status file changed on an unknown-target refusal")
-	}
-
-	// Taking the way forward: a name from the list moves the run.
-	if _, err := Goto(gotoRequest(shed, "A")); err != nil {
-		t.Errorf("Goto to a listed name = %v; want nil", err)
+			_, err := Goto(gotoRequest(shed, tt.target))
+			if err == nil {
+				t.Fatal("Goto(...) = nil error; want a refusal")
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("error %q does not contain %q", err, tt.wantMsg)
+			}
+			if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
+				t.Errorf("status file changed on a refusal")
+			}
+			if tt.recoverTo != "" {
+				if _, err := Goto(gotoRequest(shed, tt.recoverTo)); err != nil {
+					t.Errorf("Goto to a listed name = %v; want nil", err)
+				}
+			}
+		})
 	}
 }
 
-// TestGoto_MissingStatusFileNamesSeeding pins goto's missing-status refusal to step's way forward:
-// Shed never seeds a status file, so the run is seeded, after which goto moves it.
-func TestGoto_MissingStatusFileNamesSeeding(t *testing.T) {
-	shed, _, _ := gotoShed(t)
+// TestGoto_MissingStatusFileWayForward pins that goto over a missing status file names seeding the run (a told clause replaces the generic seed advice), after which goto moves the seeded run.
+func TestGoto_MissingStatusFileWayForward(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		told       string
+		wantMsg    string
+		wantAbsent string
+	}{
+		{"generic seed advice", "", missingStatusWayForward, ""},
+		{"told clause replaces the seed advice", "way forward: told clause", "way forward: told clause", "lyx shed seed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, _, _ := gotoShed(t)
+			req := gotoRequest(shed, "A")
+			req.MissingStatusWayForward = tt.told
 
-	_, err := Goto(gotoRequest(shed, "A"))
-	if err == nil {
-		t.Fatal("Goto(...) over a missing status file = nil error; want a refusal")
-	}
-	if !strings.Contains(err.Error(), missingStatusWayForward) {
-		t.Errorf("error %q does not name seeding the run as its way forward", err)
-	}
+			_, err := Goto(req)
+			if err == nil {
+				t.Fatal("Goto(...) over a missing status file = nil error; want a refusal")
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("error %q does not name %q", err, tt.wantMsg)
+			}
+			if tt.wantAbsent != "" && strings.Contains(err.Error(), tt.wantAbsent) {
+				t.Errorf("error %q names %q; want the told clause instead", err, tt.wantAbsent)
+			}
 
-	seed := commonSeed("B")
-	seed.State = StateBlocked
-	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
-	if _, err := Goto(gotoRequest(shed, "A")); err != nil {
-		t.Errorf("Goto(...) once the run is seeded = %v; want nil", err)
-	}
-}
-
-func TestGoto_DoneRunRefusedNamingNewSeed(t *testing.T) {
-	shed, _, _ := gotoShed(t)
-	seed := commonSeed("B")
-	seed.State = StateDone
-	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
-	before := readStatus(t, shed.StatusPath, shed.StatusLockPath)
-
-	_, err := Goto(gotoRequest(shed, "A"))
-	if err == nil {
-		t.Fatal("Goto(...) = nil error; want a refusal")
-	}
-	if !strings.Contains(err.Error(), "seed a new run") {
-		t.Errorf("error %q does not name seeding a new run", err)
-	}
-	if after := readStatus(t, shed.StatusPath, shed.StatusLockPath); !reflect.DeepEqual(before, after) {
-		t.Errorf("status file changed on a done refusal")
+			seed := commonSeed("B")
+			seed.State = StateBlocked
+			seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
+			if _, err := Goto(gotoRequest(shed, "A")); err != nil {
+				t.Errorf("Goto(...) once the run is seeded = %v; want nil", err)
+			}
+		})
 	}
 }
 
@@ -318,19 +337,6 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 	}
 }
 
-func TestGoto_BlockedAtBouncerRefusesForwardRows(t *testing.T) {
-	shed := tailShed(t, "Webster-Bouncer", StateBlocked, nil)
-	for _, target := range []string{"Describe", "Publish"} {
-		assertGotoRefused(t, shed, target)
-	}
-	if _, err := Goto(gotoRequest(shed, "Webster-Bouncer")); err != nil {
-		t.Errorf("Goto --to Webster-Bouncer = %v; want nil", err)
-	}
-	if _, err := Goto(gotoRequest(shed, "Webster")); err != nil {
-		t.Errorf("Goto --to Webster = %v; want nil", err)
-	}
-}
-
 func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 	shed := tailShed(t, "Describe", StateRunning, nil)
 	err := assertGotoRefused(t, shed, "Webster")
@@ -357,40 +363,34 @@ func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 	}
 }
 
-func TestGoto_RemovedCurrentRowUsesLatestHistoryEntry(t *testing.T) {
-	history := []HistoryEntry{{Producer: "Webster", Outcome: Done}}
-	shed := tailShed(t, "Removed", StateBlocked, history)
-	assertGotoRefused(t, shed, "Describe")
-	if _, err := Goto(gotoRequest(shed, "Webster-Bouncer")); err != nil {
-		t.Errorf("Goto --to Webster-Bouncer (Webster's OnDone) = %v; want nil", err)
+// TestGoto_BlockedRunAdmitsOnlyEarlierRows pins which rows a blocked run's goto refuses and admits, relative to the row it is blocked at: forward rows are refused, the row itself, an earlier row and an offshoot's partner are admitted.
+// A row removed from the list falls back to the latest history entry's successor.
+func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		current string
+		history []HistoryEntry
+		refuse  []string
+		admit   []string
+	}{
+		{"blocked at a bouncer refuses forward rows", "Webster-Bouncer", nil, []string{"Describe", "Publish"}, []string{"Webster-Bouncer", "Webster"}},
+		{"blocked at an offshoot admits the partner, not the successor", "PR-Rework", nil, []string{"Finalize"}, []string{"PR-Gate"}},
+		{"removed current row uses the latest history entry", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: Done}}, []string{"Describe"}, []string{"Webster-Bouncer"}},
+		{"removed current row with an empty history admits only the first row", "Removed", nil, []string{"Webster-Bouncer"}, []string{"Webster"}},
 	}
-
-	empty := tailShed(t, "Removed", StateBlocked, nil)
-	assertGotoRefused(t, empty, "Webster-Bouncer")
-	if _, err := Goto(gotoRequest(empty, "Webster")); err != nil {
-		t.Errorf("Goto --to Webster with an empty history = %v; want nil", err)
-	}
-}
-
-func TestGoto_BlockedAtOffshootAdmitsPartnerNotSuccessor(t *testing.T) {
-	shed := tailShed(t, "PR-Rework", StateBlocked, nil)
-	assertGotoRefused(t, shed, "Finalize")
-	if _, err := Goto(gotoRequest(shed, "PR-Gate")); err != nil {
-		t.Errorf("Goto --to PR-Gate = %v; want nil", err)
-	}
-}
-
-// TestGoto_MissingStatusFileUsesToldWayForward pins that a told clause replaces the generic seed advice.
-func TestGoto_MissingStatusFileUsesToldWayForward(t *testing.T) {
-	shed, _, _ := gotoShed(t)
-	req := gotoRequest(shed, "A")
-	req.MissingStatusWayForward = "way forward: told clause"
-
-	_, err := Goto(req)
-	if err == nil {
-		t.Fatal("Goto(...) over a missing status file = nil error; want a refusal")
-	}
-	if !strings.Contains(err.Error(), "way forward: told clause") || strings.Contains(err.Error(), "lyx shed seed") {
-		t.Errorf("error %q; want the told clause and not lyx shed seed", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed := tailShed(t, tt.current, StateBlocked, tt.history)
+			for _, target := range tt.refuse {
+				assertGotoRefused(t, shed, target)
+			}
+			for _, target := range tt.admit {
+				if _, err := Goto(gotoRequest(shed, target)); err != nil {
+					t.Errorf("Goto --to %s = %v; want nil", target, err)
+				}
+			}
+		})
 	}
 }

@@ -31,24 +31,37 @@ func cloneHistory(h []HistoryEntry) []HistoryEntry {
 	return out
 }
 
-func TestAppendOrFold_Fold(t *testing.T) {
-	h := []HistoryEntry{exemptStuck("Wait", "x", "t1")}
-	h = appendOrFold(h, exemptStuck("Wait", "x", "t2"))
-	h = appendOrFold(h, exemptStuck("Wait", "x", "t3"))
-	if len(h) != 1 {
-		t.Fatalf("len = %d; want 1", len(h))
+func TestAppendOrFold_Folds(t *testing.T) {
+	t.Parallel()
+	withGate := func(e HistoryEntry, n int) HistoryEntry {
+		e.GateAttempts = intPtr(n)
+		return e
 	}
-	if h[0].At != "t1" || h[0].Repeats != 2 || h[0].LastAt != "t3" {
-		t.Errorf("entry = %+v; want At t1, Repeats 2, LastAt t3", h[0])
+	tests := []struct {
+		name        string
+		entries     []HistoryEntry
+		wantRepeats int
+		wantLastAt  string
+	}{
+		{"consecutive exempt stucks fold into the first entry",
+			[]HistoryEntry{exemptStuck("Wait", "x", "t1"), exemptStuck("Wait", "x", "t2"), exemptStuck("Wait", "x", "t3")}, 2, "t3"},
+		{"equal gate attempts fold",
+			[]HistoryEntry{withGate(exemptStuck("Wait", "x", "t1"), 2), withGate(exemptStuck("Wait", "x", "t2"), 2)}, 1, "t2"},
 	}
-}
-
-func TestAppendOrFold_FoldsEqualGateAttempts(t *testing.T) {
-	a, b := exemptStuck("Wait", "x", "t1"), exemptStuck("Wait", "x", "t2")
-	a.GateAttempts, b.GateAttempts = intPtr(2), intPtr(2)
-	got := appendOrFold([]HistoryEntry{a}, b)
-	if len(got) != 1 || got[0].Repeats != 1 {
-		t.Errorf("got %+v; want one folded entry", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var h []HistoryEntry
+			for _, e := range tt.entries {
+				h = appendOrFold(h, e)
+			}
+			if len(h) != 1 {
+				t.Fatalf("len = %d; want 1", len(h))
+			}
+			if h[0].At != "t1" || h[0].Repeats != tt.wantRepeats || h[0].LastAt != tt.wantLastAt {
+				t.Errorf("entry = %+v; want At t1, Repeats %d, LastAt %s", h[0], tt.wantRepeats, tt.wantLastAt)
+			}
+		})
 	}
 }
 
@@ -94,6 +107,7 @@ func TestAppendOrFold_Appends(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a fold ends at a done or awaiting entry and the next stuck appends fresh, which its covering test does not
 func TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh(t *testing.T) {
 	for _, mid := range []Outcome{Done, Awaiting} {
 		h := []HistoryEntry{exemptStuck("Wait", "x", "t1")}
@@ -112,6 +126,7 @@ func TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that appendOrFold never mutates or aliases its input, which its covering test does not
 func TestAppendOrFold_InputUnchanged(t *testing.T) {
 	gated := exemptStuck("Wait", "x", "t1")
 	gated.GateAttempts = intPtr(1)
@@ -131,6 +146,7 @@ func TestAppendOrFold_InputUnchanged(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a folded history counts the same stuck episode as the unfolded calls, which its covering tests do not
 func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
 	calls := []HistoryEntry{
 		{Producer: "Wait", Outcome: Stuck, At: "t0"},
@@ -156,6 +172,7 @@ func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the repeats and last_at JSON omission and round-trip, which its covering test does not
 func TestHistoryEntry_FoldFieldsOmittedWhenZero(t *testing.T) {
 	b, err := json.Marshal(HistoryEntry{Producer: "Wait", Outcome: Stuck, At: "2026-01-01T00:00:00Z"})
 	if err != nil {

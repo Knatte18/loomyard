@@ -25,30 +25,43 @@ func testPR(fullName, ref string) *github.PullRequest {
 	}}
 }
 
-func TestSameRepoHeads_ExcludesForkHeads(t *testing.T) {
-	prs := []*github.PullRequest{
-		testPR("owner/repo", "task-a"),
-		testPR("someone/repo", "task-b"),
-		testPR("Owner/Repo", "task-c"),
-		{},
-	}
+func TestSameRepoHeads(t *testing.T) {
+	t.Parallel()
 
-	got := sameRepoHeads(prs, "owner", "repo")
+	tests := []struct {
+		name      string
+		prs       []*github.PullRequest
+		wantHeads []string
+	}{
+		{
+			name: "ExcludesForkHeads",
+			prs: []*github.PullRequest{
+				testPR("owner/repo", "task-a"),
+				testPR("someone/repo", "task-b"),
+				testPR("Owner/Repo", "task-c"),
+				{},
+			},
+			wantHeads: []string{"task-a", "task-c"},
+		},
+		{name: "NoPullRequestsIsEmptyNonNil", prs: nil, wantHeads: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if !got["task-a"] || !got["task-c"] {
-		t.Errorf("same-repo heads missing: got %v; want task-a and task-c", got)
-	}
-	if got["task-b"] {
-		t.Errorf("fork head task-b included: got %v", got)
-	}
-	if len(got) != 2 {
-		t.Errorf("got %d heads (%v); want 2", len(got), got)
-	}
-}
+			got := sameRepoHeads(tt.prs, "owner", "repo")
 
-func TestSameRepoHeads_NoPullRequestsIsEmptyNonNil(t *testing.T) {
-	got := sameRepoHeads(nil, "owner", "repo")
-	if got == nil || len(got) != 0 {
-		t.Errorf("sameRepoHeads(nil) = %#v; want an empty non-nil map", got)
+			if got == nil {
+				t.Fatalf("sameRepoHeads = nil; want a non-nil map")
+			}
+			if len(got) != len(tt.wantHeads) {
+				t.Errorf("got %d heads (%v); want %v", len(got), got, tt.wantHeads)
+			}
+			for _, head := range tt.wantHeads {
+				if !got[head] {
+					t.Errorf("same-repo head %q missing: got %v", head, got)
+				}
+			}
+		})
 	}
 }

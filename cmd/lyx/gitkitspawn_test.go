@@ -27,6 +27,7 @@ func gitkitSpawnReference(content string) (string, bool) {
 	return "", false
 }
 
+//testtiming:keep pins the gitkit-spawn definition the TestTierPurity_UntaggedTestsSpawnNothing and TestHermeticGitEnv_GitSpawningPackagesHaveTestMain guards share: every export but HermeticGitEnv spawns, file-name mentions do not
 func TestGitkitSpawnReference(t *testing.T) {
 	// The sample references are assembled at run time so this file's own source carries none.
 	pkg := "git" + "kit."

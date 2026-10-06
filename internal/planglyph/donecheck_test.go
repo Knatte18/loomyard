@@ -1,8 +1,5 @@
-// donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules
-// applied to a hand-built answer index, plus the coverage guard that refuses an answer set which
-// does not cover a target the caller asked about.
-// It is untagged because it touches no repository at all — DoneChecks' own resolve-backed half is
-// covered by donecheck_integration_test.go instead.
+// donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules applied to a hand-built answer index, plus the coverage guard that refuses an answer set which does not cover a target the caller asked about.
+// It touches no repository at all — DoneChecks' own resolve-backed half is covered by donecheck_resolve_test.go instead.
 
 package planglyph
 
@@ -46,8 +43,9 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 	}
 }
 
-// TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so
-// the guard above cannot be satisfied by a version that simply always errors.
+// TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so the guard above cannot be satisfied by a version that simply always errors.
+//
+//testtiming:keep pins the ambiguous rows and the per-arm rule table, which the resolve-backed DoneChecks tests reach only for found and not_found
 func TestDoneCheckVerdicts_Rules(t *testing.T) {
 	t.Parallel()
 
@@ -105,48 +103,5 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 				t.Errorf("finding severity = %q; want %q", findings[0].Severity, SeverityBlocking)
 			}
 		})
-	}
-}
-
-// TestDoneCheckVerdicts_UnreadableStatusFailsClosed pins F1's fail-closed arm (crucible round
-// fable-high-r10): a pre-resolution rejection (Status "", Error/Reason set) or a status outside
-// quarry's four-value vocabulary is the blocking finding glyph-rejected for EVERY check direction —
-// never a pass. The old boolean read both as "the target is gone", silently passing
-// delete-not-done and rename-not-done-old.
-func TestDoneCheckVerdicts_UnreadableStatusFailsClosed(t *testing.T) {
-	t.Parallel()
-
-	card := planparser.Card{Number: 2, Slug: "card"}
-	checkIDs := []string{"create-not-done", "delete-not-done", "rename-not-done-old", "rename-not-done-new"}
-	results := []quarry.ResolveResult{
-		{Target: "internal/greet#Thing", Error: "not a glyph", Reason: "no_separator"},
-		{Target: "internal/greet#Thing", Status: quarry.Status("weird_new_status")},
-	}
-
-	for _, checkID := range checkIDs {
-		for _, r := range results {
-			name := checkID + "/" + string(r.Status)
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-
-				const key = "internal/greet#Thing"
-				entries := []doneCheckEntry{{card: card, checkID: checkID, key: key, display: key}}
-				index := map[string]quarry.ResolveResult{key: r}
-
-				findings, err := doneCheckVerdicts(entries, index)
-				if err != nil {
-					t.Fatalf("doneCheckVerdicts() error = %v; want nil — an unreadable STATUS is a plan-side blocking finding, not infrastructure", err)
-				}
-				if len(findings) != 1 {
-					t.Fatalf("doneCheckVerdicts() = %v; want exactly one glyph-rejected finding — an unreadable answer must never pass a done-check", findings)
-				}
-				if findings[0].Check != "glyph-rejected" {
-					t.Errorf("finding check = %q; want %q", findings[0].Check, "glyph-rejected")
-				}
-				if findings[0].Severity != SeverityBlocking {
-					t.Errorf("finding severity = %q; want %q", findings[0].Severity, SeverityBlocking)
-				}
-			})
-		}
 	}
 }

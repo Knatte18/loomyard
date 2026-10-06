@@ -25,102 +25,79 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParse_ValidParsesTitleAndBody asserts a well-formed summary.md (a "# <title>" heading followed
-// by free-form narrative) parses into its Title and Body exactly, with the heading line itself
-// excluded from Body -- and Body's leading newline preserved.
-func TestParse_ValidParsesTitleAndBody(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, summaryparser.FileName)
-	writeSummaryFile(t, path, "# Added the frobnicator\n\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n")
+// TestParse asserts a well-formed summary.md parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
+func TestParse(t *testing.T) {
+	t.Parallel()
 
-	got, err := summaryparser.Parse(path)
-	if err != nil {
-		t.Fatalf("Parse() error = %v; want nil", err)
-	}
-	if got.Title != "Added the frobnicator" {
-		t.Errorf("Parse() Title = %q; want %q", got.Title, "Added the frobnicator")
-	}
-	wantBody := "\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n"
-	if got.Body != wantBody {
-		t.Errorf("Parse() Body = %q; want %q", got.Body, wantBody)
-	}
-}
-
-// TestParse_LeadingBlankLinesSkipped asserts a heading preceded by blank lines still parses -- the
-// first NON-BLANK line is what must be the heading, not necessarily the file's first line.
-func TestParse_LeadingBlankLinesSkipped(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, summaryparser.FileName)
-	writeSummaryFile(t, path, "\n\n# Title after blank lines\nBody text.\n")
-
-	got, err := summaryparser.Parse(path)
-	if err != nil {
-		t.Fatalf("Parse() error = %v; want nil", err)
-	}
-	if got.Title != "Title after blank lines" {
-		t.Errorf("Parse() Title = %q; want %q", got.Title, "Title after blank lines")
-	}
-}
-
-// TestParse_MissingFile asserts a missing summary.md is a wrapped error, never a guessed nil result.
-func TestParse_MissingFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, summaryparser.FileName)
-
-	if _, err := summaryparser.Parse(path); err == nil {
-		t.Fatalf("Parse() error = nil; want an error for a missing file")
-	}
-}
-
-// TestParse_EmptyFile asserts a present-but-empty (or blank-only) summary.md is rejected loud rather
-// than parsed as a title-less summary.
-func TestParse_EmptyFile(t *testing.T) {
+	missing := "\x00missing"
 	tests := []struct {
-		name    string
-		content string
+		name      string
+		content   string
+		wantTitle string
+		wantBody  string
+		wantErr   error
+		// wantAnyErr marks a failure with no sentinel of its own (a missing file).
+		wantAnyErr bool
 	}{
-		{"zero bytes", ""},
-		{"blank lines only", "\n\n   \n"},
+		{
+			name:      "title and body",
+			content:   "# Added the frobnicator\n\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n",
+			wantTitle: "Added the frobnicator",
+			wantBody:  "\nThe frobnicator now handles widgets.\nIt deviates from the plan by also handling gadgets.\n",
+		},
+		{
+			// The first NON-BLANK line must be the heading, not necessarily the file's first line.
+			name:      "leading blank lines skipped",
+			content:   "\n\n# Title after blank lines\nBody text.\n",
+			wantTitle: "Title after blank lines",
+			wantBody:  "Body text.\n",
+		},
+		{name: "missing file", content: missing, wantAnyErr: true},
+		{name: "zero bytes", content: "", wantErr: summaryparser.ErrEmptyFileForTest},
+		{name: "blank lines only", content: "\n\n   \n", wantErr: summaryparser.ErrEmptyFileForTest},
+		{name: "no heading", content: "Just some narrative with no heading at all.\n", wantErr: summaryparser.ErrNoHeadingForTest},
+		// A blank title trims to a bare "#", so Parse reports it as a missing heading; the
+		// empty-title sentinel guards the branch Parse's own trimming makes unreachable today.
+		{name: "bare hash", content: "# \n", wantErr: summaryparser.ErrNoHeadingForTest},
+		{name: "blank title", content: "#    \nBody text.\n", wantErr: summaryparser.ErrNoHeadingForTest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, summaryparser.FileName)
-			writeSummaryFile(t, path, tt.content)
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), summaryparser.FileName)
+			if tt.content != missing {
+				writeSummaryFile(t, path, tt.content)
+			}
 
-			if _, err := summaryparser.Parse(path); err == nil {
-				t.Fatalf("Parse() error = nil; want an error for %q", tt.name)
+			got, err := summaryparser.Parse(path)
+			if tt.wantAnyErr {
+				if err == nil {
+					t.Fatalf("Parse() error = nil; want an error")
+				}
+				return
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("Parse() error = %v; want errors.Is %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Parse() error = %v; want nil", err)
+			}
+			if got.Title != tt.wantTitle {
+				t.Errorf("Parse() Title = %q; want %q", got.Title, tt.wantTitle)
+			}
+			if got.Body != tt.wantBody {
+				t.Errorf("Parse() Body = %q; want %q", got.Body, tt.wantBody)
 			}
 		})
 	}
 }
 
-// TestParse_NoHeadingFirstLine asserts a file whose first non-blank line is not a "# " heading is
-// rejected loud rather than silently treating the whole file as an untitled body.
-func TestParse_NoHeadingFirstLine(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, summaryparser.FileName)
-	writeSummaryFile(t, path, "Just some narrative with no heading at all.\n")
-
-	if _, err := summaryparser.Parse(path); err == nil {
-		t.Fatalf("Parse() error = nil; want an error for a missing heading")
-	}
-}
-
-// TestParse_EmptyTitle asserts a "# " heading whose title is blank (or whitespace-only) is rejected
-// loud.
-func TestParse_EmptyTitle(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, summaryparser.FileName)
-	writeSummaryFile(t, path, "#    \nBody text.\n")
-
-	if _, err := summaryparser.Parse(path); err == nil {
-		t.Fatalf("Parse() error = nil; want an error for an empty title")
-	}
-}
-
 // TestPath asserts Path joins the told directory with FileName.
 func TestPath(t *testing.T) {
+	t.Parallel()
 	got := summaryparser.Path("/some/told/dir")
 	want := filepath.Join("/some/told/dir", "summary.md")
 	if got != want {
@@ -129,7 +106,10 @@ func TestPath(t *testing.T) {
 }
 
 // TestCommitMessage covers the commitmessage-body-trim Shared Decision's named cases.
+//
+//testtiming:keep pins the CommitMessage trim cases that LandingMessage's test does not
 func TestCommitMessage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		title string
@@ -175,36 +155,11 @@ func TestCommitMessage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := &summaryparser.Summary{Title: tt.title, Body: tt.body}
 			got := s.CommitMessage()
 			if got != tt.want {
 				t.Errorf("CommitMessage() = %q; want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestParse_FailuresMatchSentinels asserts each Parse validation failure wraps its own sentinel.
-func TestParse_FailuresMatchSentinels(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		want    error
-	}{
-		{"empty", "  \n", summaryparser.ErrEmptyFileForTest},
-		{"no heading", "text\n", summaryparser.ErrNoHeadingForTest},
-		// A blank title trims to a bare "#", so Parse reports it as a missing heading; the
-		// empty-title sentinel guards the branch Parse's own trimming makes unreachable today.
-		{"bare hash", "# \n", summaryparser.ErrNoHeadingForTest},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "summary.md")
-			if err := os.WriteFile(path, []byte(tt.content), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := summaryparser.Parse(path); !errors.Is(err, tt.want) {
-				t.Errorf("Parse() error = %v; want errors.Is %v", err, tt.want)
 			}
 		})
 	}

@@ -101,6 +101,16 @@ func TestCheckCoherence(t *testing.T) {
 			wantEmpty:  true,
 		},
 		{
+			// A run parked at the planned hand-off halt stays coherent, so it is resumable.
+			name: "StateAwaitingAndAwaitingHistoryTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.State = shedengine.StateAwaiting
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Awaiting, At: "2026-01-01T00:00:00Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
 			name:       "StateBlockedTolerated",
 			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = shedengine.StateBlocked; return s },
 			wantEmpty:  true,

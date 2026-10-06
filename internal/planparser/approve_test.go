@@ -96,6 +96,12 @@ func TestSetApproved(t *testing.T) {
 			wantRoundTripApproved: true,
 		},
 		{
+			// Only the approved: line is rewritten.
+			name:        "other frontmatter keys keep their order and value",
+			overview:    "---\nformat: 5\napproved: false\nfirst_card: 7\n---\n\n# Plan: p\n\nFraming.\n\n## Card Index\n\n7 — only — the only card\n",
+			wantContent: "---\nformat: 5\napproved: true\nfirst_card: 7\n---\n\n# Plan: p\n\nFraming.\n\n## Card Index\n\n7 — only — the only card\n",
+		},
+		{
 			name:       "missing overview file is an error",
 			noOverview: true,
 			wantErr:    true,
@@ -156,30 +162,5 @@ func TestSetApproved(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestSetApproved_PreservesFirstCard pins that SetApproved rewrites only the approved: line.
-func TestSetApproved_PreservesFirstCard(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	overview := "---\nformat: 5\napproved: false\nfirst_card: 7\n---\n\n# Plan: p\n\nFraming.\n\n## Card Index\n\n7 — only — the only card\n"
-	path := filepath.Join(dir, "00-overview.md")
-	if err := os.WriteFile(path, []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview: %v", err)
-	}
-
-	if err := planparser.SetApproved(dir); err != nil {
-		t.Fatalf("SetApproved error = %v; want nil", err)
-	}
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read overview: %v", err)
-	}
-	want := "---\nformat: 5\napproved: true\nfirst_card: 7\n---\n\n# Plan: p\n\nFraming.\n\n## Card Index\n\n7 — only — the only card\n"
-	if string(got) != want {
-		t.Errorf("overview after SetApproved = %q; want %q", got, want)
 	}
 }

@@ -33,6 +33,7 @@ import (
 // enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run
 // at all for an opted-out command.
 func TestSmokeStatuslineDeclinesStencilSeedPass(t *testing.T) {
+	t.Parallel()
 	// The dev channel stamp makes stencilstore.ModeFor(buildinfo.IsDev()) return ModeDev;
 	// an unstamped binary is production mode and never emits the dev-refusal warn.
 	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")

@@ -269,6 +269,7 @@ func TestConfigMap(t *testing.T) {
 	})
 }
 
+//testtiming:keep pins the sorted-first key named in the refusal and the acceptance of empty and nil configs, which its covering test does not
 func TestConfigRejectUnknown(t *testing.T) {
 	t.Run("OneUnrecognizedKey", func(t *testing.T) {
 		err := configRejectUnknown(Config{"bad": 1, "good": 1}, "good")

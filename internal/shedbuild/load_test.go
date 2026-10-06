@@ -13,6 +13,8 @@ import (
 // TestLoad_WellFormedFileParsesToSameRecipeAsParse writes a well-formed recipe into a t.TempDir()
 // file and asserts Load returns exactly the same Recipe value Parse returns for the same bytes.
 func TestLoad_WellFormedFileParsesToSameRecipeAsParse(t *testing.T) {
+	t.Parallel()
+
 	data := []byte(`
 version: 1
 entry: start
@@ -44,14 +46,25 @@ producers:
 	}
 }
 
-// TestLoad_AbsolutePathNamingNoFileErrors asserts an absolute path naming no file errors.
-func TestLoad_AbsolutePathNamingNoFileErrors(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "does-not-exist.yaml")
+// TestLoad_UnreadableAbsolutePathErrors asserts an absolute path naming no file, and one naming a directory, each error.
+func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
+	t.Parallel()
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatalf("Load(%q) = _, nil; want error", path)
+	dir := t.TempDir()
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"no file", filepath.Join(dir, "does-not-exist.yaml")},
+		{"directory", dir},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := Load(tt.path); err == nil {
+				t.Fatalf("Load(%q) = _, nil; want error", tt.path)
+			}
+		})
 	}
 }
 
@@ -59,6 +72,8 @@ func TestLoad_AbsolutePathNamingNoFileErrors(t *testing.T) {
 // message, using a relative path that does resolve to a real file from the test's working
 // directory -- the only way to make the reject-before-read assertion meaningful.
 func TestLoad_RelativePathErrorsBeforeAnyRead(t *testing.T) {
+	t.Parallel()
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("os.Getwd() = _, %v; want no error", err)
@@ -79,15 +94,5 @@ func TestLoad_RelativePathErrorsBeforeAnyRead(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "must be absolute") {
 		t.Errorf("Load(%q) error = %q; want substring %q", relName, err.Error(), "must be absolute")
-	}
-}
-
-// TestLoad_DirectoryPathErrors asserts a directory path errors.
-func TestLoad_DirectoryPathErrors(t *testing.T) {
-	dir := t.TempDir()
-
-	_, err := Load(dir)
-	if err == nil {
-		t.Fatalf("Load(%q) = _, nil; want error", dir)
 	}
 }

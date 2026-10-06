@@ -19,88 +19,65 @@ func touch(t *testing.T, path string) {
 	}
 }
 
-// TestNotePath_EmptyFrictionDir pins the off-state guard: an empty frictionDir returns "" so Tier
-// 2's off state composes through NotePath with no boolean anywhere.
-func TestNotePath_EmptyFrictionDir(t *testing.T) {
-	if got := NotePath("", "some-id"); got != "" {
-		t.Errorf(`NotePath("", "some-id") = %q; want ""`, got)
-	}
+// TestNotePath_NonClobbering pins the base case and the non-clobbering guarantee.
+// A valid id against an empty directory yields the expected join, and calls with the same id against a directory where the earlier notes now exist yield "id.md", "id-2.md" and "id-3.md" in turn.
+// A gap (id.md and id-3.md present, id-2.md absent) resolves to the first free name, id-2.md, not the highest plus one.
+func TestNotePath_NonClobbering(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SequentialReinvocationSkipsExisting", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		for _, name := range []string{"spawn.md", "spawn-2.md", "spawn-3.md"} {
+			want := filepath.Join(dir, name)
+			got := NotePath(dir, "spawn")
+			if got != want {
+				t.Fatalf("NotePath(%q, %q) = %q; want %q", dir, "spawn", got, want)
+			}
+			touch(t, got)
+		}
+	})
+
+	t.Run("GapResolvesToFirstFree", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		touch(t, filepath.Join(dir, "spawn.md"))
+		touch(t, filepath.Join(dir, "spawn-3.md"))
+
+		want := filepath.Join(dir, "spawn-2.md")
+		if got := NotePath(dir, "spawn"); got != want {
+			t.Errorf("NotePath(gap) = %q; want %q", got, want)
+		}
+	})
 }
 
-// TestNotePath_ValidIDAgainstEmptyDir pins the base case: a valid id against an empty directory
-// yields the expected join.
-func TestNotePath_ValidIDAgainstEmptyDir(t *testing.T) {
-	dir := t.TempDir()
-	want := filepath.Join(dir, "some-id.md")
-	if got := NotePath(dir, "some-id"); got != want {
-		t.Errorf("NotePath(%q, %q) = %q; want %q", dir, "some-id", got, want)
-	}
-}
-
-// TestNotePath_SequentialReinvocationSkipsExisting pins the non-clobbering guarantee: two calls with
-// the same id against a directory where the first note now exists yield "id.md" then "id-2.md", and a
-// third yields "id-3.md".
-func TestNotePath_SequentialReinvocationSkipsExisting(t *testing.T) {
-	dir := t.TempDir()
-	id := "spawn"
-
-	first := NotePath(dir, id)
-	wantFirst := filepath.Join(dir, "spawn.md")
-	if first != wantFirst {
-		t.Fatalf("NotePath(1st) = %q; want %q", first, wantFirst)
-	}
-	touch(t, first)
-
-	second := NotePath(dir, id)
-	wantSecond := filepath.Join(dir, "spawn-2.md")
-	if second != wantSecond {
-		t.Fatalf("NotePath(2nd) = %q; want %q", second, wantSecond)
-	}
-	touch(t, second)
-
-	third := NotePath(dir, id)
-	wantThird := filepath.Join(dir, "spawn-3.md")
-	if third != wantThird {
-		t.Fatalf("NotePath(3rd) = %q; want %q", third, wantThird)
-	}
-}
-
-// TestNotePath_GapResolvesToFirstFree pins "first free, not highest plus one": a gap (id.md and
-// id-3.md present, id-2.md absent) resolves to id-2.md rather than skipping ahead.
-func TestNotePath_GapResolvesToFirstFree(t *testing.T) {
-	dir := t.TempDir()
-	touch(t, filepath.Join(dir, "spawn.md"))
-	touch(t, filepath.Join(dir, "spawn-3.md"))
-
-	want := filepath.Join(dir, "spawn-2.md")
-	if got := NotePath(dir, "spawn"); got != want {
-		t.Errorf("NotePath(gap) = %q; want %q", got, want)
-	}
-}
-
-// TestNotePath_SanitizesID pins every id-sanitization rule: an empty id, an id containing a path
-// separator, an id containing "..", an id equal to "." or "..", and an id whose id+".md" equals
-// ReportFileName all return "".
-func TestNotePath_SanitizesID(t *testing.T) {
+// TestNotePath_ReturnsEmpty pins every guard that returns "".
+// An empty frictionDir is the off-state guard, so Tier 2's off state composes through NotePath with no boolean anywhere.
+// An empty id, an id containing a path separator, an id containing "..", an id equal to "." or "..", and an id whose id+".md" equals ReportFileName are the id-sanitization rules.
+func TestNotePath_ReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	reportStem := ReportFileName[:len(ReportFileName)-len(".md")]
 
 	tests := []struct {
 		name string
+		dir  string
 		id   string
 	}{
-		{"Empty", ""},
-		{"ForwardSlash", "sub/id"},
-		{"Backslash", `sub\id`},
-		{"DotDotElement", "sub/../id"},
-		{"SingleDot", "."},
-		{"DoubleDot", ".."},
-		{"CollidesWithReportFileName", reportStem},
+		{"EmptyFrictionDir", "", "some-id"},
+		{"EmptyID", dir, ""},
+		{"ForwardSlash", dir, "sub/id"},
+		{"Backslash", dir, `sub\id`},
+		{"DotDotElement", dir, "sub/../id"},
+		{"SingleDot", dir, "."},
+		{"DoubleDot", dir, ".."},
+		{"CollidesWithReportFileName", dir, reportStem},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NotePath(dir, tt.id); got != "" {
-				t.Errorf("NotePath(%q, %q) = %q; want \"\"", dir, tt.id, got)
+			t.Parallel()
+			if got := NotePath(tt.dir, tt.id); got != "" {
+				t.Errorf("NotePath(%q, %q) = %q; want \"\"", tt.dir, tt.id, got)
 			}
 		})
 	}

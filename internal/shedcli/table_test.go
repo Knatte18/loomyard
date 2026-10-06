@@ -5,6 +5,7 @@ package shedcli
 
 import (
 	"go/ast"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -25,116 +26,72 @@ const tableScanMinFiles = 3
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
-// TestRecipes_KeySetIsExactlyLoomAndBatten asserts recipes' key set is exactly {"loom",
-// "batten"} -- no more, no fewer.
-func TestRecipes_KeySetIsExactlyLoomAndBatten(t *testing.T) {
-	got := names()
-	want := []string{"batten", "loom"}
-	if len(got) != len(want) {
-		t.Fatalf("names() = %v; want %v", got, want)
+// TestRecipes_KeySet asserts recipes' key set is exactly {"batten", "loom"} and equals shedrun.RecipeNames(), so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot silently drift apart.
+//
+//testtiming:keep pins the table's key set against both literal and the shedrun vocabulary, which its covering test does not
+func TestRecipes_KeySet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		want []string
+	}{
+		{"exactly loom and batten", []string{"batten", "loom"}},
+		{"matches the shedrun vocabulary", shedrun.RecipeNames()},
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("names()[%d] = %q; want %q", i, got[i], want[i])
-		}
-	}
-}
-
-// TestRecipes_VerbsIsSubsetOfGenericVerbs asserts every recipe's Verbs set is a subset of the four
-// generic verbs, and that both loom and batten carry all four now that batch 7 gave batten a step
-// verb (batch 6's own PreStep hook and kind mapping made it armable).
-func TestRecipes_VerbsIsSubsetOfGenericVerbs(t *testing.T) {
-	generic := map[string]bool{}
-	for _, v := range allGenericVerbs {
-		generic[v] = true
-	}
-
-	for name, e := range recipes {
-		for _, v := range e.Verbs {
-			if !generic[v] {
-				t.Errorf("recipe %q declares verb %q, outside the generic set %v", name, v, allGenericVerbs)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := names()
+			if len(got) != len(tt.want) {
+				t.Fatalf("names() = %v; want %v", got, tt.want)
 			}
-		}
-	}
-
-	loom, err := lookup("loom")
-	if err != nil {
-		t.Fatalf("lookup(loom): %v", err)
-	}
-	if len(loom.Verbs) != 5 {
-		t.Errorf("loom.Verbs = %v; want all five generic verbs", loom.Verbs)
-	}
-
-	batten, err := lookup("batten")
-	if err != nil {
-		t.Fatalf("lookup(batten): %v", err)
-	}
-	if len(batten.Verbs) != 5 {
-		t.Errorf("batten.Verbs = %v; want all five generic verbs", batten.Verbs)
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("names()[%d] = %q; want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }
 
-// TestRecipes_KeySetMatchesShedrunVocabulary is the sync meta-test the overview's
-// shedrun-owns-the-recipe-name-vocabulary Shared Decision requires: this table's key set must equal
-// shedrun.RecipeNames() exactly, so the vocabulary internal/shedrun declares and the arming table
-// internal/shedcli declares cannot silently drift apart, mirroring the refKind<->allRefKinds
-// meta-test pattern already used elsewhere in this repo.
-func TestRecipes_KeySetMatchesShedrunVocabulary(t *testing.T) {
-	got := names()
-	want := shedrun.RecipeNames()
-	if len(got) != len(want) {
-		t.Fatalf("names() = %v; want shedrun.RecipeNames() = %v", got, want)
+// TestRecipes_Entries pins each recipe entry: its Verbs are all five generic verbs, its BootstrapVerb equals its own module's exported constant, and its seed-location rule is set only where the recipe's verbs run from prime alone.
+// The table also cannot degenerate to all-empty or all-non-empty bootstrap verbs, which every per-entry equality passes against and which a bad merge or an over-eager "initialise the new field" edit produces.
+//
+//testtiming:keep pins each recipe entry's verbs, bootstrap verb and seed-location rule, which its covering test does not
+func TestRecipes_Entries(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		recipe            string
+		wantBootstrapVerb string
+		wantSeedRule      bool
+	}{
+		{"loom", loomcli.BootstrapVerb, false},
+		{"batten", battencli.BootstrapVerb, true},
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("names()[%d] = %q; want shedrun.RecipeNames()[%d] = %q", i, got[i], i, want[i])
-		}
+	for _, tt := range tests {
+		t.Run(tt.recipe, func(t *testing.T) {
+			t.Parallel()
+			e, err := lookup(tt.recipe)
+			if err != nil {
+				t.Fatalf("lookup(%s): %v", tt.recipe, err)
+			}
+			for _, v := range e.Verbs {
+				if !slices.Contains(allGenericVerbs, v) {
+					t.Errorf("recipe %q declares verb %q, outside the generic set %v", tt.recipe, v, allGenericVerbs)
+				}
+			}
+			if len(e.Verbs) != len(allGenericVerbs) {
+				t.Errorf("%s.Verbs = %v; want all of %v", tt.recipe, e.Verbs, allGenericVerbs)
+			}
+			if e.BootstrapVerb != tt.wantBootstrapVerb {
+				t.Errorf("recipes[%s].BootstrapVerb = %q; want the owning module's constant %q", tt.recipe, e.BootstrapVerb, tt.wantBootstrapVerb)
+			}
+			if (e.RefuseSeedAt != nil) != tt.wantSeedRule {
+				t.Errorf("recipes[%s].RefuseSeedAt set = %v; want %v", tt.recipe, e.RefuseSeedAt != nil, tt.wantSeedRule)
+			}
+		})
 	}
-}
 
-// TestRecipes_BootstrapVerbMatchesOwningModuleConstant is the sync meta-test this batch's whole shape
-// rests on: each entry's BootstrapVerb must equal its own module's exported constant, mirroring
-// TestRecipes_KeySetMatchesShedrunVocabulary's shape. Without it, the constants and the table are two
-// hand-maintained records of one fact, and a stale copy fails silently in the worst direction: a stale
-// "" copied into the loom entry would make batch 5 refuse --driver llm for the one recipe that
-// supports it.
-func TestRecipes_BootstrapVerbMatchesOwningModuleConstant(t *testing.T) {
-	loom, err := lookup("loom")
-	if err != nil {
-		t.Fatalf("lookup(loom): %v", err)
-	}
-	if loom.BootstrapVerb != loomcli.BootstrapVerb {
-		t.Errorf("recipes[loom].BootstrapVerb = %q; want loomcli.BootstrapVerb = %q", loom.BootstrapVerb, loomcli.BootstrapVerb)
-	}
-
-	batten, err := lookup("batten")
-	if err != nil {
-		t.Fatalf("lookup(batten): %v", err)
-	}
-	if batten.BootstrapVerb != battencli.BootstrapVerb {
-		t.Errorf("recipes[batten].BootstrapVerb = %q; want battencli.BootstrapVerb = %q", batten.BootstrapVerb, battencli.BootstrapVerb)
-	}
-}
-
-// TestRecipes_SeedLocationRuleMatchesTheRecipesOwnVerbs pins which entries carry a seed-location
-// rule: batten's verbs run from prime alone, so its entry must refuse a seed elsewhere, while loom's
-// verbs run in any drivable worktree and its entry carries no rule.
-func TestRecipes_SeedLocationRuleMatchesTheRecipesOwnVerbs(t *testing.T) {
-	if recipes["batten"].RefuseSeedAt == nil {
-		t.Error("recipes[batten].RefuseSeedAt = nil; want battencli's own prime-only guard")
-	}
-	if recipes["loom"].RefuseSeedAt != nil {
-		t.Error("recipes[loom].RefuseSeedAt is set; want nil, loom seeds wherever its verbs drive")
-	}
-}
-
-// TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry asserts the table cannot degenerate to
-// all-empty or all-non-empty: at least one entry must have a non-empty BootstrapVerb and at least one
-// must have an empty one. Every per-entry equality assertion above passes against a table where both
-// entries are empty, and that table is exactly what a bad merge or an over-eager "initialise the new
-// field" edit produces -- it would make batch 5's validator refuse every recipe while this test's
-// sibling above still passed.
-func TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry(t *testing.T) {
 	var sawEmpty, sawNonEmpty bool
 	for _, e := range recipes {
 		if e.BootstrapVerb == "" {
@@ -143,25 +100,8 @@ func TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry(t *testing.T) {
 			sawNonEmpty = true
 		}
 	}
-	if !sawEmpty {
-		t.Error("recipes: no entry has an empty BootstrapVerb; want at least one")
-	}
-	if !sawNonEmpty {
-		t.Error("recipes: no entry has a non-empty BootstrapVerb; want at least one")
-	}
-}
-
-// TestLookup_UnknownNameNamesTheAvailableRecipes asserts an unknown recipe name's error names the
-// available recipes.
-func TestLookup_UnknownNameNamesTheAvailableRecipes(t *testing.T) {
-	_, err := lookup("bogus-recipe")
-	if err == nil {
-		t.Fatal("lookup(bogus-recipe) = nil error; want a non-nil error")
-	}
-	for _, name := range names() {
-		if !strings.Contains(err.Error(), name) {
-			t.Errorf("lookup(bogus-recipe) error = %q; want it to name recipe %q", err.Error(), name)
-		}
+	if !sawEmpty || !sawNonEmpty {
+		t.Errorf("recipes: empty BootstrapVerb entry present = %v, non-empty present = %v; want both", sawEmpty, sawNonEmpty)
 	}
 }
 

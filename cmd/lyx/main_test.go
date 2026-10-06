@@ -1,9 +1,8 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: argument routing, unknown-module handling, and that a dispatched module's
-// exit code and output propagate unchanged.
-// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in
-// main_integration_test.go per the Test Tier Purity Invariant.
+// Drives run() directly: module routing from an uninitialized repo, and that the root hook mints nothing under test.
+// Help paths and unknown modules live in exitcode_test.go.
+// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in main_integration_test.go per the Test Tier Purity Invariant.
 
 package main
 
@@ -14,55 +13,40 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
 
-func TestRunNoArgs(t *testing.T) {
-	var out bytes.Buffer
-	if code := run(nil, &out); code != 0 {
-		t.Fatalf("expected exit 0 for no args, got %d; output: %q", code, out.String())
+// TestRunDispatchesToUninitializedRepoModules asserts modules that need a lyx tree fail with exit 1 when dispatched from a temp cwd that has no _lyx/ directory.
+// Each row chdirs, which is process-global state, so neither the test nor its rows run in parallel.
+func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"ide", []string{"ide", "spawn", "test"}},
+		{"config", []string{"config", "--print"}},
 	}
-	got := out.String()
-	if got == "" {
-		t.Fatal("expected non-empty help output for no args")
-	}
-	for _, module := range []string{"board"} {
-		if !strings.Contains(got, module) {
-			t.Errorf("expected help output to name module %q; got:\n%s", module, got)
-		}
-	}
-	if strings.Contains(got, `"ok":false`) {
-		t.Errorf("bare lyx emitted a JSON error envelope; help paths must not be wrapped; output:\n%s", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+
+			var out bytes.Buffer
+			code := run(tt.args, &out)
+			if code != 1 {
+				t.Fatalf("expected exit 1 for %v in uninitialized repo, got %d; output: %s", tt.args, code, out.String())
+			}
+			if !strings.Contains(out.String(), `"ok":false`) {
+				t.Fatalf("expected error JSON on out, got %q", out.String())
+			}
+		})
 	}
 }
 
-func TestRunUnknownModule(t *testing.T) {
-	var out bytes.Buffer
-	if code := run([]string{"bogus", "list"}, &out); code != 1 {
-		t.Fatalf("expected exit 1 for unknown module, got %d", code)
-	}
-	envelope.RequireErr(t, out.String(), "unknown command")
-}
-
-func TestRunDispatchesToIDE(t *testing.T) {
-	// Create temp cwd with no _lyx/ directory, causing ide.RunCLI to fail.
-	cwd := t.TempDir()
-	t.Chdir(cwd)
-
-	var out bytes.Buffer
-	code := run([]string{"ide", "spawn", "test"}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 for ide in uninitialized repo, got %d; output: %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Fatalf("expected error JSON on out, got %q", out.String())
-	}
-}
-
-// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under
-// testing.Testing().
+// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under testing.Testing().
+//
+//testtiming:keep pins that the root hook mints no trace id and opens no durable sink under testing.Testing(), which the tree walk never reads
 func TestRootHookSuppressedUnderTest(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "")
 	before := os.Getenv("LYX_TRACE_ID")
@@ -93,17 +77,5 @@ func TestRootHookSuppressedUnderTest(t *testing.T) {
 
 	if !testing.Testing() {
 		t.Fatalf("testing.Testing() = false inside a test binary; the root hook's suppression wiring relies on it being true here")
-	}
-}
-
-func TestRunDispatchesToConfig(t *testing.T) {
-	// Create temp cwd with no _lyx/ directory, causing config resolution to fail.
-	cwd := t.TempDir()
-	t.Chdir(cwd)
-
-	var out bytes.Buffer
-	code := run([]string{"config", "--print"}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 for config in uninitialized repo, got %d; output: %s", code, out.String())
 	}
 }

@@ -225,7 +225,7 @@ Then kill one strand's pane via `tmux -L <socket> kill-pane -t <paneId>` (contro
 **Watch:** Removing a strand that has children without `--recursive` fails with `strand has children, use --recursive`;
 with `--recursive` the removal cascades over the subtree and the result JSON lists every removed strand.
 "No stray state" also applies to `remove`: like `down`, it waits for the removed panes' whole process subtree to exit before returning, so immediately after a `remove` no leftover shell keeps the worktree directory busy (the pre-`remove` `#{pane_pid}` values and their descendants are gone from `tasklist`).
-Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
+Covered headlessly by `TestSmokeTeardown/RemoveReapsRemovedPaneChildProcesses`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -235,7 +235,7 @@ Covered headlessly by `TestSmokeRemoveReapsRemovedPaneChildProcesses`.
 
 **Goal:** "Tear the overlay down and confirm nothing is left behind."
 
-**Watch:** `lyx reed down` kills the server and clears the worktree's strand state; `tmux -L <socket> ls` (controlled exception) confirms no server survives, and a follow-up `lyx reed status` reports the friendly no-session error rather than stale strands. "No stray state" means, concretely, that the instant `down` returns: (a) **no tmux process names this socket** — `down` force-reaps the server *and* its internal `__warm__` helper and confirms the socket is clear, because both carry the worktree as their cwd and a survivor would keep the worktree dir busy (check with `tasklist | findstr tmux` filtered to this `-L` socket — expect zero); and (b) **no pane process subtree survives** — `down` always reaps this session's whole pane process subtree before returning (checkable via the pre-`down` `#{pane_pid}` values and their descendants being gone from `tasklist`). Covered headlessly by `TestSmokeDownReapsPaneChildProcesses` and `TestSmokeDownLeavesNoTmuxOnSocket`.
+**Watch:** `lyx reed down` kills the server and clears the worktree's strand state; `tmux -L <socket> ls` (controlled exception) confirms no server survives, and a follow-up `lyx reed status` reports the friendly no-session error rather than stale strands. "No stray state" means, concretely, that the instant `down` returns: (a) **no tmux process names this socket** — `down` force-reaps the server *and* its internal `__warm__` helper and confirms the socket is clear, because both carry the worktree as their cwd and a survivor would keep the worktree dir busy (check with `tasklist | findstr tmux` filtered to this `-L` socket — expect zero); and (b) **no pane process subtree survives** — `down` always reaps this session's whole pane process subtree before returning (checkable via the pre-`down` `#{pane_pid}` values and their descendants being gone from `tasklist`). Covered headlessly by `TestSmokeTeardown/DownReapsPaneChildProcesses` and `TestSmokeTeardown/DownLeavesNoTmuxOnSocket`.
 
 > **Not a FAIL:** a `conhost.exe` (the OS ConPTY host tmux uses per pane) may linger with the worktree as its cwd — usually it exits on its own a beat later, but under heavy CPU saturation it can be orphaned and then holds the dir indefinitely. It is not a `#{pane_pid}` descendant and reed does not reap it — an OS console host is not stray *agent* state (the smoke harness kills hub-holding conhosts itself; see `deferHubRelease`). A held worktree dir is therefore not by itself a reed leak. Only a surviving **tmux** process or a live **pane shell** is a `FAIL` here.
 
@@ -273,7 +273,7 @@ and the strand reads `live: true` in `status` **both immediately and again after
 
 **Watch:** With the overlay up and at least one strand added, `lyx reed attach` from a **second terminal** shows the strands' panes and the tmux status bar;
 `Ctrl+b d` detaches cleanly and the session keeps running (`lyx reed status` still lists it).
-Operator-assisted like M7. (The automated layer covers this headlessly: `TestSmokeAttachRendersInsideHarnessTmuxPane` drives attach inside a harness tmux pane and asserts the rendered content -- so a `FAIL` here is a visual/UX issue, not a correctness gap.)
+Operator-assisted like M7. (The automated layer covers this headlessly: `TestSmokeLifecycle/AttachRendersInsideHarnessPane` drives attach inside a harness tmux pane and asserts the rendered content -- so a `FAIL` here is a visual/UX issue, not a correctness gap.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -298,7 +298,7 @@ Skip with a note if no claude is configured. (Covered headlessly by `TestSmokeCl
 **Watch:** `tmux -L <socket> split-window -t <session>` (controlled exception) simulates an operator-split/foreign pane.
 The follow-up `lyx reed up` must **not** destroy the session's pane set (`tmux -L <socket> list-panes` still shows panes — an empty pane list means an empty layout was applied and tmux wiped the window: `FAIL`), and that SAME `up` -- not a subsequent `add` -- is what **deterministically reaps** the foreign pane (the documented "reed owns the session window" policy, not a finding), since the untracked reap now fires from the alive Selvage this `up` boots.
 A subsequent `lyx reed add --cmd <long-running command>` must succeed and read `live: true` in `status` (a "session has no panes to split" error means the session became a zero-pane husk: `FAIL`) — what would be a `FAIL` is a *tracked* strand's pane disappearing instead of the foreign one.
-Covered headlessly by `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable` (the `up` reap) and `TestSmokeForeignPaneIsReapedNotAdoptedByAdd` (the faithful M16 regression).
+Covered headlessly by `TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable` (the `up` reap) and `TestSmokeLifecycle/ForeignPaneIsReapedNotAdoptedByAdd` (the faithful M16 regression).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -314,7 +314,7 @@ So a second worktree on the same hub that runs `lyx reed up` + `lyx reed add` mu
 The proof is what happens on `lyx reed down` in the FIRST worktree: it must kill **only its own session** (`tmux -L <socket> has-session -t <this-session>` now fails) while the sibling's session **stays live** -- `tmux -L <socket> has-session -t <sibling-session>` still succeeds, its pane is still present and not `pane_dead`,
 and the shared server's `#{pid}` is unchanged.
 The sibling's overlay dying because a `down` next door killed the shared server is a `FAIL`. (Only when the *last* session on the hub goes `down` is the server itself torn down -- M11's stray-state guarantee.)
-Materializing a real second worktree is environment setup outside the reed surface, so the authoritative headless coverage is `TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive`, which boots two clones on one hub, downs one, and asserts the other's session/pane/agent-subtree stay live on the still-single shared server;
+Materializing a real second worktree is environment setup outside the reed surface, so the authoritative headless coverage is `TestSmokeTeardown/DownInOneWorktreeLeavesSiblingSessionAlive`, which boots two clones on one hub, downs one, and asserts the other's session/pane/agent-subtree stay live on the still-single shared server;
 treat this scenario as `OK` when that coverage holds and no sibling worktree is available to hand-drive.
 
 **Verdict:** `OK` / `WARN` / `FAIL`

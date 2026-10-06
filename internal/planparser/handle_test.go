@@ -64,6 +64,7 @@ func TestSplitHandleDeclaration(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins handleUnit's no-# and empty-unit results, which the validate tests reach only as findings
 func TestHandleUnit(t *testing.T) {
 	t.Parallel()
 
@@ -107,13 +108,20 @@ func TestHandleUnit(t *testing.T) {
 	}
 }
 
-func TestDeclaredHandles(t *testing.T) {
+// TestHandleIndexes asserts declaredHandles maps each declared handle to the cards declaring it, and referencedHandles maps each handle-shaped target or use to the cards naming it, leaving a non-handle ref out.
+//
+//testtiming:keep pins declaredHandles and referencedHandles map contents, which TestValidate_HandleConsistency reaches only as findings
+func TestHandleIndexes(t *testing.T) {
 	t.Parallel()
 
 	plan := &Plan{
 		Cards: []Card{
-			{Number: 1, Slug: "one", Declarations: []CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing()"}}},
-			{Number: 2, Slug: "two", Declarations: []CardDeclaration{{Handle: "plan:internal/bar#NewOther", Decl: "func NewOther()"}}},
+			{Number: 1, Slug: "one",
+				Declarations: []CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing()"}},
+				Targets:      []string{"plan:internal/foo#NewThing", "internal/foo/other.go#"}},
+			{Number: 2, Slug: "two",
+				Declarations: []CardDeclaration{{Handle: "plan:internal/bar#NewOther", Decl: "func NewOther()"}},
+				Uses:         []string{"plan:internal/foo#NewThing"}},
 		},
 	}
 
@@ -127,21 +135,9 @@ func TestDeclaredHandles(t *testing.T) {
 	if _, ok := declared["plan:nonexistent#X"]; ok {
 		t.Errorf("declaredHandles() carries an entry for an undeclared handle")
 	}
-}
-
-func TestReferencedHandles(t *testing.T) {
-	t.Parallel()
-
-	plan := &Plan{
-		Cards: []Card{
-			{Number: 1, Slug: "one", Targets: []string{"plan:internal/foo#NewThing", "internal/foo/other.go#"}},
-			{Number: 2, Slug: "two", Uses: []string{"plan:internal/foo#NewThing"}},
-		},
-	}
 
 	referenced := referencedHandles(plan)
-	want := []string{"1-one", "2-two"}
-	if !slices.Equal(referenced["plan:internal/foo#NewThing"], want) {
+	if want := []string{"1-one", "2-two"}; !slices.Equal(referenced["plan:internal/foo#NewThing"], want) {
 		t.Errorf("referencedHandles()[%q] = %v; want %v", "plan:internal/foo#NewThing", referenced["plan:internal/foo#NewThing"], want)
 	}
 	if _, ok := referenced["internal/foo/other.go#"]; ok {
@@ -149,68 +145,84 @@ func TestReferencedHandles(t *testing.T) {
 	}
 }
 
-// TestCheckHandleMalformed_FileUnitHandle is F-B8's (round fable5-high-r3) regression test: a
-// handle whose unit half names a ".go" file canonicalizes (via quarry.Name, which accepts it) to a
-// member spelling quarry's Resolve can never answer, so the plan validated clean and the run then
-// wedged at the creating card's own record-batch done-check — the pure layer must refuse the
-// spelling up front, naming the package-directory fix.
-func TestCheckHandleMalformed_FileUnitHandle(t *testing.T) {
-	plan := &Plan{
-		Language: "go",
-		Cards: []Card{{
-			Number: 1, Slug: "one",
-			Targets:      []string{"plan:greeter/farewell.go#Farewell"},
-			Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
-		}},
-	}
-
-	got := checkHandleMalformed(plan)
-	if len(got) != 1 || got[0].Check != "handle-malformed" {
-		t.Fatalf("checkHandleMalformed(file-unit handle) = %+v; want exactly one handle-malformed finding", got)
-	}
-	if !strings.Contains(got[0].Detail, "greeter/farewell.go") || !strings.Contains(got[0].Detail, `"greeter"`) {
-		t.Errorf("finding detail = %q; want it to name the file unit and the package-directory fix", got[0].Detail)
-	}
-
-	plan.Language = "none"
-	if got := checkHandleMalformed(plan); len(got) != 0 {
-		t.Errorf("checkHandleMalformed(language none) = %+v; want the file-unit rule gated off", got)
-	}
-
-	plan.Language = "go"
-	plan.Cards[0].Targets = []string{"plan:greeter#Farewell"}
-	plan.Cards[0].Declarations = []CardDeclaration{{Handle: "plan:greeter#Farewell", Decl: "func Farewell(name string) string"}}
-	if got := checkHandleMalformed(plan); len(got) != 0 {
-		t.Errorf("checkHandleMalformed(package-unit handle) = %+v; want no findings", got)
-	}
-}
-
-func TestIsHandleRef(t *testing.T) {
+// TestCheckHandleMalformed_FileUnitRule asserts a handle whose unit half names a ".go" file is refused up front with a handle-malformed finding naming the package-directory fix: such a handle canonicalizes to a member spelling quarry's Resolve can never answer, so the plan would validate clean and then wedge at the creating card's own done-check.
+// The rule binds a handle whose unit half is actually read -- a Create declaration's -- and not one claimed only as a Rename pair's to-side, whose unit canonicalization takes from the resolved old side; it is gated off for language none.
+func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		raw  string
-		want bool
-	}{
-		{name: "handle-shaped", raw: "plan:internal/foo#NewThing", want: true},
-		{name: "handle prefix alone", raw: "plan:", want: true},
-		{name: "glyph-shaped", raw: "internal/foo#NewThing", want: false},
-		{name: "path-shaped", raw: "internal/foo/bar.go", want: false},
-		{name: "empty", raw: "", want: false},
+	fileUnitDeclared := Card{
+		Number: 1, Slug: "one",
+		Targets:      []string{"plan:greeter/farewell.go#Farewell"},
+		Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
+	}
+	renameToSide := Card{
+		Number: 1, Slug: "one",
+		Targets: []string{"greeter#Hello", "plan:greeter/farewell.go#Farewell"},
+		Pairs:   []MovePair{{Old: "greeter#Hello", New: "plan:greeter/farewell.go#Farewell"}},
 	}
 
+	tests := []struct {
+		name         string
+		language     string
+		cards        []Card
+		wantFindings int
+		wantDetail   []string
+	}{
+		{
+			name: "file-unit declaration", language: "go", cards: []Card{fileUnitDeclared},
+			wantFindings: 1, wantDetail: []string{"greeter/farewell.go", `"greeter"`},
+		},
+		{name: "language none gates the rule off", language: "none", cards: []Card{fileUnitDeclared}},
+		{
+			name: "package-unit handle", language: "go",
+			cards: []Card{{
+				Number: 1, Slug: "one",
+				Targets:      []string{"plan:greeter#Farewell"},
+				Declarations: []CardDeclaration{{Handle: "plan:greeter#Farewell", Decl: "func Farewell(name string) string"}},
+			}},
+		},
+		{name: "rename to-side only", language: "go", cards: []Card{renameToSide}},
+		{
+			// One finding per referencing card.
+			name: "handle claimed by a rename and a declaration", language: "go",
+			cards: []Card{renameToSide, {
+				Number: 2, Slug: "two",
+				Targets:      []string{"plan:greeter/farewell.go#Farewell"},
+				Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
+			}},
+			wantFindings: 2,
+		},
+		{
+			name: "unclaimed file-unit handle still binds", language: "go",
+			cards:        []Card{{Number: 1, Slug: "one", Targets: []string{"plan:greeter/farewell.go#Farewell"}}},
+			wantFindings: 1,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := IsHandleRef(tt.raw); got != tt.want {
-				t.Errorf("IsHandleRef(%q) = %v; want %v", tt.raw, got, tt.want)
+			got := checkHandleMalformed(&Plan{Language: tt.language, Cards: tt.cards})
+			if len(got) != tt.wantFindings {
+				t.Fatalf("checkHandleMalformed() = %+v; want %d finding(s)", got, tt.wantFindings)
+			}
+			for _, f := range got {
+				if f.Check != "handle-malformed" {
+					t.Errorf("finding Check = %q; want handle-malformed", f.Check)
+				}
+			}
+			for _, sub := range tt.wantDetail {
+				if !strings.Contains(got[0].Detail, sub) {
+					t.Errorf("finding detail = %q; want it to contain %q", got[0].Detail, sub)
+				}
 			}
 		})
 	}
 }
 
+// TestHandleBody asserts HandleBody strips the plan: prefix of a handle-shaped ref and reports every other shape as not a handle, in agreement with IsHandleRef.
+//
+//testtiming:keep pins HandleBody's prefix strip and IsHandleRef's agreement with it, which TestCardTargetDirs does not assert
 func TestHandleBody(t *testing.T) {
 	t.Parallel()
 
@@ -237,6 +249,9 @@ func TestHandleBody(t *testing.T) {
 			}
 			if ok && body != tt.wantBody {
 				t.Errorf("HandleBody(%q) body = %q; want %q", tt.raw, body, tt.wantBody)
+			}
+			if got := IsHandleRef(tt.raw); got != tt.wantOK {
+				t.Errorf("IsHandleRef(%q) = %v; want %v", tt.raw, got, tt.wantOK)
 			}
 		})
 	}
@@ -265,19 +280,23 @@ func TestNewHandle(t *testing.T) {
 	}
 }
 
+// TestHandleMember asserts HandleMember returns the text after a handle's #, and HandleIdentifier the final identifier of a qualified member, refusing an empty or absent member.
+// The identifier cases are planglyph's draftHandleIdentifier table, ported as the assertion base.
 func TestHandleMember(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		handle     string
-		wantMember string
-		wantOK     bool
+		name        string
+		handle      string
+		wantMember  string
+		wantOK      bool
+		wantIdent   string
+		wantIdentOK bool
 	}{
-		{name: "member handle", handle: "plan:internal/alpha#Renamed", wantMember: "Renamed", wantOK: true},
-		{name: "qualified member handle", handle: "plan:internal/alpha#Counter.Tally", wantMember: "Counter.Tally", wantOK: true},
-		{name: "no # at all", handle: "plan:internal/alpha", wantOK: false},
-		{name: "empty member", handle: "plan:internal/alpha#", wantMember: "", wantOK: true},
+		{name: "member handle", handle: "plan:internal/alpha#Renamed", wantMember: "Renamed", wantOK: true, wantIdent: "Renamed", wantIdentOK: true},
+		{name: "qualified member handle", handle: "plan:internal/alpha#Counter.Tally", wantMember: "Counter.Tally", wantOK: true, wantIdent: "Tally", wantIdentOK: true},
+		{name: "no # at all", handle: "plan:internal/alpha"},
+		{name: "empty member", handle: "plan:internal/alpha#", wantOK: true},
 	}
 
 	for _, tt := range tests {
@@ -291,83 +310,14 @@ func TestHandleMember(t *testing.T) {
 			if ok && member != tt.wantMember {
 				t.Errorf("HandleMember(%q) member = %q; want %q", tt.handle, member, tt.wantMember)
 			}
+
+			ident, identOK := HandleIdentifier(tt.handle)
+			if identOK != tt.wantIdentOK {
+				t.Fatalf("HandleIdentifier(%q) ok = %v; want %v", tt.handle, identOK, tt.wantIdentOK)
+			}
+			if identOK && ident != tt.wantIdent {
+				t.Errorf("HandleIdentifier(%q) = %q; want %q", tt.handle, ident, tt.wantIdent)
+			}
 		})
-	}
-}
-
-// TestHandleIdentifier ports planglyph's draftHandleIdentifier table verbatim as its assertion
-// base (internal/planglyph/handle_test.go's TestDraftHandleIdentifier), per the overview's
-// behavior-preservation Shared Decision.
-func TestHandleIdentifier(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		handle string
-		want   string
-		wantOK bool
-	}{
-		{handle: "plan:internal/alpha#Renamed", want: "Renamed", wantOK: true},
-		{handle: "plan:internal/alpha#Counter.Tally", want: "Tally", wantOK: true},
-		{handle: "plan:internal/alpha#", wantOK: false},
-		{handle: "plan:internal/alpha", wantOK: false},
-	}
-
-	for _, tc := range cases {
-		got, ok := HandleIdentifier(tc.handle)
-		if ok != tc.wantOK {
-			t.Fatalf("HandleIdentifier(%q) ok = %v; want %v", tc.handle, ok, tc.wantOK)
-		}
-		if ok && got != tc.want {
-			t.Errorf("HandleIdentifier(%q) = %q; want %q", tc.handle, got, tc.want)
-		}
-	}
-}
-
-// TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations is R9-5's regression: the file-unit
-// rule binds a handle whose unit half is actually READ, which is a Create declaration's, and must
-// not bind one claimed ONLY as a Rename pair's to-side.
-//
-// internal/planglyph's renameDeclSource takes the derived declaration's Unit from the RESOLVED old
-// side, deliberately, so a Rename to-side draft that misspells the unit is corrected by
-// canonicalization rather than propagated — the rule's own stated consequence cannot arise for it,
-// and firing anyway refused a plan that would have canonicalized correctly.
-func TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations(t *testing.T) {
-	renameOnly := &Plan{
-		Language: "go",
-		Cards: []Card{{
-			Number: 1, Slug: "one",
-			Targets: []string{"greeter#Hello", "plan:greeter/farewell.go#Farewell"},
-			Pairs:   []MovePair{{Old: "greeter#Hello", New: "plan:greeter/farewell.go#Farewell"}},
-		}},
-	}
-	if got := checkHandleMalformed(renameOnly); len(got) != 0 {
-		t.Errorf("checkHandleMalformed(rename-to-side-only file-unit handle) = %+v; want no findings", got)
-	}
-
-	alsoDeclared := &Plan{
-		Language: "go",
-		Cards: []Card{{
-			Number: 1, Slug: "one",
-			Targets: []string{"greeter#Hello", "plan:greeter/farewell.go#Farewell"},
-			Pairs:   []MovePair{{Old: "greeter#Hello", New: "plan:greeter/farewell.go#Farewell"}},
-		}, {
-			Number: 2, Slug: "two",
-			Targets:      []string{"plan:greeter/farewell.go#Farewell"},
-			Declarations: []CardDeclaration{{Handle: "plan:greeter/farewell.go#Farewell", Decl: "func Farewell(name string) string"}},
-		}},
-	}
-	if got := checkHandleMalformed(alsoDeclared); len(got) != 2 {
-		t.Errorf("checkHandleMalformed(handle claimed by both sources) = %+v; want one finding per referencing card", got)
-	}
-
-	dangling := &Plan{
-		Language: "go",
-		Cards: []Card{{
-			Number: 1, Slug: "one",
-			Targets: []string{"plan:greeter/farewell.go#Farewell"},
-		}},
-	}
-	if got := checkHandleMalformed(dangling); len(got) != 1 {
-		t.Errorf("checkHandleMalformed(unclaimed file-unit handle) = %+v; want the rule to still bind", got)
 	}
 }

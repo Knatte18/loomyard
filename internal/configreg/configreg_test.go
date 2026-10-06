@@ -3,6 +3,7 @@
 package configreg
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -12,6 +13,7 @@ import (
 // so an out-of-sort or repeated entry is user-visible.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
+	t.Parallel()
 	got := Names()
 	for i := 1; i < len(got); i++ {
 		if got[i-1] >= got[i] {
@@ -30,74 +32,78 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnly pins the seed-only flag: "models" and "burler" are the two modules carrying
-// an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the
-// only entries with SeedOnly == true.
-func TestModules_SeedOnly(t *testing.T) {
+// TestModules_SeedOnlyAndHubWideFlags pins the two flags: "models" and "burler" are the two modules carrying an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the only entries with SeedOnly == true, and "fabric" and "board" describe hub-level facts, so they are the only entries with HubWide == true.
+//
+//testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
+func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
+	t.Parallel()
 	for _, m := range Modules() {
-		want := m.Name == "models" || m.Name == "burler"
-		if m.SeedOnly != want {
-			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, want)
+		wantSeedOnly := m.Name == "models" || m.Name == "burler"
+		if m.SeedOnly != wantSeedOnly {
+			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
+		}
+		wantHubWide := m.Name == "fabric" || m.Name == "board"
+		if m.HubWide != wantHubWide {
+			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
 	}
 }
 
-// TestModules_HubWide pins the hub-wide flag: "fabric" and "board" describe hub-level facts, so they
-// are the only entries with HubWide == true.
-func TestModules_HubWide(t *testing.T) {
-	for _, m := range Modules() {
-		want := m.Name == "fabric" || m.Name == "board"
-		if m.HubWide != want {
-			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, want)
-		}
+func TestTemplate(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		module    string
+		wantFound bool
+	}{
+		{"fabric", true},
+		{"nope", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.module, func(t *testing.T) {
+			t.Parallel()
+			got, ok := Template(tt.module)
+			if ok != tt.wantFound {
+				t.Fatalf("Template(%q) found = %v; want %v", tt.module, ok, tt.wantFound)
+			}
+			if !ok {
+				return
+			}
+			if got == nil {
+				t.Fatalf("Template(%q) returned nil function; want non-nil", tt.module)
+			}
+			if want := fabricengine.ConfigTemplate(); got() != want {
+				t.Errorf("Template(%q)() = %q; want %q", tt.module, got(), want)
+			}
+		})
 	}
 }
 
-func TestTemplate_Found(t *testing.T) {
-	got, ok := Template("fabric")
-	if !ok {
-		t.Error("Template(\"fabric\") = _, false; want _, true")
-		return
+func TestLookup(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		module       string
+		wantFound    bool
+		wantOpenMaps []string
+	}{
+		{"board", true, []string{"types", "labels"}},
+		{"bogus", false, nil},
 	}
-	if got == nil {
-		t.Error("Template(\"fabric\") returned nil function; want non-nil")
-		return
-	}
-	// Verify the template function returns the expected content.
-	want := fabricengine.ConfigTemplate()
-	if got() != want {
-		t.Errorf("Template(\"fabric\")() = %q; want %q", got(), want)
-	}
-}
-
-func TestTemplate_NotFound(t *testing.T) {
-	_, ok := Template("nope")
-	if ok {
-		t.Error("Template(\"nope\") = _, true; want _, false")
-	}
-}
-
-func TestLookup_BoardDeclaresOpenMaps(t *testing.T) {
-	m, ok := Lookup("board")
-	if !ok {
-		t.Fatal("Lookup(\"board\") = _, false; want _, true")
-	}
-	if m.Template == nil {
-		t.Error("Lookup(\"board\").Template is nil; want the board template")
-	}
-	want := []string{"types", "labels"}
-	if len(m.OpenMaps) != len(want) {
-		t.Fatalf("Lookup(\"board\").OpenMaps = %v; want %v", m.OpenMaps, want)
-	}
-	for i := range want {
-		if m.OpenMaps[i] != want[i] {
-			t.Errorf("Lookup(\"board\").OpenMaps = %v; want %v", m.OpenMaps, want)
-		}
-	}
-}
-
-func TestLookup_NotFound(t *testing.T) {
-	if _, ok := Lookup("bogus"); ok {
-		t.Error("Lookup(\"bogus\") = _, true; want _, false")
+	for _, tt := range tests {
+		t.Run(tt.module, func(t *testing.T) {
+			t.Parallel()
+			m, ok := Lookup(tt.module)
+			if ok != tt.wantFound {
+				t.Fatalf("Lookup(%q) found = %v; want %v", tt.module, ok, tt.wantFound)
+			}
+			if !ok {
+				return
+			}
+			if m.Template == nil {
+				t.Errorf("Lookup(%q).Template is nil; want the module's template", tt.module)
+			}
+			if !slices.Equal(m.OpenMaps, tt.wantOpenMaps) {
+				t.Errorf("Lookup(%q).OpenMaps = %v; want %v", tt.module, m.OpenMaps, tt.wantOpenMaps)
+			}
+		})
 	}
 }

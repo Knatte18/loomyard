@@ -1,6 +1,6 @@
-// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme
-// rendering, git-exclude management, and the runSuite orchestration.
+// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
 // All tests use seam stubs and temp directories -- no real lyx, claude, or network calls are made.
+// The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.
 
 package main
 
@@ -16,9 +16,10 @@ import (
 	"time"
 )
 
-// TestBinaryFingerprint_TempFile verifies that binaryFingerprint returns the correct size, SHA256
-// prefix, and path for a real temp file.
-func TestBinaryFingerprint_TempFile(t *testing.T) {
+// TestBinaryFingerprint verifies that binaryFingerprint returns the correct size, SHA256 prefix, and path for a real temp file, and returns an error when the target file does not exist.
+func TestBinaryFingerprint(t *testing.T) {
+	t.Parallel()
+
 	content := []byte("fake lyx binary content for testing")
 	tmpDir := t.TempDir()
 	binPath := filepath.Join(tmpDir, "lyx.exe")
@@ -51,70 +52,51 @@ func TestBinaryFingerprint_TempFile(t *testing.T) {
 	if info.SHA256 != wantDigest {
 		t.Errorf("SHA256 = %q; want %q", info.SHA256, wantDigest)
 	}
-}
 
-// TestBinaryFingerprint_MissingPath verifies that binaryFingerprint returns an error when the
-// target file does not exist.
-func TestBinaryFingerprint_MissingPath(t *testing.T) {
-	missingPath := filepath.Join(t.TempDir(), "nonexistent.exe")
-	_, err := binaryFingerprint(missingPath, sourceProd)
-	if err == nil {
+	missingPath := filepath.Join(tmpDir, "nonexistent.exe")
+	if _, err := binaryFingerprint(missingPath, sourceProd); err == nil {
 		t.Error("binaryFingerprint on missing path should return error; got nil")
 	}
 }
 
-// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header
-// and suite body.
+// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header and suite body, and that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
+//
+//testtiming:keep pins the exact fingerprint fields and suite body renderScheme writes, which the runSuite tests only reach through a fixed header marker
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
-	info := binaryInfo{
-		Path:    "/fake/lyx.exe",
-		Size:    1234,
-		ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-		SHA256:  "abc123def456",
-		Source:  sourceProd,
-	}
-	got := renderScheme(info, sandboxSuiteMD)
+	t.Parallel()
 
-	checks := []struct {
-		label string
-		want  string
-	}{
-		{"path", "/fake/lyx.exe"},
-		{"size", "1234 bytes"},
-		{"sha256", "abc123def456"},
-		{"source", "Source: prod"},
-		{"scheme heading", "SANDBOX-CORE-SUITE"},
-	}
-	for _, c := range checks {
-		if !strings.Contains(got, c.want) {
-			t.Errorf("renderScheme() missing %s: %q not found in output", c.label, c.want)
-		}
-	}
-}
+	for _, source := range []string{sourceDev, sourceProd} {
+		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 
-// TestBinaryInfoHeader_ContainsSourceLine verifies that header() renders a "- Source: %s" line for
-// both sourceDev and sourceProd.
-func TestBinaryInfoHeader_ContainsSourceLine(t *testing.T) {
-	tests := []struct {
-		name   string
-		source string
-	}{
-		{"dev", sourceDev},
-		{"prod", sourceProd},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
 			info := binaryInfo{
 				Path:    "/fake/lyx.exe",
-				Size:    1,
+				Size:    1234,
 				ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 				SHA256:  "abc123def456",
-				Source:  tt.source,
+				Source:  source,
 			}
-			got := info.header()
-			want := "- Source: " + tt.source
-			if !strings.Contains(got, want) {
-				t.Errorf("header() = %q; want it to contain %q", got, want)
+			got := renderScheme(info, sandboxSuiteMD)
+
+			checks := []struct {
+				label string
+				want  string
+			}{
+				{"path", "/fake/lyx.exe"},
+				{"size", "1234 bytes"},
+				{"sha256", "abc123def456"},
+				{"source", "Source: " + source},
+				{"scheme heading", "SANDBOX-CORE-SUITE"},
+			}
+			for _, c := range checks {
+				if !strings.Contains(got, c.want) {
+					t.Errorf("renderScheme() missing %s: %q not found in output", c.label, c.want)
+				}
+			}
+
+			wantHeaderLine := "- Source: " + source
+			if header := info.header(); !strings.Contains(header, wantHeaderLine) {
+				t.Errorf("header() = %q; want it to contain %q", header, wantHeaderLine)
 			}
 		})
 	}
@@ -308,37 +290,113 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestRunSuite_LaunchInvocation verifies that runSuite calls launchAgent with the correct
-// arguments.
-func TestRunSuite_LaunchInvocation(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
+// TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod resolution), writes only its own scheme file with the fingerprint header and embedded doc body, and registers that file and the report in .git/info/exclude; and that a -prompt override reaches launchAgent verbatim.
+func TestRunSuite_PerSuiteSpec(t *testing.T) {
+	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite}
+	tests := []struct {
+		name string
+		spec suiteSpec
+	}{
+		{"core", mainSuite},
+		{"reed", reedSuite},
+		{"shuttle", shuttleSuite},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Run("default run", func(t *testing.T) {
+				parentDir, repoDir := makeHubRepo(t)
+				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	var gotDir, gotClaude, gotInstruction, gotBinDir string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		gotDir = dir
-		gotClaude = claude
-		gotInstruction = instruction
-		gotBinDir = binDir
-		return 0
-	})
-	defer restore()
+				// Pre-create a stale report from a prior run.
+				stalePath := filepath.Join(repoDir, reportFileName)
+				if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "S0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
+					t.Fatalf("write stale report: %v", err)
+				}
 
-	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if gotDir != repoDir {
-		t.Errorf("launchAgent dir = %q; want %q", gotDir, repoDir)
-	}
-	if gotClaude != fakeClaude {
-		t.Errorf("launchAgent claude = %q; want %q", gotClaude, fakeClaude)
-	}
-	if gotInstruction != mainSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, mainSuite.instruction)
-	}
-	if gotBinDir != "" {
-		t.Errorf("launchAgent binDir = %q; want empty for a prod resolution", gotBinDir)
+				var gotDir, gotClaude, gotInstruction, gotBinDir string
+				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+					if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+						t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
+					}
+					gotDir, gotClaude, gotInstruction, gotBinDir = dir, claude, instruction, binDir
+					return 0
+				})
+				defer restore()
+
+				if err := runSuite(parentDir, "", "", tt.spec); err != nil {
+					t.Fatalf("runSuite error: %v", err)
+				}
+
+				if gotDir != repoDir {
+					t.Errorf("launchAgent dir = %q; want %q", gotDir, repoDir)
+				}
+				if gotClaude != fakeClaude {
+					t.Errorf("launchAgent claude = %q; want %q", gotClaude, fakeClaude)
+				}
+				wantInstruction := "Read ./" + tt.spec.fileName + " and follow the instructions in it exactly."
+				if gotInstruction != tt.spec.instruction || gotInstruction != wantInstruction {
+					t.Errorf("launchAgent instruction = %q; want the default %q", gotInstruction, wantInstruction)
+				}
+				if gotBinDir != "" {
+					t.Errorf("launchAgent binDir = %q; want empty for a prod resolution", gotBinDir)
+				}
+
+				if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+					t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
+				}
+
+				scheme, err := os.ReadFile(filepath.Join(repoDir, tt.spec.fileName))
+				if err != nil {
+					t.Fatalf("read %s: %v", tt.spec.fileName, err)
+				}
+				if !strings.Contains(string(scheme), "Binary under test") {
+					t.Errorf("%s missing fingerprint header; got %q", tt.spec.fileName, string(scheme))
+				}
+				if !strings.Contains(string(scheme), tt.spec.doc) {
+					t.Errorf("%s does not contain the embedded suite doc body", tt.spec.fileName)
+				}
+				for _, other := range suites {
+					if other.fileName == tt.spec.fileName {
+						continue
+					}
+					if _, err := os.Stat(filepath.Join(repoDir, other.fileName)); !os.IsNotExist(err) {
+						t.Errorf("%s should not be written by a %s run; stat err = %v", other.fileName, tt.name, err)
+					}
+				}
+
+				exclude, err := os.ReadFile(filepath.Join(repoDir, ".git", "info", "exclude"))
+				if err != nil {
+					t.Fatalf("read .git/info/exclude: %v", err)
+				}
+				for _, entry := range []string{tt.spec.fileName, reportFileName} {
+					if !strings.Contains(string(exclude), entry) {
+						t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(exclude))
+					}
+				}
+			})
+
+			t.Run("prompt override", func(t *testing.T) {
+				parentDir, _ := makeHubRepo(t)
+				fakeLyx := makeFakeLyx(t, parentDir)
+				fakeClaude := filepath.Join(parentDir, "claude.exe")
+				customPrompt := "Do the " + tt.name + " thing entirely differently."
+
+				var gotInstruction string
+				restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+					gotInstruction = instruction
+					return 0
+				})
+				defer restore()
+
+				if err := runSuite(parentDir, "", customPrompt, tt.spec); err != nil {
+					t.Fatalf("runSuite error: %v", err)
+				}
+				if gotInstruction != customPrompt {
+					t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
+				}
+			})
+		})
 	}
 }
 
@@ -485,340 +543,6 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	}
 }
 
-// TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior sandbox-report.json before
-// launching the agent.
-func TestRunSuite_StaleReportRemoved(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	// Pre-create a stale report from a prior run.
-	stalePath := filepath.Join(repoDir, reportFileName)
-	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "S0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
-		t.Fatalf("write stale report: %v", err)
-	}
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
-		}
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
-		t.Fatalf("runSuite should return nil; got error: %v", err)
-	}
-	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
-	}
-}
-
-// TestRunSuite_ExcludesReport verifies that runSuite registers sandbox-report.json in
-// .git/info/exclude.
-func TestRunSuite_ExcludesReport(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-
-	excludePath := filepath.Join(repoDir, ".git", "info", "exclude")
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		t.Fatalf("read .git/info/exclude: %v", err)
-	}
-	for _, entry := range []string{mainSuite.fileName, reportFileName} {
-		if !strings.Contains(string(content), entry) {
-			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
-		}
-	}
-}
-
-// TestRunSuite_ReedSpec_WritesReedFile verifies that runSuite(..., reedSuite) writes
-// SANDBOX-REED-SUITE.md with the fingerprint header.
-func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-
-	reedPath := filepath.Join(repoDir, reedSuite.fileName)
-	content, err := os.ReadFile(reedPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", reedSuite.fileName, err)
-	}
-	if !strings.Contains(string(content), "Binary under test") {
-		t.Errorf("%s missing fingerprint header; got %q", reedSuite.fileName, string(content))
-	}
-	if !strings.Contains(string(content), reedSandboxSuiteMD) {
-		t.Errorf("%s does not contain the embedded reed doc body", reedSuite.fileName)
-	}
-
-	if _, err := os.Stat(filepath.Join(repoDir, mainSuite.fileName)); !os.IsNotExist(err) {
-		t.Errorf("%s should not be written by a reedSuite run; stat err = %v", mainSuite.fileName, err)
-	}
-}
-
-// TestRunSuite_ReedSpec_ExcludesFiles verifies that a reedSuite run registers its files in
-// .git/info/exclude.
-func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-
-	excludePath := filepath.Join(repoDir, ".git", "info", "exclude")
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		t.Fatalf("read .git/info/exclude: %v", err)
-	}
-	for _, entry := range []string{reedSuite.fileName, reportFileName} {
-		if !strings.Contains(string(content), entry) {
-			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
-		}
-	}
-}
-
-// TestRunSuite_ReedSpec_DeletesStaleReport verifies that a reedSuite run deletes stale
-// sandbox-report.json before launching the agent.
-func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	stalePath := filepath.Join(repoDir, reportFileName)
-	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "M0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
-		t.Fatalf("write stale report: %v", err)
-	}
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
-		}
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
-		t.Fatalf("runSuite should return nil; got error: %v", err)
-	}
-	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
-	}
-}
-
-// TestRunSuite_ReedSpec_DefaultInstruction verifies that a reedSuite run passes the reed default
-// instruction to launchAgent.
-func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		gotInstruction = instruction
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", reedSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if gotInstruction != reedSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, reedSuite.instruction)
-	}
-	if gotInstruction != "Read ./SANDBOX-REED-SUITE.md and follow the instructions in it exactly." {
-		t.Errorf("launchAgent instruction = %q; want the literal reed default", gotInstruction)
-	}
-}
-
-// TestRunSuite_ReedSpec_PromptOverride verifies that a -prompt override reaches launchAgent
-// verbatim for a reedSuite run.
-func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-	customPrompt := "Do the reed thing entirely differently."
-
-	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		gotInstruction = instruction
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", customPrompt, reedSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if gotInstruction != customPrompt {
-		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
-	}
-}
-
-// TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that runSuite writes SANDBOX-SHUTTLE-SUITE.md
-// with the fingerprint header.
-func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-
-	shuttlePath := filepath.Join(repoDir, shuttleSuite.fileName)
-	content, err := os.ReadFile(shuttlePath)
-	if err != nil {
-		t.Fatalf("read %s: %v", shuttleSuite.fileName, err)
-	}
-	if !strings.Contains(string(content), "Binary under test") {
-		t.Errorf("%s missing fingerprint header; got %q", shuttleSuite.fileName, string(content))
-	}
-	if !strings.Contains(string(content), shuttleSandboxSuiteMD) {
-		t.Errorf("%s does not contain the embedded shuttle doc body", shuttleSuite.fileName)
-	}
-
-	if _, err := os.Stat(filepath.Join(repoDir, mainSuite.fileName)); !os.IsNotExist(err) {
-		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", mainSuite.fileName, err)
-	}
-	if _, err := os.Stat(filepath.Join(repoDir, reedSuite.fileName)); !os.IsNotExist(err) {
-		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", reedSuite.fileName, err)
-	}
-}
-
-// TestRunSuite_ShuttleSpec_ExcludesFiles verifies that a shuttleSuite run registers its files in
-// .git/info/exclude.
-func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-
-	excludePath := filepath.Join(repoDir, ".git", "info", "exclude")
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		t.Fatalf("read .git/info/exclude: %v", err)
-	}
-	for _, entry := range []string{shuttleSuite.fileName, reportFileName} {
-		if !strings.Contains(string(content), entry) {
-			t.Errorf(".git/info/exclude missing entry %q; got %q", entry, string(content))
-		}
-	}
-}
-
-// TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run deletes stale
-// sandbox-report.json before launching the agent.
-func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	stalePath := filepath.Join(repoDir, reportFileName)
-	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "SH0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
-		t.Fatalf("write stale report: %v", err)
-	}
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
-		}
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
-		t.Fatalf("runSuite should return nil; got error: %v", err)
-	}
-	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-		t.Errorf("stale report should have been removed before launch; stat err = %v", statErr)
-	}
-}
-
-// TestRunSuite_ShuttleSpec_DefaultInstruction verifies that a shuttleSuite run passes the shuttle
-// default instruction to launchAgent.
-func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		gotInstruction = instruction
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", "", shuttleSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if gotInstruction != shuttleSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, shuttleSuite.instruction)
-	}
-	if gotInstruction != "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly." {
-		t.Errorf("launchAgent instruction = %q; want the literal shuttle default", gotInstruction)
-	}
-}
-
-// TestRunSuite_ShuttleSpec_PromptOverride verifies that a -prompt override reaches launchAgent
-// verbatim for a shuttleSuite run.
-func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-	customPrompt := "Do the shuttle thing entirely differently."
-
-	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		gotInstruction = instruction
-		return 0
-	})
-	defer restore()
-
-	if err := runSuite(parentDir, "", customPrompt, shuttleSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if gotInstruction != customPrompt {
-		t.Errorf("launchAgent instruction = %q; want override %q", gotInstruction, customPrompt)
-	}
-}
-
 // TestSuiteSpecs_ReedTeardownFlag verifies which suites have the reedTeardown flag.
 func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	if mainSuite.reedTeardown {
@@ -831,110 +555,60 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	}
 }
 
-// TestRunSuite_BurlerSpec_ReedTeardownAfterAgent verifies that a burlerSuite run calls reedDown
-// exactly once, after the agent session ends.
-func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
-	parentDir, repoDir := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	agentDone := false
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		agentDone = true
-		return 0
-	})
-	defer restore()
-
-	var gotDir, gotLyx string
-	teardownCalls := 0
-	reedDown = func(dir, lyx string) error {
-		if !agentDone {
-			t.Error("reedDown called before launchAgent returned")
-		}
-		teardownCalls++
-		gotDir, gotLyx = dir, lyx
-		return nil
+// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lyx; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
+func TestRunSuite_ReedTeardown(t *testing.T) {
+	tests := []struct {
+		name        string
+		spec        suiteSpec
+		agentExit   int
+		teardownErr error
+		wantCalls   int
+	}{
+		{"live-reed suite tears down once after the agent", burlerSuite, 0, nil, 1},
+		{"core suite never tears down", mainSuite, 0, nil, 0},
+		{"teardown runs after a non-zero agent exit", burlerSuite, 2, nil, 1},
+		{"a teardown failure is tolerated", burlerSuite, 0, fmt.Errorf("lyx reed down: exit status 1"), 1},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parentDir, repoDir := makeHubRepo(t)
+			fakeLyx := makeFakeLyx(t, parentDir)
+			fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if teardownCalls != 1 {
-		t.Fatalf("reedDown called %d times; want exactly 1", teardownCalls)
-	}
-	if gotDir != repoDir {
-		t.Errorf("reedDown dir = %q; want %q", gotDir, repoDir)
-	}
-	if gotLyx != fakeLyx {
-		t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
-	}
-}
+			agentDone := false
+			restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
+				agentDone = true
+				return tt.agentExit
+			})
+			defer restore()
 
-// TestRunSuite_MainSpec_NoReedTeardown verifies that a mainSuite run never calls reedDown.
-func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
+			var gotDir, gotLyx string
+			teardownCalls := 0
+			reedDown = func(dir, lyx string) error {
+				if !agentDone {
+					t.Error("reedDown called before launchAgent returned")
+				}
+				teardownCalls++
+				gotDir, gotLyx = dir, lyx
+				return tt.teardownErr
+			}
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	reedDown = func(dir, lyx string) error {
-		t.Error("reedDown should not be called for mainSuite")
-		return nil
-	}
-
-	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-}
-
-// TestRunSuite_ReedTeardownFailureTolerated verifies that a reedDown error does not turn a
-// completed session into a launcher failure.
-func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 0
-	})
-	defer restore()
-
-	reedDown = func(dir, lyx string) error {
-		return fmt.Errorf("lyx reed down: exit status 1")
-	}
-
-	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
-		t.Fatalf("runSuite should tolerate a reedDown failure; got error: %v", err)
-	}
-}
-
-// TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit verifies that teardown runs regardless of the
-// agent's exit code.
-func TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit(t *testing.T) {
-	parentDir, _ := makeHubRepo(t)
-	fakeLyx := makeFakeLyx(t, parentDir)
-	fakeClaude := filepath.Join(parentDir, "claude.exe")
-
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
-		return 2
-	})
-	defer restore()
-
-	teardownCalls := 0
-	reedDown = func(dir, lyx string) error {
-		teardownCalls++
-		return nil
-	}
-
-	if err := runSuite(parentDir, "", "", burlerSuite); err != nil {
-		t.Fatalf("runSuite error: %v", err)
-	}
-	if teardownCalls != 1 {
-		t.Errorf("reedDown called %d times after non-zero agent exit; want exactly 1", teardownCalls)
+			if err := runSuite(parentDir, "", "", tt.spec); err != nil {
+				t.Fatalf("runSuite should succeed; got error: %v", err)
+			}
+			if teardownCalls != tt.wantCalls {
+				t.Fatalf("reedDown called %d times; want exactly %d", teardownCalls, tt.wantCalls)
+			}
+			if tt.wantCalls == 0 {
+				return
+			}
+			if gotDir != repoDir {
+				t.Errorf("reedDown dir = %q; want %q", gotDir, repoDir)
+			}
+			if gotLyx != fakeLyx {
+				t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
+			}
+		})
 	}
 }
 

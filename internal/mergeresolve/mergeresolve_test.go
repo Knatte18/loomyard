@@ -141,6 +141,8 @@ const conflictedContent = "<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\
 const resolvedContent = "resolved content, no markers\n"
 
 func TestResolve_CleanMergeNoSession(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
@@ -161,6 +163,8 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 }
 
 func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
@@ -201,6 +205,8 @@ func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
 }
 
 func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
@@ -238,6 +244,8 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 }
 
 func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMergeSurface{
 		mergeInProgress: true,
 		mergeInResult:   fabricengine.MergeResult{Conflicts: nil},
@@ -259,72 +267,51 @@ func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
 	}
 }
 
-func TestResolve_ForeignMergeStateError_StuckNoAbort(t *testing.T) {
-	fake := &fakeMergeSurface{mergeInErr: &fabricengine.ErrForeignMergeState{}}
-	shuttle := &shedfake.MergeShuttle{}
-	r, err := New(newTestDeps(t, fake, shuttle))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	res, err := r.Resolve(context.Background(), "source")
-	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
-	}
-	if res.Outcome != OutcomeStuck {
-		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
-	}
-	if fake.calledAny("MergeAbort") {
-		t.Error("MergeAbort was called; want it never reached for a foreign merge state")
-	}
-}
-
-func TestResolve_UnmergeableStateError_StuckWithErrorSurfacedNoAbort(t *testing.T) {
-	fake := &fakeMergeSurface{mergeInErr: &fabricengine.ErrUnmergeableState{}}
-	shuttle := &shedfake.MergeShuttle{}
-	r, err := New(newTestDeps(t, fake, shuttle))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	res, err := r.Resolve(context.Background(), "source")
-	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
-	}
-	if res.Outcome != OutcomeStuck {
-		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
-	}
-	if res.Reason == "" {
-		t.Error("Reason is empty; want the error surfaced")
-	}
-	if fake.calledAny("MergeAbort") {
-		t.Error("MergeAbort was called; want it never reached for an unmergeable-state error")
-	}
-}
-
 // unrecognizedMergeError is a typed error MergeIn's own disposition table does not name explicitly,
 // proving the catch-all default is escalate rather than fall through unhandled.
 type unrecognizedMergeError struct{}
 
 func (unrecognizedMergeError) Error() string { return "unrecognized merge failure" }
 
-func TestResolve_UnrecognizedMergeInError_CatchAllStuck(t *testing.T) {
-	fake := &fakeMergeSurface{mergeInErr: unrecognizedMergeError{}}
-	shuttle := &shedfake.MergeShuttle{}
-	r, err := New(newTestDeps(t, fake, shuttle))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+// TestResolve_MergeInError_StuckWithReasonNoAbort asserts every error MergeIn returns -- a foreign merge state, an unmergeable state, and one its disposition table does not name -- ends stuck with the error surfaced, without aborting a merge the run does not own.
+func TestResolve_MergeInError_StuckWithReasonNoAbort(t *testing.T) {
+	t.Parallel()
 
-	res, err := r.Resolve(context.Background(), "source")
-	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"foreign merge state", &fabricengine.ErrForeignMergeState{}},
+		{"unmergeable state", &fabricengine.ErrUnmergeableState{}},
+		{"unrecognized error hits the catch-all", unrecognizedMergeError{}},
 	}
-	if res.Outcome != OutcomeStuck {
-		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fake := &fakeMergeSurface{mergeInErr: tt.err}
+			r, err := New(newTestDeps(t, fake, &shedfake.MergeShuttle{}))
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			res, err := r.Resolve(context.Background(), "source")
+			if err != nil {
+				t.Fatalf("Resolve() error = %v; want nil", err)
+			}
+			if res.Outcome != OutcomeStuck {
+				t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeStuck)
+			}
+			if res.Reason == "" {
+				t.Error("Reason is empty; want the error surfaced")
+			}
+			if fake.calledAny("MergeAbort") {
+				t.Error("MergeAbort was called; want it never reached for a MergeIn error")
+			}
+		})
 	}
 }
 
+// Not parallel: logcapture.Capture replaces the process-global logger.
 func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -372,9 +359,8 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 	}
 }
 
-// TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line
-// lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not
-// erase the diagnostic.
+// TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not erase the diagnostic.
+// Not parallel: logcapture.Capture replaces the process-global logger.
 func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	paths := []string{"a.txt"}
 	abortErr := errors.New("abort failed")
@@ -404,6 +390,8 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 }
 
 func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMergeSurface{}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
@@ -427,6 +415,8 @@ func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
 }
 
 func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{AlreadyUpToDate: true}}
 	shuttle := &shedfake.MergeShuttle{}
 	r, err := New(newTestDeps(t, fake, shuttle))
@@ -450,6 +440,8 @@ func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 }
 
 func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
@@ -482,6 +474,8 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 }
 
 func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
@@ -512,6 +506,8 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 }
 
 func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)
@@ -548,6 +544,8 @@ func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.
 }
 
 func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{
 		mergeInResult:  fabricengine.MergeResult{Conflicts: paths},
@@ -591,6 +589,8 @@ func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t 
 }
 
 func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
+	t.Parallel()
+
 	paths := []string{"a.txt"}
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}}
 	deps := newTestDeps(t, fake, nil)

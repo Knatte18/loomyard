@@ -121,6 +121,8 @@ func scanDeniedRecoveryGoFile(t *testing.T, root, path string) []deniedRecoveryH
 }
 
 // TestNoDeniedRecovery_ScannedSurfaceHasNone fails, naming file and line, for every denied form the scanned surface offers.
+//
+//testtiming:keep pins that no refusal, stencil or spec names a denied recovery command, the guard itself of PATTERN-no-denied-recovery
 func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 	root := scankit.Root(t)
 	var hits []deniedRecoveryHit
@@ -188,6 +190,8 @@ func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 }
 
 // TestNoDeniedRecovery_ScanSelfCheck plants each shape in an in-memory file and asserts the scan's verdict on it.
+//
+//testtiming:keep proves the TestNoDeniedRecovery_ScannedSurfaceHasNone scan fires on each planted denied shape and stays quiet on compliant ones
 func TestNoDeniedRecovery_ScanSelfCheck(t *testing.T) {
 	cases := []struct {
 		name string

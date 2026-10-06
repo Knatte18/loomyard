@@ -9,27 +9,35 @@ import (
 )
 
 func TestBuildWorkspace(t *testing.T) {
+	t.Parallel()
+
 	folders := []WorkspaceFolder{{Name: "prime", Path: "../prime"}, {Name: "board", Path: "../_board"}}
 	const head = "{\n  \"folders\": [\n    {\n      \"name\": \"prime\",\n      \"path\": \"../prime\"\n    },\n    {\n      \"name\": \"board\",\n      \"path\": \"../_board\"\n    }\n  ],\n  \"settings\": "
 
+	escapedFolders := []WorkspaceFolder{{Name: `a"b`, Path: `c\d`}}
+	const escapedHead = "{\n  \"folders\": [\n    {\n      \"name\": \"a\\\"b\",\n      \"path\": \"c\\\\d\"\n    }\n  ],\n  \"settings\": "
+
 	tests := []struct {
 		name     string
+		folders  []WorkspaceFolder
 		settings []byte
 		want     string
 		valid    bool
 	}{
-		{"plain json", []byte("{\n  \"a\": 1\n}\n"), head + "{\n  \"a\": 1\n}\n}\n", true},
-		{"jsonc verbatim", []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false},
-		{"bom stripped", append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), head + "{\"a\":1}\n}\n", true},
-		{"nil", nil, head + "{}\n}\n", true},
-		{"empty", []byte{}, head + "{}\n}\n", true},
-		{"whitespace only", []byte(" \n\t\r\n"), head + "{}\n}\n", true},
-		{"comments only", []byte("// a\n/* b\n c */\n// d"), head + "{}\n}\n", true},
-		{"ends in line comment", []byte("{\"a\":1} // tail"), head + "{\"a\":1} // tail\n}\n", false},
+		{"plain json", folders, []byte("{\n  \"a\": 1\n}\n"), head + "{\n  \"a\": 1\n}\n}\n", true},
+		{"jsonc verbatim", folders, []byte("{\n  // c\n  /* b */ \"a\": [1,],\n}"), head + "{\n  // c\n  /* b */ \"a\": [1,],\n}\n}\n", false},
+		{"bom stripped", folders, append([]byte{0xEF, 0xBB, 0xBF}, []byte("{\"a\":1}")...), head + "{\"a\":1}\n}\n", true},
+		{"nil", folders, nil, head + "{}\n}\n", true},
+		{"empty", folders, []byte{}, head + "{}\n}\n", true},
+		{"whitespace only", folders, []byte(" \n\t\r\n"), head + "{}\n}\n", true},
+		{"comments only", folders, []byte("// a\n/* b\n c */\n// d"), head + "{}\n}\n", true},
+		{"ends in line comment", folders, []byte("{\"a\":1} // tail"), head + "{\"a\":1} // tail\n}\n", false},
+		{"folder name and path escaped", escapedFolders, nil, escapedHead + "{}\n}\n", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := BuildWorkspace(folders, tt.settings)
+			t.Parallel()
+			got, err := BuildWorkspace(tt.folders, tt.settings)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,16 +48,6 @@ func TestBuildWorkspace(t *testing.T) {
 				t.Errorf("output is not valid JSON:\n%s", got)
 			}
 		})
-	}
-}
-
-func TestBuildWorkspaceEscapesFolders(t *testing.T) {
-	got, err := BuildWorkspace([]WorkspaceFolder{{Name: `a"b`, Path: `c\d`}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !json.Valid(got) {
-		t.Errorf("output is not valid JSON:\n%s", got)
 	}
 }
 

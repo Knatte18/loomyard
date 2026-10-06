@@ -9,36 +9,60 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-func TestNew_OrdinaryPathRunsCommitAfterCommitThenPush(t *testing.T) {
+// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message its prefix names, then runs afterCommit, then pushes.
+func TestNew_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
-	var calls []string
-	deps := Deps{
-		MergeActive: func() (bool, error) { return false, nil },
-		Commit: func(msg string) error {
-			calls = append(calls, "commit")
-			return nil
-		},
-		Push: func() error {
-			calls = append(calls, "push")
-			return nil
-		},
-	}
-	afterCommit := func(producer, state string) {
-		calls = append(calls, fmt.Sprintf("after:%s:%s", producer, state))
+	tests := []struct {
+		name        string
+		prefix      string
+		producer    string
+		state       string
+		wantMessage string
+	}{
+		{name: "loom", prefix: "loom", producer: "Discussion-Write", state: "running", wantMessage: "loom: Discussion-Write -> running"},
+		{name: "batten", prefix: "batten", producer: "Run-Shed", state: "running", wantMessage: "batten: Run-Shed -> running"},
 	}
 
-	seam := New(deps, "loom", "loomcli", afterCommit)
-	if err := seam("Discussion-Write", "running"); err != nil {
-		t.Fatalf("seam(...) = %v; want nil", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	want := []string{"commit", "after:Discussion-Write:running", "push"}
-	if !reflect.DeepEqual(calls, want) {
-		t.Errorf("calls = %v; want %v", calls, want)
+			var calls []string
+			var gotMessage string
+			deps := Deps{
+				MergeActive: func() (bool, error) { return false, nil },
+				Commit: func(msg string) error {
+					calls = append(calls, "commit")
+					gotMessage = msg
+					return nil
+				},
+				Push: func() error {
+					calls = append(calls, "push")
+					return nil
+				},
+			}
+			afterCommit := func(producer, state string) {
+				calls = append(calls, fmt.Sprintf("after:%s:%s", producer, state))
+			}
+
+			seam := New(deps, tt.prefix, tt.prefix+"cli", afterCommit)
+			if err := seam(tt.producer, tt.state); err != nil {
+				t.Fatalf("seam(...) = %v; want nil", err)
+			}
+
+			want := []string{"commit", fmt.Sprintf("after:%s:%s", tt.producer, tt.state), "push"}
+			if !reflect.DeepEqual(calls, want) {
+				t.Errorf("calls = %v; want %v", calls, want)
+			}
+			if gotMessage != tt.wantMessage {
+				t.Errorf("Commit msg = %q; want %q", gotMessage, tt.wantMessage)
+			}
+		})
 	}
 }
 
+//testtiming:keep pins Message's format for any prefix, which the commit-error test covering its blocks never reads
 func TestMessage(t *testing.T) {
 	t.Parallel()
 
@@ -61,24 +85,6 @@ func TestMessage(t *testing.T) {
 				t.Errorf("Message(%q, %q, %q) = %q; want %q", tt.prefix, tt.producer, tt.state, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestNew_CommitMessageCarriesThePrefix(t *testing.T) {
-	t.Parallel()
-
-	var got string
-	deps := Deps{
-		MergeActive: func() (bool, error) { return false, nil },
-		Commit:      func(msg string) error { got = msg; return nil },
-		Push:        func() error { return nil },
-	}
-
-	if err := New(deps, "batten", "battencli", nil)("Run-Shed", "running"); err != nil {
-		t.Fatalf("seam(...) = %v; want nil", err)
-	}
-	if want := "batten: Run-Shed -> running"; got != want {
-		t.Errorf("Commit msg = %q; want %q", got, want)
 	}
 }
 
@@ -106,55 +112,58 @@ func TestNew_CommitErrorPropagates(t *testing.T) {
 	}
 }
 
-// The probe is unlocked, so a merge can go live between the first probe and the commit.
+// TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip covers a commit failure the second probe explains: the probe is unlocked, so a merge can go live between the first probe and the commit.
 // Driven live during review: without the re-probe, a MERGE_HEAD landing in that window failed the path-scoped commit with git's "cannot do a partial commit during a merge" and killed the run.
-func TestNew_CommitFailsAfterMergeWentLive_TakesTheSkip(t *testing.T) {
+// Both a re-probe that reports the merge live and one that cannot read the state take the skip disposition, never the halt: an unreadable re-probe is the same untrustworthy-git-state category the skip exists for.
+func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 	t.Parallel()
 
-	probes := 0
-	pushCalled := false
-	deps := Deps{
-		MergeActive: func() (bool, error) {
-			probes++
-			return probes > 1, nil
+	tests := []struct {
+		name      string
+		commitErr error
+		reProbe   func() (bool, error)
+	}{
+		{
+			name:      "merge went live",
+			commitErr: errors.New("gitrepo: git commit: fatal: cannot do a partial commit during a merge"),
+			reProbe:   func() (bool, error) { return true, nil },
 		},
-		Commit: func(msg string) error {
-			return errors.New("gitrepo: git commit: fatal: cannot do a partial commit during a merge")
+		{
+			name:      "re-probe fails",
+			commitErr: errors.New("commit failed"),
+			reProbe:   func() (bool, error) { return false, errors.New("probe unreadable") },
 		},
-		Push: func() error { pushCalled = true; return nil },
 	}
 
-	seam := New(deps, "loom", "loomcli", nil)
-	if err := seam("Discussion-Write", "running"); err != nil {
-		t.Errorf("seam(...) = %v; want nil -- a commit failure a live merge explains takes the skip disposition, never the halt", err)
-	}
-	if probes != 2 {
-		t.Errorf("MergeActive called %d time(s); want exactly 2 -- once before the commit, once to explain its failure", probes)
-	}
-	if pushCalled {
-		t.Error("Push was called; want it skipped -- nothing was committed to push")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestNew_CommitFailsAndReProbeFails_TakesTheSkip(t *testing.T) {
-	t.Parallel()
-
-	probes := 0
-	deps := Deps{
-		MergeActive: func() (bool, error) {
-			probes++
-			if probes == 1 {
-				return false, nil
+			probes := 0
+			pushCalled := false
+			deps := Deps{
+				MergeActive: func() (bool, error) {
+					probes++
+					if probes == 1 {
+						return false, nil
+					}
+					return tt.reProbe()
+				},
+				Commit: func(msg string) error { return tt.commitErr },
+				Push:   func() error { pushCalled = true; return nil },
 			}
-			return false, errors.New("probe unreadable")
-		},
-		Commit: func(msg string) error { return errors.New("commit failed") },
-		Push:   func() error { return nil },
-	}
 
-	seam := New(deps, "loom", "loomcli", nil)
-	if err := seam("Discussion-Write", "running"); err != nil {
-		t.Errorf("seam(...) = %v; want nil -- an unreadable re-probe is the same untrustworthy-git-state category the skip exists for", err)
+			seam := New(deps, "loom", "loomcli", nil)
+			if err := seam("Discussion-Write", "running"); err != nil {
+				t.Errorf("seam(...) = %v; want nil -- a commit failure the re-probe explains takes the skip disposition, never the halt", err)
+			}
+			if probes != 2 {
+				t.Errorf("MergeActive called %d time(s); want exactly 2 -- once before the commit, once to explain its failure", probes)
+			}
+			if pushCalled {
+				t.Error("Push was called; want it skipped -- nothing was committed to push")
+			}
+		})
 	}
 }
 

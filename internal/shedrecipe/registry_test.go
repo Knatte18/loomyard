@@ -44,6 +44,7 @@ func TestLookup(t *testing.T) {
 	})
 }
 
+//testtiming:keep pins the sorted, registry-keyed, non-aliased and exact set of engine names, which its covering test does not
 func TestNames(t *testing.T) {
 	t.Run("Sorted", func(t *testing.T) {
 		names := Names()
@@ -77,45 +78,42 @@ func TestNames(t *testing.T) {
 			t.Errorf("Names() second call = %v; want first element %q unaffected by the first call's caller mutating its result", second, original)
 		}
 	})
-}
 
-// TestRegistry_ShipsExpectedEntries asserts Names() returns exactly the sorted engine
-// names this task's registry ships. What is unique to this test relative to TestNames above is the
-// exact-contents pin -- TestNames covers Names()<->registry key agreement and sortedness alone -- and
-// the pin belongs beside the registry rather than with any one consumer of it.
-func TestRegistry_ShipsExpectedEntries(t *testing.T) {
-	want := []string{
-		"Batchifier",
-		"Bouncer",
-		"BurlerRound",
-		"Describe",
-		"DiscussionWrite",
-		"Finalize",
-		"FrictionReflect",
-		"InnerRun",
-		"LoomPreflight",
-		"PRGate",
-		"PRRework",
-		"PlanWrite",
-		"Preflight",
-		"Publish",
-		"SeedChild",
-		"SingleLLM",
-		"Stub",
-		"Webster",
-		"WorktreeCreate",
-		"WorktreeTeardown",
-	}
-
-	got := Names()
-	if len(got) != len(want) {
-		t.Fatalf("Names() = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
-	}
-	for i, name := range want {
-		if got[i] != name {
-			t.Errorf("Names()[%d] = %q, want %q", i, got[i], name)
+	// The exact-contents pin belongs beside the registry rather than with any one consumer of it.
+	t.Run("ShipsExpectedEntries", func(t *testing.T) {
+		want := []string{
+			"Batchifier",
+			"Bouncer",
+			"BurlerRound",
+			"Describe",
+			"DiscussionWrite",
+			"Finalize",
+			"FrictionReflect",
+			"InnerRun",
+			"LoomPreflight",
+			"PRGate",
+			"PRRework",
+			"PlanWrite",
+			"Preflight",
+			"Publish",
+			"SeedChild",
+			"SingleLLM",
+			"Stub",
+			"Webster",
+			"WorktreeCreate",
+			"WorktreeTeardown",
 		}
-	}
+
+		got := Names()
+		if len(got) != len(want) {
+			t.Fatalf("Names() = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+		}
+		for i, name := range want {
+			if got[i] != name {
+				t.Errorf("Names()[%d] = %q, want %q", i, got[i], name)
+			}
+		}
+	})
 }
 
 func TestRegistry_DescribeAndDescriptionGate(t *testing.T) {

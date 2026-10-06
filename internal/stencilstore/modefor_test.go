@@ -5,6 +5,8 @@ package stencilstore
 import "testing"
 
 func TestModeFor(t *testing.T) {
+	t.Parallel()
+
 	if got := ModeFor(true); got != ModeDev {
 		t.Errorf("ModeFor(true) = %v; want %v", got, ModeDev)
 	}

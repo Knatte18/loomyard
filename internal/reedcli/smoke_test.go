@@ -1,19 +1,11 @@
 //go:build tmux || llm
 
-// smoke_test.go is the shared smoke-test harness: the helpers (binary
-// discovery, live-tmux process/pane probes, transcript watching, fixture
-// wiring) common to the smoke test files in this package
-// (smoke_lifecycle_test.go, smoke_teardown_test.go, smoke_resume_test.go,
-// smoke_attach_test.go). Those files drive the composed live-tmux behaviors
-// through RunCLI against a real server — the basic up -> add -> status ->
-// down round-trip, crash recovery, layout survival under stacked
-// below-parent adds, add-after-remove-last, down's synchronous server teardown,
-// cross-worktree scope, the interactive attach handover, and native claude
-// --resume codeword recall. These paths are exactly where hermetic tests
-// prove nothing — tmux's real semantics (positional select-layout, silent
-// split failures, corpse panes, async kill-server) and claude's real
-// transcript persistence only show up live. Excluded from the default `go
-// test ./internal/reedcli/...`; runs under `go test -tags tmux`, or `-tags llm` for the claude resume test.
+// smoke_test.go is the shared smoke-test harness: the helpers (binary discovery, live-tmux process/pane probes, transcript watching, fixture wiring) common to the smoke test files in this package.
+// Those files drive the composed live-tmux behaviors through RunCLIIn against a real server:
+// the basic up -> add -> status -> down round-trip, crash recovery, layout survival under stacked below-parent adds, add-after-remove-last, down's synchronous server teardown, cross-worktree scope, the interactive attach handover, and native claude --resume codeword recall.
+// These paths are exactly where hermetic tests prove nothing:
+// tmux's real semantics (positional select-layout, silent split failures, corpse panes, async kill-server) and claude's real transcript persistence only show up live.
+// Excluded from the default `go test ./internal/reedcli/...`; runs under `go test -tags tmux`, or `-tags llm` for the claude resume test.
 // The file carries `tmux || llm` because both tiers' files use its helpers.
 
 package reedcli
@@ -179,19 +171,10 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	return socket, session
 }
 
-// smokeReapLaunchCmd returns the OS-appropriate long-running command line
-// the pane-child-reap fixtures (TestSmokeDownReapsPaneChildProcesses,
-// TestSmokeDownLeavesNoTmuxOnSocket, TestSmokeRemoveReapsRemovedPaneChildProcesses,
-// TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive) type into a pane: a
-// long-lived pwsh host on Windows, `sleep 300` on POSIX. reed types cmdStr
-// literally into the pane's own shell (send-keys -l, never exec'd directly —
-// see spawn.go's launchStrandLocked), so #{pane_pid} is always that shell
-// (bash on POSIX per the config template), not cmdStr's own process; a
-// command that actually runs gives the reap assertions a REAL child of that
-// shell to find and track, meaningfully exercising "reap the whole subtree,
-// not just #{pane_pid}" rather than trivially passing because the shell
-// itself (with nothing running under it) was the only thing tmux ever had
-// to kill.
+// smokeReapLaunchCmd returns the OS-appropriate long-running command line the pane-child-reap fixtures (the TestSmokeTeardown steps) type into a pane:
+// a long-lived pwsh host on Windows, `sleep 300` on POSIX.
+// reed types cmdStr literally into the pane's own shell (send-keys -l, never exec'd directly — see spawn.go's launchStrandLocked), so #{pane_pid} is always that shell (bash on POSIX per the config template), not cmdStr's own process.
+// A command that actually runs gives the reap assertions a REAL child of that shell to find and track, meaningfully exercising "reap the whole subtree, not just #{pane_pid}" rather than trivially passing because the shell itself (with nothing running under it) was the only thing tmux ever had to kill.
 func smokeReapLaunchCmd() string {
 	if runtime.GOOS == "windows" {
 		return "pwsh -NoExit -Command Write-Host ready"
@@ -199,12 +182,8 @@ func smokeReapLaunchCmd() string {
 	return "sleep 300"
 }
 
-// smokeMarkerLaunchCmd returns the OS-appropriate long-running command line
-// that prints marker into the pane and then stays alive, so a later capture
-// (or a nested attach, per TestSmokeAttachRendersInsideHarnessPane) can find
-// it. `exec` on the POSIX branch replaces the inner bash with sleep rather
-// than leaving a bash-parent-of-sleep pair, mirroring pwsh -NoExit's single
-// long-lived process shape.
+// smokeMarkerLaunchCmd returns the OS-appropriate long-running command line that prints marker into the pane and then stays alive, so a later capture (or the nested attach of TestSmokeLifecycle's attach step) can find it.
+// `exec` on the POSIX branch replaces the inner bash with sleep rather than leaving a bash-parent-of-sleep pair, mirroring pwsh -NoExit's single long-lived process shape.
 func smokeMarkerLaunchCmd(marker string) string {
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf("pwsh -NoExit -Command Write-Host %s", marker)
@@ -212,13 +191,9 @@ func smokeMarkerLaunchCmd(marker string) string {
 	return fmt.Sprintf("bash -c 'echo %s; exec sleep 300'", marker)
 }
 
-// harnessShellBinaryPath returns the interactive pane-shell binary
-// TestSmokeAttachRendersInsideHarnessPane boots its private harness session
-// with: pwsh on Windows (via pwshBinaryPath), bash on POSIX (LYX_REED_SHELL
-// override or PATH lookup, skipping the test if absent). This is a real,
-// generically-available interactive shell to host the nested attach
-// handover — not a pwsh-specific probe — so unlike pwshBinaryPath it has a
-// meaningful POSIX branch instead of being Windows-only.
+// harnessShellBinaryPath returns the interactive pane-shell binary the attach step of TestSmokeLifecycle boots its private harness session with:
+// pwsh on Windows (via pwshBinaryPath), bash on POSIX (LYX_REED_SHELL override or PATH lookup, skipping the test if absent).
+// This is a real, generically-available interactive shell to host the nested attach handover, not a pwsh-specific probe, so unlike pwshBinaryPath it has a meaningful POSIX branch instead of being Windows-only.
 func harnessShellBinaryPath(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -625,14 +600,20 @@ $acc`, strings.Join(lits, ","))
 	return pids
 }
 
-// reapHarnessServer tears down the test's private harness tmux server and
-// waits for its process subtree to exit.
+// reapHarnessServer tears down the test's private harness tmux server and waits for its process subtree to exit.
+// A watchdog daemon an attach spawned in the subtree is killed rather than waited for: it detaches into its own session and exits only on its own production idle schedule.
 func reapHarnessServer(t *testing.T, tmuxPath, socket string) {
 	t.Helper()
 	subtree := pidClosure(t, tmuxSocketPids(t, tmuxPath, socket))
 	_ = exec.Command(tmuxPath, "-L", socket, "kill-server").Run()
 	deadline := time.Now().Add(20 * time.Second)
 	for _, pid := range subtree {
+		if runtime.GOOS != "windows" && linuxIsWatchdogDaemon(pid) {
+			if p, err := os.FindProcess(pid); err == nil {
+				_ = p.Kill()
+			}
+			continue
+		}
 		for !processGone(pid) {
 			if time.Now().After(deadline) {
 				if p, err := os.FindProcess(pid); err == nil {
@@ -719,14 +700,6 @@ func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	return sibling
 }
 
-// mustChdir changes the process working directory or fails the test.
-func mustChdir(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %s: %v", dir, err)
-	}
-}
-
 // sessionAlive reports whether the named session currently exists on the socket.
 func sessionAlive(tmuxPath, socket, session string) bool {
 	return exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run() == nil
@@ -781,14 +754,7 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	return 0
 }
 
-// paneIDForStrand runs status and returns the tracked strand's live pane id.
-func paneIDForStrand(t *testing.T, guid string) string {
-	t.Helper()
-	return paneIDForStrandIn(t, "", guid)
-}
-
-// paneIDForStrandIn is paneIDForStrand driven through the RunCLIIn seam; see addStrandIn for what
-// the cwd argument means.
+// paneIDForStrandIn runs status through the RunCLIIn seam and returns the tracked strand's live pane id; see addStrandIn for what the cwd argument means.
 func paneIDForStrandIn(t *testing.T, cwd, guid string) string {
 	t.Helper()
 	var out bytes.Buffer

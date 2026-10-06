@@ -47,104 +47,93 @@ func runs(t *testing.T, counter string) int {
 	return strings.Count(string(data), "run")
 }
 
-func TestVerifyGate_RealVerifytreeLog(t *testing.T) {
-	cases := []struct {
-		name       string
-		command    string
-		wantReason bool
-		wantOutput string
-	}{
-		{"pass", "echo verify-ok", false, "verify-ok"},
-		{"fail", "echo verify-broken; exit 3", true, "verify-broken"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			deps, _ := newGateScratch(t)
-			deps.VerifyCommand = func() (string, error) { return tc.command, nil }
-			gate := newVerifyGate(deps)
-			reason, err := gate.check(context.Background(), "Publish", "main")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if (reason != "") != tc.wantReason {
-				t.Fatalf("reason = %q, wantReason = %v", reason, tc.wantReason)
-			}
-			got, err := os.ReadFile(gate.paths.Log)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(string(got), tc.wantOutput) {
-				t.Fatalf("log = %q, want it to contain %q", got, tc.wantOutput)
-			}
-		})
-	}
-}
+// TestVerifyGate_RealVerifytreeScenario drives newVerifyGate's real verifytree functions through one scratch repo, a step at a time, and pins the record-keyed behaviour the unit tests fake: a verify cut off before the record write runs again, the log holds the command's output on a pass and a fail, a check over the tree already verified runs nothing, a tree the record does not name is verified, and the clean-tree seam sees an untracked file.
+//
+// The steps run in order on one repo and one verified-tree record, so no step runs in parallel and each relies on the state the one before it left;
+// the top-level test calls t.Parallel because the repo is its own.
+func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
+	t.Parallel()
 
-// TestVerifyGate_InterruptedVerifyRunsAgain pins the crash case: a verify cut off before the record write leaves a mismatch, so the next check runs it.
-func TestVerifyGate_InterruptedVerifyRunsAgain(t *testing.T) {
 	deps, counter := newGateScratch(t)
+	command := "echo verify-ok; echo run >> " + counter
+	deps.VerifyCommand = func() (string, error) { return command, nil }
 	gate := newVerifyGate(deps)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := gate.check(ctx, "Publish", "main"); err == nil {
-		t.Fatal("check on a cancelled context: want an error")
-	}
-	if got := runs(t, counter); got != 0 {
-		t.Fatalf("interrupted verify ran the command %d time(s); want 0", got)
-	}
-
-	reason, err := gate.check(context.Background(), "Publish", "main")
-	if reason != "" || err != nil {
-		t.Fatalf("resumed check = (%q, %v); want (\"\", nil)", reason, err)
-	}
-	if got := runs(t, counter); got != 1 {
-		t.Fatalf("resumed check ran the command %d time(s); want 1", got)
-	}
-}
-
-// TestVerifyGate_NoOpMergeSkipsVerify pins that a second check over the tree the first one verified runs nothing.
-func TestVerifyGate_NoOpMergeSkipsVerify(t *testing.T) {
-	deps, counter := newGateScratch(t)
-	gate := newVerifyGate(deps)
-	for i := 0; i < 2; i++ {
-		if reason, err := gate.check(context.Background(), "Finalize", "main"); reason != "" || err != nil {
-			t.Fatalf("check %d = (%q, %v); want (\"\", nil)", i, reason, err)
+	check := func(ctx context.Context) (string, error) { return gate.check(ctx, "Publish", "main") }
+	requireRuns := func(t *testing.T, want int) {
+		t.Helper()
+		if got := runs(t, counter); got != want {
+			t.Fatalf("command ran %d time(s); want %d", got, want)
 		}
 	}
-	if got := runs(t, counter); got != 1 {
-		t.Fatalf("command ran %d time(s) over a verified tree; want 1", got)
+	requireLogHas := func(t *testing.T, want string) {
+		t.Helper()
+		got, err := os.ReadFile(gate.paths.Log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("log = %q, want it to contain %q", got, want)
+		}
 	}
-}
 
-// TestVerifyGate_NewCommitVerifiesAgain pins that a tree the record does not name is verified, as after a merge that brought in parent commits.
-func TestVerifyGate_NewCommitVerifiesAgain(t *testing.T) {
-	deps, counter := newGateScratch(t)
-	gate := newVerifyGate(deps)
-	if _, err := gate.check(context.Background(), "Publish", "main"); err != nil {
-		t.Fatal(err)
+	// A verify cut off before the record write leaves a mismatch, so the next check runs it.
+	if !t.Run("interrupted verify runs nothing", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := check(ctx); err == nil {
+			t.Fatal("check on a cancelled context: want an error")
+		}
+		requireRuns(t, 0)
+	}) {
+		return
 	}
-	gitkit.CommitFile(t, deps.WorktreeRoot, "b.txt", "b\n", "parent progress")
-	if _, err := gate.check(context.Background(), "Publish", "main"); err != nil {
-		t.Fatal(err)
-	}
-	if got := runs(t, counter); got != 2 {
-		t.Fatalf("command ran %d time(s) over two trees; want 2", got)
-	}
-}
 
-// TestVerifyGate_CleanSeesUntrackedFile pins that the real clean-tree seam reports an untracked file.
-func TestVerifyGate_CleanSeesUntrackedFile(t *testing.T) {
-	deps, _ := newGateScratch(t)
-	gate := newVerifyGate(deps)
-	if reason, err := gate.clean("Publish", "before the merge-in"); reason != "" || err != nil {
-		t.Fatalf("clean tree: (%q, %v); want (\"\", nil)", reason, err)
+	// Relies on the cancelled step having left no record for this tree.
+	if !t.Run("resumed check runs the command once and logs its output", func(t *testing.T) {
+		if reason, err := check(context.Background()); reason != "" || err != nil {
+			t.Fatalf("resumed check = (%q, %v); want (\"\", nil)", reason, err)
+		}
+		requireRuns(t, 1)
+		requireLogHas(t, "verify-ok")
+	}) {
+		return
 	}
-	if err := os.WriteFile(filepath.Join(deps.WorktreeRoot, "stray.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+
+	// Relies on the resumed step having recorded this tree as verified.
+	if !t.Run("a tree already verified runs nothing", func(t *testing.T) {
+		if reason, err := check(context.Background()); reason != "" || err != nil {
+			t.Fatalf("check over a verified tree = (%q, %v); want (\"\", nil)", reason, err)
+		}
+		requireRuns(t, 1)
+	}) {
+		return
 	}
-	reason, err := gate.clean("Publish", "before the merge-in")
-	if err != nil || !strings.Contains(reason, "stray.txt") {
-		t.Fatalf("dirty tree: (%q, %v); want a reason naming stray.txt", reason, err)
+
+	// A new commit gives a tree the record does not name, as after a merge that brought in parent commits.
+	if !t.Run("a new commit verifies again and a failing command is logged", func(t *testing.T) {
+		gitkit.CommitFile(t, deps.WorktreeRoot, "b.txt", "b\n", "parent progress")
+		command = "echo verify-broken; echo run >> " + counter + "; exit 3"
+		reason, err := check(context.Background())
+		if err != nil || reason == "" {
+			t.Fatalf("check over a new tree with a failing command = (%q, %v); want a failure reason", reason, err)
+		}
+		requireRuns(t, 2)
+		requireLogHas(t, "verify-broken")
+	}) {
+		return
 	}
+
+	// Relies on the previous step's commit leaving the worktree clean.
+	t.Run("the clean-tree seam sees an untracked file", func(t *testing.T) {
+		if reason, err := gate.clean("Publish", "before the merge-in"); reason != "" || err != nil {
+			t.Fatalf("clean tree: (%q, %v); want (\"\", nil)", reason, err)
+		}
+		if err := os.WriteFile(filepath.Join(deps.WorktreeRoot, "stray.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		reason, err := gate.clean("Publish", "before the merge-in")
+		if err != nil || !strings.Contains(reason, "stray.txt") {
+			t.Fatalf("dirty tree: (%q, %v); want a reason naming stray.txt", reason, err)
+		}
+	})
 }

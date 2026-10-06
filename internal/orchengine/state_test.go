@@ -26,18 +26,16 @@ func testPaths(t *testing.T) Paths {
 	}
 }
 
-func TestLoadState_AbsentIsIdle(t *testing.T) {
-	s, err := LoadState(testPaths(t))
-	if err != nil {
-		t.Fatalf("LoadState: %v", err)
-	}
-	if s.Phase != PhaseIdle {
-		t.Errorf("Phase = %q, want idle", s.Phase)
-	}
-}
-
+//testtiming:keep pins the full-field save and load round trip and the idle state of an absent file, which its covering test does not assert
 func TestSaveLoadState_RoundTrip(t *testing.T) {
 	p := testPaths(t)
+	absent, err := LoadState(p)
+	if err != nil {
+		t.Fatalf("LoadState of an absent file: %v", err)
+	}
+	if absent.Phase != PhaseIdle {
+		t.Errorf("absent Phase = %q, want idle", absent.Phase)
+	}
 	want := State{
 		Strand:              "g1",
 		Phase:               PhaseResuming,
@@ -83,6 +81,7 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
 func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	p := testPaths(t)
 	if err := ClearCycleRequest(p); err != nil {
@@ -128,6 +127,7 @@ func TestCycleRequested_UnparseableMarkerIsPendingWithZeroRequest(t *testing.T) 
 	}
 }
 
+//testtiming:keep pins that handoff paths are distinct and sit directly under the handoffs directory, which its covering test does not assert
 func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
 	p := testPaths(t)
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

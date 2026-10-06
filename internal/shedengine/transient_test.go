@@ -7,36 +7,40 @@ import (
 	"testing"
 )
 
-func TestMarkTransient_RoundTrip(t *testing.T) {
-	inner := errors.New("connection reset")
-	marked := MarkTransient(TransientGitTransport, inner)
-	wrapped := fmt.Errorf("push: %w", marked)
+func TestMarkTransient(t *testing.T) {
+	t.Parallel()
+	t.Run("a marked error unwraps and keeps its text", func(t *testing.T) {
+		t.Parallel()
+		inner := errors.New("connection reset")
+		marked := MarkTransient(TransientGitTransport, inner)
+		wrapped := fmt.Errorf("push: %w", marked)
 
-	if got := TransientOf(wrapped); got != TransientGitTransport {
-		t.Errorf("TransientOf(wrapped) = %q; want %q", got, TransientGitTransport)
-	}
-	if marked.Error() != inner.Error() {
-		t.Errorf("marked.Error() = %q; want %q", marked.Error(), inner.Error())
-	}
-	if !errors.Is(wrapped, inner) {
-		t.Errorf("errors.Is(wrapped, inner) = false; want true")
-	}
-}
-
-func TestMarkTransient_LeavesUnmarked(t *testing.T) {
-	inner := errors.New("boom")
-	if got := MarkTransient("", inner); got != inner {
-		t.Errorf("MarkTransient(empty class) = %v; want the error unchanged", got)
-	}
-	if got := MarkTransient(TransientGitHubAPI, nil); got != nil {
-		t.Errorf("MarkTransient(nil err) = %v; want nil", got)
-	}
-	if got := TransientOf(nil); got != "" {
-		t.Errorf("TransientOf(nil) = %q; want empty", got)
-	}
-	if got := TransientOf(inner); got != "" {
-		t.Errorf("TransientOf(unmarked) = %q; want empty", got)
-	}
+		if got := TransientOf(wrapped); got != TransientGitTransport {
+			t.Errorf("TransientOf(wrapped) = %q; want %q", got, TransientGitTransport)
+		}
+		if marked.Error() != inner.Error() {
+			t.Errorf("marked.Error() = %q; want %q", marked.Error(), inner.Error())
+		}
+		if !errors.Is(wrapped, inner) {
+			t.Errorf("errors.Is(wrapped, inner) = false; want true")
+		}
+	})
+	t.Run("an empty class, a nil error and an unmarked error stay unmarked", func(t *testing.T) {
+		t.Parallel()
+		inner := errors.New("boom")
+		if got := MarkTransient("", inner); got != inner {
+			t.Errorf("MarkTransient(empty class) = %v; want the error unchanged", got)
+		}
+		if got := MarkTransient(TransientGitHubAPI, nil); got != nil {
+			t.Errorf("MarkTransient(nil err) = %v; want nil", got)
+		}
+		if got := TransientOf(nil); got != "" {
+			t.Errorf("TransientOf(nil) = %q; want empty", got)
+		}
+		if got := TransientOf(inner); got != "" {
+			t.Errorf("TransientOf(unmarked) = %q; want empty", got)
+		}
+	})
 }
 
 func failingProducer() *funcProducer {
@@ -45,57 +49,40 @@ func failingProducer() *funcProducer {
 	}}
 }
 
-func TestStep_TransientClassPersisted(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: failingProducer()}}
-	shed.Transient = func(error) TransientClass { return TransientGitTransport }
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+func TestStep_TransientClassification(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		classifier func(error) TransientClass
+		wantClass  TransientClass
+	}{
+		{"a class is marked on the error and persisted", func(error) TransientClass { return TransientGitTransport }, TransientGitTransport},
+		{"an empty class persists empty", func(error) TransientClass { return "" }, ""},
+		{"a nil classifier leaves the error unmarked", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.Producers = []ProducerDef{{Name: "A", Producer: failingProducer()}}
+			shed.Transient = tt.classifier
+			seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
-	_, err := shed.Step(context.Background())
-	if err == nil {
-		t.Fatalf("Step(...) = nil error; want the producer error")
-	}
-	if got := TransientOf(err); got != TransientGitTransport {
-		t.Errorf("TransientOf(err) = %q; want %q", got, TransientGitTransport)
-	}
-	got := readStatus(t, statusPath, statusLockPath)
-	if got.State != StateFailed {
-		t.Errorf("persisted State = %q; want %q", got.State, StateFailed)
-	}
-	if got.Transient != "git-transport" {
-		t.Errorf("persisted Transient = %q; want git-transport", got.Transient)
-	}
-}
-
-func TestStep_EmptyClassPersistsEmpty(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: failingProducer()}}
-	shed.Transient = func(error) TransientClass { return "" }
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	_, err := shed.Step(context.Background())
-	if err == nil {
-		t.Fatalf("Step(...) = nil error; want the producer error")
-	}
-	if got := readStatus(t, statusPath, statusLockPath); got.Transient != "" {
-		t.Errorf("persisted Transient = %q; want empty", got.Transient)
-	}
-}
-
-func TestStep_NilClassifierLeavesUnmarked(t *testing.T) {
-	shed, statusPath, _, statusLockPath := newTestShed(t)
-	shed.Producers = []ProducerDef{{Name: "A", Producer: failingProducer()}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
-
-	_, err := shed.Step(context.Background())
-	if err == nil {
-		t.Fatalf("Step(...) = nil error; want the producer error")
-	}
-	if got := TransientOf(err); got != "" {
-		t.Errorf("TransientOf(err) = %q; want empty", got)
-	}
-	if got := readStatus(t, statusPath, statusLockPath); got.Transient != "" {
-		t.Errorf("persisted Transient = %q; want empty", got.Transient)
+			_, err := shed.Step(context.Background())
+			if err == nil {
+				t.Fatalf("Step(...) = nil error; want the producer error")
+			}
+			if got := TransientOf(err); got != tt.wantClass {
+				t.Errorf("TransientOf(err) = %q; want %q", got, tt.wantClass)
+			}
+			got := readStatus(t, statusPath, statusLockPath)
+			if got.State != StateFailed {
+				t.Errorf("persisted State = %q; want %q", got.State, StateFailed)
+			}
+			if got.Transient != string(tt.wantClass) {
+				t.Errorf("persisted Transient = %q; want %q", got.Transient, tt.wantClass)
+			}
+		})
 	}
 }
 

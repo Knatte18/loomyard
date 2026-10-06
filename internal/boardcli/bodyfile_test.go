@@ -5,6 +5,7 @@ package boardcli
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,58 +19,98 @@ func writeBodyFile(t *testing.T, content string) string {
 	return path
 }
 
-func TestApplyBodyFile_File(t *testing.T) {
-	fields := map[string]any{"slug": "s"}
-	if err := applyBodyFile(fields, writeBodyFile(t, "# Body\n\n\"quoted\"\n"), "{}", strings.NewReader("")); err != nil {
-		t.Fatalf("applyBodyFile: %v", err)
+// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file, and refuses a missing file, a body already in the payload and stdin claimed for both payload and body.
+func TestApplyBodyFile(t *testing.T) {
+	t.Parallel()
+	str := func(s string) *string { return &s }
+	tests := []struct {
+		name   string
+		fields map[string]any
+		// fileContent, when set, is written to a temp file whose path is the body-file argument.
+		fileContent *string
+		// bodyFile is the body-file argument when fileContent is nil; "missing" stands for a path that does not exist.
+		bodyFile string
+		// payloadSource is the source the payload was read from.
+		payloadSource string
+		stdin         string
+		// wantErr is a substring of the error; "missing" stands for the missing path.
+		wantErr string
+		// wantFields is the fields map after the call, checked when set.
+		wantFields map[string]any
+	}{
+		{
+			name:          "file content becomes the body",
+			fields:        map[string]any{"slug": "s"},
+			fileContent:   str("# Body\n\n\"quoted\"\n"),
+			payloadSource: "{}",
+			wantFields:    map[string]any{"slug": "s", "body": "# Body\n\n\"quoted\"\n"},
+		},
+		{
+			name:          "stdin becomes the body",
+			fields:        map[string]any{"slug": "s"},
+			bodyFile:      "-",
+			payloadSource: "{}",
+			stdin:         "from stdin",
+			wantFields:    map[string]any{"slug": "s", "body": "from stdin"},
+		},
+		{
+			name:          "an empty file sets an empty body",
+			fields:        map[string]any{"slug": "s"},
+			fileContent:   str(""),
+			payloadSource: "{}",
+			wantFields:    map[string]any{"slug": "s", "body": ""},
+		},
+		{
+			name:          "a missing file is refused naming its path",
+			fields:        map[string]any{},
+			bodyFile:      "missing",
+			payloadSource: "{}",
+			wantErr:       "missing",
+		},
+		{
+			name:          "a body already in the payload is refused naming the way forward",
+			fields:        map[string]any{"slug": "s", "body": "x"},
+			fileContent:   str("y"),
+			payloadSource: "{}",
+			wantErr:       "drop",
+			wantFields:    map[string]any{"slug": "s", "body": "x"},
+		},
+		{
+			name:          "stdin for both payload and body is refused",
+			fields:        map[string]any{},
+			bodyFile:      "-",
+			payloadSource: "-",
+			stdin:         "x",
+			wantErr:       "stdin",
+		},
 	}
-	if fields["body"] != "# Body\n\n\"quoted\"\n" {
-		t.Fatalf("body = %q", fields["body"])
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bodyFile := tt.bodyFile
+			if tt.fileContent != nil {
+				bodyFile = writeBodyFile(t, *tt.fileContent)
+			}
+			if bodyFile == "missing" {
+				bodyFile = filepath.Join(t.TempDir(), "absent.md")
+			}
 
-func TestApplyBodyFile_Stdin(t *testing.T) {
-	fields := map[string]any{"slug": "s"}
-	if err := applyBodyFile(fields, "-", "{}", strings.NewReader("from stdin")); err != nil {
-		t.Fatalf("applyBodyFile: %v", err)
-	}
-	if fields["body"] != "from stdin" {
-		t.Fatalf("body = %q", fields["body"])
-	}
-}
+			err := applyBodyFile(tt.fields, bodyFile, tt.payloadSource, strings.NewReader(tt.stdin))
 
-func TestApplyBodyFile_EmptyFile(t *testing.T) {
-	fields := map[string]any{"slug": "s"}
-	if err := applyBodyFile(fields, writeBodyFile(t, ""), "{}", strings.NewReader("")); err != nil {
-		t.Fatalf("applyBodyFile: %v", err)
-	}
-	if body, ok := fields["body"]; !ok || body != "" {
-		t.Fatalf("body = %#v, want empty string present", body)
-	}
-}
-
-func TestApplyBodyFile_MissingFileNamesPath(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "absent.md")
-	err := applyBodyFile(map[string]any{}, path, "{}", strings.NewReader(""))
-	if err == nil || !strings.Contains(err.Error(), path) {
-		t.Fatalf("err = %v, want one naming %s", err, path)
-	}
-}
-
-func TestApplyBodyFile_BodyInPayloadRefused(t *testing.T) {
-	fields := map[string]any{"slug": "s", "body": "x"}
-	err := applyBodyFile(fields, writeBodyFile(t, "y"), "{}", strings.NewReader(""))
-	if err == nil || !strings.Contains(err.Error(), "drop") {
-		t.Fatalf("err = %v, want a refusal naming the way forward", err)
-	}
-	if fields["body"] != "x" {
-		t.Fatalf("body overwritten: %q", fields["body"])
-	}
-}
-
-func TestApplyBodyFile_StdinForBothRefused(t *testing.T) {
-	err := applyBodyFile(map[string]any{}, "-", "-", strings.NewReader("x"))
-	if err == nil || !strings.Contains(err.Error(), "stdin") {
-		t.Fatalf("err = %v, want a stdin refusal", err)
+			if tt.wantErr != "" {
+				want := tt.wantErr
+				if want == "missing" {
+					want = bodyFile
+				}
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("err = %v, want one containing %q", err, want)
+				}
+			} else if err != nil {
+				t.Fatalf("applyBodyFile: %v", err)
+			}
+			if tt.wantFields != nil && !reflect.DeepEqual(tt.fields, tt.wantFields) {
+				t.Fatalf("fields = %#v, want %#v", tt.fields, tt.wantFields)
+			}
+		})
 	}
 }

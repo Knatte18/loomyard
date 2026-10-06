@@ -50,63 +50,47 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 	}
 }
 
-// TestPauseCmd_AbsentFile covers both shipped absent-file wordings: pause reports the told message
-// verbatim when the status file does not exist.
+// TestPauseCmd_AbsentFile covers both shipped absent-file wordings: pause reports the told message verbatim when the status file does not exist.
+// With EnsureStatusLockDir over a never-created lock parent, the parent is created and the call proceeds to the told message rather than failing in lock acquisition.
 func TestPauseCmd_AbsentFile(t *testing.T) {
 	tests := []struct {
-		name    string
-		message string
+		name                string
+		message             string
+		ensureStatusLockDir bool
 	}{
 		{name: "LoomWording", message: "loom: no status file at /x; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task"},
 		{name: "BattenWording", message: "battencli: no status file at /x; nothing is running for this slug"},
+		{name: "EnsureStatusLockDirCreatesTheParent", message: "loom: nothing running to pause", ensureStatusLockDir: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			paths := newTestPaths(t)
+			if tt.ensureStatusLockDir {
+				paths.StatusLockPath = filepath.Join(filepath.Dir(paths.StatusLockPath), "ephemeral", "status.lock")
+			}
 			// Deliberately never seed a status file.
 
 			spec := &Spec{
-				StatusPath:         paths.StatusPath,
-				StatusLockPath:     paths.StatusLockPath,
-				PauseAbsentMessage: tt.message,
+				StatusPath:          paths.StatusPath,
+				StatusLockPath:      paths.StatusLockPath,
+				DecodeErrPrefix:     "loom:",
+				EnsureStatusLockDir: tt.ensureStatusLockDir,
+				PauseAbsentMessage:  tt.message,
 			}
 
 			env, code := execEnvelope(t, pauseCmd(pauseTexts(), spec), nil)
 			if code != 1 {
-				t.Fatalf("exit code = %d; want 1", code)
+				t.Fatalf("exit code = %d; want 1 (the absent-file message, not a lock failure): %v", code, env)
 			}
 			if env["error"] != tt.message {
 				t.Errorf("error = %v; want %q", env["error"], tt.message)
 			}
+			if tt.ensureStatusLockDir {
+				if _, err := os.Stat(filepath.Dir(paths.StatusLockPath)); err != nil {
+					t.Errorf("status lock parent directory was not created: %v", err)
+				}
+			}
 		})
-	}
-}
-
-// TestPauseCmd_EnsureStatusLockDir asserts pause's own MkdirAll call matches card 13's two-argument
-// ensureStatusLockDir signature: when EnsureStatusLockDir is true over a never-created parent, the
-// parent is created and the call proceeds to the told absent-file message rather than failing in
-// lock acquisition.
-func TestPauseCmd_EnsureStatusLockDir(t *testing.T) {
-	paths := newTestPaths(t)
-	paths.StatusLockPath = filepath.Join(filepath.Dir(paths.StatusLockPath), "ephemeral", "status.lock")
-
-	spec := &Spec{
-		StatusPath:          paths.StatusPath,
-		StatusLockPath:      paths.StatusLockPath,
-		DecodeErrPrefix:     "loom:",
-		EnsureStatusLockDir: true,
-		PauseAbsentMessage:  "loom: nothing running to pause",
-	}
-
-	env, code := execEnvelope(t, pauseCmd(pauseTexts(), spec), nil)
-	if code != 1 {
-		t.Fatalf("exit code = %d; want 1 (the absent-file message, not a lock failure): %v", code, env)
-	}
-	if env["error"] != spec.PauseAbsentMessage {
-		t.Errorf("error = %v; want %q", env["error"], spec.PauseAbsentMessage)
-	}
-	if _, err := os.Stat(filepath.Dir(paths.StatusLockPath)); err != nil {
-		t.Errorf("status lock parent directory was not created: %v", err)
 	}
 }

@@ -30,6 +30,9 @@ func doneStatus() []statusResult {
 	return []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}
 }
 
+// TestInnerRun_AwaitingWithoutApprovalWaitsExempt asserts an awaiting child with no decision on disk is an exempt wait that names the review and the approve command, sleeps once and spawns nothing.
+//
+//testtiming:keep pins the no-decision wait -- its reason, one sleep and no spawn -- which the decision-bearing awaiting tests never reach
 func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
@@ -470,24 +473,7 @@ func TestInnerRun_DoneWaitIsNeitherCountedNorBlockedByTheRunningBudget(t *testin
 	}
 }
 
-func TestInnerRun_AwaitingWaitIsNotBlockedByTheRunningBudget(t *testing.T) {
-	const counted = 3
-	clock := &fakeClock{}
-	_, _, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Minute, t.TempDir(), testGrace)
-	shed := newRunShed(t, producer, counted)
-
-	for i := 0; i < counted+2; i++ {
-		res, err := shed.Step(context.Background())
-		if err != nil {
-			t.Fatalf("Step %d error = %v", i, err)
-		}
-		if res.State != shedengine.StateRunning || res.Next != "Run-Shed" {
-			t.Fatalf("Step %d = state %q next %q; want running routed back to Run-Shed", i, res.State, res.Next)
-		}
-	}
-}
-
+// TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry asserts an awaiting wait is not counted against the running budget -- every poll routes back to Run-Shed, still running, even with the budget fully spent -- and that the polls fold into one budget-exempt history entry.
 func TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry(t *testing.T) {
 	const counted = 3
 	const polls = 10
@@ -501,8 +487,8 @@ func TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Step %d error = %v", i, err)
 		}
-		if res.State == shedengine.StateBlocked {
-			t.Fatalf("Step %d blocked: %+v", i, res)
+		if res.State != shedengine.StateRunning || res.Next != "Run-Shed" {
+			t.Fatalf("Step %d = state %q next %q; want running routed back to Run-Shed", i, res.State, res.Next)
 		}
 	}
 

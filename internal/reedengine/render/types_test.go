@@ -10,6 +10,7 @@ import (
 )
 
 func TestDisplayDecodesRetiredKeysIgnored(t *testing.T) {
+	t.Parallel()
 	var d Display
 	if err := json.Unmarshal([]byte(`{"anchor":"below-parent","focus":true,"shrinkWhenWaitingOnChild":true,"fixedRows":3}`), &d); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
@@ -20,6 +21,7 @@ func TestDisplayDecodesRetiredKeysIgnored(t *testing.T) {
 }
 
 func TestDisplayMarshalsWithoutRetiredKeys(t *testing.T) {
+	t.Parallel()
 	raw, err := json.Marshal(Display{Anchor: AnchorBelowParent, Focus: true})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)

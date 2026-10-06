@@ -9,31 +9,122 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-func TestResolveContainment_MemberAndOwnFileSelfOnTwoCardsOverlap(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/a.go#"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
+// TestResolveContainment_Overlaps covers which target pairs the containment index flags: a member and its own file on two cards overlap, the second part of a multipart member overlaps its file, and the same card, an unrelated file and read-only references never do.
+// Containment is a WRITE hazard: a card that only READS a file and a card that only READS a symbol living in it must produce no finding, and neither does one writer beside one reader.
+// Building the overlap index from Targets+Uses made every such pair a SeverityBlocking finding, which refuses the whole run on a plan carrying nothing but ordinary read-only references.
+func TestResolveContainment_Overlaps(t *testing.T) {
+	t.Parallel()
+
+	oneFoo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
+
+	cases := []struct {
+		name    string
+		files   map[string]string
+		targets []string
+		// firstStatus, when set, is the status the fixture must give targets[0].
+		firstStatus quarry.Status
+		cards       []planparser.Card
+		// wantCard names the one card carrying the containment-file-overlap finding; empty means no finding.
+		wantCard string
+	}{
+		{
+			name:    "member and own file on two cards",
+			files:   oneFoo,
+			targets: []string{"sub#Foo", "sub/a.go#"},
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+				{Number: 2, Slug: "two", Targets: []string{"sub/a.go#"}},
+			},
+			wantCard: "1-one",
+		},
+		{
+			name: "second part of a multipart member overlaps",
+			files: map[string]string{
+				"sub/a.go": "package sub\n\nfunc init() {}\n",
+				"sub/b.go": "package sub\n\nfunc init() {}\n",
+			},
+			targets:     []string{"sub#init", "sub/b.go#"},
+			firstStatus: quarry.StatusMultipart,
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Targets: []string{"sub#init"}},
+				{Number: 2, Slug: "two", Targets: []string{"sub/b.go#"}},
+			},
+			wantCard: "1-one",
+		},
+		{
+			name:    "same card",
+			files:   oneFoo,
+			targets: []string{"sub#Foo", "sub/a.go#"},
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Targets: []string{"sub#Foo", "sub/a.go#"}},
+			},
+		},
+		{
+			name: "unrelated file",
+			files: map[string]string{
+				"sub/a.go": "package sub\n\nfunc Foo() {}\n",
+				"sub/b.go": "package sub\n\nfunc Bar() {}\n",
+			},
+			targets: []string{"sub#Foo", "sub/b.go#"},
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+				{Number: 2, Slug: "two", Targets: []string{"sub/b.go#"}},
+			},
+		},
+		{
+			name:    "reads only",
+			files:   oneFoo,
+			targets: []string{"sub#Foo", "sub/a.go#"},
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Uses: []string{"sub#Foo"}},
+				{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+			},
+		},
+		{
+			name:    "one writer and one reader",
+			files:   oneFoo,
+			targets: []string{"sub#Foo", "sub/a.go#"},
+			cards: []planparser.Card{
+				{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
+				{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
+			},
+		},
 	}
 
-	plan := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
-		{Number: 2, Slug: "two", Targets: []string{"sub/a.go#"}},
-	}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := resolveContainment(plan, results)
-	if len(got) != 1 || got[0].Check != "containment-file-overlap" || got[0].Card != "1-one" {
-		t.Fatalf("resolveContainment(...) = %+v; want exactly one containment-file-overlap finding on card 1-one", got)
+			root := writeFixtureRepo(t, tc.files)
+			repo, err := openRepo(root)
+			if err != nil {
+				t.Fatalf("openRepo(%q) returned error: %v", root, err)
+			}
+			results, err := resolveTargets(repo, tc.targets)
+			if err != nil {
+				t.Fatalf("resolveTargets(...) returned error: %v", err)
+			}
+			if tc.firstStatus != "" && results[0].Status != tc.firstStatus {
+				t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, tc.firstStatus)
+			}
+
+			got := resolveContainment(&planparser.Plan{Cards: tc.cards}, results)
+			if tc.wantCard == "" {
+				if len(got) != 0 {
+					t.Errorf("resolveContainment(...) = %+v; want no findings", got)
+				}
+				return
+			}
+			if len(got) != 1 || got[0].Check != "containment-file-overlap" || got[0].Card != tc.wantCard {
+				t.Fatalf("resolveContainment(...) = %+v; want exactly one containment-file-overlap finding on card %s", got, tc.wantCard)
+			}
+		})
 	}
 }
 
-// TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered proves the finding order is
-// stable across runs. resolveContainment walks a map, and a Go map range is randomised, so a plan
-// carrying several overlaps used to render its findings in a different order on every call.
+// TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered proves the finding order is stable across runs. resolveContainment walks a map, and a Go map range is randomised, so a plan carrying several overlaps used to render its findings in a different order on every call.
+//
+//testtiming:keep pins that the finding order is identical across repeated runs, which TestResolveContainment_Overlaps does not assert
 func TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered(t *testing.T) {
 	root := writeFixtureRepo(t, map[string]string{
 		"sub/a.go": "package sub\n\nfunc Foo() {}\n\nfunc Bar() {}\n\nfunc Baz() {}\n",
@@ -69,114 +160,6 @@ func TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered(t *testi
 				t.Fatalf("run %d finding %d = %+v; first run had %+v — ordering is not deterministic", i, j, again[j], first[j])
 			}
 		}
-	}
-}
-
-func TestResolveContainment_SameCardNoFinding(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/a.go#"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-
-	plan := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Targets: []string{"sub#Foo", "sub/a.go#"}},
-	}}
-
-	got := resolveContainment(plan, results)
-	if len(got) != 0 {
-		t.Errorf("resolveContainment(same card) = %+v; want no findings", got)
-	}
-}
-
-func TestResolveContainment_UnrelatedFileSelfNoFinding(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n\nfunc Foo() {}\n",
-		"sub/b.go": "package sub\n\nfunc Bar() {}\n",
-	})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/b.go#"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-
-	plan := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
-		{Number: 2, Slug: "two", Targets: []string{"sub/b.go#"}},
-	}}
-
-	got := resolveContainment(plan, results)
-	if len(got) != 0 {
-		t.Errorf("resolveContainment(unrelated file) = %+v; want no findings", got)
-	}
-}
-
-func TestResolveContainment_MultipartSecondPartOverlaps(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n\nfunc init() {}\n",
-		"sub/b.go": "package sub\n\nfunc init() {}\n",
-	})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#init", "sub/b.go#"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-	if results[0].Status != quarry.StatusMultipart {
-		t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusMultipart)
-	}
-
-	plan := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Targets: []string{"sub#init"}},
-		{Number: 2, Slug: "two", Targets: []string{"sub/b.go#"}},
-	}}
-
-	got := resolveContainment(plan, results)
-	if len(got) != 1 || got[0].Check != "containment-file-overlap" {
-		t.Fatalf("resolveContainment(multipart) = %+v; want exactly one containment-file-overlap finding", got)
-	}
-}
-
-// TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard is the regression test for R6-3:
-// containment is a WRITE hazard, so a card that only READS a file and a card that only READS a symbol
-// living in it must produce no finding. Building the overlap index from Targets+Uses made every such
-// pair a SeverityBlocking finding, which refuses `lyx webster run` outright and every dispatch after
-// it — on a plan carrying nothing but ordinary read-only references.
-func TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	results, err := resolveTargets(repo, []string{"sub#Foo", "sub/a.go#"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-
-	readsOnly := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Uses: []string{"sub#Foo"}},
-		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
-	}}
-	if got := resolveContainment(readsOnly, results); len(got) != 0 {
-		t.Errorf("resolveContainment(reads only) = %+v; want no findings — reading overlapping things conflicts with nothing", got)
-	}
-
-	// One writer and one reader is equally safe: nothing serializes on a read.
-	writeThenRead := &planparser.Plan{Cards: []planparser.Card{
-		{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}},
-		{Number: 2, Slug: "two", Uses: []string{"sub/a.go#"}},
-	}}
-	if got := resolveContainment(writeThenRead, results); len(got) != 0 {
-		t.Errorf("resolveContainment(one writer, one reader) = %+v; want no findings", got)
 	}
 }
 

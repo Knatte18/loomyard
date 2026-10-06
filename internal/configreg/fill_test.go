@@ -132,39 +132,46 @@ func moduleTemplate(t *testing.T, module string) string {
 	return fn()
 }
 
-// TestFill_DroppedTopLevelKeyLoadsAtDefault drops one top-level key from each module's real template and checks the load fills it.
-func TestFill_DroppedTopLevelKeyLoadsAtDefault(t *testing.T) {
-	for _, module := range fillModules {
-		t.Run(module, func(t *testing.T) {
-			template := moduleTemplate(t, module)
-			assertFilled(t, module, template, firstKey(t, template))
-		})
+// TestFill loads each module's real template with part of it missing and checks the load fills the gap at the template default, leaves the file untouched and logs one fill line naming the module and key-path; an empty but present file loads as the template.
+// It serializes its rows because they swap the process-global logger output.
+func TestFill(t *testing.T) {
+	type fillRow struct {
+		name, module string
+		// keyPath is the dotted key-path dropped from the template; empty drops its first top-level key.
+		keyPath string
+		// emptyFile seeds an empty file instead of a template with a key dropped.
+		emptyFile bool
 	}
-}
-
-// TestFill_ReedNestedAndWholeMapping drops reed's selvage.height_rows alone and status_line whole.
-func TestFill_ReedNestedAndWholeMapping(t *testing.T) {
-	template := moduleTemplate(t, "reed")
-	for _, keyPath := range []string{"selvage.height_rows", "status_line"} {
-		t.Run(keyPath, func(t *testing.T) {
-			assertFilled(t, "reed", template, keyPath)
-		})
-	}
-}
-
-// TestFill_EmptyFileLoadsAsTemplate checks an empty but present file loads as the template.
-func TestFill_EmptyFileLoadsAsTemplate(t *testing.T) {
+	var rows []fillRow
 	for _, module := range fillModules {
-		t.Run(module, func(t *testing.T) {
-			template := moduleTemplate(t, module)
-			loaded, _, after := loadFilled(t, module, template, nil)
+		rows = append(rows,
+			fillRow{name: module + " dropped top-level key", module: module},
+			fillRow{name: module + " empty file", module: module, emptyFile: true},
+		)
+	}
+	rows = append(rows,
+		fillRow{name: "reed dropped nested key", module: "reed", keyPath: "selvage.height_rows"},
+		fillRow{name: "reed dropped whole mapping", module: "reed", keyPath: "status_line"},
+	)
 
-			if want := wantDefault(t, module, template); !reflect.DeepEqual(loaded, want) {
-				t.Errorf("%s loaded %v; want the template default %v", module, loaded, want)
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			template := moduleTemplate(t, row.module)
+			if row.emptyFile {
+				loaded, _, after := loadFilled(t, row.module, template, nil)
+				if want := wantDefault(t, row.module, template); !reflect.DeepEqual(loaded, want) {
+					t.Errorf("%s loaded %v; want the template default %v", row.module, loaded, want)
+				}
+				if len(after) != 0 {
+					t.Errorf("%s empty config file was rewritten", row.module)
+				}
+				return
 			}
-			if len(after) != 0 {
-				t.Errorf("%s empty config file was rewritten", module)
+			keyPath := row.keyPath
+			if keyPath == "" {
+				keyPath = firstKey(t, template)
 			}
+			assertFilled(t, row.module, template, keyPath)
 		})
 	}
 }
