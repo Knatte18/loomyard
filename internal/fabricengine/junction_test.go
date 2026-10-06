@@ -36,6 +36,8 @@ func wireTestJunction(t *testing.T, link, target string) {
 // lyxcwd's own unit test now that fabricengine is the sole owner of this path shape (the method it
 // replaced, (*lyxcwd.Location).WorktreePath(slug), collided with the no-arg accessor the coming
 // reshape introduces on the same type).
+//
+//testtiming:keep WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreePath(t *testing.T) {
 	t.Parallel()
 
@@ -93,31 +95,26 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_EmptyIsNoOp asserts that an empty junctions slice (matching
-// WarpJunctions(l, slug) before any junction has ever been wired) is a legitimate no-op: (nil,
-// nil), not an error.
-func TestUnseedJunctionRecords_EmptyIsNoOp(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-
-	removed, err := unseedJunctionRecords(NewMutations(""), root, nil)
-	if err != nil {
-		t.Fatalf("unseedJunctionRecords(root, nil) = %v; want nil", err)
-	}
-	if len(removed) != 0 {
-		t.Errorf("removed = %v; want empty", removed)
-	}
-}
-
 // TestUnseedJunctionRecords_RemovesEveryHealthyJunction asserts the base case this card's
 // generalisation must not regress: every junction in the slice that is present and healthy is
 // removed,
 // and every removed Name is reported.
+// An empty junctions slice (matching WarpJunctions(l, slug) before any junction has ever been wired)
+// is a legitimate no-op: (nil, nil), not an error.
+//
+//testtiming:keep every healthy junction being removed with each removed name reported, and an empty slice being a (nil, nil) no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+
+	emptyRemoved, err := unseedJunctionRecords(NewMutations(""), root, nil)
+	if err != nil {
+		t.Fatalf("unseedJunctionRecords(root, nil) = %v; want nil", err)
+	}
+	if len(emptyRemoved) != 0 {
+		t.Errorf("removed = %v; want empty", emptyRemoved)
+	}
 
 	firstLink := filepath.Join(root, "first-link")
 	firstTarget := filepath.Join(root, "first-target")
@@ -151,6 +148,8 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 // name matches at every depth in gitignore semantics, so the pattern must be slash-anchored at the
 // repo root and carry the anchor subpath — the integration-tagged exclude tests prove the on-disk
 // file, but an untagged run never compiles them.
+//
+//testtiming:keep the git-exclude pattern being slash-anchored at the repo root and carrying the anchor subpath, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 func TestExcludePatternFor_AnchorsToRepoRoot(t *testing.T) {
 	t.Parallel()
 

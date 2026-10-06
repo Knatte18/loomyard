@@ -240,6 +240,8 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 // TestMergePaths_WeftPathVisibleAcrossSeparators. What is left over is one argument, and a source
 // scan is the proportionate guard for it — the same posture cmd/lyx's destructive- and
 // uncontained-write guards take for facts no runtime assertion on this host can reach.
+//
+//testtiming:keep weftPathVisible being wired to its separator-explicit form, by source inspection; coverage of its blocks by other tests does not show an assertion of this
 func TestMergePaths_WeftPathVisibleUsesTheOSSeparator(t *testing.T) {
 	source, err := os.ReadFile("mergepaths.go")
 	if err != nil {

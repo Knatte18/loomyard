@@ -43,78 +43,103 @@ func awaitTestBatches(dir string) ([]batcher.Batch, string) {
 	return batches, filepath.Join(dir, websterengine.ReportFileName(1, "json-flag"))
 }
 
-func TestAwaitBatch_ReportAlreadyPresentReturnsImmediately(t *testing.T) {
-	dir := t.TempDir()
-	batches, reportPath := awaitTestBatches(dir)
-	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
-		t.Fatalf("seed report: %v", err)
-	}
+func TestAwaitBatch(t *testing.T) {
+	t.Parallel()
 
-	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
-	result, err := websterengine.AwaitBatch(batches, dir, 1, time.Minute, clk)
-	if err != nil {
-		t.Fatalf("AwaitBatch() error: %v", err)
+	const report = "status: OK\nhead_sha: deadbeef\n"
+	tests := []struct {
+		name   string
+		number int
+		window time.Duration
+		// seedReport writes the report before the call; reportOnSleep writes it on that sleep tick instead.
+		seedReport    bool
+		reportOnSleep int
+		wantErr       bool
+		wantPresent   bool
+		// wantSleeps is asserted exactly when wantSleepsSet; wantMinElapsedS when positive.
+		wantSleepsSet   bool
+		wantSleeps      int
+		wantMinElapsedS int
+		wantBatchName   string
+	}{
+		{
+			name:          "a report already present returns immediately",
+			number:        1,
+			window:        time.Minute,
+			seedReport:    true,
+			wantPresent:   true,
+			wantSleepsSet: true,
+			wantSleeps:    0,
+			wantBatchName: "01-json-flag",
+		},
+		{
+			// The report lands after the third tick — AwaitBatch must return on the very next
+			// existence check, long before the one-hour window elapses.
+			name:          "a report appearing mid-wait returns without sleeping out the window",
+			number:        1,
+			window:        time.Hour,
+			reportOnSleep: 3,
+			wantPresent:   true,
+			wantSleepsSet: true,
+			wantSleeps:    3,
+		},
+		{
+			name:            "an absent report returns false once the window elapses",
+			number:          1,
+			window:          5 * time.Second,
+			wantMinElapsedS: 5,
+		},
+		{
+			name:    "an unknown batch number is refused",
+			number:  7,
+			window:  time.Second,
+			wantErr: true,
+		},
 	}
-	if !result.ReportPresent {
-		t.Error("ReportPresent = false; want true for a pre-existing report")
-	}
-	if result.BatchName != "01-json-flag" {
-		t.Errorf("BatchName = %q; want %q", result.BatchName, "01-json-flag")
-	}
-	if clk.sleeps != 0 {
-		t.Errorf("clock slept %d time(s); want 0 for a pre-existing report", clk.sleeps)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow(t *testing.T) {
-	dir := t.TempDir()
-	batches, reportPath := awaitTestBatches(dir)
-
-	// The report lands after the third tick — AwaitBatch must return on the
-	// very next existence check, long before the one-hour window elapses.
-	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
-	clk.onSleep = func(sleepCount int) {
-		if sleepCount == 3 {
-			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
-				t.Fatalf("write report mid-wait: %v", err)
+			dir := t.TempDir()
+			batches, reportPath := awaitTestBatches(dir)
+			if tt.seedReport {
+				if err := os.WriteFile(reportPath, []byte(report), 0o644); err != nil {
+					t.Fatalf("seed report: %v", err)
+				}
 			}
-		}
-	}
+			clk := &awaitFakeClock{now: time.Unix(1000, 0)}
+			if tt.reportOnSleep > 0 {
+				clk.onSleep = func(sleepCount int) {
+					if sleepCount == tt.reportOnSleep {
+						if err := os.WriteFile(reportPath, []byte(report), 0o644); err != nil {
+							t.Fatalf("write report mid-wait: %v", err)
+						}
+					}
+				}
+			}
 
-	result, err := websterengine.AwaitBatch(batches, dir, 1, time.Hour, clk)
-	if err != nil {
-		t.Fatalf("AwaitBatch() error: %v", err)
-	}
-	if !result.ReportPresent {
-		t.Error("ReportPresent = false; want true once the report appeared mid-wait")
-	}
-	if clk.sleeps != 3 {
-		t.Errorf("clock slept %d time(s); want exactly 3 (return on the tick that saw the report)", clk.sleeps)
-	}
-}
-
-func TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses(t *testing.T) {
-	dir := t.TempDir()
-	batches, _ := awaitTestBatches(dir)
-
-	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
-	result, err := websterengine.AwaitBatch(batches, dir, 1, 5*time.Second, clk)
-	if err != nil {
-		t.Fatalf("AwaitBatch() error: %v", err)
-	}
-	if result.ReportPresent {
-		t.Error("ReportPresent = true; want false when no report ever lands")
-	}
-	if result.ElapsedS < 5 {
-		t.Errorf("ElapsedS = %d; want >= 5 (the full window was waited out)", result.ElapsedS)
-	}
-}
-
-func TestAwaitBatch_UnknownBatchNumberRefused(t *testing.T) {
-	dir := t.TempDir()
-	batches, _ := awaitTestBatches(dir)
-
-	if _, err := websterengine.AwaitBatch(batches, dir, 7, time.Second, &awaitFakeClock{now: time.Unix(1000, 0)}); err == nil {
-		t.Fatal("AwaitBatch(unknown batch) = nil error; want the findBatch refusal")
+			result, err := websterengine.AwaitBatch(batches, dir, tt.number, tt.window, clk)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("AwaitBatch(unknown batch) = nil error; want the findBatch refusal")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AwaitBatch() error: %v", err)
+			}
+			if result.ReportPresent != tt.wantPresent {
+				t.Errorf("ReportPresent = %v; want %v", result.ReportPresent, tt.wantPresent)
+			}
+			if tt.wantBatchName != "" && result.BatchName != tt.wantBatchName {
+				t.Errorf("BatchName = %q; want %q", result.BatchName, tt.wantBatchName)
+			}
+			if tt.wantSleepsSet && clk.sleeps != tt.wantSleeps {
+				t.Errorf("clock slept %d time(s); want exactly %d", clk.sleeps, tt.wantSleeps)
+			}
+			if result.ElapsedS < tt.wantMinElapsedS {
+				t.Errorf("ElapsedS = %d; want >= %d (the full window was waited out)", result.ElapsedS, tt.wantMinElapsedS)
+			}
+		})
 	}
 }

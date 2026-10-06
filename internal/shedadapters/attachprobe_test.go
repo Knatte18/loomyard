@@ -77,18 +77,24 @@ func TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning(t *testing.T) {
 	}
 }
 
-func TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts(t *testing.T) {
+// TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore also pins what the probe matches on: the
+// round's own artifact pair, since shuttleengine.Attach set-matches a persisted run.json on
+// exactly these paths, and the round's own timeout rather than shuttle's shorter default.
+//
+//testtiming:keep pins the probe's matched artifact pair and timeout, and that a not-found probe falls through to exactly one spawn
+func TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore(t *testing.T) {
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	attach := &shedfake.Shuttle{}
+	attach := &shedfake.Shuttle{AttachFound: false}
 	opts := burlerengine.RunOpts{Timeout: 90 * time.Minute}
 	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
+	// Round 1 is complete on disk, so this Call is round 2.
 	writeJudgedRound(t, runDir, 1)
 
-	shedfake.CallOK(t, p)
-
-	// Round 1 is complete on disk, so this Call is round 2 -- the probe must name round 2's own
-	// pair, since shuttleengine.Attach set-matches a persisted run.json on exactly these paths.
+	shedfake.RequireOutcome(t, p, shedengine.Stuck)
+	if runner.Calls != 1 {
+		t.Errorf("runner.Run calls = %d; want 1 -- a not-found probe must fall through to the unchanged spawn path", runner.Calls)
+	}
 	want := []string{roundReviewPath(runDir, 2), roundFixerReportPath(runDir, 2)}
 	got := attach.GotAttachSpec.OutputFiles
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
@@ -96,18 +102,6 @@ func TestBurlerProducer_AttachSpecNamesTheRoundsOwnArtifacts(t *testing.T) {
 	}
 	if attach.GotAttachSpec.Timeout != opts.Timeout {
 		t.Errorf("attach spec Timeout = %s; want %s -- an attached run's deadline is the round's, not shuttle's shorter default", attach.GotAttachSpec.Timeout, opts.Timeout)
-	}
-}
-
-func TestBurlerProducer_NoLiveRunSpawnsExactlyAsBefore(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	attach := &shedfake.Shuttle{AttachFound: false}
-	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if runner.Calls != 1 {
-		t.Errorf("runner.Run calls = %d; want 1 -- a not-found probe must fall through to the unchanged spawn path", runner.Calls)
 	}
 }
 
@@ -155,6 +149,7 @@ func TestBurlerProducer_AttachErrorNeitherArchivesNorSpawns(t *testing.T) {
 
 // --- Bouncer, judge pass ---
 
+//testtiming:keep pins that the judge pass attaches to a live judge without archiving its declared outputs out from under it
 func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) {
 	attach := &shedfake.Shuttle{
 		AttachFound:  true,
@@ -215,66 +210,65 @@ func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 // their own, one archives the run directory out from under the live judge and the other writes a
 // synthetic file at a path it declared as an output.
 
-func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearing(t *testing.T) {
-	attach := &shedfake.Shuttle{
-		AttachFound:  true,
-		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
+//testtiming:keep pins that a live judge behind an already-written verdict is attached to before the clear or replay branch acts, and its own output is neither archived nor overwritten
+func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *testing.T) {
+	tests := []struct {
+		name string
+		// approved lays out an already-approved generation, which the clear branch would archive;
+		// otherwise a CONTINUE verdict, which the replay branch would synthesize a focus file for.
+		approved    bool
+		wantOutcome shedengine.Outcome
+	}{
+		{"instead of clearing an approved generation", true, shedengine.Done},
+		{"instead of replaying a CONTINUE verdict", false, shedengine.Stuck},
 	}
-	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
-	layoutApprovedGeneration(t, cfg, 1)
-	// What the live judge still had left to write when the driver died: its third declared output.
-	attach.DuringAttach = func() {
-		_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte("---\nround: 2\nexclude_lenses: []\nfocus: []\n---\n"), 0o644)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attach := &shedfake.Shuttle{
+				AttachFound:  true,
+				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
+			}
+			b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
+			if tt.approved {
+				layoutApprovedGeneration(t, cfg, 1)
+			} else {
+				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
+					round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
+				}})
+			}
+			// The live judge's real targeting for round 2, its third declared output, written while
+			// Call waits on it. A clear would archive the run dir out from under it and a replay would
+			// have synthesized two empty lists over this path before it ever landed.
+			realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the finding the judge actually targeted\"]\n---\n"
+			attach.DuringAttach = func() {
+				_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
+			}
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-	}
-	if !attach.AttachCalled {
-		t.Error("Attach was not called; want the probe to run before the clear branch acts")
-	}
-	if attach.Called {
-		t.Error("Run was called; want a live judge attached to, never respawned over")
-	}
-	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
-		t.Errorf("round 1's verdict file was moved (stat = %v); want it untouched -- the clear would archive it out from under the live judge", err)
-	}
-	assertNoArchivedRunDirSibling(t, cfg.RunDir)
-}
-
-func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfReplaying(t *testing.T) {
-	attach := &shedfake.Shuttle{
-		AttachFound:  true,
-		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
-	}
-	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: bouncerLedgerContent(1),
-	}})
-	// The live judge's real targeting for round 2, written while Call waits on it. The replay branch
-	// would have synthesized two empty lists over this path before it ever landed.
-	realFocus := "---\nround: 2\nexclude_lenses: []\nfocus: [\"the finding the judge actually targeted\"]\n---\n"
-	attach.DuringAttach = func() {
-		_ = os.WriteFile(focusPath(cfg.RunDir, 2), []byte(realFocus), 0o644)
-	}
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-	}
-	if attach.Called {
-		t.Error("Run was called; want a live judge attached to, never respawned over")
-	}
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 2))
-	if err != nil {
-		t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
-	}
-	if string(got) != realFocus {
-		t.Errorf("round-2-focus.md = %q; want the live judge's own targeting %q -- a synthetic file written over it drops the judge's targeting for the next round", got, realFocus)
-	}
-	if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focusPath(cfg.RunDir, 2))); n != 0 {
-		t.Errorf("stamped archive siblings = %d; want 0 -- the attached branch must not archive the live judge's own output", n)
+			ptr := shedfake.RequireOutcome(t, b, tt.wantOutcome)
+			if want := ledgerPath(cfg.RunDir, 1); ptr.Path != want {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+			}
+			if !attach.AttachCalled {
+				t.Error("Attach was not called; want the probe to run before the clear or replay branch acts")
+			}
+			if attach.Called {
+				t.Error("Run was called; want a live judge attached to, never respawned over")
+			}
+			if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
+				t.Errorf("round 1's verdict file was moved (stat = %v); want it untouched -- the clear would archive it out from under the live judge", err)
+			}
+			got, err := os.ReadFile(focusPath(cfg.RunDir, 2))
+			if err != nil {
+				t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
+			}
+			if string(got) != realFocus {
+				t.Errorf("round-2-focus.md = %q; want the live judge's own targeting %q -- a synthetic file written over it drops the judge's targeting for the next round", got, realFocus)
+			}
+			if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focusPath(cfg.RunDir, 2))); n != 0 {
+				t.Errorf("stamped archive siblings = %d; want 0 -- the attached branch must not archive the live judge's own output", n)
+			}
+			assertNoArchivedRunDirSibling(t, cfg.RunDir)
+		})
 	}
 }
 
@@ -300,31 +294,12 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 	assertNoArchivedRunDirSibling(t, cfg.RunDir)
 }
 
-// TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore is the not-found half of the pair: the
-// probe must change nothing for the ordinary case, where the judge that wrote the verdict is long
-// gone and re-entry genuinely means a settled generation is being re-judged.
-func TestBouncer_EntryProbe_NothingLiveClearsExactlyAsBefore(t *testing.T) {
-	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
-	layoutApprovedGeneration(t, cfg, 1)
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
-	}
-	if !attach.AttachCalled {
-		t.Error("Attach was not called; want the probe to run even when nothing is live")
-	}
-	archived := archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")
-	if _, err := os.Stat(archived); err != nil {
-		t.Errorf("expected the archived generation %s to exist: %v", archived, err)
-	}
-}
-
 // TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles pins what the probe matches on.
 // shuttleengine.Attach set-matches a persisted run.json's OutputFiles and nothing else, so a probe
 // naming any other set -- the seed pass's single focus file, or the Burler row's review/fixer-report
 // pair -- silently matches nothing and is indistinguishable from no agent being alive at all.
+//
+//testtiming:keep pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
 func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
@@ -343,45 +318,43 @@ func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 
 // --- Bouncer, seed pass ---
 
-func TestBouncer_SeedCall_AttachesToLiveSeedInsteadOfRespawning(t *testing.T) {
-	attach := &shedfake.Shuttle{
-		AttachFound:  true,
-		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-seed"},
+func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
+	tests := []struct {
+		name        string
+		attachFound bool
+	}{
+		{"a live seed is attached to, never respawned over", true},
+		{"no live seed archives the stale focus file then spawns", false},
 	}
-	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	// A parseable round-1 focus file would make Call take its re-bounce branch instead of seeding,
-	// so the live seed's in-progress file is deliberately unparseable here -- which is exactly what
-	// a half-written focus file looks like.
-	focus := focusPath(cfg.RunDir, 1)
-	if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(partial focus) = %v; want nil", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attach := &shedfake.Shuttle{
+				AttachFound:  tt.attachFound,
+				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-seed"},
+				Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			}
+			b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
+			// A parseable round-1 focus file would make Call take its re-bounce branch instead of seeding,
+			// so the in-progress file is deliberately unparseable here -- which is exactly what
+			// a half-written focus file looks like.
+			focus := focusPath(cfg.RunDir, 1)
+			if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(partial focus) = %v; want nil", err)
+			}
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
-	}
-	if !attach.AttachCalled {
-		t.Error("Attach was not called; want the seed pass to probe first")
-	}
-	if attach.Called {
-		t.Error("Run was called; want a live seed attached to, never respawned over")
-	}
-}
-
-func TestBouncer_SeedCall_NoLiveRunArchivesThenSpawns(t *testing.T) {
-	attach := &shedfake.Shuttle{AttachFound: false, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
-	focus := focusPath(cfg.RunDir, 1)
-	if err := os.WriteFile(focus, []byte("---\nround: 1\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(partial focus) = %v; want nil", err)
-	}
-
-	shedfake.CallOK(t, b)
-	if !attach.Called {
-		t.Error("Run was not called; want a not-found probe to fall through to the unchanged spawn path")
-	}
-	if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focus)); n != 1 {
-		t.Errorf("stamped archive siblings = %d; want 1 -- the respawn branch still archives the stale focus file", n)
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
+			if ptr != (shedengine.OutputPointer{}) {
+				t.Errorf("Call() pointer = %+v; want empty", ptr)
+			}
+			if !attach.AttachCalled {
+				t.Error("Attach was not called; want the seed pass to probe first")
+			}
+			if attach.Called == tt.attachFound {
+				t.Errorf("Run called = %v; want %v -- a live seed is attached to, a not-found probe falls through to the spawn", attach.Called, !tt.attachFound)
+			}
+			if n := stampedSiblingCount(t, cfg.RunDir, filepath.Base(focus)); !tt.attachFound && n != 1 {
+				t.Errorf("stamped archive siblings = %d; want 1 -- the respawn branch still archives the stale focus file", n)
+			}
+		})
 	}
 }

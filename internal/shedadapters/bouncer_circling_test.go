@@ -80,72 +80,96 @@ func requireReasonContains(t *testing.T, reason string, wants ...string) {
 	}
 }
 
+//testtiming:keep pins the awaiting reason a circling round with no decision writes: both verbs, each with the slug argument or without it
 func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
-	b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) { c.Slug = "my-task" })
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+	tests := []struct {
+		name      string
+		slug      string
+		wantReasn []string
+	}{
+		{
+			name:      "a slug is named in both verbs",
+			slug:      "my-task",
+			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start"},
+		},
+		{
+			name:      "an empty slug omits the argument",
+			wantReasn: []string{"`lyx loom circling accept`", "`lyx loom circling continue`"},
+		},
 	}
-	requireReasonContains(t, ptr.Reason, "round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start")
-	if shuttle.Called {
-		t.Error("Call() spawned a run; want none")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, cfg, shuttle := circlingBouncer(t, func(c *BouncerConfig) { c.Slug = tt.slug })
+
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+			}
+			requireReasonContains(t, ptr.Reason, tt.wantReasn...)
+			if shuttle.Called {
+				t.Error("Call() spawned a run; want none")
+			}
+		})
 	}
 }
 
-func TestBouncer_Circling_EmptySlugOmitsTheArgument(t *testing.T) {
-	b, _, _ := circlingBouncer(t, nil)
+// TestBouncer_Circling_RecordedDecision covers the way a recorded decision settles a CIRCLING
+// round: continue returns Stuck, runs no seam and writes the next round's focus file; accept
+// settles, approves and commits, returns Done, and the next Call clears the settled generation.
+//
+//testtiming:keep pins settling a decision recorded on a CIRCLING round that never wrote an escalation record, which the escalation tests never reach
+func TestBouncer_Circling_RecordedDecision(t *testing.T) {
+	tests := []struct {
+		name     string
+		decision CirclingDecision
+	}{
+		{"continue returns Stuck and runs no seam", CirclingContinue},
+		{"accept settles, approves, commits then clears", CirclingAccept},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seams := &circlingSeams{}
+			b, cfg, shuttle := circlingBouncer(t, seams.install)
+			if _, _, err := RecordCirclingDecision(cfg.RunDir, tt.decision); err != nil {
+				t.Fatalf("RecordCirclingDecision(%s) = %v; want nil", tt.decision, err)
+			}
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	requireReasonContains(t, ptr.Reason, "`lyx loom circling accept`", "`lyx loom circling continue`")
-}
+			if tt.decision == CirclingContinue {
+				ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
+				if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
+					t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+				}
+				if len(seams.order) != 0 {
+					t.Errorf("seams ran %v; want none", seams.order)
+				}
+				if shuttle.Called {
+					t.Error("Call() spawned a run; want none")
+				}
+				if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
+					t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
+				}
+				return
+			}
 
-func TestBouncer_Circling_RecordedContinueReturnsStuckAndRunsNoSeam(t *testing.T) {
-	seams := &circlingSeams{}
-	b, cfg, shuttle := circlingBouncer(t, seams.install)
-	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingContinue); err != nil {
-		t.Fatalf("RecordCirclingDecision(continue) = %v; want nil", err)
-	}
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
+			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+			}
+			if got := strings.Join(seams.order, ","); got != "approve,commit" {
+				t.Errorf("seam order = %q; want approve,commit", got)
+			}
+			if _, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2); err != nil || !settled {
+				t.Errorf("readCirclingDecision settled = %v, err = %v; want settled true", settled, err)
+			}
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-	}
-	if len(seams.order) != 0 {
-		t.Errorf("seams ran %v; want none", seams.order)
-	}
-	if shuttle.Called {
-		t.Error("Call() spawned a run; want none")
-	}
-	if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
-		t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
-	}
-}
-
-func TestBouncer_Circling_RecordedAcceptSettlesApprovesCommitsThenClears(t *testing.T) {
-	seams := &circlingSeams{}
-	b, cfg, _ := circlingBouncer(t, seams.install)
-	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
-	}
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-	}
-	if got := strings.Join(seams.order, ","); got != "approve,commit" {
-		t.Errorf("seam order = %q; want approve,commit", got)
-	}
-	if _, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2); err != nil || !settled {
-		t.Errorf("readCirclingDecision settled = %v, err = %v; want settled true", settled, err)
-	}
-
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if _, err := os.Stat(archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")); err != nil {
-		t.Errorf("expected the next Call to archive the settled generation: %v", err)
-	}
-	if len(seams.order) != 2 {
-		t.Errorf("seams ran %v; want approve and commit once each", seams.order)
+			shedfake.RequireOutcome(t, b, shedengine.Stuck)
+			if _, err := os.Stat(archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")); err != nil {
+				t.Errorf("expected the next Call to archive the settled generation: %v", err)
+			}
+			if len(seams.order) != 2 {
+				t.Errorf("seams ran %v; want approve and commit once each", seams.order)
+			}
+		})
 	}
 }
 

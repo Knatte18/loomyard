@@ -25,6 +25,8 @@ import (
 
 // TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lyx/ in the warp
 // index of a subpath-anchored hub and asserts Status reports it with a git rm --cached remedy.
+//
+//testtiming:keep Status reporting a tracked <anchor>/_lyx file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	t.Parallel()
 

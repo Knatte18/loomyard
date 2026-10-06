@@ -27,63 +27,77 @@ func (c *fakeClock) Sleep(d time.Duration) {
 
 var _ clock = (*fakeClock)(nil)
 
-func TestPollUntilTerminal_TerminalMidWaitReturnsEarly(t *testing.T) {
+func TestPollUntilTerminal(t *testing.T) {
 	t.Parallel()
 
-	calls := 0
-	gather := func() (Digest, bool, error) {
-		calls++
-		if calls < 3 {
-			return Digest{Batch: "01-x", Status: DigestStatusRunning}, false, nil
-		}
-		return Digest{Batch: "01-x", Status: DigestStatusDone}, true, nil
+	gatherErr := errors.New("gather failed")
+	tests := []struct {
+		name string
+		wait time.Duration
+		// gather is built per row so call counting stays row-local; calls reports how often it ran.
+		gather       func(calls *int) (Digest, bool, error)
+		wantStatus   string
+		wantElapsedS int
+		wantCalls    int
+		wantErr      error
+	}{
+		{
+			name: "a terminal result mid-wait returns early",
+			wait: time.Hour,
+			gather: func(calls *int) (Digest, bool, error) {
+				*calls++
+				if *calls < 3 {
+					return Digest{Batch: "01-x", Status: DigestStatusRunning}, false, nil
+				}
+				return Digest{Batch: "01-x", Status: DigestStatusDone}, true, nil
+			},
+			wantStatus: DigestStatusDone,
+			// Exactly three gathers: short-circuit on the terminal one.
+			wantCalls: 3,
+		},
+		{
+			name: "the deadline returns the last running digest",
+			wait: 3 * time.Second,
+			gather: func(*int) (Digest, bool, error) {
+				return Digest{Batch: "01-x", Status: DigestStatusRunning, ElapsedS: 99}, false, nil
+			},
+			wantStatus:   DigestStatusRunning,
+			wantElapsedS: 99,
+		},
+		{
+			name: "a gather error propagates",
+			wait: time.Hour,
+			gather: func(*int) (Digest, bool, error) {
+				return Digest{}, false, gatherErr
+			},
+			wantErr: gatherErr,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	digest, err := PollUntilTerminal(gather, time.Hour, &fakeClock{now: time.Unix(0, 0)})
-	if err != nil {
-		t.Fatalf("PollUntilTerminal() error = %v; want nil", err)
-	}
-	if digest.Status != DigestStatusDone {
-		t.Errorf("PollUntilTerminal().Status = %q; want %q", digest.Status, DigestStatusDone)
-	}
-	if calls != 3 {
-		t.Errorf("gather called %d times; want exactly 3 (short-circuit on terminal)", calls)
-	}
-}
+			calls := 0
+			digest, err := PollUntilTerminal(func() (Digest, bool, error) { return tt.gather(&calls) }, tt.wait, &fakeClock{now: time.Unix(0, 0)})
 
-func TestPollUntilTerminal_DeadlineReturnsRunning(t *testing.T) {
-	t.Parallel()
-
-	running := Digest{Batch: "01-x", Status: DigestStatusRunning, ElapsedS: 99}
-	gather := func() (Digest, bool, error) {
-		return running, false, nil
-	}
-
-	digest, err := PollUntilTerminal(gather, 3*time.Second, &fakeClock{now: time.Unix(0, 0)})
-	if err != nil {
-		t.Fatalf("PollUntilTerminal() error = %v; want nil", err)
-	}
-	if digest.Status != DigestStatusRunning {
-		t.Errorf("PollUntilTerminal().Status = %q; want %q", digest.Status, DigestStatusRunning)
-	}
-	if digest.ElapsedS != 99 {
-		t.Errorf("PollUntilTerminal().ElapsedS = %d; want 99", digest.ElapsedS)
-	}
-}
-
-func TestPollUntilTerminal_GatherErrorPropagates(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("gather failed")
-	gather := func() (Digest, bool, error) {
-		return Digest{}, false, wantErr
-	}
-
-	_, err := PollUntilTerminal(gather, time.Hour, &fakeClock{now: time.Unix(0, 0)})
-	if err == nil {
-		t.Fatalf("PollUntilTerminal() error = nil; want a propagated error")
-	}
-	if !errors.Is(err, wantErr) {
-		t.Errorf("PollUntilTerminal() error = %v; want it to wrap %v", err, wantErr)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("PollUntilTerminal() error = %v; want it to wrap %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("PollUntilTerminal() error = %v; want nil", err)
+			}
+			if digest.Status != tt.wantStatus {
+				t.Errorf("PollUntilTerminal().Status = %q; want %q", digest.Status, tt.wantStatus)
+			}
+			if digest.ElapsedS != tt.wantElapsedS {
+				t.Errorf("PollUntilTerminal().ElapsedS = %d; want %d", digest.ElapsedS, tt.wantElapsedS)
+			}
+			if tt.wantCalls != 0 && calls != tt.wantCalls {
+				t.Errorf("gather called %d times; want exactly %d", calls, tt.wantCalls)
+			}
+		})
 	}
 }

@@ -23,6 +23,8 @@ import (
 // refused with CheckOwnership, reaching primaryWeftBranch — a real git spawn only an integration-tier
 // test can exercise. This is a refusal the real call sites cannot reach: neither real call site ever
 // names the primary weft branch, since Cleanup itself never enumerates it as an orphan.
+//
+//testtiming:keep the remote-branch gate refusing the primary weft branch on ownership, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +51,8 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 // This is also a refusal the real call sites cannot reach: they run only after the same branch's
 // local `git branch -D` already succeeded, at which point the branch is already gone locally and so
 // is no longer checked out anywhere.
+//
+//testtiming:keep the remote-branch gate refusing a checked-out weft branch on ownership rather than dirtiness, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +92,8 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 
 // TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted proves the pair's own weft branch, checked out at its weft worktree, is deleted from origin under a valid tag and a lease at the tip,
 // and it records one entry.
+//
+//testtiming:keep the pair's own checked-out weft branch being deleted from origin under a valid tag and a tip lease with one recorded entry; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
 	t.Parallel()
 
@@ -158,6 +164,8 @@ func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
 }
 
 // TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip proves a lease behind an advanced origin fails without a gate refusal, records nothing, and leaves the advanced tip.
+//
+//testtiming:keep a lease behind an advanced origin failing without a gate refusal, recording nothing and leaving the advanced tip; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {
 	t.Parallel()
 

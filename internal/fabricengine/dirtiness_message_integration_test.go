@@ -29,6 +29,8 @@ import (
 // TestWorktreeDirty_ErrorNamesGitCommandOnce reproduces a real non-zero git exit and asserts the
 // error worktreeDirty composes from it does not repeat the git command the wrapped
 // *gitexec.GitError already renders.
+//
+//testtiming:keep worktreeDirty's error rendering git's command once rather than twice; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreeDirty_ErrorNamesGitCommandOnce(t *testing.T) {
 	t.Parallel()
 

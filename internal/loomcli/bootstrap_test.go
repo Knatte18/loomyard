@@ -31,6 +31,8 @@ import (
 // LockFree_LiveStrand_NoSpawn is the driver-between-steps case: the driver session takes the run
 // lock only inside each "lyx shed step" and releases it between steps, so the lock reads free while
 // the driver strand is live -- the bootstrap must not mistake that gap for "no driver running".
+//
+//testtiming:keep pins the spawn predicate over both the run lock and the live driver strand, including the two mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
 func TestMustSpawnDriver(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -55,6 +57,8 @@ func TestMustSpawnDriver(t *testing.T) {
 }
 
 // TestResolveDriverStrandAction covers resolveDriverStrandAction's three arms.
+//
+//testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
 func TestResolveDriverStrandAction(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -129,30 +133,6 @@ func TestResolveDriverStrandAction(t *testing.T) {
 	}
 }
 
-// TestDriverStrandDisplayName_AddAndLookupAgree pins that the name used to add the driver strand and
-// the name looked up are the same constant, in the shape statusStrandDisplayName is already pinned:
-// reed's add has no upsert semantics, so a mismatch between the two would stack a second pane rather
-// than match the first.
-func TestDriverStrandDisplayName_AddAndLookupAgree(t *testing.T) {
-	strands := []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}
-	action, guid := resolveDriverStrandAction(strands)
-	if action != driverStrandLive {
-		t.Fatalf("resolveDriverStrandAction found no match for driverStrandDisplayName %q; the add and lookup names have diverged", driverStrandDisplayName)
-	}
-	if guid != "g0" {
-		t.Errorf("resolveDriverStrandAction(%+v) guid = %q; want %q", strands, guid, "g0")
-	}
-}
-
-// TestDriverStrandDisplayName_DiffersFromOtherStrandNames guards against a name collision with
-// the status strand's pinned name, which would append a second pane rather than replace the first
-// (reed's add has no upsert semantics).
-func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
-	if driverStrandDisplayName == statusStrandDisplayName {
-		t.Errorf("driverStrandDisplayName and statusStrandDisplayName are both %q; want distinct names", driverStrandDisplayName)
-	}
-}
-
 // TestStartVerb_NoAttachFlag_DefaultsFalse pins the regression this flag most plausibly causes: a
 // silently flipped default. It reads the built command tree's own flag lookup -- rather than the
 // package variable a stray reassignment elsewhere in the package could leave stale -- so the
@@ -161,6 +141,8 @@ func TestDriverStrandDisplayName_DiffersFromOtherStrandNames(t *testing.T) {
 //
 // An invocation that never passes --no-attach must take today's attach path unchanged, and nothing
 // else in this package would catch a default silently flipped to true.
+//
+//testtiming:keep pins --no-attach registered on the start command with a false default that decideHandover turns into the attach path; its covering tests never read the flag's default
 func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 	c := &loomCLI{}
 	flag := c.startCmd().Flags().Lookup("no-attach")
@@ -177,23 +159,6 @@ func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
 	}
 }
 
-// TestNoAttachFields_PinsSuccessEnvelope pins the envelope `lyx loom start --no-attach` prints
-// once the driver is up: before it, the verb returned exit 0 with no output at all, so a script
-// could not tell a driver that came up from a silent failure (crucible round fable-high-r2, F2).
-func TestNoAttachFields_PinsSuccessEnvelope(t *testing.T) {
-	got := noAttachFields("llm", "task-priority", "task-priority", "/hub/task-priority/_lyx/shed/task-priority/status.json", "")
-	want := map[string]any{
-		"attached":    false,
-		"driver":      "llm",
-		"slug":        "task-priority",
-		"run_id":      "task-priority",
-		"status_file": "/hub/task-priority/_lyx/shed/task-priority/status.json",
-	}
-	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("noAttachFields() mismatch (-want +got):\n%s", diff)
-	}
-}
-
 // countingWait returns a wait seam that counts its own invocations, for use in place of a real
 // sleep in awaitRunLock tests.
 func countingWait(count *int) func() {
@@ -202,162 +167,79 @@ func countingWait(count *int) func() {
 	}
 }
 
-// stillRunning is the halted seam for every awaitRunLock test whose scenario is not about the
-// halted arm: it reports the machine still running, which is what keeps those scenarios reaching
-// the arm they are actually about.
-func stillRunning() bool { return false }
+// TestAwaitRunLock asserts the handshake's poll order and outcomes: lock held wins over everything, then a gone child, then a halted machine, and only an alive child that never takes the lock while the machine keeps running reaches the deadline.
+func TestAwaitRunLock(t *testing.T) {
+	tests := []struct {
+		name string
+		// lockHeldOnCall is the poll on which the lock reads held; zero never.
+		lockHeldOnCall int
+		lockErr        error
+		// aliveTrueCalls is how many alive polls answer true before the child reads gone; negative is always alive.
+		aliveTrueCalls int
+		halted         bool
+		deadline       int
+		want           awaitRunLockResult
+		wantErr        bool
+		wantWaits      int
+	}{
+		{name: "ready on a later iteration", lockHeldOnCall: 3, aliveTrueCalls: -1, deadline: 10, want: awaitRunLockReady, wantWaits: 2},
+		{name: "child died", aliveTrueCalls: 1, deadline: 10, want: awaitRunLockChildDied, wantWaits: 1},
+		{name: "deadline", aliveTrueCalls: -1, deadline: 5, want: awaitRunLockDeadline, wantWaits: 5},
+		{name: "lock seam errors", lockErr: errors.New("boom"), aliveTrueCalls: -1, deadline: 10, wantErr: true},
+		// The order is load-bearing: a child that took the lock and is about to exit must still be
+		// reported ready, so lockHeld reporting true must win even when alive would report false.
+		{name: "ready before the alive check, child about to exit", lockHeldOnCall: 1, deadline: 10, want: awaitRunLockReady},
+		// The regression guard for the defect Tier 2 introduced in `lyx loom start`'s handshake.
+		// shedengine.Run releases the run lock on return, and `lyx loom run` then spends up to
+		// friction_timeout_min -- thirty minutes in the shipped template -- running the friction
+		// reflection agent, against a handshake budget of thirty seconds. Before the halted seam existed,
+		// that combination (lock free, child alive, machine finished) fell through to awaitRunLockDeadline,
+		// which dispositionForHandshake refuses: a healthy run was reported as "driver did not take the run
+		// lock" and the bootstrap skipped its own terminal handover.
+		// A driver whose machine finished but whose process is still doing post-run bookkeeping is not a wedged spawn, and the halt is observable on the first poll.
+		{name: "halted while the child is still alive", aliveTrueCalls: -1, halted: true, deadline: 10, want: awaitRunLockHalted},
+		// The seam order: a child that is already gone reports child-died even when halted would also
+		// report true, so the more specific signal wins and the child-died scenario keeps its meaning.
+		{name: "halted is checked after the alive check", halted: true, deadline: 10, want: awaitRunLockChildDied},
+		// The other half of the guard: the halted seam must not make the genuine refusal unreachable.
+		// A child that is alive, never takes the lock, and leaves the machine in running is still a
+		// wedged spawn and must still hit the deadline.
+		{name: "still running with a live child still reaches the deadline", aliveTrueCalls: -1, deadline: 4, want: awaitRunLockDeadline, wantWaits: 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lockCalls := 0
+			lockHeld := func() (bool, error) {
+				lockCalls++
+				return tt.lockHeldOnCall > 0 && lockCalls >= tt.lockHeldOnCall, tt.lockErr
+			}
+			aliveCalls := 0
+			alive := func() bool {
+				aliveCalls++
+				return tt.aliveTrueCalls < 0 || aliveCalls <= tt.aliveTrueCalls
+			}
+			halted := func() bool { return tt.halted }
+			waits := 0
 
-func TestAwaitRunLock_ReadyOnLaterIteration(t *testing.T) {
-	calls := 0
-	lockHeld := func() (bool, error) {
-		calls++
-		return calls >= 3, nil
-	}
-	alive := func() bool { return true }
-	waits := 0
+			got, err := awaitRunLock(lockHeld, alive, halted, countingWait(&waits), tt.deadline)
 
-	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockReady {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockReady", got)
-	}
-	if waits != 2 {
-		t.Errorf("awaitRunLock() waited %d times; want 2", waits)
+			if tt.wantErr {
+				if !errors.Is(err, tt.lockErr) {
+					t.Errorf("awaitRunLock() error = %v; want %v", err, tt.lockErr)
+				}
+			} else if err != nil {
+				t.Fatalf("awaitRunLock() unexpected error: %v", err)
+			} else if got != tt.want {
+				t.Errorf("awaitRunLock() = %v; want %v", got, tt.want)
+			}
+			if waits != tt.wantWaits {
+				t.Errorf("awaitRunLock() waited %d times; want %d", waits, tt.wantWaits)
+			}
+		})
 	}
 }
 
-func TestAwaitRunLock_ChildDied(t *testing.T) {
-	lockHeld := func() (bool, error) { return false, nil }
-	aliveCalls := 0
-	alive := func() bool {
-		aliveCalls++
-		return aliveCalls < 2
-	}
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockChildDied {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockChildDied", got)
-	}
-}
-
-func TestAwaitRunLock_Deadline(t *testing.T) {
-	lockHeld := func() (bool, error) { return false, nil }
-	alive := func() bool { return true }
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 5)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockDeadline {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockDeadline", got)
-	}
-	if waits != 5 {
-		t.Errorf("awaitRunLock() waited %d times; want 5", waits)
-	}
-}
-
-func TestAwaitRunLock_LockSeamErrors(t *testing.T) {
-	wantErr := errors.New("boom")
-	lockHeld := func() (bool, error) { return false, wantErr }
-	alive := func() bool { return true }
-	waits := 0
-
-	_, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
-	if !errors.Is(err, wantErr) {
-		t.Errorf("awaitRunLock() error = %v; want %v", err, wantErr)
-	}
-	if waits != 0 {
-		t.Errorf("awaitRunLock() waited %d times on immediate lock error; want 0", waits)
-	}
-}
-
-func TestAwaitRunLock_ReadyBeforeAliveCheck_ChildAboutToExit(t *testing.T) {
-	// The order is load-bearing: a child that took the lock and is about to exit must still be
-	// reported ready, so lockHeld reporting true must win even when alive would report false.
-	lockHeld := func() (bool, error) { return true, nil }
-	alive := func() bool { return false }
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 10)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockReady {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockReady even though alive() would report false", got)
-	}
-}
-
-// TestAwaitRunLock_HaltedWhileChildStillAlive is the regression guard for the defect Tier 2
-// introduced in `lyx loom start`'s handshake. shedengine.Run releases the run lock on return, and
-// `lyx loom run` then spends up to friction_timeout_min -- thirty minutes in the shipped template
-// -- running the friction reflection agent, against a handshake budget of thirty seconds. Before the
-// halted seam existed, that combination (lock free, child alive, machine finished) fell through to
-// awaitRunLockDeadline, which dispositionForHandshake refuses: a healthy run was reported as
-// "driver did not take the run lock" and the bootstrap skipped its own terminal handover. Reproduced
-// live against a real hub before this test was written.
-func TestAwaitRunLock_HaltedWhileChildStillAlive(t *testing.T) {
-	lockHeld := func() (bool, error) { return false, nil }
-	alive := func() bool { return true }
-	halted := func() bool { return true }
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, halted, countingWait(&waits), 10)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockHalted {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockHalted -- a driver whose machine finished but whose process is still doing post-run bookkeeping is not a wedged spawn", got)
-	}
-	if waits != 0 {
-		t.Errorf("awaitRunLock() waited %d times; want 0 -- the halt is observable on the first poll", waits)
-	}
-}
-
-// TestAwaitRunLock_HaltedCheckedAfterAliveCheck pins the seam order: a child that is already gone
-// reports child-died even when halted would also report true, so the more specific signal wins and
-// the existing ChildDied scenario keeps its meaning.
-func TestAwaitRunLock_HaltedCheckedAfterAliveCheck(t *testing.T) {
-	lockHeld := func() (bool, error) { return false, nil }
-	alive := func() bool { return false }
-	halted := func() bool { return true }
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, halted, countingWait(&waits), 10)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockChildDied {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockChildDied even though halted() also reports true", got)
-	}
-}
-
-// TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline is the other half of the guard: the
-// halted seam must not make the genuine refusal unreachable. A child that is alive, never takes the
-// lock, and leaves the machine in running is still a wedged spawn and must still hit the deadline.
-func TestAwaitRunLock_StillRunningChildAliveStillReachesDeadline(t *testing.T) {
-	lockHeld := func() (bool, error) { return false, nil }
-	alive := func() bool { return true }
-	waits := 0
-
-	got, err := awaitRunLock(lockHeld, alive, stillRunning, countingWait(&waits), 4)
-	if err != nil {
-		t.Fatalf("awaitRunLock() unexpected error: %v", err)
-	}
-	if got != awaitRunLockDeadline {
-		t.Errorf("awaitRunLock() = %v; want awaitRunLockDeadline -- the halted arm must not swallow the wedged-spawn refusal", got)
-	}
-	if waits != 4 {
-		t.Errorf("awaitRunLock() waited %d times; want 4", waits)
-	}
-}
-
+//testtiming:keep pins the status strand lookup by exact name and by full agent name, and a name that is only a prefix not matching; its covering tests resolve the strand action without asserting the lookup
 func TestFindStatusStrand(t *testing.T) {
 	strands := []reedengine.StrandStatus{
 		{GUID: "g1", Name: "loom-status-extra", PaneID: "%1"},
@@ -754,6 +636,8 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 // TestScanFileForDriverFieldReads_StampsTheEnclosingFunction pins the granularity the carve-out
 // relies on: two readers in one file are told apart by their enclosing function, so a carve-out for
 // one never admits the other.
+//
+//testtiming:keep pins the driver-field scan telling two readers in one file apart by enclosing function, which the carve-out key relies on; the repo-wide scan asserts only that no reader sits outside
 func TestScanFileForDriverFieldReads_StampsTheEnclosingFunction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "two_readers.go")
 	src := `package fixture
@@ -782,49 +666,51 @@ func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverL
 }
 
 func TestStatusStrandAddSpec(t *testing.T) {
-	got := statusStrandAddSpec("watch-cmd")
-	if got.NameOverride != statusStrandDisplayName {
-		t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
-	}
-	if got.Cmd != "watch-cmd" {
-		t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
-	}
-	if got.IfAbsent {
-		t.Error("IfAbsent = true; want false")
-	}
-	if got.Display.Anchor != render.AnchorBelowParent {
-		t.Errorf("Display.Anchor = %v; want AnchorBelowParent", got.Display.Anchor)
-	}
-	if got.Display.Focus {
-		t.Error("Display.Focus = true; want false")
-	}
-}
+	t.Run("fields", func(t *testing.T) {
+		got := statusStrandAddSpec("watch-cmd")
+		if got.NameOverride != statusStrandDisplayName {
+			t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
+		}
+		if got.Cmd != "watch-cmd" {
+			t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
+		}
+		if got.IfAbsent {
+			t.Error("IfAbsent = true; want false")
+		}
+		if got.Display.Anchor != render.AnchorBelowParent {
+			t.Errorf("Display.Anchor = %v; want AnchorBelowParent", got.Display.Anchor)
+		}
+		if got.Display.Focus {
+			t.Error("Display.Focus = true; want false")
+		}
+	})
 
-// TestStatusStrandAddSpecPinnedByRender ties the spec to render's layout: stacked above a driver
-// strand the status strand is the collapsed placement and is pinned at collapsed_rows, and alone it
-// is the bottom-most strand and is not pinned. Both strands are parentless, as the bootstrap adds
-// them; the layout rule sizes them by insertion position alone.
-func TestStatusStrandAddSpecPinnedByRender(t *testing.T) {
-	status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
-	driver := render.Strand{
-		GUID:    "d",
-		Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
-		PaneID:  "%2",
-		Live:    true,
-	}
-	box := render.Box{W: 200, H: 50}
-	params := render.Params{CollapsedRows: 2, MinFullRows: 3}
+	// The spec ties to render's layout: stacked above a driver strand the status strand is the
+	// collapsed placement and is pinned at collapsed_rows, and alone it is the bottom-most strand and
+	// is not pinned. Both strands are parentless, as the bootstrap adds them; the layout rule sizes
+	// them by insertion position alone.
+	t.Run("pinned by render", func(t *testing.T) {
+		status := render.Strand{GUID: "s", Display: statusStrandAddSpec("x").Display, PaneID: "%1", Live: true}
+		driver := render.Strand{
+			GUID:    "d",
+			Display: driverSpec("p", "r", loomengine.DriverSettings{}).Display,
+			PaneID:  "%2",
+			Live:    true,
+		}
+		box := render.Box{W: 200, H: 50}
+		params := render.Params{CollapsedRows: 2, MinFullRows: 3}
 
-	pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
-	want := []render.Pin{{PaneID: "%1", Height: params.CollapsedRows}}
-	if diff := cmp.Diff(want, pins); diff != "" {
-		t.Errorf("pins mismatch (-want +got):\n%s", diff)
-	}
+		pins := render.FixedHeightPins([]render.Strand{status, driver}, box, params)
+		want := []render.Pin{{PaneID: "%1", Height: params.CollapsedRows}}
+		if diff := cmp.Diff(want, pins); diff != "" {
+			t.Errorf("pins mismatch (-want +got):\n%s", diff)
+		}
 
-	pins = render.FixedHeightPins([]render.Strand{status}, box, params)
-	if len(pins) != 0 {
-		t.Errorf("lone status strand pins = %v; want none", pins)
-	}
+		pins = render.FixedHeightPins([]render.Strand{status}, box, params)
+		if len(pins) != 0 {
+			t.Errorf("lone status strand pins = %v; want none", pins)
+		}
+	})
 }
 
 func TestRemoveStatusStrands(t *testing.T) {

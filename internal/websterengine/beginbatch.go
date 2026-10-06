@@ -366,7 +366,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
 	}
 
-	head, err := headSHA(deps.Geom.WorktreeRoot)
+	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}

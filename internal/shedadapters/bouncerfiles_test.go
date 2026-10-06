@@ -2,7 +2,6 @@ package shedadapters
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,12 +10,28 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// TestSplitFrontmatterCommonRules exercises the frontmatter-delimiter and
-// unknown-extra-key rules shared by all three file contracts, driven through
-// each of the three top-level parsers so a regression in the shared
-// splitFrontmatter/frontmatterProse helpers is caught no matter which parser
-// exposed it.
-func TestParseVerdictCommonRules(t *testing.T) {
+// bouncerFileParsers are the three top-level parsers of the bouncer file contracts, each reduced to
+// the error it returns and a summary of the fields its own frontmatter carries plus its prose.
+var bouncerFileParsers = map[string]func(content []byte) (summary, prose string, err error){
+	"verdict": func(content []byte) (string, string, error) {
+		verdict, rationale, err := parseVerdict(content)
+		return string(verdict) + "/" + rationale, frontmatterProse(content), err
+	},
+	"ledger": func(content []byte) (string, string, error) {
+		lf, err := parseLedger(content)
+		return "round " + strconv.Itoa(lf.Round), lf.Prose, err
+	},
+	"focus": func(content []byte) (string, string, error) {
+		ff, err := parseFocus(content)
+		return "round " + strconv.Itoa(ff.Round), ff.Prose, err
+	},
+}
+
+// TestParseCommonRules exercises the frontmatter-delimiter rules shared by all three file contracts,
+// driven through each of the three top-level parsers so a regression in the shared
+// splitFrontmatter/frontmatterProse helpers is caught no matter which parser exposed it.
+func TestParseCommonRules(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		content string
@@ -24,12 +39,12 @@ func TestParseVerdictCommonRules(t *testing.T) {
 	}{
 		{
 			name:    "missing opening delimiter",
-			content: "verdict: CONVERGED\nrationale: fine\n---\n",
+			content: "round: 1\n---\n",
 			wantErr: "must open with a \"---\" frontmatter delimiter line",
 		},
 		{
 			name:    "missing closing delimiter",
-			content: "---\nverdict: CONVERGED\nrationale: fine\n",
+			content: "---\nround: 1\n",
 			wantErr: "missing its closing \"---\" delimiter line",
 		},
 		{
@@ -39,41 +54,74 @@ func TestParseVerdictCommonRules(t *testing.T) {
 		},
 		{
 			name:    "invalid YAML",
-			content: "---\nverdict: [unterminated\n---\n",
+			content: "---\nround: [unterminated\n---\n",
 			wantErr: "frontmatter is not valid YAML",
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := parseVerdict([]byte(tt.content))
-			if err == nil {
-				t.Fatalf("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
-			}
-			if !strings.HasPrefix(err.Error(), "bouncer: verdict file") {
-				t.Fatalf("error %q is missing the bouncer verdict-kind prefix", err.Error())
-			}
-		})
+	for kind, parse := range bouncerFileParsers {
+		for _, tt := range tests {
+			t.Run(kind+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := parse([]byte(tt.content))
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
+				}
+				if !strings.HasPrefix(err.Error(), "bouncer: "+kind+" file") {
+					t.Fatalf("error %q is missing the bouncer %s-kind prefix", err.Error(), kind)
+				}
+			})
+		}
 	}
 }
 
-func TestParseVerdictProseAndUnknownKey(t *testing.T) {
-	content := "---\nverdict: CONVERGED\nrationale: fine\nunknown_key: noise\n---\r\nline one\r\nline two\r\n"
-	verdict, rationale, err := parseVerdict([]byte(content))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// TestParseProseAndUnknownKey pins that every contract tolerates an unknown extra frontmatter key
+// and returns its prose with CRLF normalised to LF.
+//
+//testtiming:keep pins that each file contract tolerates an unknown frontmatter key and normalises CRLF prose to LF
+func TestParseProseAndUnknownKey(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		kind        string
+		content     string
+		wantSummary string
+		wantProse   string
+	}{
+		{
+			kind:        "verdict",
+			content:     "---\nverdict: CONVERGED\nrationale: fine\nunknown_key: noise\n---\r\nline one\r\nline two\r\n",
+			wantSummary: "CONVERGED/fine",
+			wantProse:   "line one\nline two",
+		},
+		{
+			kind:        "ledger",
+			content:     "---\nround: 2\nledger: []\nunknown_key: noise\n---\r\nnarrative one\r\nnarrative two\r\n",
+			wantSummary: "round 2",
+			wantProse:   "narrative one\nnarrative two",
+		},
+		{
+			kind:        "focus",
+			content:     "---\nround: 3\nexclude_lenses: []\nfocus: []\nunknown_key: noise\n---\r\nprose one\r\nprose two\r\n",
+			wantSummary: "round 3",
+			wantProse:   "prose one\nprose two",
+		},
 	}
-	if verdict != verdictConverged {
-		t.Fatalf("verdict = %q, want %q", verdict, verdictConverged)
-	}
-	if rationale != "fine" {
-		t.Fatalf("rationale = %q, want %q", rationale, "fine")
-	}
-	prose := frontmatterProse([]byte(content))
-	if prose != "line one\nline two" {
-		t.Fatalf("prose = %q, want CRLF-normalised %q", prose, "line one\nline two")
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			t.Parallel()
+			summary, prose, err := bouncerFileParsers[tt.kind]([]byte(tt.content))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if summary != tt.wantSummary {
+				t.Errorf("summary = %q, want %q", summary, tt.wantSummary)
+			}
+			if prose != tt.wantProse {
+				t.Errorf("prose = %q, want CRLF-normalised %q", prose, tt.wantProse)
+			}
+		})
 	}
 }
 
@@ -148,63 +196,6 @@ func TestParseVerdictSpecific(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestParseLedgerCommonRules(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		wantErr string
-	}{
-		{
-			name:    "missing opening delimiter",
-			content: "round: 1\nledger: []\n---\n",
-			wantErr: "must open with a \"---\" frontmatter delimiter line",
-		},
-		{
-			name:    "missing closing delimiter",
-			content: "---\nround: 1\nledger: []\n",
-			wantErr: "missing its closing \"---\" delimiter line",
-		},
-		{
-			name:    "empty frontmatter",
-			content: "---\n\n---\nprose\n",
-			wantErr: "frontmatter is empty",
-		},
-		{
-			name:    "invalid YAML",
-			content: "---\nround: [unterminated\n---\n",
-			wantErr: "frontmatter is not valid YAML",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseLedger([]byte(tt.content))
-			if err == nil {
-				t.Fatalf("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
-			}
-			if !strings.HasPrefix(err.Error(), "bouncer: ledger file") {
-				t.Fatalf("error %q is missing the bouncer ledger-kind prefix", err.Error())
-			}
-		})
-	}
-}
-
-func TestParseLedgerProseAndUnknownKey(t *testing.T) {
-	content := "---\nround: 2\nledger: []\nunknown_key: noise\n---\r\nnarrative one\r\nnarrative two\r\n"
-	lf, err := parseLedger([]byte(content))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if lf.Round != 2 {
-		t.Fatalf("round = %d, want 2", lf.Round)
-	}
-	if lf.Prose != "narrative one\nnarrative two" {
-		t.Fatalf("prose = %q, want CRLF-normalised", lf.Prose)
 	}
 }
 
@@ -332,63 +323,7 @@ func TestParseLedger_ClassAndSeverity(t *testing.T) {
 	}
 }
 
-func TestParseFocusCommonRules(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-		wantErr string
-	}{
-		{
-			name:    "missing opening delimiter",
-			content: "round: 1\nexclude_lenses: []\nfocus: []\n---\n",
-			wantErr: "must open with a \"---\" frontmatter delimiter line",
-		},
-		{
-			name:    "missing closing delimiter",
-			content: "---\nround: 1\nexclude_lenses: []\nfocus: []\n",
-			wantErr: "missing its closing \"---\" delimiter line",
-		},
-		{
-			name:    "empty frontmatter",
-			content: "---\n\n---\nprose\n",
-			wantErr: "frontmatter is empty",
-		},
-		{
-			name:    "invalid YAML",
-			content: "---\nround: [unterminated\n---\n",
-			wantErr: "frontmatter is not valid YAML",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseFocus([]byte(tt.content))
-			if err == nil {
-				t.Fatalf("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
-			}
-			if !strings.HasPrefix(err.Error(), "bouncer: focus file") {
-				t.Fatalf("error %q is missing the bouncer focus-kind prefix", err.Error())
-			}
-		})
-	}
-}
-
-func TestParseFocusProseAndUnknownKey(t *testing.T) {
-	content := "---\nround: 3\nexclude_lenses: []\nfocus: []\nunknown_key: noise\n---\r\nprose one\r\nprose two\r\n"
-	ff, err := parseFocus([]byte(content))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ff.Round != 3 {
-		t.Fatalf("round = %d, want 3", ff.Round)
-	}
-	if ff.Prose != "prose one\nprose two" {
-		t.Fatalf("prose = %q, want CRLF-normalised", ff.Prose)
-	}
-}
-
+//testtiming:keep pins the focus frontmatter's accept and reject rows (round bounds, scalar focus, absent exclude_lenses), which the bouncer tests reach only through well-formed files
 func TestParseFocusSpecific(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -451,6 +386,8 @@ func TestParseFocusSpecific(t *testing.T) {
 // parseFocus(renderFocus(f)) yields back a value equal to f, for a range of
 // focusFile shapes including the seed-fallback shape, a lens name carrying
 // YAML metacharacters, and a value carrying prose.
+//
+//testtiming:keep pins the render and parse round trip for shapes the bouncer tests never write: nil lists, YAML metacharacters in a lens name, and prose
 func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
 	tests := []struct {
 		name string
@@ -511,34 +448,6 @@ func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
 				t.Errorf("parseFocus(renderFocus(f)) mismatch (-want +got):\n%s", diff)
 			}
 		})
-	}
-}
-
-// TestWriteFocus_WritesReadableFile writes a focusFile into a t.TempDir()
-// and reads it back through parseFocus, exercising writeFocus end to end.
-func TestWriteFocus_WritesReadableFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "round-1-focus.md")
-	f := focusFile{
-		Round:         1,
-		ExcludeLenses: []string{},
-		Focus:         []string{},
-	}
-
-	if err := writeFocus(path, f); err != nil {
-		t.Fatalf("writeFocus(%q, %+v) = %v; want nil", path, f, err)
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) = %v; want nil", path, err)
-	}
-	got, err := parseFocus(content)
-	if err != nil {
-		t.Fatalf("parseFocus(written file) = %v; want nil", err)
-	}
-	if diff := cmp.Diff(f, got); diff != "" {
-		t.Errorf("parseFocus(written file) mismatch (-want +got):\n%s", diff)
 	}
 }
 

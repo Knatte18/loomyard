@@ -14,217 +14,218 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-func TestSpec_Validate_EmptyPrompt(t *testing.T) {
-	s := &Spec{OutputFiles: []string{"out.md"}}
-	err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30})
-	if err == nil {
-		t.Fatal("validate() = nil, want error for empty Prompt")
-	}
-}
+// TestSpec_Validate drives Spec.validate through its rejections, its defaults and the fields it
+// must leave alone. Effort, Version, AwaitOperator and NameOverride are provider or engine
+// vocabulary validated elsewhere, so validate must neither default nor reject them: a later "tidy
+// up the validator" change must not quietly start doing either.
+func TestSpec_Validate(t *testing.T) {
+	t.Parallel()
 
-func TestSpec_Validate_EmptyOutputFiles(t *testing.T) {
-	s := &Spec{Prompt: "do the thing"}
-	err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30})
-	if err == nil {
-		t.Fatal("validate() = nil, want error for empty OutputFiles")
-	}
-}
-
-func TestSpec_Validate_RelativeOutputFilesResolveToAbsolute(t *testing.T) {
-	worktreeRoot := `C:\worktree`
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md", "sub/report.json"}}
-	if err := s.validate(worktreeRoot, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-
-	want := []string{
-		filepath.Clean(filepath.Join(worktreeRoot, "out.md")),
-		filepath.Clean(filepath.Join(worktreeRoot, "sub/report.json")),
-	}
-	for i, got := range s.OutputFiles {
-		if got != want[i] {
-			t.Errorf("OutputFiles[%d] = %q, want %q", i, got, want[i])
-		}
-	}
-}
-
-func TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim(t *testing.T) {
-	// An OS-absolute OutputFiles entry must pass through unchanged, not be
-	// re-rooted at the worktree. t.TempDir() is absolute on any host; name a
-	// fresh file inside it (validate rejects pre-existing output files).
-	abs := filepath.Join(t.TempDir(), "out.md")
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{abs}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.OutputFiles[0] != abs {
-		t.Errorf("OutputFiles[0] = %q, want %q (absolute passthrough)", s.OutputFiles[0], abs)
-	}
-}
-
-func TestSpec_Validate_PreExistingOutputFileRejected(t *testing.T) {
-	// A pre-existing output file would satisfy the file contract on the
-	// very first turn end, silently classifying an asking run as done
-	// (proven live) — validate must reject it loudly instead.
-	worktreeRoot := t.TempDir()
-	stale := filepath.Join(worktreeRoot, "out.md")
-	if err := os.WriteFile(stale, []byte("stale artifact"), 0o644); err != nil {
+	const worktreeRoot = `C:\worktree`
+	// A pre-existing output file would satisfy the file contract on the very first turn end,
+	// silently classifying an asking run as done (proven live), so validate must reject it loudly.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "stale.md"), []byte("stale artifact"), 0o644); err != nil {
 		t.Fatalf("seed stale output file: %v", err)
 	}
+	// An OS-absolute OutputFiles entry must pass through unchanged, not be re-rooted at the
+	// worktree. t.TempDir() is absolute on any host; the file is fresh because validate rejects
+	// pre-existing output files.
+	abs := filepath.Join(dir, "fresh.md")
 
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	err := s.validate(worktreeRoot, Config{RunTimeoutMin: 30})
-	if err == nil {
-		t.Fatal("validate() = nil, want error for pre-existing output file")
+	tests := []struct {
+		name         string
+		spec         Spec
+		root         string
+		runTimeout   int
+		wantErr      bool
+		wantErrIn    string
+		wantOutputIn []string
+		check        func(t *testing.T, s *Spec)
+	}{
+		{name: "empty prompt", spec: Spec{OutputFiles: []string{"out.md"}}, wantErr: true},
+		{name: "empty output files", spec: Spec{Prompt: "do the thing"}, wantErr: true},
+		{
+			name: "relative output files resolve to absolute",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md", "sub/report.json"}},
+			wantOutputIn: []string{
+				filepath.Clean(filepath.Join(worktreeRoot, "out.md")),
+				filepath.Clean(filepath.Join(worktreeRoot, "sub/report.json")),
+			},
+		},
+		{
+			name:         "absolute output files pass through verbatim",
+			spec:         Spec{Prompt: "do the thing", OutputFiles: []string{abs}},
+			wantOutputIn: []string{abs},
+		},
+		{
+			name:      "pre-existing output file rejected",
+			spec:      Spec{Prompt: "do the thing", OutputFiles: []string{"stale.md"}},
+			root:      dir,
+			wantErr:   true,
+			wantErrIn: "already exists",
+		},
+		{
+			name:       "timeout defaults from config",
+			spec:       Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
+			runTimeout: 45,
+			check: func(t *testing.T, s *Spec) {
+				if want := 45 * time.Minute; s.Timeout != want {
+					t.Errorf("Timeout = %v, want %v", s.Timeout, want)
+				}
+			},
+		},
+		{
+			name:       "timeout passes through when set",
+			spec:       Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Timeout: 5 * time.Minute},
+			runTimeout: 45,
+			check: func(t *testing.T, s *Spec) {
+				if s.Timeout != 5*time.Minute {
+					t.Errorf("Timeout = %v, want unchanged 5m", s.Timeout)
+				}
+			},
+		},
+		{
+			// An instant-timeout run would leave stray live state.
+			name:      "negative timeout rejected",
+			spec:      Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Timeout: -5 * time.Second},
+			wantErr:   true,
+			wantErrIn: "must not be negative",
+		},
+		{
+			name: "anchor defaults to below parent",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
+			check: func(t *testing.T, s *Spec) {
+				if s.Display.Anchor != render.AnchorBelowParent {
+					t.Errorf("Display.Anchor = %q, want %q", s.Display.Anchor, render.AnchorBelowParent)
+				}
+			},
+		},
+		{
+			name: "anchor passes through when set",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}},
+			check: func(t *testing.T, s *Spec) {
+				if s.Display.Anchor != render.AnchorBelowParent {
+					t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorBelowParent)
+				}
+			},
+		},
+		{
+			name: "empty effort stays empty",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
+			check: func(t *testing.T, s *Spec) {
+				if s.Effort != "" {
+					t.Errorf("Effort = %q, want unchanged empty string", s.Effort)
+				}
+			},
+		},
+		{
+			name: "nonsense effort is neither rejected nor changed",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Effort: "not-a-real-effort-value"},
+			check: func(t *testing.T, s *Spec) {
+				if s.Effort != "not-a-real-effort-value" {
+					t.Errorf("Effort = %q, want unchanged %q", s.Effort, "not-a-real-effort-value")
+				}
+			},
+		},
+		{
+			name: "empty version stays empty",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
+			check: func(t *testing.T, s *Spec) {
+				if s.Version != "" {
+					t.Errorf("Version = %q, want unchanged empty string", s.Version)
+				}
+			},
+		},
+		{
+			name: "version is neither rejected nor changed",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Version: "4.5"},
+			check: func(t *testing.T, s *Spec) {
+				if s.Version != "4.5" {
+					t.Errorf("Version = %q, want unchanged %q", s.Version, "4.5")
+				}
+			},
+		},
+		{
+			name: "nonsense version is neither rejected nor changed",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"third.md"}, Version: "weird"},
+			check: func(t *testing.T, s *Spec) {
+				if s.Version != "weird" {
+					t.Errorf("Version = %q, want unchanged %q", s.Version, "weird")
+				}
+			},
+		},
+		{
+			name: "await operator true stays true",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, AwaitOperator: true},
+			check: func(t *testing.T, s *Spec) {
+				if !s.AwaitOperator {
+					t.Errorf("AwaitOperator = %v, want unchanged true", s.AwaitOperator)
+				}
+			},
+		},
+		{
+			name: "await operator false stays false",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, AwaitOperator: false},
+			check: func(t *testing.T, s *Spec) {
+				if s.AwaitOperator {
+					t.Errorf("AwaitOperator = %v, want unchanged false", s.AwaitOperator)
+				}
+			},
+		},
+		{
+			name: "empty name override stays empty",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}},
+			check: func(t *testing.T, s *Spec) {
+				if s.NameOverride != "" {
+					t.Errorf("NameOverride = %q, want unchanged empty string", s.NameOverride)
+				}
+			},
+		},
+		{
+			name: "name override is neither rejected nor changed",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, NameOverride: "driver"},
+			check: func(t *testing.T, s *Spec) {
+				if s.NameOverride != "driver" {
+					t.Errorf("NameOverride = %q, want unchanged %q", s.NameOverride, "driver")
+				}
+			},
+		},
 	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("validate() error = %q, want it to name the pre-existing file", err)
-	}
-}
 
-func TestSpec_Validate_TimeoutDefaultsFromConfig(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 45}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	want := 45 * time.Minute
-	if s.Timeout != want {
-		t.Errorf("Timeout = %v, want %v", s.Timeout, want)
-	}
-}
-
-func TestSpec_Validate_TimeoutPassThroughWhenSet(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Timeout: 5 * time.Minute}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 45}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.Timeout != 5*time.Minute {
-		t.Errorf("Timeout = %v, want unchanged 5m", s.Timeout)
-	}
-}
-
-func TestSpec_Validate_NegativeTimeoutRejected(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Timeout: -5 * time.Second}
-	err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30})
-	if err == nil {
-		t.Fatal("validate() = nil, want error for negative Timeout (an instant-timeout run would leave stray live state)")
-	}
-	if !strings.Contains(err.Error(), "must not be negative") {
-		t.Errorf("validate() error = %q, want it to name the negative-Timeout rule", err)
-	}
-}
-
-func TestSpec_Validate_AnchorDefaultsToBelowParent(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.Display.Anchor != render.AnchorBelowParent {
-		t.Errorf("Display.Anchor = %q, want %q", s.Display.Anchor, render.AnchorBelowParent)
-	}
-}
-
-// TestSpec_Validate_EffortUntouched proves validate neither defaults nor rejects Effort in any way
-// — it is provider vocabulary the engine alone validates (see claudeengine's validateEffort), so
-// Spec.validate must leave an empty Effort empty and a non-empty Effort (even a nonsense value)
-// unchanged and error-free.
-func TestSpec_Validate_EffortUntouched(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.Effort != "" {
-		t.Errorf("Effort = %q, want unchanged empty string", s.Effort)
-	}
-
-	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Effort: "not-a-real-effort-value"}
-	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v, want validate to never reject or inspect Effort", err)
-	}
-	if s2.Effort != "not-a-real-effort-value" {
-		t.Errorf("Effort = %q, want unchanged %q", s2.Effort, "not-a-real-effort-value")
-	}
-}
-
-// TestSpec_Validate_VersionUntouched proves validate neither defaults nor rejects Version in any
-// way — it is provider vocabulary the engine alone validates (see claudeengine's resolveModelID),
-// so Spec.validate must leave an empty Version empty and a non-empty Version (even a nonsense
-// value) unchanged and error-free.
-func TestSpec_Validate_VersionUntouched(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.Version != "" {
-		t.Errorf("Version = %q, want unchanged empty string", s.Version)
-	}
-
-	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, Version: "4.5"}
-	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v, want validate to never reject or inspect Version", err)
-	}
-	if s2.Version != "4.5" {
-		t.Errorf("Version = %q, want unchanged %q", s2.Version, "4.5")
-	}
-
-	s3 := &Spec{Prompt: "do the thing", OutputFiles: []string{"third.md"}, Version: "weird"}
-	if err := s3.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v, want validate to never reject or inspect Version", err)
-	}
-	if s3.Version != "weird" {
-		t.Errorf("Version = %q, want unchanged %q", s3.Version, "weird")
-	}
-}
-
-// TestSpec_Validate_AwaitOperatorUntouched proves validate neither defaults nor rejects
-// AwaitOperator in either state — it governs Run.Wait's loop only, and validate needs neither
-// defaulting nor rejection for it.
-func TestSpec_Validate_AwaitOperatorUntouched(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, AwaitOperator: true}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if !s.AwaitOperator {
-		t.Errorf("AwaitOperator = %v, want unchanged true", s.AwaitOperator)
-	}
-
-	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, AwaitOperator: false}
-	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s2.AwaitOperator {
-		t.Errorf("AwaitOperator = %v, want unchanged false", s2.AwaitOperator)
-	}
-}
-
-// TestSpec_Validate_NameOverrideUntouched proves validate neither defaults nor rejects
-// NameOverride — it is engine/reed vocabulary forwarded verbatim into reedengine.AddSpec, so
-// Spec.validate must leave an empty NameOverride empty and a non-empty NameOverride unchanged and
-// error-free (a later "tidy up the validator" change must not quietly start rejecting either).
-func TestSpec_Validate_NameOverrideUntouched(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.NameOverride != "" {
-		t.Errorf("NameOverride = %q, want unchanged empty string", s.NameOverride)
-	}
-
-	s2 := &Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, NameOverride: "driver"}
-	if err := s2.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v, want validate to never reject or inspect NameOverride", err)
-	}
-	if s2.NameOverride != "driver" {
-		t.Errorf("NameOverride = %q, want unchanged %q", s2.NameOverride, "driver")
-	}
-}
-
-func TestSpec_Validate_AnchorPassThroughWhenSet(t *testing.T) {
-	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorBelowParent}}
-	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {
-		t.Fatalf("validate() error: %v", err)
-	}
-	if s.Display.Anchor != render.AnchorBelowParent {
-		t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorBelowParent)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := tt.root
+			if root == "" {
+				root = worktreeRoot
+			}
+			runTimeout := tt.runTimeout
+			if runTimeout == 0 {
+				runTimeout = 30
+			}
+			s := tt.spec
+			err := s.validate(root, Config{RunTimeoutMin: runTimeout})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("validate() = nil, want error")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrIn) {
+					t.Errorf("validate() error = %q, want it to contain %q", err, tt.wantErrIn)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validate() error: %v", err)
+			}
+			for i, want := range tt.wantOutputIn {
+				if s.OutputFiles[i] != want {
+					t.Errorf("OutputFiles[%d] = %q, want %q", i, s.OutputFiles[i], want)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, &s)
+			}
+		})
 	}
 }

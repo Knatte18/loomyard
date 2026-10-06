@@ -27,109 +27,102 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestEnsureFrictionDirAfterSeed_NilErrorClearsThenCreates asserts a genuine first seed (nil seedErr)
-// clears a pre-populated friction directory before recreating it empty.
-func TestEnsureFrictionDirAfterSeed_NilErrorClearsThenCreates(t *testing.T) {
+// TestEnsureFrictionDirAfterSeed asserts the once-per-task clear-and-create split.
+func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join(t.TempDir(), "friction")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
-	}
-	notePath := filepath.Join(dir, "some-note.md")
-	if err := os.WriteFile(notePath, []byte("pre-existing note"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", notePath, err)
-	}
-
-	ensureFrictionDirAfterSeed(dir, nil)
-
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("Stat(%q) = %v; want the directory to exist after ensure", dir, err)
-	}
-	if _, err := os.Stat(notePath); !os.IsNotExist(err) {
-		t.Errorf("Stat(%q) = %v; want the pre-existing note to have been cleared", notePath, err)
-	}
-}
-
-// TestEnsureFrictionDirAfterSeed_ErrSeedExistsLeavesNotesUntouched asserts an ErrSeedExists re-entry
-// -- the crash-resume guarantee -- leaves existing notes untouched but still ensures the directory
-// exists.
-func TestEnsureFrictionDirAfterSeed_ErrSeedExistsLeavesNotesUntouched(t *testing.T) {
-	t.Parallel()
-
-	dir := filepath.Join(t.TempDir(), "friction")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
-	}
-	notePath := filepath.Join(dir, "some-note.md")
-	if err := os.WriteFile(notePath, []byte("pre-existing note"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", notePath, err)
+	// seedFrictionDirWithNote returns a friction directory holding one pre-existing note, and the note's path.
+	seedFrictionDirWithNote := func(t *testing.T) (string, string) {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "friction")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
+		notePath := filepath.Join(dir, "some-note.md")
+		if err := os.WriteFile(notePath, []byte("pre-existing note"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", notePath, err)
+		}
+		return dir, notePath
 	}
 
-	ensureFrictionDirAfterSeed(dir, loomshed.ErrSeedExists)
+	// A genuine first seed (nil seedErr) clears a pre-populated friction directory before recreating it empty.
+	t.Run("a first seed clears the notes then creates the directory", func(t *testing.T) {
+		t.Parallel()
+		dir, notePath := seedFrictionDirWithNote(t)
 
-	content, err := os.ReadFile(notePath)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) = %v; want the pre-existing note to survive a resume", notePath, err)
-	}
-	if string(content) != "pre-existing note" {
-		t.Errorf("note content = %q; want it untouched", content)
-	}
-}
+		ensureFrictionDirAfterSeed(dir, nil)
 
-// TestEnsureFrictionDirAfterSeed_EmptyDirSkipsBothOperations asserts an empty frictionDir is a no-op:
-// Tier 2 is off and neither the clear nor the ensure runs.
-func TestEnsureFrictionDirAfterSeed_EmptyDirSkipsBothOperations(t *testing.T) {
-	t.Parallel()
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("Stat(%q) = %v; want the directory to exist after ensure", dir, err)
+		}
+		if _, err := os.Stat(notePath); !os.IsNotExist(err) {
+			t.Errorf("Stat(%q) = %v; want the pre-existing note to have been cleared", notePath, err)
+		}
+	})
 
-	// No panic and no filesystem effect is the whole assertion here: an empty dir gives
+	// An ErrSeedExists re-entry -- the crash-resume guarantee -- leaves existing notes untouched.
+	t.Run("an ErrSeedExists re-entry leaves the notes untouched", func(t *testing.T) {
+		t.Parallel()
+		dir, notePath := seedFrictionDirWithNote(t)
+
+		ensureFrictionDirAfterSeed(dir, loomshed.ErrSeedExists)
+
+		content, err := os.ReadFile(notePath)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) = %v; want the pre-existing note to survive a resume", notePath, err)
+		}
+		if string(content) != "pre-existing note" {
+			t.Errorf("note content = %q; want it untouched", content)
+		}
+	})
+
+	// An empty frictionDir is a no-op: Tier 2 is off and neither the clear nor the ensure runs.
+	// No panic and no filesystem effect is the whole assertion: an empty dir gives
 	// os.RemoveAll/os.MkdirAll nothing to act on, and this call must not attempt either.
-	ensureFrictionDirAfterSeed("", nil)
-	ensureFrictionDirAfterSeed("", loomshed.ErrSeedExists)
-}
+	t.Run("an empty directory skips both operations", func(t *testing.T) {
+		t.Parallel()
+		ensureFrictionDirAfterSeed("", nil)
+		ensureFrictionDirAfterSeed("", loomshed.ErrSeedExists)
+	})
 
-// TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError asserts a failed create (frictionDir's
-// parent is a regular file, not a directory) leaves the call's own outcome unchanged: no panic, no
-// returned error -- friction.EnsureDir's own contract is to warn and continue, never to fail the
-// caller.
-func TestEnsureFrictionDirAfterSeed_MkdirAllFailureDoesNotError(t *testing.T) {
-	t.Parallel()
+	// A failed create (frictionDir's parent is a regular file, not a directory) leaves the call's own
+	// outcome unchanged: ensureFrictionDirAfterSeed has no error return, so a caller (startCmd)
+	// proceeds with the seed's own outcome regardless of whether the directory could be created --
+	// friction.EnsureDir's own contract is to warn and continue.
+	t.Run("a failed create does not error", func(t *testing.T) {
+		t.Parallel()
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", blocker, err)
+		}
 
-	blocker := filepath.Join(t.TempDir(), "blocker")
-	if err := os.WriteFile(blocker, []byte("not a directory"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", blocker, err)
-	}
-	dir := filepath.Join(blocker, "friction")
+		ensureFrictionDirAfterSeed(filepath.Join(blocker, "friction"), nil)
+	})
 
-	// The assertion is that this returns at all, without panicking: ensureFrictionDirAfterSeed has no
-	// error return, so a caller (startCmd) proceeds with the seed's own outcome regardless of whether
-	// the directory could actually be created.
-	ensureFrictionDirAfterSeed(dir, nil)
-}
+	// The same friction.EnsureDir call run.go makes at startup creates an absent friction directory
+	// before the run proceeds -- mirrored here directly, since run's own RunE is not independently
+	// invocable without a real Shed.
+	t.Run("run's ensure creates an absent directory", func(t *testing.T) {
+		t.Parallel()
+		dir := filepath.Join(t.TempDir(), "friction")
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("Stat(%q) = %v; want the directory absent before the ensure", dir, err)
+		}
 
-// TestRunEnsuresAbsentFrictionDir asserts the same friction.EnsureDir call run.go makes at
-// startup creates an absent friction directory before the run proceeds -- mirrored here directly
-// against the package runCmd calls, since run's own RunE is not independently invocable without a
-// real Shed.
-func TestRunEnsuresAbsentFrictionDir(t *testing.T) {
-	t.Parallel()
+		friction.EnsureDir(dir)
 
-	dir := filepath.Join(t.TempDir(), "friction")
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("Stat(%q) = %v; want the directory absent before the ensure", dir, err)
-	}
-
-	friction.EnsureDir(dir)
-
-	if _, err := os.Stat(dir); err != nil {
-		t.Errorf("Stat(%q) = %v; want the directory to exist after EnsureDir", dir, err)
-	}
+		if _, err := os.Stat(dir); err != nil {
+			t.Errorf("Stat(%q) = %v; want the directory to exist after EnsureDir", dir, err)
+		}
+	})
 }
 
 // TestReflectFriction_DepsValidationFailureReportsFailed asserts a malformed Deps -- a relative
 // frictionDir here, which frictionengine.Reflect's own validateDeps rejects -- is logged and reported
 // as frictionengine.StatusFailed on c.reflectFriction's return, never surfaced as an error and never
 // "filed": frictionengine has no such status, since nothing in Go parses the agent's own report file.
+//
+//testtiming:keep pins a malformed deps value reporting failed rather than an error or a filed status, and the reflection lock being released for the next call; the covering tests reflect through other paths
 func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +141,12 @@ func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
 	}
 	if got == "filed" {
 		t.Error("c.reflectFriction(false) = \"filed\"; that status must never exist")
+	}
+	// The lock is not leaked: once a reflection returns, a later one against the same task must be able
+	// to take it. Without the release, the first halt of a task would permanently suppress every later
+	// reflection in it.
+	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
+		t.Errorf("second c.reflectFriction(false) = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
 	}
 }
 
@@ -197,27 +196,6 @@ func TestReflectFriction_SkipsWhenAnotherDriverHoldsTheReflectionLock(t *testing
 	}
 }
 
-// TestReflectFriction_ReleasesTheLockForTheNextDriver asserts the lock is not leaked: once a
-// reflection returns, a later one against the same task must be able to take it. Without the
-// release, the first halt of a task would permanently suppress every later reflection in it.
-func TestReflectFriction_ReleasesTheLockForTheNextDriver(t *testing.T) {
-	t.Parallel()
-
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	c := &loomCLI{
-		location:    loc,
-		frictionDir: "relative-friction-dir",
-		runDeps:     websterengine.RunDeps{Geom: websterengine.Geometry{StencilsDir: "stencils"}},
-	}
-
-	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
-		t.Fatalf("first c.reflectFriction(false) = %q; want %q", got, frictionengine.StatusFailed)
-	}
-	if got := c.reflectFriction(false); got != frictionengine.StatusFailed {
-		t.Errorf("second c.reflectFriction(false) = %q; want %q -- the first call must have released the reflection lock, not held it for the process's life", got, frictionengine.StatusFailed)
-	}
-}
-
 // newRelativeFrictionCLI builds a receiver whose relative frictionDir makes frictionengine.Reflect
 // fail Deps validation: StatusFailed proves a reflection was attempted, StatusSkipped that it was not.
 func newRelativeFrictionCLI(t *testing.T) *loomCLI {
@@ -229,37 +207,41 @@ func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 	}
 }
 
-// TestReflectFrictionRow_SkipsWhenTierTwoOff asserts an empty frictionDir never reflects.
-func TestReflectFrictionRow_SkipsWhenTierTwoOff(t *testing.T) {
+// TestReflectFrictionRow asserts an empty frictionDir never reflects, and the row attempts the reflection whenever Tier 2 is on, whichever verb drives the run.
+//
+//testtiming:keep pins an empty friction directory never reflecting and a set one attempting the reflection, recorded on the receiver; the covering test waits on the lock rather than asserting the skip
+func TestReflectFrictionRow(t *testing.T) {
 	t.Parallel()
 
-	c := newRelativeFrictionCLI(t)
-	c.frictionDir = ""
-
-	if got := c.reflectFrictionRow(); got != frictionengine.StatusSkipped {
-		t.Errorf("reflectFrictionRow() = %q; want %q", got, frictionengine.StatusSkipped)
+	tests := []struct {
+		name        string
+		frictionDir string
+		want        string
+	}{
+		{"tier two off skips", "", frictionengine.StatusSkipped},
+		{"tier two on reflects", "relative-friction-dir", frictionengine.StatusFailed},
 	}
-	if c.rowFrictionStatus != frictionengine.StatusSkipped {
-		t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, frictionengine.StatusSkipped)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestReflectFrictionRow_ReflectsWhenTierTwoOn asserts the row attempts the reflection whenever Tier 2 is on, whichever verb drives the run.
-func TestReflectFrictionRow_ReflectsWhenTierTwoOn(t *testing.T) {
-	t.Parallel()
+			c := newRelativeFrictionCLI(t)
+			c.frictionDir = tt.frictionDir
 
-	c := newRelativeFrictionCLI(t)
-
-	if got := c.reflectFrictionRow(); got != frictionengine.StatusFailed {
-		t.Errorf("reflectFrictionRow() = %q; want %q", got, frictionengine.StatusFailed)
-	}
-	if c.rowFrictionStatus != frictionengine.StatusFailed {
-		t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, frictionengine.StatusFailed)
+			if got := c.reflectFrictionRow(); got != tt.want {
+				t.Errorf("reflectFrictionRow() = %q; want %q", got, tt.want)
+			}
+			if c.rowFrictionStatus != tt.want {
+				t.Errorf("rowFrictionStatus = %q; want %q", c.rowFrictionStatus, tt.want)
+			}
+		})
 	}
 }
 
 // TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle asserts the row reflects through reflectionShuttle:
 // one spawn whose prompt names the note, the note archived and the status reported as reflected.
+//
+//testtiming:keep pins the row reflecting through the reflection shuttle: one spawn whose prompt names the note, the note archived out of the friction directory and the status reported as reflected; the covering tests reflect over a deps failure that never spawns
 func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
 	t.Parallel()
 

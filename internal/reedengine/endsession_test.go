@@ -31,28 +31,36 @@ func endSessionFixture(t *testing.T, present bool, listed string) *fakeTmux {
 	return fake
 }
 
-func TestEndSessionByName_AbsentSessionTouchesNothing(t *testing.T) {
-	fake := endSessionFixture(t, false, "")
-	if n := fake.Count("kill-session") + fake.Count("kill-server"); n != 0 {
-		t.Errorf("absent session issued %d kill calls: %v", n, fake.Calls())
+// TestEndSessionByName pins which kills endSessionByNameVia issues: none for an absent session,
+// an exact-match kill-session alone while sibling sessions remain, and kill-server after the last session.
+func TestEndSessionByName(t *testing.T) {
+	tests := []struct {
+		name            string
+		present         bool
+		listed          string
+		wantKillSession int
+		wantKillServer  int
+	}{
+		{"AbsentSessionTouchesNothing", false, "", 0, 0},
+		{"SiblingsRemainKeepsServer", true, "other\n", 1, 0},
+		{"LastSessionKillsServer", true, "", 1, 1},
 	}
-}
-
-func TestEndSessionByName_SiblingsRemainKeepsServer(t *testing.T) {
-	fake := endSessionFixture(t, true, "other\n")
-	argv := fake.LastArgv("kill-session")
-	if len(argv) != 3 || argv[1] != "-t" || argv[2] != "=pair" {
-		t.Errorf("kill-session argv = %v, want exact-match target =pair", argv)
-	}
-	if fake.Count("kill-server") != 0 {
-		t.Errorf("kill-server ran with a sibling session remaining")
-	}
-}
-
-func TestEndSessionByName_LastSessionKillsServer(t *testing.T) {
-	fake := endSessionFixture(t, true, "")
-	if fake.Count("kill-session") != 1 || fake.Count("kill-server") != 1 {
-		t.Errorf("calls = %v, want one kill-session and one kill-server", fake.Sequence())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := endSessionFixture(t, tt.present, tt.listed)
+			if got := fake.Count("kill-session"); got != tt.wantKillSession {
+				t.Errorf("kill-session calls = %d, want %d: %v", got, tt.wantKillSession, fake.Sequence())
+			}
+			if got := fake.Count("kill-server"); got != tt.wantKillServer {
+				t.Errorf("kill-server calls = %d, want %d: %v", got, tt.wantKillServer, fake.Sequence())
+			}
+			if tt.wantKillSession > 0 {
+				argv := fake.LastArgv("kill-session")
+				if len(argv) != 3 || argv[1] != "-t" || argv[2] != "=pair" {
+					t.Errorf("kill-session argv = %v, want exact-match target =pair", argv)
+				}
+			}
+		})
 	}
 }
 

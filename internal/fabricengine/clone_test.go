@@ -61,6 +61,8 @@ func TestDeriveWarpName(t *testing.T) {
 // than git's own stderr text.
 // No real git fixture is needed: a nonexistent source path is enough to make `git clone` fail
 // immediately.
+//
+//testtiming:keep cloneRepo's error being composed from the attempted URL, destination and exit code rather than git's stderr; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneRepo_InvalidURLFails(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "cloned-repo")
 	const url = "/does/not/exist/nonexistent-repo.git"

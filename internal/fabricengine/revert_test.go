@@ -29,68 +29,74 @@ func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 	return ix
 }
 
-// TestClassifyCorrespondence_ExactHit asserts that an exact index entry for targetSHA wins
-// outright, regardless of targetSeq.
-func TestClassifyCorrespondence_ExactHit(t *testing.T) {
-	ix := buildIndexFromEntries(t, []corrEntry{
-		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
-		{WarpSHA: "w20", WeftSHA: "f20", WarpSeq: 20},
-	})
-
-	got, err := classifyCorrespondence(ix, 20, "w20")
-	if err != nil {
-		t.Fatalf("classifyCorrespondence() error = %v", err)
+// TestClassifyCorrespondence covers an exact index entry for targetSHA (wins outright, regardless
+// of targetSeq), a gap (no exact entry: the nearest at-or-before entry is used and Exact is false),
+// a target whose WarpSeq precedes every recorded entry (wrapped ErrNoCorrespondence) and an empty
+// index (ErrNoCorrespondence, exact or not).
+//
+//testtiming:keep an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
+func TestClassifyCorrespondence(t *testing.T) {
+	tests := []struct {
+		name        string
+		entries     []corrEntry
+		targetSeq   int
+		targetSHA   string
+		wantErr     bool
+		wantExact   bool
+		wantWarpSHA string
+	}{
+		{
+			name: "exact_hit",
+			entries: []corrEntry{
+				{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
+				{WarpSHA: "w20", WeftSHA: "f20", WarpSeq: 20},
+			},
+			targetSeq: 20, targetSHA: "w20",
+			wantExact: true, wantWarpSHA: "w20",
+		},
+		{
+			// "w25" has no recorded entry itself; its WarpSeq (25) sits between the
+			// two recorded entries, so the nearest older one (seq 10) is used.
+			name: "gap_falls_back_to_nearest_older",
+			entries: []corrEntry{
+				{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
+				{WarpSHA: "w30", WeftSHA: "f30", WarpSeq: 30},
+			},
+			targetSeq: 25, targetSHA: "w25",
+			wantExact: false, wantWarpSHA: "w10",
+		},
+		{
+			name:      "no_older_entry_errors",
+			entries:   []corrEntry{{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10}},
+			targetSeq: 5, targetSHA: "w5",
+			wantErr: true,
+		},
+		{
+			name:      "empty_index_errors",
+			targetSeq: 1, targetSHA: "w1",
+			wantErr: true,
+		},
 	}
-	if !got.Exact {
-		t.Errorf("classifyCorrespondence() Exact = false; want true")
-	}
-	if got.Entry.WeftSHA != "f20" {
-		t.Errorf("classifyCorrespondence() Entry.WeftSHA = %q; want %q", got.Entry.WeftSHA, "f20")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ix := buildIndexFromEntries(t, tt.entries)
 
-// TestClassifyCorrespondence_GapFallsBackToNearestOlder asserts that a target with no exact entry
-// falls back to the nearest at-or-before entry and reports Exact = false.
-func TestClassifyCorrespondence_GapFallsBackToNearestOlder(t *testing.T) {
-	ix := buildIndexFromEntries(t, []corrEntry{
-		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
-		{WarpSHA: "w30", WeftSHA: "f30", WarpSeq: 30},
-	})
-
-	// "w25" has no recorded entry itself; its WarpSeq (25) sits between the
-	// two recorded entries, so the nearest older one (seq 10) is used.
-	got, err := classifyCorrespondence(ix, 25, "w25")
-	if err != nil {
-		t.Fatalf("classifyCorrespondence() error = %v", err)
-	}
-	if got.Exact {
-		t.Errorf("classifyCorrespondence() Exact = true; want false (gap)")
-	}
-	if got.Entry.WarpSHA != "w10" {
-		t.Errorf("classifyCorrespondence() Entry.WarpSHA = %q; want %q (nearest older)", got.Entry.WarpSHA, "w10")
-	}
-}
-
-// TestClassifyCorrespondence_NoOlderEntryErrors asserts that a target whose WarpSeq precedes every
-// recorded entry — and which has no exact entry either — returns wrapped ErrNoCorrespondence.
-func TestClassifyCorrespondence_NoOlderEntryErrors(t *testing.T) {
-	ix := buildIndexFromEntries(t, []corrEntry{
-		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
-	})
-
-	_, err := classifyCorrespondence(ix, 5, "w5")
-	if !errors.Is(err, ErrNoCorrespondence) {
-		t.Errorf("classifyCorrespondence() error = %v; want errors.Is(err, ErrNoCorrespondence)", err)
-	}
-}
-
-// TestClassifyCorrespondence_EmptyIndexErrors asserts the degenerate case: an entirely empty index
-// always reports ErrNoCorrespondence, exact or not.
-func TestClassifyCorrespondence_EmptyIndexErrors(t *testing.T) {
-	ix := buildIndexFromEntries(t, nil)
-
-	_, err := classifyCorrespondence(ix, 1, "w1")
-	if !errors.Is(err, ErrNoCorrespondence) {
-		t.Errorf("classifyCorrespondence() error = %v; want errors.Is(err, ErrNoCorrespondence)", err)
+			got, err := classifyCorrespondence(ix, tt.targetSeq, tt.targetSHA)
+			if tt.wantErr {
+				if !errors.Is(err, ErrNoCorrespondence) {
+					t.Errorf("classifyCorrespondence() error = %v; want errors.Is(err, ErrNoCorrespondence)", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("classifyCorrespondence() error = %v", err)
+			}
+			if got.Exact != tt.wantExact {
+				t.Errorf("classifyCorrespondence() Exact = %v; want %v", got.Exact, tt.wantExact)
+			}
+			if got.Entry.WarpSHA != tt.wantWarpSHA {
+				t.Errorf("classifyCorrespondence() Entry.WarpSHA = %q; want %q", got.Entry.WarpSHA, tt.wantWarpSHA)
+			}
+		})
 	}
 }

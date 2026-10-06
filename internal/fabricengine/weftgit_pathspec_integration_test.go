@@ -62,6 +62,8 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 // as a match and get committed.
 // This is the exact shape a first-ever new-directory commit needs: a tracked-only-in-the-index
 // predicate would filter it out and drop the very first commit under a brand-new optional junction.
+//
+//testtiming:keep an untracked new directory counting as a pathspec match while a nonexistent first entry is dropped; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +96,8 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 // A worktree-existence-only predicate would silently break that deletion commit — this test seeds a
 // tracked file, deletes it from disk only (never staged), then asserts CommitWeft still commits the
 // deletion.
+//
+//testtiming:keep an index-only deletion counting as a pathspec match so Unwire's deletion commit lands; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +140,8 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 // stay unstaged.
 // Without this test, a filter that behaves correctly on plain paths could still silently re-stage
 // machine-local artifacts by mis-evaluating exclusion magic as an ordinary non-matching entry.
+//
+//testtiming:keep an :(exclude) pathspec entry passing through untouched while a positive entry still commits and the excluded artifact stays unstaged; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	t.Parallel()
 
@@ -236,6 +242,8 @@ func resolvedDefaultRoutingNames(t *testing.T) []string {
 // resolvedDefaultRoutingNames with nothing to inject an "_extra" name through: the two properties this
 // file used to pin together (the real default's exact shape, and weftPathspecFilter's tolerance of a
 // wider pathspec with an empty optional entry) no longer share one subject.
+//
+//testtiming:keep the resolved default routing set being _lyx alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
 func TestResolvedDefaultRoutingNames_IsLyxAlone(t *testing.T) {
 	dirs := resolvedDefaultRoutingNames(t)
 	if len(dirs) != 1 || dirs[0] != "_lyx" {

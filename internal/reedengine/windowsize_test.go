@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
+//testtiming:keep pins the window-size parser: a well-formed pair with trailing newline or extra whitespace parses, and an empty, one-field, three-field, non-numeric, zero or negative answer is rejected; its covering tests run this code without asserting it
 func TestParseWindowSize(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -48,6 +50,7 @@ func TestParseWindowSize(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the live box readback: a well-formed pair is returned live and a garbage, empty, non-positive or errored answer falls back to the configured size and reports not live; its covering tests run this code without asserting it
 func TestLiveBoxLocked(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -80,6 +83,7 @@ func TestLiveBoxLocked(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the status readback as the reserved-row source: off is zero rows, on one, a non-negative integer that many, case and padding are tolerated, and an empty, garbage or negative answer is rejected; its covering tests run this code without asserting it
 func TestReservedRowsFromStatus(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -106,6 +110,7 @@ func TestReservedRowsFromStatus(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins which window-size readbacks allow the chain: only latest, in any case and padding, while manual, largest, smallest and empty do not; its covering tests run this code without asserting it
 func TestWindowSizeAllowsChain(t *testing.T) {
 	tests := []struct {
 		name string
@@ -130,6 +135,8 @@ func TestWindowSizeAllowsChain(t *testing.T) {
 }
 
 // TestEscapeStatusText covers the pure doubling rule: every "#" becomes "##", regardless of position.
+//
+//testtiming:keep pins the doubling rule: every "#" becomes "##" at any position; its covering tests run this code without asserting it
 func TestEscapeStatusText(t *testing.T) {
 	tests := []struct {
 		name string
@@ -153,6 +160,8 @@ func TestEscapeStatusText(t *testing.T) {
 // TestStatusLeftLength covers the rune-counted floor-at-10 rule, including a multi-byte string whose
 // rune count differs materially from its byte count — statusLeftLength must report the rune count, not
 // the byte count.
+//
+//testtiming:keep pins the rune-counted floor-at-10 status-left length, a multi-byte string counted by runes not bytes, and escaping before measuring yielding a larger length; its covering tests run this code without asserting it
 func TestStatusLeftLength(t *testing.T) {
 	tests := []struct {
 		name string
@@ -173,14 +182,9 @@ func TestStatusLeftLength(t *testing.T) {
 			}
 		})
 	}
-}
 
-// TestStatusLeftLength_EscapeThenMeasureOrderMatters pins the load-bearing order documented on
-// statusLeftLength: measuring a string before escapeStatusText doubles its "#" characters can
-// under-report the length tmux will actually receive. "######" is 6 runes unescaped (floored to 10),
-// but "############" once escaped is 12 runes — over the floor — so escaping first must yield a
-// strictly larger answer.
-func TestStatusLeftLength_EscapeThenMeasureOrderMatters(t *testing.T) {
+	// Measuring a string before escapeStatusText doubles its "#" characters can under-report the length tmux will actually receive:
+	// "######" is 6 runes unescaped (floored to 10), but "############" once escaped is 12 runes, over the floor, so escaping first must yield a strictly larger answer.
 	const s = "######"
 	before := statusLeftLength(s)
 	after := statusLeftLength(escapeStatusText(s))
@@ -189,42 +193,58 @@ func TestStatusLeftLength_EscapeThenMeasureOrderMatters(t *testing.T) {
 	}
 }
 
-func TestReadStatusRowsLocked(t *testing.T) {
-	t.Run("ScriptedAnswer", func(t *testing.T) {
-		e := newTestEngine(t)
-		installFakeTmux(t, e).answer("display-message", "on", nil)
-		rows, ok := e.readStatusRowsLocked()
-		if !ok || rows != 1 {
-			t.Errorf("readStatusRowsLocked() = (%d, %v), want (1, true)", rows, ok)
-		}
-	})
-
-	t.Run("RoundTripError", func(t *testing.T) {
-		e := newTestEngine(t)
-		installFakeTmux(t, e).answer("display-message", "", errors.New("boom"))
-		rows, ok := e.readStatusRowsLocked()
-		if ok || rows != 0 {
-			t.Errorf("readStatusRowsLocked() = (%d, %v), want (0, false)", rows, ok)
-		}
-	})
-}
-
-func TestReadWindowSizeLatestLocked(t *testing.T) {
-	t.Run("ScriptedAnswer", func(t *testing.T) {
-		e := newTestEngine(t)
-		installFakeTmux(t, e).answer("display-message", "latest", nil)
-		if got := e.readWindowSizeLatestLocked(); !got {
-			t.Errorf("readWindowSizeLatestLocked() = %v, want true", got)
-		}
-	})
-
-	t.Run("RoundTripError", func(t *testing.T) {
-		e := newTestEngine(t)
-		installFakeTmux(t, e).answer("display-message", "", errors.New("boom"))
-		if got := e.readWindowSizeLatestLocked(); got {
-			t.Errorf("readWindowSizeLatestLocked() = %v, want false", got)
-		}
-	})
+// TestReadbacksLocked pins the two single-value tmux readbacks: the status row count (on reserves one row) and the window-size latest check,
+// each answering from a scripted display-message and degrading on a round-trip error.
+//
+//testtiming:keep pins the status-row and window-size-latest readbacks answering from a scripted display-message and degrading on a round-trip error; its covering tests run this code without asserting it
+func TestReadbacksLocked(t *testing.T) {
+	tests := []struct {
+		name   string
+		answer string
+		err    error
+		read   func(e *Engine) string
+		want   string
+	}{
+		{
+			name:   "StatusRowsScriptedAnswer",
+			answer: "on",
+			read: func(e *Engine) string {
+				rows, ok := e.readStatusRowsLocked()
+				return fmt.Sprintf("(%d, %v)", rows, ok)
+			},
+			want: "(1, true)",
+		},
+		{
+			name: "StatusRowsRoundTripError",
+			err:  errors.New("boom"),
+			read: func(e *Engine) string {
+				rows, ok := e.readStatusRowsLocked()
+				return fmt.Sprintf("(%d, %v)", rows, ok)
+			},
+			want: "(0, false)",
+		},
+		{
+			name:   "WindowSizeLatestScriptedAnswer",
+			answer: "latest",
+			read:   func(e *Engine) string { return strconv.FormatBool(e.readWindowSizeLatestLocked()) },
+			want:   "true",
+		},
+		{
+			name: "WindowSizeLatestRoundTripError",
+			err:  errors.New("boom"),
+			read: func(e *Engine) string { return strconv.FormatBool(e.readWindowSizeLatestLocked()) },
+			want: "false",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			installFakeTmux(t, e).answer("display-message", tt.answer, tt.err)
+			if got := tt.read(e); got != tt.want {
+				t.Errorf("readback = %s, want %s", got, tt.want)
+			}
+		})
+	}
 }
 
 // TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux,
@@ -233,6 +253,8 @@ func TestReadWindowSizeLatestLocked(t *testing.T) {
 // the escaped rendered text, that a StatusLineText render error skips only status-left and
 // status-left-length while the other six calls (five status-line options plus window-size) still
 // happen, and that no call's failure stops the calls after it.
+//
+//testtiming:keep pins the set-option calls issued to pin the geometry: the seven status-line options plus window-size with the escaped rendered text, only status-left and status-left-length skipped when the render errors, no failure stopping the calls after it, and the window-resized hook lifecycle left to unset and clean the signal file when the watchdog is off; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
 	t.Run("AllOptionsIssuedWithEscapedText", func(t *testing.T) {
 		e := newTestEngine(t)
@@ -317,11 +339,6 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
 		}
 	})
-}
-
-// TestPinGeometryOptionsLocked_HookLifecycle covers the window-resized hook install/unset lifecycle
-// pinGeometryOptionsLocked now owns, alongside the status-line and window-size geometry pins.
-func TestPinGeometryOptionsLocked_HookLifecycle(t *testing.T) {
 	t.Run("WatchdogOnPinsGeometryOptionsOnly", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.geom.WorktreeName = "test-worktree"
@@ -441,132 +458,76 @@ func containsArg(args []string, want string) bool {
 	return false
 }
 
-// TestResizePinHookArgvs pins the pure argv shape resizePinHookArgvs builds for zero, one, and
-// several pins with no signal entry asked for: the unconditional clear always leads, every argv
-// carries -w and the exact-match window target, each body is exactly "resize-pane -t <pane> -y
-// <height>", the "-a" flag appears on every entry after the first pin, and no argv anywhere in the
-// sequence carries a bare ";" element.
-// The signal entry's own shape is TestResizePinHookArgvs_SignalEntry's business.
+// TestResizePinHookArgvs pins the pure argv shape resizePinHookArgvs builds:
+// the unconditional clear always leads (exactly "set-hook -u -w -t <target> window-resized"),
+// then one entry per pin whose body is exactly "resize-pane -t <pane> -y <height>", then the watchdog's own touch entry last when a signal command is told,
+// so a resize fires the pin fixups before the watcher is told about it and a zero-pin session still installs the touch.
+// The "-a" flag appears on every content entry after the first, none carries a bare ";" element, and no repaint entry ships:
+// neither measured repaint candidate cleared the repaint-must-not-self-retrigger decision's exactly-one-fire criterion
+// (the Measurement record in internal/reedengine/doc.go), so the array holds exactly the clear, the pins and the signal entry.
+//
+//testtiming:keep pins the resize hook array: the exact clear first, one resize-pane entry per pin, the watchdog's touch entry last and even for zero pins, -a only after the first entry, no empty or bare ; element and no repaint entry; its covering tests run this code without asserting it
 func TestResizePinHookArgvs(t *testing.T) {
 	const session = "myproj"
+	const signalCommand = `run-shell -b "sh -c 'touch \"/tmp/wt/.lyx/reed-resize.signal\"'"`
 	target := exactSessionWindowTarget(session)
-
-	assertCommon := func(t *testing.T, argvs [][]string) {
-		t.Helper()
-		assertResizePinHookArgvsWellFormed(t, argvs, target)
+	tests := []struct {
+		name       string
+		pins       []render.Pin
+		signal     string
+		wantBodies []string
+	}{
+		{name: "ZeroPins"},
+		{
+			name:       "OnePin",
+			pins:       []render.Pin{{PaneID: "%1", Height: 3}},
+			wantBodies: []string{"resize-pane -t %1 -y 3"},
+		},
+		{
+			name:       "ThreePins",
+			pins:       []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}, {PaneID: "%3", Height: 4}},
+			wantBodies: []string{"resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", "resize-pane -t %3 -y 4"},
+		},
+		{
+			name:       "ZeroPinsStillInstallsTheSignalEntry",
+			signal:     signalCommand,
+			wantBodies: []string{signalCommand},
+		},
+		{
+			name:       "PinsThenTheSignalEntryLast",
+			pins:       []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}},
+			signal:     signalCommand,
+			wantBodies: []string{"resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", signalCommand},
+		},
+		{
+			name:       "EmptySignalCommandEmitsNoEntry",
+			pins:       []render.Pin{{PaneID: "%1", Height: 3}},
+			wantBodies: []string{"resize-pane -t %1 -y 3"},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			argvs := resizePinHookArgvs(session, tt.pins, tt.signal)
 
-	t.Run("ZeroPins", func(t *testing.T) {
-		argvs := resizePinHookArgvs(session, nil, "")
-		assertCommon(t, argvs)
-		if len(argvs) != 1 {
-			t.Fatalf("resizePinHookArgvs(zero pins, no signal hook) = %v, want exactly one argv (the clear)", argvs)
-		}
-		want := []string{"set-hook", "-u", "-w", "-t", target, "window-resized"}
-		if len(argvs[0]) != len(want) {
-			t.Fatalf("argv[0] = %v, want %v", argvs[0], want)
-		}
-		for i := range want {
-			if argvs[0][i] != want[i] {
-				t.Errorf("argv[0][%d] = %q, want %q", i, argvs[0][i], want[i])
+			assertResizePinHookArgvsWellFormed(t, argvs, target)
+			if len(argvs) != 1+len(tt.wantBodies) {
+				t.Fatalf("resizePinHookArgvs() = %v, want %d argvs (the clear + %d entries)", argvs, 1+len(tt.wantBodies), len(tt.wantBodies))
 			}
-		}
-	})
-
-	t.Run("OnePin", func(t *testing.T) {
-		pins := []render.Pin{{PaneID: "%1", Height: 3}}
-		argvs := resizePinHookArgvs(session, pins, "")
-		assertCommon(t, argvs)
-		if len(argvs) != 2 {
-			t.Fatalf("resizePinHookArgvs(1 pin) = %v, want 2 argvs (clear + 1)", argvs)
-		}
-		if containsArg(argvs[0], "-a") {
-			t.Errorf("clear argv = %v, want no -a", argvs[0])
-		}
-		if containsArg(argvs[1], "-a") {
-			t.Errorf("first-pin argv = %v, want no -a on the non-a set-hook", argvs[1])
-		}
-		wantBody := "resize-pane -t %1 -y 3"
-		if argvs[1][len(argvs[1])-1] != wantBody {
-			t.Errorf("first-pin body = %q, want %q", argvs[1][len(argvs[1])-1], wantBody)
-		}
-	})
-
-	t.Run("ThreePins", func(t *testing.T) {
-		pins := []render.Pin{
-			{PaneID: "%1", Height: 3},
-			{PaneID: "%2", Height: 2},
-			{PaneID: "%3", Height: 4},
-		}
-		argvs := resizePinHookArgvs(session, pins, "")
-		assertCommon(t, argvs)
-		if len(argvs) != 4 {
-			t.Fatalf("resizePinHookArgvs(3 pins) = %v, want 4 argvs (clear + 3)", argvs)
-		}
-		if containsArg(argvs[0], "-a") {
-			t.Errorf("clear argv = %v, want no -a", argvs[0])
-		}
-		if containsArg(argvs[1], "-a") {
-			t.Errorf("first-pin argv = %v, want no -a", argvs[1])
-		}
-		for i, want := range []struct {
-			pane   string
-			height int
-		}{{"%1", 3}, {"%2", 2}, {"%3", 4}} {
-			argv := argvs[i+1]
-			if i > 0 && !containsArg(argv, "-a") {
-				t.Errorf("argv for pin %d = %v, want -a", i, argv)
+			wantClear := []string{"set-hook", "-u", "-w", "-t", target, "window-resized"}
+			if !slices.Equal(argvs[0], wantClear) {
+				t.Errorf("clear argv = %v, want %v", argvs[0], wantClear)
 			}
-			wantBody := fmt.Sprintf("resize-pane -t %s -y %d", want.pane, want.height)
-			if argv[len(argv)-1] != wantBody {
-				t.Errorf("argv for pin %d body = %q, want %q", i, argv[len(argv)-1], wantBody)
+			for i, wantBody := range tt.wantBodies {
+				argv := argvs[i+1]
+				if got := argv[len(argv)-1]; got != wantBody {
+					t.Errorf("entry %d body = %q, want %q", i, got, wantBody)
+				}
+				if appended := containsArg(argv, "-a"); appended != (i > 0) {
+					t.Errorf("entry %d argv = %v, want -a only on entries after the first", i, argv)
+				}
 			}
-		}
-	})
-
-	t.Run("ZeroPinsWithSignalHook", func(t *testing.T) {
-		const signal = `run-shell -b ": > '/tmp/reed-resize.signal'"`
-		argvs := resizePinHookArgvs(session, nil, signal)
-		assertCommon(t, argvs)
-		if len(argvs) != 2 {
-			t.Fatalf("resizePinHookArgvs(zero pins, signal hook) = %v, want 2 argvs (clear + the signal entry)", argvs)
-		}
-		if containsArg(argvs[0], "-a") {
-			t.Errorf("clear argv = %v, want no -a", argvs[0])
-		}
-		// With zero pins the signal entry is the array's first (and only) content entry, so it must
-		// land plain — carrying -a here would append onto an array the clear just emptied, which is
-		// harmless to tmux but would misrepresent "is this the first entry" to a reader of the argv.
-		if containsArg(argvs[1], "-a") {
-			t.Errorf("signal-hook argv = %v, want no -a (it is the sole entry)", argvs[1])
-		}
-		if argvs[1][len(argvs[1])-1] != signal {
-			t.Errorf("signal-hook body = %q, want %q", argvs[1][len(argvs[1])-1], signal)
-		}
-	})
-
-	t.Run("PinsWithSignalHookAppendedLast", func(t *testing.T) {
-		const signal = `run-shell -b ": > '/tmp/reed-resize.signal'"`
-		pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
-		argvs := resizePinHookArgvs(session, pins, signal)
-		assertCommon(t, argvs)
-		if len(argvs) != 4 {
-			t.Fatalf("resizePinHookArgvs(2 pins, signal hook) = %v, want 4 argvs (clear + 2 pins + signal)", argvs)
-		}
-		if containsArg(argvs[0], "-a") {
-			t.Errorf("clear argv = %v, want no -a", argvs[0])
-		}
-		if containsArg(argvs[1], "-a") {
-			t.Errorf("first-pin argv = %v, want no -a", argvs[1])
-		}
-		last := argvs[len(argvs)-1]
-		if !containsArg(last, "-a") {
-			t.Errorf("signal-hook argv = %v, want -a (it follows existing pins)", last)
-		}
-		if last[len(last)-1] != signal {
-			t.Errorf("signal-hook body = %q, want %q", last[len(last)-1], signal)
-		}
-	})
+		})
+	}
 }
 
 // assertResizePinHookArgvsWellFormed asserts the invariants every argv resizePinHookArgvs emits
@@ -597,103 +558,6 @@ func assertResizePinHookArgvsWellFormed(t *testing.T, argvs [][]string, target s
 				t.Errorf("argv[%d] = %v, want no bare \";\" element", i, argv)
 			}
 		}
-	}
-}
-
-// TestResizePinHookArgvs_SignalEntry pins the half of the array that had no install site at all
-// before this fix: the watchdog's own run-shell touch entry, which reapply.go's hookInstalledLocked
-// probes for and which nothing was ever installing.
-// Every case asserts the touch is the array's LAST entry, so a resize fires the pin fixups before the
-// watcher is told about it, and that the zero-pin case still installs it.
-func TestResizePinHookArgvs_SignalEntry(t *testing.T) {
-	const session = "myproj"
-	const signalCommand = `run-shell -b "sh -c 'touch \"/tmp/wt/.lyx/reed-resize.signal\"'"`
-	target := exactSessionWindowTarget(session)
-
-	t.Run("PinsThenSignalLast", func(t *testing.T) {
-		pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
-		argvs := resizePinHookArgvs(session, pins, signalCommand)
-		assertResizePinHookArgvsWellFormed(t, argvs, target)
-
-		if len(argvs) != 4 {
-			t.Fatalf("resizePinHookArgvs(2 pins + signal) = %v, want 4 argvs (clear + 2 pins + signal)", argvs)
-		}
-		last := argvs[len(argvs)-1]
-		if last[len(last)-1] != signalCommand {
-			t.Errorf("last argv body = %q, want the signal command %q — the touch must be the array's last entry", last[len(last)-1], signalCommand)
-		}
-		if !containsArg(last, "-a") {
-			t.Errorf("signal argv = %v, want -a (it appends onto the pins already at index 0 and 1)", last)
-		}
-		for i, argv := range argvs[1:3] {
-			if !strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
-				t.Errorf("argv for pin %d body = %q, want a resize-pane body ahead of the signal entry", i, argv[len(argv)-1])
-			}
-		}
-	})
-
-	t.Run("ZeroPinsStillInstallsTheSignalEntry", func(t *testing.T) {
-		argvs := resizePinHookArgvs(session, nil, signalCommand)
-		assertResizePinHookArgvsWellFormed(t, argvs, target)
-
-		// "Nothing is pinned" and "nobody wants to hear about a resize" are different opinions: a
-		// session with no fixed-height pane still needs its watcher told a resize happened, or the
-		// probe can never promote it out of poll mode.
-		if len(argvs) != 2 {
-			t.Fatalf("resizePinHookArgvs(zero pins + signal) = %v, want 2 argvs (clear + signal)", argvs)
-		}
-		signal := argvs[1]
-		if containsArg(signal, "-a") {
-			t.Errorf("signal argv = %v, want no -a — with no pins ahead of it, it is the entry that establishes the array at index 0", signal)
-		}
-		if signal[len(signal)-1] != signalCommand {
-			t.Errorf("signal argv body = %q, want %q", signal[len(signal)-1], signalCommand)
-		}
-	})
-
-	t.Run("EmptySignalCommandEmitsNoEntry", func(t *testing.T) {
-		pins := []render.Pin{{PaneID: "%1", Height: 3}}
-		argvs := resizePinHookArgvs(session, pins, "")
-		assertResizePinHookArgvsWellFormed(t, argvs, target)
-
-		if len(argvs) != 2 {
-			t.Fatalf("resizePinHookArgvs(1 pin, no signal) = %v, want 2 argvs (clear + 1 pin)", argvs)
-		}
-		for i, argv := range argvs {
-			if argv[len(argv)-1] == "" {
-				t.Errorf("argv[%d] = %v, want no empty body element", i, argv)
-			}
-		}
-	})
-}
-
-// TestResizePinHookArgvs_NoRepaintEntryShips pins the no-candidate-accepted disposition recorded in the
-// Measurement record (repaint candidates) block in internal/reedengine/doc.go's package doc comment:
-// neither measured repaint candidate cleared the repaint-must-not-self-retrigger decision's
-// exactly-one-fire criterion, so no candidate was accepted and resizePinHookArgvs ships no repaint
-// entry and keeps its pre-task three-argument signature. The array therefore still carries exactly the
-// clear, one entry per pin, and the signal entry last — this test exists to catch a repaint entry being
-// added to the array without a corresponding measurement-gate acceptance recorded in doc.go.
-func TestResizePinHookArgvs_NoRepaintEntryShips(t *testing.T) {
-	const session = "myproj"
-	const signalCommand = `run-shell -b "sh -c 'touch \"/tmp/wt/.lyx/reed-resize.signal\"'"`
-	target := exactSessionWindowTarget(session)
-	pins := []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
-
-	argvs := resizePinHookArgvs(session, pins, signalCommand)
-	assertResizePinHookArgvsWellFormed(t, argvs, target)
-
-	if len(argvs) != 4 {
-		t.Fatalf("resizePinHookArgvs(2 pins + signal) = %v, want 4 argvs (clear + 2 pins + signal, no repaint entry)", argvs)
-	}
-	for i, argv := range argvs[1:3] {
-		if !strings.HasPrefix(argv[len(argv)-1], "resize-pane ") {
-			t.Errorf("argv for pin %d body = %q, want a resize-pane body", i, argv[len(argv)-1])
-		}
-	}
-	last := argvs[len(argvs)-1]
-	if last[len(last)-1] != signalCommand {
-		t.Errorf("last argv body = %q, want the signal command %q — no repaint entry sits between the pins and the signal", last[len(last)-1], signalCommand)
 	}
 }
 
@@ -735,6 +599,8 @@ func TestResizeSignalHookCommand(t *testing.T) {
 // TestInstallResizePinsLocked_IssuesTheSignalEntryLast is the call-site half of the fix: the argv
 // builder above is pure, so only this proves installResizePinsLocked actually hands tmux the touch
 // entry — the statement whose absence left resizeHookCommand orphaned and every watcher in poll mode.
+//
+//testtiming:keep pins installResizePinsLocked handing tmux the touch entry last for watchdog on, none for off, and attempting every call when each errors; its covering tests run this code without asserting it
 func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the hook is never installed on Windows")

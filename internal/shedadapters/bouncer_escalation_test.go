@@ -70,70 +70,74 @@ func requireNoEscalation(t *testing.T, cfg *BouncerConfig) {
 	}
 }
 
-func TestBouncer_Escalation_SpentBudgetContinueAwaitsWithCauseBudget(t *testing.T) {
-	b, cfg, shuttle := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
+// belowBounces is a Bounces seam reporting a budget of three with one spent.
+func belowBounces() (int, int, bool, error) { return 1, 3, true, nil }
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+// TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched covers the escalation itself: the
+// Awaiting pointer, the record and notice it writes, the cause it picks (a spent budget wins over a
+// CIRCLING ruling) and that a second Call returns the same pointer and leaves the record untouched.
+//
+//testtiming:keep pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks and that a re-call leaves the record untouched
+func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T) {
+	tests := []struct {
+		name      string
+		verdict   string
+		bounces   func() (int, int, bool, error)
+		wantCause EscalationCause
+	}{
+		{"a spent budget over a CONTINUE", "CONTINUE", spentBounces, EscalationBudget},
+		{"a spent budget over a CIRCLING is budget", "CIRCLING", spentBounces, EscalationBudget},
+		{"a guarded CIRCLING below budget is circling", "CIRCLING", belowBounces, EscalationCircling},
 	}
-	requireReasonContains(t, ptr.Reason, "round 2", "cause: budget", escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start")
-	notice := requireEscalation(t, cfg, EscalationBudget)
-	if notice == "" || ptr.ParentNotice != notice {
-		t.Errorf("ParentNotice = %q, notice file = %q; want them equal and non-empty", ptr.ParentNotice, notice)
-	}
-	requireReasonContains(t, ptr.ParentNotice, "my-task", escalationPath(cfg.RunDir, 2))
-	brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2))
-	if err != nil || !strings.Contains(string(brief), "round 2") {
-		t.Errorf("escalation brief = %q, err = %v; want a rendered brief naming round 2", brief, err)
-	}
-	if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
-		t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
-	}
-	if shuttle.Called {
-		t.Error("Call() spawned a run; want none")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, cfg, shuttle := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { c.Bounces = tt.bounces })
+
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+			}
+			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start")
+			notice := requireEscalation(t, cfg, tt.wantCause)
+			if notice == "" || ptr.ParentNotice != notice {
+				t.Errorf("ParentNotice = %q, notice file = %q; want them equal and non-empty", ptr.ParentNotice, notice)
+			}
+			requireReasonContains(t, ptr.ParentNotice, "my-task", escalationPath(cfg.RunDir, 2))
+			brief, err := os.ReadFile(escalationPath(cfg.RunDir, 2))
+			if err != nil || !strings.Contains(string(brief), "round 2") {
+				t.Errorf("escalation brief = %q, err = %v; want a rendered brief naming round 2", brief, err)
+			}
+			if _, err := os.Stat(focusPath(cfg.RunDir, 3)); err != nil {
+				t.Errorf("round-3 focus file = %v; want ensureFocus to have written it", err)
+			}
+			if shuttle.Called {
+				t.Error("Call() spawned a run; want none")
+			}
+			noticeBytes, err := os.ReadFile(parentNoticePath(cfg.RunDir, 2))
+			if err != nil {
+				t.Fatalf("ReadFile(parent notice) = %v; want nil", err)
+			}
+
+			second := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
+			if second != ptr {
+				t.Errorf("second Call() pointer = %+v; want %+v", second, ptr)
+			}
+			if got, _ := os.ReadFile(escalationPath(cfg.RunDir, 2)); !bytes.Equal(got, brief) {
+				t.Errorf("escalation record changed on the re-call:\n%q\nwant\n%q", got, brief)
+			}
+			if got, _ := os.ReadFile(parentNoticePath(cfg.RunDir, 2)); !bytes.Equal(got, noticeBytes) {
+				t.Errorf("parent notice changed on the re-call:\n%q\nwant\n%q", got, noticeBytes)
+			}
+		})
 	}
 }
 
-func TestBouncer_Escalation_SpentBudgetOverCirclingIsBudget(t *testing.T) {
-	b, cfg, _ := escalationBouncer(t, "CIRCLING", func(c *BouncerConfig) { c.Bounces = spentBounces })
-
-	shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	requireEscalation(t, cfg, EscalationBudget)
-}
-
-func TestBouncer_Escalation_BelowBudget(t *testing.T) {
-	below := func(c *BouncerConfig) {
-		c.Bounces = func() (int, int, bool, error) { return 1, 3, true, nil }
-	}
-
-	t.Run("a guarded CIRCLING escalates with cause circling", func(t *testing.T) {
-		b, cfg, _ := escalationBouncer(t, "CIRCLING", below)
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-		requireEscalation(t, cfg, EscalationCircling)
-		requireReasonContains(t, ptr.Reason, "cause: circling")
-		if ptr.ParentNotice == "" {
-			t.Error("ParentNotice is empty; want the notice")
-		}
-	})
-
-	t.Run("a CONTINUE returns Stuck and writes no record", func(t *testing.T) {
-		b, cfg, _ := escalationBouncer(t, "CONTINUE", below)
-
-		ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-		if ptr.BudgetExempt || ptr.ParentNotice != "" {
-			t.Errorf("pointer = %+v; want a plain counted Stuck", ptr)
-		}
-		requireNoEscalation(t, cfg)
-	})
-}
-
-func TestBouncer_Escalation_UnknownBudgetNeverEscalatesOnBudget(t *testing.T) {
+func TestBouncer_Escalation_NoBudgetEscalationReturnsAPlainStuck(t *testing.T) {
 	tests := []struct {
 		name    string
 		bounces func() (int, int, bool, error)
 	}{
+		{"below budget", belowBounces},
 		{"unwired seam", nil},
 		{"ok false", func() (int, int, bool, error) { return 3, 3, false, nil }},
 		{"erroring seam", func() (int, int, bool, error) { return 3, 3, true, errors.New("status unreadable") }},
@@ -143,60 +147,52 @@ func TestBouncer_Escalation_UnknownBudgetNeverEscalatesOnBudget(t *testing.T) {
 			b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = tt.bounces })
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-			if ptr.BudgetExempt {
-				t.Error("Stuck is BudgetExempt; want a counted Stuck")
+			if ptr.BudgetExempt || ptr.ParentNotice != "" {
+				t.Errorf("pointer = %+v; want a plain counted Stuck", ptr)
 			}
 			requireNoEscalation(t, cfg)
 		})
 	}
 }
 
-func TestBouncer_Escalation_RecordedContinueExemptsOnlyABudgetEscalation(t *testing.T) {
+// TestBouncer_Escalation_RecordedDecision covers the way a recorded circling decision settles an
+// escalation of either cause: continue returns Stuck, exempt from the budget only for a budget
+// escalation; accept approves, commits and returns Done, and a re-entry afterwards archives the
+// settled generation.
+//
+//testtiming:keep pins how a recorded decision settles an escalation of either cause: continue is exempt from the budget only for a budget cause, and accept approves, commits and clears
+func TestBouncer_Escalation_RecordedDecision(t *testing.T) {
 	tests := []struct {
 		name       string
 		verdict    string
 		bounces    func() (int, int, bool, error)
+		decision   CirclingDecision
 		wantCause  EscalationCause
 		wantExempt bool
 	}{
-		{"budget escalation", "CONTINUE", spentBounces, EscalationBudget, true},
-		{"circling escalation", "CIRCLING", func() (int, int, bool, error) { return 1, 3, true, nil }, EscalationCircling, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b, cfg, _ := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { c.Bounces = tt.bounces })
-			shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			if round, cause, err := RecordCirclingDecision(cfg.RunDir, CirclingContinue); err != nil || round != 2 || cause != tt.wantCause {
-				t.Fatalf("RecordCirclingDecision(continue) = (%d, %q, %v); want (2, %q, nil)", round, cause, err, tt.wantCause)
-			}
-
-			ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
-				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
-			}
-			if ptr.BudgetExempt != tt.wantExempt {
-				t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
-			}
-		})
-	}
-}
-
-func TestBouncer_Escalation_RecordedAcceptSettlesEitherCause(t *testing.T) {
-	tests := []struct {
-		name    string
-		verdict string
-		bounces func() (int, int, bool, error)
-	}{
-		{"budget escalation", "CONTINUE", spentBounces},
-		{"circling escalation", "CIRCLING", func() (int, int, bool, error) { return 1, 3, true, nil }},
+		{"continue over a budget escalation", "CONTINUE", spentBounces, CirclingContinue, EscalationBudget, true},
+		{"continue over a circling escalation", "CIRCLING", belowBounces, CirclingContinue, EscalationCircling, false},
+		{"accept over a budget escalation", "CONTINUE", spentBounces, CirclingAccept, EscalationBudget, false},
+		{"accept over a circling escalation", "CIRCLING", belowBounces, CirclingAccept, EscalationCircling, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			seams := &circlingSeams{}
 			b, cfg, _ := escalationBouncer(t, tt.verdict, func(c *BouncerConfig) { seams.install(c); c.Bounces = tt.bounces })
 			shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-			if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
-				t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+			if round, cause, err := RecordCirclingDecision(cfg.RunDir, tt.decision); err != nil || round != 2 || cause != tt.wantCause {
+				t.Fatalf("RecordCirclingDecision(%s) = (%d, %q, %v); want (2, %q, nil)", tt.decision, round, cause, err, tt.wantCause)
+			}
+
+			if tt.decision == CirclingContinue {
+				ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
+				if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
+					t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
+				}
+				if ptr.BudgetExempt != tt.wantExempt {
+					t.Errorf("BudgetExempt = %v; want %v", ptr.BudgetExempt, tt.wantExempt)
+				}
+				return
 			}
 
 			ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
@@ -216,31 +212,6 @@ func TestBouncer_Escalation_RecordedAcceptSettlesEitherCause(t *testing.T) {
 				t.Errorf("expected the next Call to archive the settled generation: %v", err)
 			}
 		})
-	}
-}
-
-func TestBouncer_Escalation_ReCallLeavesTheRecordUntouched(t *testing.T) {
-	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
-
-	first := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	record, err := os.ReadFile(escalationPath(cfg.RunDir, 2))
-	if err != nil {
-		t.Fatalf("ReadFile(escalation) = %v; want nil", err)
-	}
-	notice, err := os.ReadFile(parentNoticePath(cfg.RunDir, 2))
-	if err != nil {
-		t.Fatalf("ReadFile(parent notice) = %v; want nil", err)
-	}
-
-	second := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
-	if second != first {
-		t.Errorf("second Call() pointer = %+v; want %+v", second, first)
-	}
-	if got, _ := os.ReadFile(escalationPath(cfg.RunDir, 2)); !bytes.Equal(got, record) {
-		t.Errorf("escalation record changed on the re-call:\n%q\nwant\n%q", got, record)
-	}
-	if got, _ := os.ReadFile(parentNoticePath(cfg.RunDir, 2)); !bytes.Equal(got, notice) {
-		t.Errorf("parent notice changed on the re-call:\n%q\nwant\n%q", got, notice)
 	}
 }
 

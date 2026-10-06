@@ -88,14 +88,14 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 	if deps.State == nil {
 		return ResetPlan{}, resetRefusal(to, "the run has no state.json", wayForwardSteps("run `lyx webster run` first"))
 	}
-	if err := refuseMidMerge(geom.WorktreeRoot); err != nil {
+	if err := refuseMidMerge(geom.git(), geom.WorktreeRoot); err != nil {
 		return ResetPlan{}, err
 	}
 	if err := refuseForeignBranch(deps, to, rerun); err != nil {
 		return ResetPlan{}, err
 	}
 
-	bases, err := runEvidenceBases(geom.WorktreeRoot, deps.State)
+	bases, err := runEvidenceBases(geom, deps.State)
 	if err != nil {
 		return ResetPlan{}, err
 	}
@@ -115,7 +115,7 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 	missing := bases.Missing
 	if to == ResetToPreFix {
 		missing = nil
-		if !shaExists(geom.WorktreeRoot, deps.State.PreFixHead) {
+		if !geom.git().SHAExists(geom.WorktreeRoot, deps.State.PreFixHead) {
 			missing = []string{deps.State.PreFixHead}
 		}
 	}
@@ -127,11 +127,11 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 	if err != nil {
 		return ResetPlan{}, err
 	}
-	head, err := headSHA(geom.WorktreeRoot)
+	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {
 		return ResetPlan{}, err
 	}
-	reachable, err := isAncestor(geom.WorktreeRoot, sha, head)
+	reachable, err := geom.git().IsAncestor(geom.WorktreeRoot, sha, head)
 	if err != nil {
 		return ResetPlan{}, err
 	}
@@ -216,7 +216,7 @@ func ownTrackedPaths(deps ResetDeps) ([]string, error) {
 		if !ev.Succeeded {
 			continue
 		}
-		rel, ok, err := trackedRel(deps.Geom.WorktreeRoot, ev.Path)
+		rel, ok, err := trackedRel(deps.Geom.git(), deps.Geom.WorktreeRoot, ev.Path)
 		if err != nil {
 			return nil, err
 		}

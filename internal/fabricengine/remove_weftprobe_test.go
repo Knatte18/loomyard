@@ -11,6 +11,8 @@ import (
 
 // TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal asserts an absent weft worktree passes the gate:
 // there is no uncommitted work to lose, and tearing down a half-present pair is Remove's job.
+//
+//testtiming:keep an absent weft worktree passing the dirty-weft gate; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal(t *testing.T) {
 	t.Parallel()
 

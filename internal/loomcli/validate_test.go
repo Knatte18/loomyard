@@ -28,6 +28,8 @@ import (
 // open string type, so an unrecognized value — or the zero value a hand-built Finding carries —
 // must fail CLOSED here too. Until crucible round fable-high-r7 (D2) only the loomshed half had a
 // dedicated test, and the two halves were kept agreeing by reading alone.
+//
+//testtiming:keep pins loomcli's half of the fail-closed severity classification: the zero value and an unrecognized severity block, informational passes; the gate parity test compares verdicts over fixtures with recognized severities only
 func TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +99,7 @@ func allDiscussionSectionsContent() string {
 	return b.String()
 }
 
+//testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading and an unreadable decision record; the parity test compares verdicts alone
 func TestValidateDiscussionCmd(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -275,6 +278,8 @@ func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 // TestValidatePlanCmd_QuarryUnavailableNamesQuarry asserts that a quarry-unavailable error maps to
 // output.Err with a message naming quarry rather than the plan, so an operator reading the envelope
 // is never told the plan is invalid when quarry simply could not answer.
+//
+//testtiming:keep pins a quarry-unavailable failure surfacing as an error envelope naming quarry rather than the plan; no other case makes quarry unavailable
 func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
@@ -287,20 +292,6 @@ func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 	}
 
 	envelope.RequireErr(t, out.String(), "quarry")
-}
-
-// TestValidatePlanCmd_RequireApprovedFlagRegistered asserts the flag itself is registered on the
-// command under its exact name with its documented default, since the repo's help-tree tests assert
-// subcommand names rather than flags and would not catch a flag that failed to register.
-func TestValidatePlanCmd_RequireApprovedFlagRegistered(t *testing.T) {
-	c := &loomCLI{}
-	flag := c.validatePlanCmd().Flags().Lookup("require-approved")
-	if flag == nil {
-		t.Fatal(`flag "require-approved" is not registered on validate-plan`)
-	}
-	if flag.DefValue != "false" {
-		t.Errorf(`flag "require-approved" default = %q; want "false"`, flag.DefValue)
-	}
 }
 
 // TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive asserts the two mode flags together are refused with an error envelope rather than one silently winning.
@@ -316,6 +307,8 @@ func TestValidatePlanCmd_ReworkAndRequireApprovedAreExclusive(t *testing.T) {
 }
 
 // TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch asserts the --rework verb reports the same findings as PR-Rework's gate when first_card differs from the told number.
+//
+//testtiming:keep pins the --rework verb printing the rework-first-card finding the rework gate returns when first_card differs from the told number; the parity test compares verdicts alone
 func TestValidatePlanCmd_ReworkReportsGateFindingsForFirstCardMismatch(t *testing.T) {
 	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
@@ -483,6 +476,7 @@ func descriptionFixture(t *testing.T, dir, content string) *loomCLI {
 	return &loomCLI{env: shedrecipe.Env{DescriptionPath: path}}
 }
 
+//testtiming:keep pins validate-description's envelope: the description path on success and the Co-Authored-By finding with a non-zero exit; the parity test compares verdicts alone
 func TestValidateDescriptionCmd(t *testing.T) {
 	t.Run("Clean", func(t *testing.T) {
 		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n")

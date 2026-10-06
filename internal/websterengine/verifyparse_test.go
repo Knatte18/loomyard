@@ -162,7 +162,7 @@ func TestParseVerifyFailures(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parseVerifyFailures(tc.output, tc.passed)
-			// Package is pinned by TestParseVerifyFailures_Package.
+			// Package is pinned by the "package attribution" subtest below.
 			// The table pins the rest.
 			for i := range got {
 				got[i].Package = ""
@@ -172,22 +172,22 @@ func TestParseVerifyFailures(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestParseVerifyFailures_Package(t *testing.T) {
-	got := parseVerifyFailures("--- FAIL: TestA (0.00s)\nFAIL\nFAIL\tpkg/a\t0.1s\nFAIL\tpkg/b [build failed]\n", false)
-	want := map[string]string{"pkg/a.TestA": "pkg/a", "pkg/b": "pkg/b"}
-	if len(got) != len(want) {
-		t.Fatalf("parseVerifyFailures() = %#v, want identities %v", got, want)
-	}
-	for _, f := range got {
-		if f.Package != want[f.ID] {
-			t.Errorf("identity %q Package = %q, want %q", f.ID, f.Package, want[f.ID])
+	t.Run("package attribution", func(t *testing.T) {
+		got := parseVerifyFailures("--- FAIL: TestA (0.00s)\nFAIL\nFAIL\tpkg/a\t0.1s\nFAIL\tpkg/b [build failed]\n", false)
+		want := map[string]string{"pkg/a.TestA": "pkg/a", "pkg/b": "pkg/b"}
+		if len(got) != len(want) {
+			t.Fatalf("parseVerifyFailures() = %#v, want identities %v", got, want)
 		}
-	}
+		for _, f := range got {
+			if f.Package != want[f.ID] {
+				t.Errorf("identity %q Package = %q, want %q", f.ID, f.Package, want[f.ID])
+			}
+		}
 
-	opaque := parseVerifyFailures("make: *** [all] Error 2\n", false)
-	if len(opaque) != 1 || opaque[0].Kind != FailureKindOpaque || opaque[0].Package != "" {
-		t.Errorf("opaque identity = %#v, want Kind opaque and empty Package", opaque)
-	}
+		opaque := parseVerifyFailures("make: *** [all] Error 2\n", false)
+		if len(opaque) != 1 || opaque[0].Kind != FailureKindOpaque || opaque[0].Package != "" {
+			t.Errorf("opaque identity = %#v, want Kind opaque and empty Package", opaque)
+		}
+	})
 }

@@ -169,6 +169,8 @@ func TestPruneEmptyAncestors(t *testing.T) {
 
 // TestRefuseUncontainedPath pins the containment assertion the portal and launcher teardown helpers
 // share, including the ".."-derived paths that made `lyx fabric remove ..` delete an entire hub.
+//
+//testtiming:keep the containment assertion shared by the portal and launcher teardown helpers refusing ".."-derived paths that once let `lyx fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseUncontainedPath(t *testing.T) {
 	t.Parallel()
 
@@ -212,6 +214,8 @@ func TestRefuseUncontainedPath(t *testing.T) {
 // out-of-container directory could be destroyed — a single-entry removal is refused by the OS on a
 // non-empty one — which is why the victim below is deliberately empty: a nominal removal WOULD
 // succeed on it, so this assertion is a real one rather than a vacuous OS refusal.
+//
+//testtiming:keep the empty-ancestor sweep refusing a symlinked intermediate that escapes the hub, with an empty out-of-container victim that survives; coverage of its blocks by other tests does not show an assertion of this
 func TestPruneEmptyAncestors_RefusesEscapingIntermediate(t *testing.T) {
 	t.Parallel()
 

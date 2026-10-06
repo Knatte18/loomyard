@@ -15,31 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// TestMutations_AppendOrdering covers that three appends come back from Entries() in append order.
-func TestMutations_AppendOrdering(t *testing.T) {
-	t.Parallel()
-
-	m := NewMutations("")
-	m.Append(KindDirCreated, "/hub/one", "")
-	m.Append(KindFileWritten, "/hub/two", "")
-	m.AppendRef(KindBranchCreated, "feature-x", "")
-
-	got := m.Entries()
-	want := []Mutation{
-		{Kind: KindDirCreated, Target: "/hub/one"},
-		{Kind: KindFileWritten, Target: "/hub/two"},
-		{Kind: KindBranchCreated, Target: "feature-x"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("Entries() = %d entries; want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("Entries()[%d] = %+v; want %+v", i, got[i], want[i])
-		}
-	}
-}
-
 // TestMutations_Append_HubRelativeConversion covers Append's hub-relative Target conversion: a
 // target below the hub root, the hub root itself, a target outside the hub root, and an empty
 // hubRoot.
@@ -99,6 +74,8 @@ func TestMutations_Append_HubRelativeConversion(t *testing.T) {
 
 // TestMutations_AppendRef covers that AppendRef records its ref verbatim and is unaffected by
 // hubRoot.
+//
+//testtiming:keep AppendRef recording its ref verbatim with a hubRoot set; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_AppendRef(t *testing.T) {
 	t.Parallel()
 
@@ -113,10 +90,14 @@ func TestMutations_AppendRef(t *testing.T) {
 	}
 }
 
-// TestMutations_Entries_ReturnsCopy covers that Entries() returns a copy — mutating the returned
-// slice does not change what a second Entries() call reports — and that an empty record returns a
-// non-nil zero-length slice.
-func TestMutations_Entries_ReturnsCopy(t *testing.T) {
+// TestMutations_EntriesAndSnapshotAreCopies covers that Entries() returns a copy — mutating the
+// returned slice does not change what a second Entries() call reports — that an empty record
+// returns a non-nil zero-length slice, that appending through the recorder after taking a snapshot
+// does not change the snapshot's Len(), and that Entries() and Len() are callable directly on the
+// result of a function returning Mutations (the reason those two methods carry value receivers).
+//
+//testtiming:keep Entries() and Snapshot() returning copies, an empty record returning a non-nil slice, and value-receiver callability; coverage of its blocks by other tests does not show an assertion of this
+func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
 	t.Parallel()
 
 	empty := NewMutations("")
@@ -138,28 +119,24 @@ func TestMutations_Entries_ReturnsCopy(t *testing.T) {
 	if second[0].Target != "/hub/one" {
 		t.Errorf("second Entries() call = %q after mutating first; want unaffected %q", second[0].Target, "/hub/one")
 	}
-}
-
-// TestMutations_Snapshot_Isolates covers that appending through the recorder after taking a
-// snapshot does not change the snapshot's Len().
-func TestMutations_Snapshot_Isolates(t *testing.T) {
-	t.Parallel()
-
-	m := NewMutations("")
-	m.Append(KindDirCreated, "/hub/one", "")
 
 	snap := m.Snapshot()
 	if snap.Len() != 1 {
 		t.Fatalf("Snapshot().Len() = %d; want 1", snap.Len())
 	}
-
 	m.Append(KindFileWritten, "/hub/two", "")
-
 	if snap.Len() != 1 {
 		t.Errorf("Snapshot().Len() after a later Append = %d; want unaffected 1", snap.Len())
 	}
 	if m.Len() != 2 {
 		t.Errorf("m.Len() after Append = %d; want 2", m.Len())
+	}
+
+	if got := mutationsFromFunc().Len(); got != 1 {
+		t.Errorf("mutationsFromFunc().Len() = %d; want 1", got)
+	}
+	if got := mutationsFromFunc().Entries(); len(got) != 1 {
+		t.Errorf("mutationsFromFunc().Entries() = %d entries; want 1", len(got))
 	}
 }
 
@@ -239,6 +216,8 @@ func TestMutations_MarshalJSON(t *testing.T) {
 // TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey covers that a MutationRecord embedded in a
 // throwaway local struct marshals its record under the "mutations" key, and that Mutated() returns
 // the same entries.
+//
+//testtiming:keep an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
 func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
 	t.Parallel()
 
@@ -265,16 +244,6 @@ func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
 	if len(mutated) != 1 || mutated[0].Target != "/hub/one" {
 		t.Errorf("Mutated().Entries() = %+v; want one entry targeting /hub/one", mutated)
 	}
-}
-
-// TestMutations_NilReceiver_DoesNotPanic covers that Append and AppendRef are safe on a nil
-// *Mutations receiver.
-func TestMutations_NilReceiver_DoesNotPanic(t *testing.T) {
-	t.Parallel()
-
-	var m *Mutations
-	m.Append(KindDirCreated, "/hub/one", "")
-	m.AppendRef(KindBranchCreated, "feature-x", "")
 }
 
 // TestMutations_Extend covers that Extend appends other's entries verbatim in order, that it is a
@@ -318,40 +287,12 @@ func TestMutations_Extend(t *testing.T) {
 	nilRec.Extend(other.Snapshot())
 }
 
-// TestMutations_Snapshot_NilReceiver covers that Snapshot is safe on a nil *Mutations receiver,
-// returning the zero Mutations rather than panicking — CloneHub and Unwire both install their
-// populating defer before the recorder exists, so the defer can observe a nil recorder on the
-// earliest failure paths.
-func TestMutations_Snapshot_NilReceiver(t *testing.T) {
-	t.Parallel()
-
-	var m *Mutations
-	got := m.Snapshot()
-	if got.Len() != 0 {
-		t.Errorf("nil.Snapshot().Len() = %d; want 0", got.Len())
-	}
-}
-
 // mutationsFromFunc returns a non-addressable Mutations value, mirroring the shape batches 5-7 rely
 // on: a result type's Mutated() accessor returns Mutations, not *Mutations.
 func mutationsFromFunc() Mutations {
 	m := NewMutations("")
 	m.Append(KindDirCreated, "/hub/one", "")
 	return m.Snapshot()
-}
-
-// TestMutations_EntriesAndLen_CallableOnNonAddressableValue covers that Entries() and Len() are
-// callable directly on the result of a function returning Mutations — the construct batches 5-7
-// rely on, and the reason those two methods carry value receivers.
-func TestMutations_EntriesAndLen_CallableOnNonAddressableValue(t *testing.T) {
-	t.Parallel()
-
-	if got := mutationsFromFunc().Len(); got != 1 {
-		t.Errorf("mutationsFromFunc().Len() = %d; want 1", got)
-	}
-	if got := mutationsFromFunc().Entries(); len(got) != 1 {
-		t.Errorf("mutationsFromFunc().Entries() = %d entries; want 1", len(got))
-	}
 }
 
 // armTraceSink arms the durable trace sink in a fresh temp dir and returns a reader for its
@@ -384,71 +325,74 @@ func armTraceSink(t *testing.T) func() []string {
 	}
 }
 
-// TestMutations_AppendLogsOneRecord covers that one Append writes exactly one trace record with the
-// recorded values; it does not call t.Parallel because the trace sink is package-level state.
-func TestMutations_AppendLogsOneRecord(t *testing.T) {
-	read := armTraceSink(t)
+// TestMutations_TraceLogging covers that one Append or one AppendRef writes exactly one trace
+// record with the recorded values, that Extend adds no trace record, and that a nil *Mutations logs
+// nothing and snapshots to the zero Mutations rather than panicking — CloneHub and Unwire both
+// install their populating defer before the recorder exists, so the defer can observe a nil
+// recorder on the earliest failure paths.
+// It does not call t.Parallel because the trace sink is package-level state.
+func TestMutations_TraceLogging(t *testing.T) {
+	t.Run("append logs one record", func(t *testing.T) {
+		read := armTraceSink(t)
 
-	m := NewMutations("")
-	m.Append(KindDirCreated, "/hub/one", "why")
+		m := NewMutations("")
+		m.Append(KindDirCreated, "/hub/one", "why")
 
-	lines := read()
-	if len(lines) != 1 {
-		t.Fatalf("trace has %d mutation lines; want 1", len(lines))
-	}
-	for _, want := range []string{"kind=dir_created", "target=/hub/one", "detail=why"} {
-		if !strings.Contains(lines[0], want) {
-			t.Errorf("trace line %q lacks %q", lines[0], want)
+		lines := read()
+		if len(lines) != 1 {
+			t.Fatalf("trace has %d mutation lines; want 1", len(lines))
 		}
-	}
-}
-
-// TestMutations_AppendRefLogsOneRecord covers that one AppendRef writes exactly one trace record;
-// it does not call t.Parallel because the trace sink is package-level state.
-func TestMutations_AppendRefLogsOneRecord(t *testing.T) {
-	read := armTraceSink(t)
-
-	m := NewMutations("")
-	m.AppendRef(KindBranchCreated, "feature-x", "why")
-
-	lines := read()
-	if len(lines) != 1 {
-		t.Fatalf("trace has %d mutation lines; want 1", len(lines))
-	}
-	for _, want := range []string{"kind=branch_created", "target=feature-x", "detail=why"} {
-		if !strings.Contains(lines[0], want) {
-			t.Errorf("trace line %q lacks %q", lines[0], want)
+		for _, want := range []string{"kind=dir_created", "target=/hub/one", "detail=why"} {
+			if !strings.Contains(lines[0], want) {
+				t.Errorf("trace line %q lacks %q", lines[0], want)
+			}
 		}
-	}
-}
+	})
 
-// TestMutations_ExtendLogsNothing covers that Extend adds no trace record; it does not call
-// t.Parallel because the trace sink is package-level state.
-func TestMutations_ExtendLogsNothing(t *testing.T) {
-	other := NewMutations("")
-	other.Append(KindDirCreated, "/hub/one", "")
-	read := armTraceSink(t)
+	t.Run("append ref logs one record", func(t *testing.T) {
+		read := armTraceSink(t)
 
-	m := NewMutations("")
-	m.Extend(other.Snapshot())
+		m := NewMutations("")
+		m.AppendRef(KindBranchCreated, "feature-x", "why")
 
-	if lines := read(); len(lines) != 0 {
-		t.Errorf("Extend wrote %d mutation lines; want 0", len(lines))
-	}
-}
+		lines := read()
+		if len(lines) != 1 {
+			t.Fatalf("trace has %d mutation lines; want 1", len(lines))
+		}
+		for _, want := range []string{"kind=branch_created", "target=feature-x", "detail=why"} {
+			if !strings.Contains(lines[0], want) {
+				t.Errorf("trace line %q lacks %q", lines[0], want)
+			}
+		}
+	})
 
-// TestMutations_NilReceiverLogsNothing covers that a nil *Mutations logs nothing; it does not call
-// t.Parallel because the trace sink is package-level state.
-func TestMutations_NilReceiverLogsNothing(t *testing.T) {
-	read := armTraceSink(t)
+	t.Run("extend logs nothing", func(t *testing.T) {
+		other := NewMutations("")
+		other.Append(KindDirCreated, "/hub/one", "")
+		read := armTraceSink(t)
 
-	var m *Mutations
-	m.Append(KindDirCreated, "/hub/one", "")
-	m.AppendRef(KindBranchCreated, "feature-x", "")
+		m := NewMutations("")
+		m.Extend(other.Snapshot())
 
-	if lines := read(); len(lines) != 0 {
-		t.Errorf("nil receiver wrote %d mutation lines; want 0", len(lines))
-	}
+		if lines := read(); len(lines) != 0 {
+			t.Errorf("Extend wrote %d mutation lines; want 0", len(lines))
+		}
+	})
+
+	t.Run("nil receiver logs nothing", func(t *testing.T) {
+		read := armTraceSink(t)
+
+		var m *Mutations
+		m.Append(KindDirCreated, "/hub/one", "")
+		m.AppendRef(KindBranchCreated, "feature-x", "")
+		if got := m.Snapshot(); got.Len() != 0 {
+			t.Errorf("nil.Snapshot().Len() = %d; want 0", got.Len())
+		}
+
+		if lines := read(); len(lines) != 0 {
+			t.Errorf("nil receiver wrote %d mutation lines; want 0", len(lines))
+		}
+	})
 }
 
 // TestRefDetail covers refDetail's exact grammar: create without remote, push with remote, and a

@@ -50,11 +50,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -121,32 +119,6 @@ func driverShuttleConfig(t *testing.T, stubPath string) string {
 	cfg = strings.Replace(cfg, claudeKey, "claude: "+stubPath, 1)
 	cfg = strings.Replace(cfg, timeoutKey, "startup_timeout_s: 10", 1)
 	return cfg
-}
-
-// seedLLMDriver writes loc's own self-run seed directly to disk with driver=llm, uncommitted --
-// mirroring smoke_test.go's own seedAndCommitStatus and
-// TestSmokeBootstrap_OriginRecordSelfHealsAfterCrashBetweenWriteAndCommit's shape of driving a
-// production primitive directly rather than through a CLI subprocess.
-//
-// The written seed's Params must agree byte-for-byte with the one seedAndCommitBootstrap's own step
-// 1b (loomSeedFor) writes on the first "loom start" against it, since WriteSeed refuses a disagreeing
-// existing seed outright rather than silently accepting the later write: recorded.ParentBranch is
-// read from the origin record newWiredPairFixture-style callers already committed via
-// hubforge.AddPair, so this seed's own params.parent matches what the bootstrap itself would compute.
-func seedLLMDriver(t *testing.T, loc *lyxcwd.Location) {
-	t.Helper()
-	recorded, found, err := fabricengine.ReadOrigin(loc)
-	if err != nil || !found {
-		t.Fatalf("ReadOrigin before seeding the llm driver: found=%v err=%v", found, err)
-	}
-	seed := shedrun.Seed{
-		Recipe: shedrun.RecipeLoom,
-		Driver: shedrun.DriverLLM,
-		Params: map[string]string{"parent": recorded.ParentBranch},
-	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, seed); err != nil {
-		t.Fatalf("WriteSeed(llm driver): %v", err)
-	}
 }
 
 // driverStrand returns the tracked driver strand from eng's own Status(), and whether one was found,

@@ -13,6 +13,8 @@ import (
 
 // TestMatchParentBranch covers matchParentBranch's matching, skipping, and normalization behavior
 // over hand-built WorktreeEntry slices.
+//
+//testtiming:keep matchParentBranch's matching, skipping and normalization over hand-built entries; coverage of its blocks by other tests does not show an assertion of this
 func TestMatchParentBranch(t *testing.T) {
 	tests := []struct {
 		name         string

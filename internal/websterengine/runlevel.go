@@ -1120,7 +1120,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 			unchecked = true
 		}
 	}
-	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	bases, err := runEvidenceBases(geom, st)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1179,20 +1179,20 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 	if len(st.PendingAuditFindings) == 0 && len(uncheckableBatches) == 0 {
 		return false, nil, nil
 	}
-	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	bases, err := runEvidenceBases(geom, st)
 	if err != nil {
 		return false, nil, err
 	}
 	if len(bases.Missing) > 0 {
 		return false, nil, fmt.Errorf("%w: %s", ErrPendingAuditFindings, missingCommitsClause(bases.Missing))
 	}
-	head, err := headSHA(geom.WorktreeRoot)
+	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {
 		return false, nil, err
 	}
 	base := bases.Start
 	if base == "" {
-		if err := headBeforeEveryStart(geom.WorktreeRoot, head, bases.Starts); err != nil {
+		if err := headBeforeEveryStart(geom.git(), geom.WorktreeRoot, head, bases.Starts); err != nil {
 			return false, nil, err
 		}
 		base = head
@@ -1294,9 +1294,9 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 // but a HEAD that every one of them descends from carries no commit the run made.
 // An empty starts passes, since nothing was recorded to compare with.
 // The error is an IsAncestor failure or the refusal.
-func headBeforeEveryStart(worktree, head string, starts []string) error {
+func headBeforeEveryStart(git Git, worktree, head string, starts []string) error {
 	for _, start := range starts {
-		ok, err := isAncestor(worktree, head, start)
+		ok, err := git.IsAncestor(worktree, head, start)
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,4 @@
-//go:build integration
-
-// rebaseline_test.go exercises Rebaseline (Tier 2), reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
+// rebaseline_test.go exercises Rebaseline (Tier 1), reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
 package websterengine_test
 
 import (
@@ -15,9 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -34,6 +30,11 @@ func doneBatchOne() *websterengine.BatchState {
 	}
 }
 
+// TestRebaseline_ForeignEditAcceptedMidRun walks the mid-run loop: begin-batch refuses a foreign plan
+// edit naming rebaseline, Rebaseline accepts it, and the next begin-batch succeeds with the done
+// record intact.
+//
+//testtiming:keep pins the whole refuse, rebaseline, re-begin loop across three calls on one state; the covering tests each make one of those calls
 func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: doneBatchOne()}
@@ -69,8 +70,9 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
 	t.Helper()
 	planDir := seedPlanDir(t)
-	worktree := newScratchRepo(t)
-	base := gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
+	worktree := t.TempDir()
+	git := newFakeGit()
+	base := git.head
 	for _, rec := range recs {
 		if rec.StartSHA == "startsha1" {
 			rec.StartSHA = base
@@ -80,11 +82,17 @@ func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*webster
 		Plan:    &planparser.Plan{Dir: planDir, Format: 5},
 		Batches: batches,
 		State:   &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
-		Geom:    websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir()},
+		Geom:    websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir(), Git: git},
 	}
 }
 
-func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
+// TestRebaseline_CardSet proves Rebaseline compares a begun batch's recorded card set with the edited
+// plan's: a removed, renumbered or regrouped card refuses, leaving the fingerprint and naming the
+// batch, the card and the fresh-restart steps whether or not the record carries a StartSHA, while a
+// legacy record with no card set is accepted and restamped.
+func TestRebaseline_CardSet(t *testing.T) {
+	t.Parallel()
+
 	two := batcher.Batch{Cards: []planparser.Card{
 		{Number: 1, Slug: "json-flag"},
 		{Number: 2, Slug: "list-tests"},
@@ -92,19 +100,48 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 	cases := []struct {
 		name    string
 		batches []batcher.Batch
+		// edit adjusts the batch-1 record before the call.
+		edit       func(rec *websterengine.BatchState)
+		wantRefuse bool
 	}{
-		{"removed card", []batcher.Batch{beginCard(2, "list-tests")}},
-		{"renumbered card", []batcher.Batch{beginCard(1, "other-slug"), beginCard(2, "list-tests")}},
-		{"regrouped batch", []batcher.Batch{two}},
+		{name: "removed card", batches: []batcher.Batch{beginCard(2, "list-tests")}, wantRefuse: true},
+		{name: "renumbered card", batches: []batcher.Batch{beginCard(1, "other-slug"), beginCard(2, "list-tests")}, wantRefuse: true},
+		{name: "regrouped batch", batches: []batcher.Batch{two}, wantRefuse: true},
+		{
+			name:       "removed card from a record without a StartSHA",
+			batches:    []batcher.Batch{beginCard(2, "list-tests")},
+			edit:       func(rec *websterengine.BatchState) { rec.StartSHA = "" },
+			wantRefuse: true,
+		},
+		{
+			name:    "a legacy record without cards is accepted",
+			batches: []batcher.Batch{beginCard(1, "json-flag")},
+			edit:    func(rec *websterengine.BatchState) { rec.Cards = nil },
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := rebaselineDeps(t, tc.batches, map[int]*websterengine.BatchState{1: doneBatchOne()})
+			t.Parallel()
+
+			rec := doneBatchOne()
+			if tc.edit != nil {
+				tc.edit(rec)
+			}
+			deps := rebaselineDeps(t, tc.batches, map[int]*websterengine.BatchState{1: rec})
 			_, err := websterengine.Rebaseline(deps)
+			if !tc.wantRefuse {
+				if err != nil {
+					t.Fatalf("Rebaseline() error = %v; want nil", err)
+				}
+				if deps.State.PlanFingerprint == "old-fingerprint" {
+					t.Error("PlanFingerprint not restamped")
+				}
+				return
+			}
 			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
 				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
 			}
-			for _, want := range []string{"batch 1", "01-json-flag", "1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
+			for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err.Error(), want)
 				}
@@ -113,33 +150,6 @@ func TestRebaseline_RefusesChangedCardSet(t *testing.T) {
 				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", deps.State.PlanFingerprint)
 			}
 		})
-	}
-}
-
-// TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb pins the refusal text when no record carries a StartSHA:
-// the way forward names the reset verb, which resolves the start itself, and no git command or commit.
-func TestRebaseline_RefusalWithoutStartSHAStillNamesTheResetVerb(t *testing.T) {
-	rec := doneBatchOne()
-	rec.StartSHA = ""
-	deps := rebaselineDeps(t, []batcher.Batch{beginCard(2, "list-tests")}, map[int]*websterengine.BatchState{1: rec})
-	_, err := websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
-	}
-	if !strings.Contains(err.Error(), "or 1) lyx webster reset --to start; 2) lyx webster run --fresh") {
-		t.Errorf("error %q; want the reset verb and the fresh run named", err.Error())
-	}
-}
-
-func TestRebaseline_LegacyRecordWithoutCardsAccepted(t *testing.T) {
-	legacy := doneBatchOne()
-	legacy.Cards = nil
-	deps := rebaselineDeps(t, []batcher.Batch{beginCard(1, "json-flag")}, map[int]*websterengine.BatchState{1: legacy})
-	if _, err := websterengine.Rebaseline(deps); err != nil {
-		t.Fatalf("Rebaseline() error = %v; want nil", err)
-	}
-	if deps.State.PlanFingerprint == "old-fingerprint" {
-		t.Error("PlanFingerprint not restamped")
 	}
 }
 
@@ -158,77 +168,6 @@ func rebaselineFixtureDeps(fx *beginFixture) websterengine.RebaselineDeps {
 	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State, Geom: fx.Deps.Geom}
 }
 
-func TestRebaseline_RefusesChangedBegunCardBody(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	if len(fx.Deps.State.Batches[1].CardHashes) != 1 {
-		t.Fatalf("CardHashes = %v; want one hash recorded at begin", fx.Deps.State.Batches[1].CardHashes)
-	}
-	fingerprint := fx.Deps.State.PlanFingerprint
-
-	card := filepath.Join(fx.PlanDir, "01-json-flag.md")
-	if err := os.WriteFile(card, []byte("# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n\n**Verify:** true\n"), 0o644); err != nil {
-		t.Fatalf("edit card: %v", err)
-	}
-
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{1}
-	_, err := websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
-	}
-	if !strings.Contains(err.Error(), "batch 1 card 01-json-flag changed since it was begun") {
-		t.Errorf("error %q lacks the changed-card naming", err.Error())
-	}
-	if fx.Deps.State.PlanFingerprint != fingerprint {
-		t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
-	}
-}
-
-func TestRebaseline_AcceptsEditedUnbegunCard(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	before := *fx.Deps.State.Batches[1]
-
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "02-list-tests.md"), []byte("# Card 2 — list-tests\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** a reworded intent.\n"), 0o644); err != nil {
-		t.Fatalf("edit card: %v", err)
-	}
-
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{2}
-	res, err := websterengine.Rebaseline(deps)
-	if err != nil {
-		t.Fatalf("Rebaseline() error = %v; want nil", err)
-	}
-	if res.BatchesKept != 1 {
-		t.Errorf("BatchesKept = %d; want 1", res.BatchesKept)
-	}
-	if !slices.Equal(res.CardsAccepted, []string{"02-list-tests.md"}) {
-		t.Errorf("CardsAccepted = %v; want [02-list-tests.md]", res.CardsAccepted)
-	}
-	if fx.Deps.State.PlanFileHashes["02-list-tests.md"] == "" {
-		t.Errorf("PlanFileHashes = %v; want card 2's new hash recorded", fx.Deps.State.PlanFileHashes)
-	}
-	got := fx.Deps.State.Batches[1]
-	if got.Status != before.Status || got.StartSHA != before.StartSHA || !maps.Equal(got.CardHashes, before.CardHashes) {
-		t.Errorf("batch 1 record changed: got %+v, want %+v", *got, before)
-	}
-}
-
-func TestRebaseline_RecordWithoutCardHashesComparesIDsOnly(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: doneBatchOne()}
-
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "01-json-flag.md"), []byte("# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** edited after begin.\n"), 0o644); err != nil {
-		t.Fatalf("edit card: %v", err)
-	}
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{1}
-	if _, err := websterengine.Rebaseline(deps); err != nil {
-		t.Fatalf("Rebaseline() error = %v; want nil for a record without CardHashes", err)
-	}
-}
-
 // editCard2 rewrites unbegun card 2 of the begin fixture with a reworded intent.
 func editCard2(t *testing.T, fx *beginFixture, intent string) {
 	t.Helper()
@@ -238,69 +177,150 @@ func editCard2(t *testing.T, fx *beginFixture, intent string) {
 	}
 }
 
-func TestRebaseline_RefusesUnnamedEditedCard(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	fingerprint := fx.Deps.State.PlanFingerprint
-	editCard2(t, fx, "a reworded intent.")
-
-	_, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx))
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
-	}
-	if !strings.Contains(err.Error(), "02-") || !strings.Contains(err.Error(), "--card") {
-		t.Errorf("error %q; want it to name 02- and --card", err.Error())
-	}
-	if fx.Deps.State.PlanFingerprint != fingerprint {
-		t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
+// writePlanFile writes body to name in the fixture's plan directory.
+func writePlanFile(t *testing.T, fx *beginFixture, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(fx.PlanDir, name), []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
 	}
 }
 
-func TestRebaseline_RefusesEditedOverviewEvenWhenEveryCardIsNamed(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "00-overview.md"), []byte("# plan, edited\n"), 0o644); err != nil {
-		t.Fatalf("edit overview: %v", err)
-	}
+// TestRebaseline_EditedPlan proves which plan edits Rebaseline accepts after batch 1 was begun and
+// finished: an edited unbegun card it is told about is accepted, recording its hash and leaving the
+// begun record alone, as is a begun card's edit under a record without card hashes and any edit under
+// a state without plan-file hashes; a begun card's changed body, an edited card it was not told about
+// and an edited overview refuse, naming what changed and leaving the fingerprint.
+func TestRebaseline_EditedPlan(t *testing.T) {
+	t.Parallel()
 
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{1, 2}
-	_, err := websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+	tests := []struct {
+		name string
+		// prepare records batch 1 and edits the plan.
+		prepare func(t *testing.T, fx *beginFixture)
+		cards   []int
+		// wantText lists what a refusal names, wantNotText what it must not; both empty expect an accept.
+		wantText    []string
+		wantNotText []string
+		check       func(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult)
+	}{
+		{
+			name: "an edited unbegun card that is named is accepted",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				editCard2(t, fx, "a reworded intent.")
+			},
+			cards: []int{2},
+			check: func(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+				if res.BatchesKept != 1 {
+					t.Errorf("BatchesKept = %d; want 1", res.BatchesKept)
+				}
+				if !slices.Equal(res.CardsAccepted, []string{"02-list-tests.md"}) {
+					t.Errorf("CardsAccepted = %v; want [02-list-tests.md]", res.CardsAccepted)
+				}
+				if fx.Deps.State.PlanFileHashes["02-list-tests.md"] == "" {
+					t.Errorf("PlanFileHashes = %v; want card 2's new hash recorded", fx.Deps.State.PlanFileHashes)
+				}
+				got := fx.Deps.State.Batches[1]
+				if got.Status != before.Status || got.StartSHA != before.StartSHA || !maps.Equal(got.CardHashes, before.CardHashes) {
+					t.Errorf("batch 1 record changed: got %+v, want %+v", *got, before)
+				}
+			},
+		},
+		{
+			name: "a begun card edited under a record without card hashes compares ids only",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: doneBatchOne()}
+				writePlanFile(t, fx, "01-json-flag.md", "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** edited after begin.\n")
+			},
+			cards: []int{1},
+		},
+		{
+			name: "a state without plan-file hashes checks begun cards only",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				fx.Deps.State.PlanFileHashes = nil
+				editCard2(t, fx, "a reworded intent.")
+			},
+		},
+		{
+			name: "a begun card's changed body refuses",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				if len(fx.Deps.State.Batches[1].CardHashes) != 1 {
+					t.Fatalf("CardHashes = %v; want one hash recorded at begin", fx.Deps.State.Batches[1].CardHashes)
+				}
+				writePlanFile(t, fx, "01-json-flag.md", "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n\n**Verify:** true\n")
+			},
+			cards:    []int{1},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun"},
+		},
+		{
+			name: "an edited card that is not named refuses naming --card",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				editCard2(t, fx, "a reworded intent.")
+			},
+			wantText: []string{"02-", "--card"},
+		},
+		{
+			name: "an added card that is not named refuses naming only that card",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				editCard2(t, fx, "a reworded intent.")
+				writePlanFile(t, fx, "03-third.md", "# Card 3 — third\n\n**Intent:** new.\n")
+			},
+			cards:       []int{2},
+			wantText:    []string{"03-third.md"},
+			wantNotText: []string{"02-list-tests.md"},
+		},
+		{
+			name: "an edited overview refuses even when every card is named",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				writePlanFile(t, fx, "00-overview.md", "# plan, edited\n")
+			},
+			cards:    []int{1, 2},
+			wantText: []string{"00-overview.md", "--fresh"},
+		},
 	}
-	if !strings.Contains(err.Error(), "00-overview.md") || !strings.Contains(err.Error(), "--fresh") {
-		t.Errorf("error %q; want it to name 00-overview.md and --fresh", err.Error())
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestRebaseline_RefusesEditedCardTheOperatorDidNotName(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	editCard2(t, fx, "a reworded intent.")
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Intent:** new.\n"), 0o644); err != nil {
-		t.Fatalf("add card 3: %v", err)
-	}
+			fx := newBeginFixture(t)
+			tt.prepare(t, fx)
+			before := *fx.Deps.State.Batches[1]
+			fingerprint := fx.Deps.State.PlanFingerprint
 
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{2}
-	_, err := websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
-	}
-	if !strings.Contains(err.Error(), "03-third.md") || strings.Contains(err.Error(), "02-list-tests.md") {
-		t.Errorf("error %q; want it to name only 03-third.md", err.Error())
-	}
-}
-
-func TestRebaseline_StateWithoutPlanFileHashesChecksBegunCardsOnly(t *testing.T) {
-	fx := newBeginFixture(t)
-	beginAndFinishBatchOne(t, fx)
-	fx.Deps.State.PlanFileHashes = nil
-	editCard2(t, fx, "a reworded intent.")
-
-	if _, err := websterengine.Rebaseline(rebaselineFixtureDeps(fx)); err != nil {
-		t.Fatalf("Rebaseline() error = %v; want nil for a state without PlanFileHashes", err)
+			deps := rebaselineFixtureDeps(fx)
+			deps.Cards = tt.cards
+			res, err := websterengine.Rebaseline(deps)
+			if len(tt.wantText) == 0 {
+				if err != nil {
+					t.Fatalf("Rebaseline() error = %v; want nil", err)
+				}
+				if tt.check != nil {
+					tt.check(t, fx, before, res)
+				}
+				return
+			}
+			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+			}
+			for _, want := range tt.wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err.Error(), want)
+				}
+			}
+			for _, notWant := range tt.wantNotText {
+				if strings.Contains(err.Error(), notWant) {
+					t.Errorf("error %q names %q; want it left out", err.Error(), notWant)
+				}
+			}
+			if fx.Deps.State.PlanFingerprint != fingerprint {
+				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
+			}
+		})
 	}
 }
 
@@ -398,62 +418,10 @@ func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) 
 	}
 }
 
-// TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330 is the #330 scene with a record-batch handle binding as the rewrite:
-// binding card 1's handle moves batch 1's recorded hash, so a later Rebaseline naming only an edited pending card succeeds.
-func TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330(t *testing.T) {
-	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
-		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
-	})
-
-	planDir := t.TempDir()
-	plankit.Write(t, planDir, plankit.Plan{
-		Approved: true,
-		Language: "go",
-		Framing:  "framing",
-		Cards: []plankit.Card{
-			{
-				Number:  1,
-				Slug:    "json-flag",
-				Summary: "declares a handle",
-				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#Bar` -> `func Bar() {}"}}},
-				Intent:  "add Bar",
-			},
-			{Number: 2, Slug: "pending", Summary: "an unbegun card", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}, Intent: "placeholder card."},
-		},
-	})
-	plan, err := planparser.ParsePlan(planDir)
-	if err != nil {
-		t.Fatalf("ParsePlan: %v", err)
-	}
-	fx.Deps.Geom.PlanDir = planDir
-	fx.Deps.Plan = plan
-	fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
-	st := fx.Deps.State
-	card1 := filepath.Join(planDir, "01-json-flag.md")
-	st.Batches[1].CardHashes = map[string]string{"01-json-flag": fileSHA(t, card1)}
-	if err := websterengine.RestampPlanBaseline(st, planDir, fx.Deps.Geom.WebsterDir); err != nil {
-		t.Fatalf("RestampPlanBaseline() error = %v", err)
-	}
-	unbound := st.Batches[1].CardHashes["01-json-flag"]
-
-	headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Bar() {}\n", "01.1: add Bar")
-	writeReport(t, fx.ReportsDir, validReport(headSHA))
-	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("RecordBatch() error = %v; want nil", err)
-	}
-	if got := st.Batches[1].CardHashes["01-json-flag"]; got == unbound || got != fileSHA(t, card1) {
-		t.Fatalf("batch 1 CardHashes = %q; want it moved to the bound card's hash %q", got, fileSHA(t, card1))
-	}
-
-	if err := os.WriteFile(filepath.Join(planDir, "02-pending.md"), []byte("# Card 2 — pending\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
-		t.Fatalf("edit card 2: %v", err)
-	}
-	deps := websterengine.RebaselineDeps{Plan: plan, Batches: fx.Deps.Batches, State: st, Geom: fx.Deps.Geom, Cards: []int{2}}
-	if _, err := websterengine.Rebaseline(deps); err != nil {
-		t.Fatalf("Rebaseline() naming card 2 error = %v; want nil", err)
-	}
-}
-
+// TestRebaseline_ForeignEditToBegunCardStaysRefused proves a foreign edit to a begun card is refused
+// by begin-batch without moving the card's recorded hash, so Rebaseline naming that card refuses too.
+//
+//testtiming:keep pins a refused begin-batch leaving the begun card's recorded hash untouched, so a later rebaseline naming that card still refuses; the covering tests make only one of the two calls
 func TestRebaseline_ForeignEditToBegunCardStaysRefused(t *testing.T) {
 	fx := newBeginFixture(t)
 	beginAndFinishBatchOne(t, fx)

@@ -11,6 +11,7 @@ package fabricengine
 
 import "testing"
 
+//testtiming:keep the landed-conclude predicate over every landed combination; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_LandedConcludeCommit(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -39,6 +40,8 @@ func TestMergeState_LandedConcludeCommit(t *testing.T) {
 // The two mixed rows are the point: doc.go promises AlreadyUpToDate answers "whether the attempt
 // found BOTH sides already carrying the resolved source", so a merge that really moved one side must
 // report false. With one conjunct dropped it reported true, and no test noticed.
+//
+//testtiming:keep both conjuncts of the AlreadyUpToDate predicate, with the mixed rows; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_BothSidesAlreadyUpToDate(t *testing.T) {
 	tests := []struct {
 		name        string

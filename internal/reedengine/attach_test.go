@@ -13,6 +13,7 @@ package reedengine
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,119 +118,52 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 	}
 }
 
-// TestAttachArgv_ChainedShape pins the full ten-element argv shape on a known-good pre-flight: five
-// bare elements, the one-character ";" separator (length-checked so "\\;" cannot pass), then
-// select-layout/-t/target, then the layout string planLayout itself would produce for the same box.
-func TestAttachArgv_ChainedShape(t *testing.T) {
-	e, _ := newAttachTestEngine(t, goodAttachStrands())
+// TestAttachArgv_ChainedArgv pins the chained argv on a known-good pre-flight, element by element:
+// the five bare elements, the one-character ";" separator (compared exactly, so "\\;" cannot pass),
+// select-layout/-t/target, then the layout planLayout itself would produce for the told box.
+// The box comes from the client's told cols/rows, never from a live display-message query and never from the configured size;
+// the #{status} readback is the reserved-row source (off reserves zero rows, on one, a non-negative integer that many),
+// clamped to rows-1 so a multi-line status bar cannot drive the planned height to zero or below.
+func TestAttachArgv_ChainedArgv(t *testing.T) {
 	const cols, rows = 80, 24
-
-	got := e.AttachArgv(cols, rows)
-
-	if len(got) != 10 {
-		t.Fatalf("AttachArgv() = %v, want 10 elements", got)
-	}
-	bare := wantBareAttachArgv(e)
-	for i := range bare {
-		if got[i] != bare[i] {
-			t.Errorf("AttachArgv()[%d] = %q, want bare element %q", i, got[i], bare[i])
-		}
-	}
-	if len(got[5]) != 1 || got[5] != ";" {
-		t.Errorf("AttachArgv()[5] = %q, want the literal one-character \";\" separator", got[5])
-	}
-	target := exactSessionWindowTarget(e.SessionName())
-	wantTail := []string{"select-layout", "-t", target}
-	for i, want := range wantTail {
-		if got[6+i] != want {
-			t.Errorf("AttachArgv()[%d] = %q, want %q", 6+i, got[6+i], want)
-		}
-	}
-
-	wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows})
-	if err != nil {
-		t.Fatalf("planLayout() unexpected error: %v", err)
-	}
-	if got[9] != wantLayout {
-		t.Errorf("AttachArgv()[9] = %q, want the planned layout %q", got[9], wantLayout)
-	}
-}
-
-// TestAttachArgv_ToldBoxAndNoLiveQuery pins the told-box seam: the box AttachArgv plans against comes
-// from the client's told cols/rows, never from a live display-message query, even when the configured
-// e.cfg.Width/Height is a different pair.
-func TestAttachArgv_ToldBoxAndNoLiveQuery(t *testing.T) {
-	e, fake := newAttachTestEngine(t, goodAttachStrands())
-	e.cfg.Width, e.cfg.Height = 999, 111 // deliberately distinct from the client size below
-	const cols, rows = 80, 24
-
-	got := e.AttachArgv(cols, rows)
-
-	for _, argv := range fake.ArgvFor("display-message") {
-		if argv[len(argv)-1] == liveBoxFormat {
-			t.Fatal("AttachArgv() queried the live #{window_width} #{window_height} pair; want zero live-box round trips")
-		}
-	}
-
-	wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows})
-	if err != nil {
-		t.Fatalf("planLayout() unexpected error: %v", err)
-	}
-	if len(got) != 10 || got[9] != wantLayout {
-		t.Fatalf("AttachArgv() = %v, want a chained argv whose layout is %q (the client box, not the configured %dx%d)", got, wantLayout, e.cfg.Width, e.cfg.Height)
-	}
-}
-
-// TestAttachArgv_ReservedRows pins the #{status} readback as the reserved-row source: off reserves
-// zero rows, on reserves one, and a non-negative integer string reserves exactly that many.
-func TestAttachArgv_ReservedRows(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   string
-		reserved int
+		name         string
+		status       string // #{status} readback; empty keeps the fixture's "off"
+		cfgW, cfgH   int    // configured size, deliberately distinct from the told cols/rows; zero keeps the fixture's
+		wantReserved int
 	}{
-		{"Off_ReservesZero", "off", 0},
-		{"On_ReservesOne", "on", 1},
-		{"NumericTwo_ReservesTwo", "2", 2},
+		{"StatusOff_ReservesZero", "", 0, 0, 0},
+		{"StatusOn_ReservesOne", "on", 0, 0, 1},
+		{"NumericTwo_ReservesTwo", "2", 0, 0, 2},
+		{"HugeStatus_FlooredToRowsMinusOne", "30", 0, 0, rows - 1},
+		{"ToldBoxWinsOverConfiguredSize", "", 999, 111, 0},
 	}
-	const cols, rows = 80, 24
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e, fake := newAttachTestEngine(t, goodAttachStrands())
-			fake.answerFormat("#{status}", tt.status, nil)
+			if tt.status != "" {
+				fake.answerFormat("#{status}", tt.status, nil)
+			}
+			if tt.cfgW != 0 {
+				e.cfg.Width, e.cfg.Height = tt.cfgW, tt.cfgH
+			}
 
 			got := e.AttachArgv(cols, rows)
 
-			wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - tt.reserved})
+			wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - tt.wantReserved})
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
-			if len(got) != 10 || got[9] != wantLayout {
-				t.Fatalf("AttachArgv() with #{status}=%q = %v, want the chain planned for %d reserved rows (layout %q)", tt.status, got, tt.reserved, wantLayout)
+			want := append(wantBareAttachArgv(e), ";", "select-layout", "-t", exactSessionWindowTarget(e.SessionName()), wantLayout)
+			if !slices.Equal(got, want) {
+				t.Errorf("AttachArgv() = %v, want %v", got, want)
+			}
+			for _, argv := range fake.ArgvFor("display-message") {
+				if argv[len(argv)-1] == liveBoxFormat {
+					t.Fatal("AttachArgv() queried the live #{window_width} #{window_height} pair; want zero live-box round trips")
+				}
 			}
 		})
-	}
-}
-
-// TestAttachArgv_ReservedRowsFloor pins the reserved-row floor: a #{status} readback large enough
-// relative to rows (e.g. a multi-line status bar) must not drive the planned box height to zero or
-// negative. reserved is clamped to rows-1 before the box is built, so the chain still plans a
-// one-row-remaining box rather than handing planLayout/render.Rules a non-positive height.
-func TestAttachArgv_ReservedRowsFloor(t *testing.T) {
-	const status = "30"
-	const cols, rows = 80, 24
-	e, fake := newAttachTestEngine(t, goodAttachStrands())
-	fake.answerFormat("#{status}", status, nil)
-
-	got := e.AttachArgv(cols, rows)
-
-	const wantReserved = rows - 1
-	wantLayout, _, err := e.planLayout(&ReedState{Strands: goodAttachStrands()}, goodAttachLive(), render.Box{X: 0, Y: 0, W: cols, H: rows - wantReserved})
-	if err != nil {
-		t.Fatalf("planLayout() unexpected error: %v", err)
-	}
-	if len(got) != 10 || got[9] != wantLayout {
-		t.Fatalf("AttachArgv() with #{status}=%q (rows=%d) = %v, want reserved floored to %d (layout %q)", status, rows, got, wantReserved, wantLayout)
 	}
 }
 
@@ -272,64 +206,67 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 // TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv covers every remaining refusal/skip path:
 // a non-positive client size, has-session failing, fewer than two live panes, no strand owning a
 // present pane, a list-panes error, and a plan error. Every one must yield exactly the bare argv,
-// asserted element by element.
+// asserted element by element, and issue no set-hook call at all (the guard-skip disposition
+// install-points-are-two-named-statements-no-guard-moves documents).
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
-	t.Run("ZeroCols", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachStrands())
-		assertBareArgv(t, e, e.AttachArgv(0, 24))
-	})
-	t.Run("NegativeCols", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachStrands())
-		assertBareArgv(t, e, e.AttachArgv(-1, 24))
-	})
-	t.Run("ZeroRows", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachStrands())
-		assertBareArgv(t, e, e.AttachArgv(80, 0))
-	})
-	t.Run("NegativeRows", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, goodAttachStrands())
-		assertBareArgv(t, e, e.AttachArgv(80, -1))
-	})
-	t.Run("HasSessionFails", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.answer("has-session", "", errors.New("boom"))
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.answer("list-panes", oneAttachListPane, nil)
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		e, _ := newAttachTestEngine(t, nil)
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("ListPanesErrors", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.answer("list-panes", "", errors.New("boom"))
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("PlanError_DeferredAnchorRejected", func(t *testing.T) {
-		strands := []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}
-		e, _ := newAttachTestEngine(t, strands)
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
+	tests := []struct {
+		name       string
+		strands    []Strand
+		cols, rows int
+		mutate     func(*fakeTmux)
+	}{
+		{"ZeroCols", goodAttachStrands(), 0, 24, nil},
+		{"NegativeCols", goodAttachStrands(), -1, 24, nil},
+		{"ZeroRows", goodAttachStrands(), 80, 0, nil},
+		{"NegativeRows", goodAttachStrands(), 80, -1, nil},
+		{"HasSessionFails", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("has-session", "", errors.New("boom")) }},
+		{"FewerThanTwoLivePanes", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", oneAttachListPane, nil) }},
+		{"NoStrandOwnsAPresentPane", nil, 80, 24, nil},
+		{"ListPanesErrors", goodAttachStrands(), 80, 24, func(f *fakeTmux) { f.answer("list-panes", "", errors.New("boom")) }},
+		{
+			"PlanError_DeferredAnchorRejected",
+			[]Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+			80, 24, nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, fake := newAttachTestEngine(t, tt.strands)
+			if tt.mutate != nil {
+				tt.mutate(fake)
+			}
+			fake.mustNotCall("set-hook")
+
+			assertBareArgv(t, e, e.AttachArgv(tt.cols, tt.rows))
+		})
+	}
 }
 
-// TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback pins that AttachArgv itself issues every
-// geometry pin — not a second exported call the CLI has to remember — and that the status-line pin
-// precedes the #{status} readback, the ordering the told box depends on (pinGeometryOptionsLocked's
-// doc comment: the told box is only correct once the status-line pins have landed and been read back).
-func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
+// TestAttachArgv_PreflightOnAKnownGoodSession pins the pre-flight of one known-good AttachArgv call:
+// AttachArgv itself issues every geometry pin (not a second exported call the CLI has to remember),
+// the status-line pin precedes the #{status} readback the told box depends on, and the resize-pin install
+// (the set-hook clear and pin rebuild) comes after the state and pane list are read.
+// It issues no pane-set mutation and leaves reed.json untouched; it does mutate a window option, the resize-pin hook,
+// so "never mutates" is scoped to the pane set.
+// A set-hook error then neither suppresses the chain nor changes a single element of the chained argv.
+//
+//testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the status-line pin before the #{status} readback and the set-hook clear after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the chained argv unchanged; its covering tests run this code without asserting it
+func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
 	// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
 	// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds and all
 	// eight set-option calls (not the six-call degraded shape) are issued.
 	e.geom.WorktreeName = "test-worktree"
+	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
 
-	got := e.AttachArgv(80, 24)
-	if len(got) != 10 {
-		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
+	stateBefore, err := LoadState(e.stateDir())
+	if err != nil {
+		t.Fatalf("LoadState before AttachArgv: %v", err)
+	}
+
+	want := e.AttachArgv(80, 24)
+	if len(want) != 10 {
+		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", want)
 	}
 
 	// The seven status-line options plus the pre-existing window-size pin.
@@ -339,153 +276,53 @@ func TestAttachArgv_PinsMadeByBuilderBeforeStatusReadback(t *testing.T) {
 	}
 
 	calls := fake.Calls()
-	statusPinIdx, statusReadbackIdx := -1, -1
+	statusPinIdx, statusReadbackIdx, listPanesIdx, firstSetHookIdx := -1, -1, -1, -1
 	for i, argv := range calls {
-		if argv[0] == "set-option" && argv[len(argv)-2] == "status" && statusPinIdx == -1 {
+		switch {
+		case argv[0] == "set-option" && argv[len(argv)-2] == "status" && statusPinIdx == -1:
 			statusPinIdx = i
-		}
-		if argv[0] == "display-message" && argv[len(argv)-1] == "#{status}" && statusReadbackIdx == -1 {
+		case argv[0] == "display-message" && argv[len(argv)-1] == "#{status}" && statusReadbackIdx == -1:
 			statusReadbackIdx = i
+		case argv[0] == "list-panes" && listPanesIdx == -1:
+			listPanesIdx = i
+		case argv[0] == "set-hook" && firstSetHookIdx == -1:
+			firstSetHookIdx = i
 		}
 	}
-	if statusPinIdx == -1 || statusReadbackIdx == -1 {
-		t.Fatalf("calls = %v, want both a status pin and a status readback", calls)
+	if statusPinIdx == -1 || statusReadbackIdx == -1 || listPanesIdx == -1 || firstSetHookIdx == -1 {
+		t.Fatalf("calls = %v, want a status pin, a status readback, a list-panes and a set-hook call", calls)
 	}
 	if statusPinIdx >= statusReadbackIdx {
 		t.Errorf("calls = %v, want the status-off pin (index %d) before the #{status} readback (index %d)", calls, statusPinIdx, statusReadbackIdx)
 	}
-}
-
-// TestAttachArgv_NeverMutatesTheSessionOrPersistsState pins that AttachArgv issues no pane-set
-// mutation: no select-layout, select-pane, kill-pane, or split-window is ever issued (the chain
-// carries select-layout only inside the returned ARGV, never applies it), and reed.json is neither
-// created nor modified by the call. AttachArgv deliberately does mutate a window OPTION now — the
-// resize-pin hook, alongside the two geometry pins it already set — so "never mutates" is scoped to
-// the pane set, not to every tmux call this builder makes.
-func TestAttachArgv_NeverMutatesTheSessionOrPersistsState(t *testing.T) {
-	e, fake := newAttachTestEngine(t, goodAttachStrands())
-	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
-
-	before, err := LoadState(e.stateDir())
-	if err != nil {
-		t.Fatalf("LoadState before AttachArgv: %v", err)
+	if firstSetHookIdx <= listPanesIdx {
+		t.Errorf("calls = %v, want the first set-hook call (index %d) after list-panes (index %d)", calls, firstSetHookIdx, listPanesIdx)
+	}
+	if setHooks := fake.ArgvFor("set-hook"); !containsArg(setHooks[0], "-u") {
+		t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
 	}
 
-	if got := e.AttachArgv(80, 24); len(got) != 10 {
-		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
-	}
-
-	after, err := LoadState(e.stateDir())
+	stateAfter, err := LoadState(e.stateDir())
 	if err != nil {
 		t.Fatalf("LoadState after AttachArgv: %v", err)
 	}
-	if len(after.Strands) != len(before.Strands) || after.SelvagePaneID != before.SelvagePaneID {
-		t.Errorf("reed.json changed across AttachArgv: before=%+v after=%+v", before, after)
-	}
-}
-
-// TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead pins the install statement's position in
-// AttachArgv's pre-flight: a known-good pre-flight issues the set-hook clear (and pin rebuild) after
-// the state and pane list are read, and before the argv is returned.
-func TestAttachArgv_InstallsResizePinsAfterStateAndPanesRead(t *testing.T) {
-	e, fake := newAttachTestEngine(t, goodAttachStrands())
-
-	got := e.AttachArgv(80, 24)
-	if len(got) != 10 {
-		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", got)
+	if len(stateAfter.Strands) != len(stateBefore.Strands) || stateAfter.SelvagePaneID != stateBefore.SelvagePaneID {
+		t.Errorf("reed.json changed across AttachArgv: before=%+v after=%+v", stateBefore, stateAfter)
 	}
 
-	sequence := fake.Sequence("list-panes", "set-hook")
-	listPanesIdx, firstSetHookIdx := -1, -1
-	for i, step := range sequence {
-		if step == "list-panes" && listPanesIdx == -1 {
-			listPanesIdx = i
-		}
-		if step == "set-hook" && firstSetHookIdx == -1 {
-			firstSetHookIdx = i
-		}
-	}
-	if listPanesIdx == -1 {
-		t.Fatalf("sequence = %v, want a list-panes call", sequence)
-	}
-	if firstSetHookIdx == -1 {
-		t.Fatalf("sequence = %v, want at least one set-hook call", sequence)
-	}
-	if firstSetHookIdx <= listPanesIdx {
-		t.Errorf("sequence = %v, want the first set-hook call (index %d) after list-panes (index %d)", sequence, firstSetHookIdx, listPanesIdx)
-	}
-	setHooks := fake.ArgvFor("set-hook")
-	if len(setHooks) == 0 {
-		t.Fatal("no set-hook calls recorded, want at least the clear")
-	}
-	if !containsArg(setHooks[0], "-u") {
-		t.Errorf("first set-hook argv = %v, want the -u clear", setHooks[0])
-	}
-}
-
-// TestAttachArgv_DegradedPathsInstallNoResizePinHook pins that every degraded path yielding the bare
-// argv issues no set-hook call at all — the guard-skip disposition
-// install-points-are-two-named-statements-no-guard-moves documents.
-func TestAttachArgv_DegradedPathsInstallNoResizePinHook(t *testing.T) {
-	t.Run("ZeroCols", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.mustNotCall("set-hook")
-		assertBareArgv(t, e, e.AttachArgv(0, 24))
-	})
-	t.Run("HasSessionFails", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.answer("has-session", "", errors.New("boom"))
-		fake.mustNotCall("set-hook")
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, goodAttachStrands())
-		fake.answer("list-panes", oneAttachListPane, nil)
-		fake.mustNotCall("set-hook")
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		e, fake := newAttachTestEngine(t, nil)
-		fake.mustNotCall("set-hook")
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-	t.Run("PlanError_DeferredAnchorRejected", func(t *testing.T) {
-		strands := []Strand{{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}}
-		e, fake := newAttachTestEngine(t, strands)
-		fake.mustNotCall("set-hook")
-		assertBareArgv(t, e, e.AttachArgv(80, 24))
-	})
-}
-
-// TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv pins hook-failure-is-non-fatal-everywhere on
-// the AttachArgv path: a set-hook returning an error neither suppresses the chain nor changes a
-// single element of the ten-element chained argv, compared element by element against the same argv
-// built with a non-failing hook.
-func TestAttachArgv_SetHookErrorDoesNotChangeTheChainedArgv(t *testing.T) {
-	e, fake := newAttachTestEngine(t, goodAttachStrands())
-
-	want := e.AttachArgv(80, 24)
-	if len(want) != 10 {
-		t.Fatalf("baseline AttachArgv() = %v, want the 10-element chained argv", want)
-	}
-
+	// Hook failure is non-fatal on the AttachArgv path.
+	hooksBefore := len(fake.ArgvFor("set-hook"))
 	fake.answer("set-hook", "", errors.New("boom"))
-
 	got := e.AttachArgv(80, 24)
-	if len(got) != len(want) {
-		t.Fatalf("AttachArgv() with failing set-hook = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+	if !slices.Equal(got, want) {
+		t.Errorf("AttachArgv() with failing set-hook = %v, want %v (a failing set-hook must not change the chained argv)", got, want)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("AttachArgv()[%d] = %q, want %q (a failing set-hook must not change the chained argv)", i, got[i], want[i])
-		}
-	}
-	if len(fake.ArgvFor("set-hook")) == 0 {
-		t.Fatal("no set-hook calls recorded despite the failing hook, want the install statement still attempted")
+	if len(fake.ArgvFor("set-hook")) == hooksBefore {
+		t.Error("no set-hook call recorded despite the failing hook, want the install statement still attempted")
 	}
 }
 
-// wantChainedAttachArgv builds the exact chained argv TestAttachArgv_ChainedShape already pins for
+// wantChainedAttachArgv builds the exact chained argv TestAttachArgv_ChainedArgv already pins for
 // goodAttachStrands at cols/rows, so the multi-client warning tests below can assert their argv is
 // byte-identical to what the same script produces today without re-deriving the expectation.
 func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {

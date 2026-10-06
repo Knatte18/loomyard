@@ -35,8 +35,8 @@ func headSHA(worktree string) (string, error) {
 
 // refuseMidMerge returns an error when worktree has a git merge in progress, and nil otherwise.
 // It asks git whether MERGE_HEAD resolves rather than statting a file, because a linked worktree keeps MERGE_HEAD in its per-worktree git dir.
-func refuseMidMerge(worktree string) error {
-	present, err := gitrepo.New(worktree).MergeHeadPresent()
+func refuseMidMerge(git Git, worktree string) error {
+	present, err := git.MergeInProgress(worktree)
 	if err != nil {
 		return fmt.Errorf("websterengine: probe merge in progress in %s: %w", worktree, err)
 	}
@@ -46,6 +46,27 @@ func refuseMidMerge(worktree string) error {
 			"`git merge --continue` / `git merge --abort` for a standalone run)", worktree)
 	}
 	return nil
+}
+
+// mergeInProgress reports whether worktree has a git merge in progress.
+func mergeInProgress(worktree string) (bool, error) {
+	return gitrepo.New(worktree).MergeHeadPresent()
+}
+
+// commitParents returns the parent SHAs of commit in worktree's repository.
+func commitParents(worktree, commit string) ([]string, error) {
+	return gitrepo.New(worktree).CommitParents(commit)
+}
+
+// mergeRejection returns why the merge commit, whose parents are given, does not qualify as a clean merge of the run's parent branch, or "" when it does.
+// A parentBranch that cannot be resolved is itself a rejection, so no merge is accepted without one.
+func mergeRejection(worktree, commit string, parents []string, parentBranch ParentBranchFunc) string {
+	repo := gitrepo.New(worktree)
+	tips, err := resolveParentTips(repo, parentBranch)
+	if err != nil {
+		return err.Error()
+	}
+	return parentMergeRejection(repo, commit, parents, tips)
 }
 
 // ParentBranchFunc names the branch the run merges its parent in from, resolved only when a merge commit needs checking.
@@ -62,8 +83,8 @@ type ParentBranchFunc func() (string, error)
 // The rule keeps the audit sound: the batch is recorded at reportHead, so content a merge adds beyond a clean parent merge would bypass the audited delta.
 // On acceptance the warning names subject, both heads and every walked merge SHA in walk order.
 // A refusal's way forward is worded for record-batch and recover-batch (reportHeadRefusal).
-func reconcileReportHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc) (warning string, err error) {
-	return reconcileHead(worktree, reportHead, subject, parentBranch, reportHeadRefusal)
+func reconcileReportHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc) (warning string, err error) {
+	return reconcileHead(git, worktree, reportHead, subject, parentBranch, reportHeadRefusal)
 }
 
 // headRefusal words a reconcileHead refusal's way forward for one caller.
@@ -80,8 +101,8 @@ type headRefusal struct {
 var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
 
 // reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
-func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
-	head, err := headSHA(worktree)
+func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
+	head, err := git.HeadSHA(worktree)
 	if err != nil {
 		return "", err
 	}
@@ -89,15 +110,13 @@ func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBran
 		return "", nil
 	}
 
-	repo := gitrepo.New(worktree)
 	var merges []string
-	var parentTips []string
 	for cur := head; ; {
 		if cur == reportHead {
 			return fmt.Sprintf("webster: %s: head_sha %q differs from the worktree's HEAD %q; only merge commits (%s) sit between them, so the batch is recorded at the report's head_sha %q",
 				subject, reportHead, head, strings.Join(merges, ", "), reportHead), nil
 		}
-		parents, err := repo.CommitParents(cur)
+		parents, err := git.CommitParents(worktree, cur)
 		if err != nil {
 			return "", fmt.Errorf("websterengine: walk first-parent chain from %s in %s: %w", head, worktree, err)
 		}
@@ -107,13 +126,7 @@ func reconcileHead(worktree, reportHead, subject string, parentBranch ParentBran
 				"%s",
 				subject, reportHead, head, wayForwardSteps(resetKeepStep(refusal.head, reportHead), refusal.rerun))
 		}
-		// The parent tips are resolved once, on the first merge the walk meets.
-		if parentTips == nil {
-			if parentTips, err = resolveParentTips(repo, parentBranch); err != nil {
-				return "", parentMergeRefusal(subject, reportHead, head, cur, err.Error(), refusal)
-			}
-		}
-		if reason := parentMergeRejection(repo, cur, parents, parentTips); reason != "" {
+		if reason := git.MergeRejection(worktree, cur, parents, parentBranch); reason != "" {
 			return "", parentMergeRefusal(subject, reportHead, head, cur, reason, refusal)
 		}
 		merges = append(merges, cur)

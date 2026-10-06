@@ -47,51 +47,44 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	}
 }
 
-// TestBouncer_Skip_FalseSeedsRoundOne pins that a false seam reviews exactly as an unconfigured Bouncer does: the seed pass runs and the call returns Stuck.
-func TestBouncer_Skip_FalseSeedsRoundOne(t *testing.T) {
-	shuttle := &shedfake.Shuttle{}
-	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = shuttle
-	cfg.Skip = func() (bool, error) { return false, nil }
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+// TestBouncer_Skip_FalseOrErrorSeedsRoundOne pins that a false seam reviews exactly as an
+// unconfigured Bouncer does, and that an erroring seam warns and does the same, never halting and
+// never approving: the seed pass runs and the call returns Stuck.
+func TestBouncer_Skip_FalseOrErrorSeedsRoundOne(t *testing.T) {
+	tests := []struct {
+		name string
+		skip func() (bool, error)
+	}{
+		{"a false seam", func() (bool, error) { return false, nil }},
+		{"an erroring seam", func() (bool, error) { return true, errors.New("classifier failed") }},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			approveCalls := 0
+			shuttle := &shedfake.Shuttle{}
+			cfg := newBouncerFixture(t).Config
+			cfg.Shuttle = shuttle
+			cfg.Skip = tt.skip
+			cfg.Approve = func() error {
+				approveCalls++
+				return nil
+			}
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
 
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if !shuttle.Called {
-		t.Error("shuttle Run was not called; want the round-1 seed spawn")
-	}
-	if _, err := os.Stat(focusPath(cfg.RunDir, 1)); err != nil {
-		t.Errorf("round 1 focus file stat error = %v; want it present", err)
-	}
-}
-
-// TestBouncer_Skip_ErrorFallsBackToReview pins that an erroring seam warns and seeds round 1 like a false one, never halting and never approving.
-func TestBouncer_Skip_ErrorFallsBackToReview(t *testing.T) {
-	approveCalls := 0
-	shuttle := &shedfake.Shuttle{}
-	cfg := newBouncerFixture(t).Config
-	cfg.Shuttle = shuttle
-	cfg.Skip = func() (bool, error) { return true, errors.New("classifier failed") }
-	cfg.Approve = func() error {
-		approveCalls++
-		return nil
-	}
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if !shuttle.Called {
-		t.Error("shuttle Run was not called; want the round-1 seed spawn")
-	}
-	if approveCalls != 0 {
-		t.Errorf("Approve call count = %d; want 0", approveCalls)
-	}
-	if _, err := os.Stat(focusPath(cfg.RunDir, 1)); err != nil {
-		t.Errorf("round 1 focus file stat error = %v; want it present", err)
+			shedfake.RequireOutcome(t, b, shedengine.Stuck)
+			if !shuttle.Called {
+				t.Error("shuttle Run was not called; want the round-1 seed spawn")
+			}
+			if approveCalls != 0 {
+				t.Errorf("Approve call count = %d; want 0", approveCalls)
+			}
+			if _, err := os.Stat(focusPath(cfg.RunDir, 1)); err != nil {
+				t.Errorf("round 1 focus file stat error = %v; want it present", err)
+			}
+		})
 	}
 }
 

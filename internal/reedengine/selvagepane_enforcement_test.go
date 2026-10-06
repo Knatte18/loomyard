@@ -77,6 +77,8 @@ func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
 // TestSelvageIdentViolations_ExemptionsAndFlags drives selvageIdentViolations directly over
 // synthetic source parsed from an in-memory string, rather than from disk, so the two exemptions stay
 // verified rather than assumed and keep being verified after the extraction lands.
+//
+//testtiming:keep pins the Selvage identifier scanner's exemptions and flags over a synthetic source, so the confinement scan cannot pass vacuously; its covering tests run this code without asserting it
 func TestSelvageIdentViolations_ExemptionsAndFlags(t *testing.T) {
 	const src = `package fake
 

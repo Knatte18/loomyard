@@ -56,6 +56,8 @@ func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
 // TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires covers (a): wiring creates the .lyx
 // junction pointing at <weft>/<AnchorRel>/.lyx, seeds ".lyx" into the warp's .git/info/exclude AND
 // ".lyx/" into the weft's, and unwiring removes the junction and the warp entry.
+//
+//testtiming:keep wiring creating the .lyx junction to the weft, seeding the warp and weft excludes and unwiring removing them; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
 	t.Parallel()
 
@@ -137,6 +139,8 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 // worktree already carries its own untracked `_lyx/` config — hubforge.NewHub's CloneAndWire
 // materializes per-worktree config via configsync.ReconcileAll without committing it — which is
 // unrelated dirt this test's own subject, `.lyx`'s exclude ordering, was never about.
+//
+//testtiming:keep the weft exclude being seeded before the first write so .lyx never shows as untracked dirt; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 	t.Parallel()
 
@@ -166,6 +170,8 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 // TestDotLyxJunction_AdoptsPreExistingRealDotLyx covers (c): a pre-existing real .lyx directory
 // holding files is moved into the weft target and replaced by a junction, and a second reconcile
 // (WireJunctions re-run) is a no-op.
+//
+//testtiming:keep a pre-existing real .lyx directory being moved into the weft target and replaced by a junction with a no-op second wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 	t.Parallel()
 

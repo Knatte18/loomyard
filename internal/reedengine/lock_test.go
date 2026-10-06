@@ -71,6 +71,7 @@ func newTestEngine(t *testing.T) *Engine {
 	return New(cfg, geom)
 }
 
+//testtiming:keep pins the lock file living under the anchor path's .lyx, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
 func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 	// The anchor path is a real subpath of the worktree root here so
 	// stateDir's AnchorPath anchoring (as opposed to WorktreeRoot) is
@@ -120,8 +121,13 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 	if filepath.Dir(sawPath) == filepath.Join(e.geom.WorktreeRoot, ".lyx") {
 		t.Errorf("lock path = %q, want it to differ from the WorktreeRoot-based path for a subpath-anchored fixture", sawPath)
 	}
+	// No stale lock remains from the released acquisition: a second one on the same path succeeds immediately rather than blocking or erroring.
+	if err := e.withOpLock(func() error { return nil }); err != nil {
+		t.Errorf("second withOpLock after release: %v", err)
+	}
 }
 
+//testtiming:keep pins a second withOpLock blocking until the first releases and then proceeding; its covering tests run this code without asserting it
 func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -178,20 +184,7 @@ func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
 	}
 }
 
-func TestWithOpLock_ReacquireAfterReleaseSucceeds(t *testing.T) {
-	e := newTestEngine(t)
-
-	if err := e.withOpLock(func() error { return nil }); err != nil {
-		t.Fatalf("first withOpLock: %v", err)
-	}
-	// No stale lock should remain from the first, already-released
-	// acquisition — a second acquisition on the same path must succeed
-	// immediately rather than block or error.
-	if err := e.withOpLock(func() error { return nil }); err != nil {
-		t.Fatalf("second withOpLock after release: %v", err)
-	}
-}
-
+//testtiming:keep pins Socket() returning the told socket key and SessionName() the worktree basename; its covering tests run this code without asserting it
 func TestEngine_SocketAndSessionName(t *testing.T) {
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
@@ -274,81 +267,61 @@ func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) 
 	}
 }
 
-// TestWithOpLock_QuietWhenTheLockFileSurvives pins the other half: an ordinary operation must not
-// pay for this check with a spurious failure.
-func TestWithOpLock_QuietWhenTheLockFileSurvives(t *testing.T) {
-	e := newTestEngine(t)
-
-	if err := e.withOpLock(func() error { return nil }); err != nil {
-		t.Errorf("withOpLock on an undisturbed lock file = %v; want nil", err)
-	}
-}
-
-// TestWithTryOpLock_RunsFnOnAFreeLock pins the acquired path: fn runs and (true, nil) is reported.
-func TestWithTryOpLock_RunsFnOnAFreeLock(t *testing.T) {
-	e := newTestEngine(t)
-
-	ran := false
-	acquired, err := e.withTryOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if !acquired {
-		t.Error("withTryOpLock() acquired = false, want true (lock was free)")
-	}
-	if err != nil {
-		t.Errorf("withTryOpLock() err = %v, want nil", err)
-	}
-	if !ran {
-		t.Error("withTryOpLock() did not run fn")
-	}
-}
-
-// TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld pins the deferral contract: with
-// reed.lock already held by a second acquisition, withTryOpLock reports (false, nil), never calls
-// fn, and issues no tmux call — deferral is not a failure.
-func TestWithTryOpLock_DefersWithoutTouchingTmuxWhenAlreadyHeld(t *testing.T) {
-	e := newTestEngine(t)
-
-	dotLyx := e.stateDir()
-	if err := os.MkdirAll(dotLyx, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	lockPath := filepath.Join(dotLyx, reedLockFileName)
-	held, err := lock.AcquireWriteLock(lockPath)
-	if err != nil {
-		t.Fatalf("AcquireWriteLock: %v", err)
-	}
-	defer held.Release()
-
-	fnCalled := false
-	acquired, err := e.withTryOpLock(func() error {
-		fnCalled = true
-		return nil
-	})
-	if acquired {
-		t.Error("withTryOpLock() acquired = true, want false (lock already held)")
-	}
-	if err != nil {
-		t.Errorf("withTryOpLock() err = %v, want nil (a deferral is not a failure)", err)
-	}
-	if fnCalled {
-		t.Error("withTryOpLock() called fn while the lock was held, want it never called")
-	}
-}
-
-// TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue pins that a real acquisition still reports
-// acquired == true even when fn itself fails.
-func TestWithTryOpLock_PropagatesFnErrorWithAcquiredTrue(t *testing.T) {
-	e := newTestEngine(t)
-
+// TestWithTryOpLock pins the three outcomes: on a free lock fn runs and (true, nil) is reported,
+// an fn error is wrapped while acquired stays true, and with reed.lock already held by a second
+// acquisition it reports (false, nil) and never calls fn (a deferral is not a failure).
+//
+//testtiming:keep pins withTryOpLock running fn on a free lock with acquired true, wrapping fn's error with acquired still true, and deferring with (false, nil) and no fn call or tmux call while the lock is held; its covering tests run this code without asserting it
+func TestWithTryOpLock(t *testing.T) {
 	fnErr := errors.New("fn's own failure")
-	acquired, err := e.withTryOpLock(func() error { return fnErr })
-	if !acquired {
-		t.Error("withTryOpLock() acquired = false, want true")
+	tests := []struct {
+		name         string
+		hold         bool
+		fnErr        error
+		wantAcquired bool
+		wantFnRan    bool
+	}{
+		{name: "RunsFnOnAFreeLock", wantAcquired: true, wantFnRan: true},
+		{name: "PropagatesFnErrorWithAcquiredTrue", fnErr: fnErr, wantAcquired: true, wantFnRan: true},
+		{name: "DefersWhenAlreadyHeld", hold: true},
 	}
-	if !errors.Is(err, fnErr) {
-		t.Errorf("withTryOpLock() err = %v, want it to wrap fn's error", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			if tt.hold {
+				if err := os.MkdirAll(e.stateDir(), 0o755); err != nil {
+					t.Fatalf("MkdirAll: %v", err)
+				}
+				held, err := lock.AcquireWriteLock(filepath.Join(e.stateDir(), reedLockFileName))
+				if err != nil {
+					t.Fatalf("AcquireWriteLock: %v", err)
+				}
+				defer held.Release()
+			}
+			fake := installFakeTmux(t, e)
+
+			ran := false
+			acquired, err := e.withTryOpLock(func() error {
+				ran = true
+				return tt.fnErr
+			})
+
+			if acquired != tt.wantAcquired {
+				t.Errorf("withTryOpLock() acquired = %v, want %v", acquired, tt.wantAcquired)
+			}
+			if ran != tt.wantFnRan {
+				t.Errorf("withTryOpLock() ran fn = %v, want %v", ran, tt.wantFnRan)
+			}
+			if tt.fnErr == nil && err != nil {
+				t.Errorf("withTryOpLock() err = %v, want nil", err)
+			}
+			if tt.fnErr != nil && !errors.Is(err, tt.fnErr) {
+				t.Errorf("withTryOpLock() err = %v, want it to wrap fn's error", err)
+			}
+			if calls := fake.Calls(); len(calls) != 0 {
+				t.Errorf("withTryOpLock() issued tmux calls %v, want none", calls)
+			}
+		})
 	}
 }
 

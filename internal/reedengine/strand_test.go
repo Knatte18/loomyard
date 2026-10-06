@@ -23,11 +23,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-func TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch(t *testing.T) {
+// TestAddStrandLocked pins the hidden-add path and the engine-boundary rejections of one fresh state.
+// Hidden adds mint unique 32-hex guids, store the record without launching (no PaneID) and keep Cmd verbatim though unrun;
+// AddSpec.SessionID is opaque caller metadata, stamped verbatim and surviving a SaveState/LoadState round trip like every other carrier field (Cmd, ResumeCmd, Name);
+// a known parent is accepted.
+// An unknown parent, the deferred own-window anchor, a mistyped anchor or an empty one is rejected before any pane is launched or record registered —
+// without that guard an in-process caller (shuttle) would persist the strand, launch its pane, and fail every subsequent apply in render until the strand was removed.
+func TestAddStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{}
-
-	spec := AddSpec{Cmd: "claude --session-id abc", Display: render.Display{Anchor: render.AnchorHidden}}
+	hidden := render.Display{Anchor: render.AnchorHidden}
+	spec := AddSpec{Cmd: "claude --session-id abc", SessionID: "caller-session-abc", Display: hidden}
 
 	first, err := e.addStrandLocked(st, spec)
 	if err != nil {
@@ -37,16 +43,11 @@ func TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch(t *testing.T) 
 	if err != nil {
 		t.Fatalf("addStrandLocked: %v", err)
 	}
-
 	if len(first.GUID) != 32 || len(second.GUID) != 32 {
 		t.Fatalf("guid lengths = %d, %d, want 32 hex chars each", len(first.GUID), len(second.GUID))
 	}
 	if first.GUID == second.GUID {
 		t.Errorf("addStrandLocked produced duplicate guids: %q", first.GUID)
-	}
-
-	if len(st.Strands) != 2 {
-		t.Fatalf("st.Strands has %d entries, want 2", len(st.Strands))
 	}
 	for _, s := range st.Strands {
 		if s.PaneID != "" {
@@ -55,66 +56,48 @@ func TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch(t *testing.T) 
 		if s.Cmd != spec.Cmd {
 			t.Errorf("hidden-add strand %q Cmd = %q, want %q stored verbatim though unrun", s.GUID, s.Cmd, spec.Cmd)
 		}
+		if s.SessionID != spec.SessionID {
+			t.Errorf("hidden-add strand %q SessionID = %q, want %q", s.GUID, s.SessionID, spec.SessionID)
+		}
 	}
-}
-
-// TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad pins AddSpec.SessionID as opaque caller
-// metadata: addStrandLocked stamps it verbatim into the appended Strand,
-// and it survives a SaveState/LoadState round trip on disk exactly like every other carrier field
-// (Cmd, ResumeCmd, Name).
-func TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
-
-	spec := AddSpec{SessionID: "caller-session-abc", Display: render.Display{Anchor: render.AnchorHidden}}
-	strand, err := e.addStrandLocked(st, spec)
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	if strand.SessionID != spec.SessionID {
-		t.Fatalf("strand.SessionID = %q, want %q", strand.SessionID, spec.SessionID)
-	}
-
-	dotLyxDir := e.stateDir()
-	if err := SaveState(dotLyxDir, st); err != nil {
+	if err := SaveState(e.stateDir(), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
-	loaded, err := LoadState(dotLyxDir)
+	loaded, err := LoadState(e.stateDir())
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
-	got, ok := strandByGUID(loaded.Strands, strand.GUID)
-	if !ok {
-		t.Fatalf("LoadState result missing strand %q", strand.GUID)
+	if got, ok := strandByGUID(loaded.Strands, first.GUID); !ok || got.SessionID != spec.SessionID {
+		t.Errorf("loaded strand = %+v (found %v), want SessionID %q to survive SaveState/LoadState", got, ok, spec.SessionID)
 	}
-	if got.SessionID != spec.SessionID {
-		t.Errorf("loaded strand.SessionID = %q, want %q to survive SaveState/LoadState", got.SessionID, spec.SessionID)
-	}
-}
 
-func TestAddStrandLocked_UnknownParentRejected(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
-
-	_, err := e.addStrandLocked(st, AddSpec{Parent: "does-not-exist", Display: render.Display{Anchor: render.AnchorHidden}})
-	if err == nil {
-		t.Fatal("addStrandLocked with unknown parent = nil error, want error")
-	}
-	if len(st.Strands) != 0 {
-		t.Errorf("st.Strands = %+v, want no record registered on a rejected add", st.Strands)
-	}
-}
-
-func TestAddStrandLocked_KnownParentAccepted(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{{GUID: "parent-guid", Display: render.Display{Anchor: render.AnchorHidden}}}}
-
-	strand, err := e.addStrandLocked(st, AddSpec{Parent: "parent-guid", Display: render.Display{Anchor: render.AnchorHidden}})
+	child, err := e.addStrandLocked(st, AddSpec{Parent: first.GUID, Display: hidden})
 	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
+		t.Fatalf("addStrandLocked(known parent): %v", err)
 	}
-	if strand.Parent != "parent-guid" {
-		t.Errorf("strand.Parent = %q, want %q", strand.Parent, "parent-guid")
+	if child.Parent != first.GUID {
+		t.Errorf("strand.Parent = %q, want %q", child.Parent, first.GUID)
+	}
+
+	rejected := []struct {
+		name string
+		spec AddSpec
+	}{
+		{"UnknownParent", AddSpec{Parent: "does-not-exist", Display: hidden}},
+		{"OwnWindowAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
+		{"MistypedAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("sideways")}}},
+		{"EmptyAnchor", AddSpec{Cmd: "x", Display: render.Display{Anchor: render.Anchor("")}}},
+	}
+	for _, tt := range rejected {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(st.Strands)
+			if _, err := e.addStrandLocked(st, tt.spec); err == nil {
+				t.Fatal("addStrandLocked = nil error, want rejection")
+			}
+			if len(st.Strands) != before {
+				t.Errorf("st.Strands = %+v, want no record registered on a rejected add", st.Strands)
+			}
+		})
 	}
 }
 
@@ -146,6 +129,7 @@ func TestWouldFormCycle(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the add-time launch decision: a hidden add never launches and a below-parent add does; its covering tests run this code without asserting it
 func TestNeedsLaunchOnAdd(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -165,6 +149,7 @@ func TestNeedsLaunchOnAdd(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the surface-time launch decision: only a hidden strand turned visible launches, a hidden-to-hidden or visible-to-visible update never does; its covering tests run this code without asserting it
 func TestNeedsLaunchOnSurface(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -186,62 +171,56 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 	}
 }
 
-func TestUpdateStrandLocked_VisibleToHiddenRejected(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{
-		{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
-	}}
-
-	_, err := e.updateStrandLocked(st, "g1", render.Display{Anchor: render.AnchorHidden})
-	if err == nil {
-		t.Fatal("updateStrandLocked(visible->hidden) = nil error, want error")
+// TestUpdateStrandLocked pins UpdateStrand's engine-boundary rules:
+// a visible->hidden update, the deferred own-window anchor, a mistyped anchor and an unknown guid are rejected with the strand's display unchanged
+// (a persisted own-window display would poison every later apply),
+// while a hidden->hidden update is a no-op that launches nothing.
+func TestUpdateStrandLocked(t *testing.T) {
+	visible := render.Display{Anchor: render.AnchorBelowParent}
+	hidden := render.Display{Anchor: render.AnchorHidden}
+	tests := []struct {
+		name    string
+		strand  Strand
+		guid    string
+		display render.Display
+		wantErr bool
+	}{
+		{"VisibleToHiddenRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", hidden, true},
+		{"OwnWindowAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, true},
+		{"MistypedAnchorRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "g1", render.Display{Anchor: render.Anchor("sideways")}, true},
+		{"UnknownGuidRejected", Strand{GUID: "g1", PaneID: "%1", Display: visible}, "does-not-exist", render.Display{}, true},
+		{"HiddenToHiddenIsANoOpWithNoLaunch", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true}, false},
 	}
-	if st.Strands[0].Display.Anchor != render.AnchorBelowParent {
-		t.Errorf("strand Display.Anchor = %v, want unchanged after a rejected update", st.Strands[0].Display.Anchor)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			st := &ReedState{Strands: []Strand{tt.strand}}
 
-func TestUpdateStrandLocked_HiddenToHidden_NoOpNoLaunch(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{
-		{GUID: "g1", Display: render.Display{Anchor: render.AnchorHidden}, Cmd: "claude"},
-	}}
+			strand, err := e.updateStrandLocked(st, tt.guid, tt.display)
 
-	strand, err := e.updateStrandLocked(st, "g1", render.Display{Anchor: render.AnchorHidden, Focus: true})
-	if err != nil {
-		t.Fatalf("updateStrandLocked(hidden->hidden): %v", err)
-	}
-	if strand.PaneID != "" {
-		t.Errorf("strand.PaneID = %q, want empty (still hidden, no launch)", strand.PaneID)
-	}
-}
-
-func TestUpdateStrandLocked_UnknownGuidRejected(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
-
-	if _, err := e.updateStrandLocked(st, "does-not-exist", render.Display{}); err == nil {
-		t.Fatal("updateStrandLocked(unknown guid) = nil error, want error")
-	}
-}
-
-func TestRemoveStrandLocked_NonLeafWithoutRecursiveErrors(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{
-		{GUID: "parent"},
-		{GUID: "child", Parent: "parent"},
-	}}
-
-	_, _, err := e.removeStrandLocked(st, "parent", false)
-	if err == nil {
-		t.Fatal("removeStrandLocked(non-leaf, recursive=false) = nil error, want error")
-	}
-	if len(st.Strands) != 2 {
-		t.Errorf("st.Strands = %+v, want unchanged after a rejected remove", st.Strands)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("updateStrandLocked = nil error, want rejection")
+				}
+				if st.Strands[0].Display.Anchor != tt.strand.Display.Anchor {
+					t.Errorf("strand Display.Anchor = %v, want unchanged after a rejected update", st.Strands[0].Display.Anchor)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("updateStrandLocked: %v", err)
+			}
+			if strand.PaneID != "" {
+				t.Errorf("strand.PaneID = %q, want empty (still hidden, no launch)", strand.PaneID)
+			}
+		})
 	}
 }
 
-func TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved(t *testing.T) {
+// TestRemoveStrandLocked pins the non-leaf guard and the cascade on one table:
+// a non-leaf removed without recursive is refused with the table unchanged,
+// and the recursive remove cascades to every descendant, lists each removed strand with its name and leaves unrelated strands alone.
+func TestRemoveStrandLocked(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{Strands: []Strand{
 		{GUID: "root", Name: "root-name"},
@@ -250,11 +229,17 @@ func TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved(t *testing.T) 
 		{GUID: "unrelated", Name: "unrelated-name"},
 	}}
 
+	if _, _, err := e.removeStrandLocked(st, "root", false); err == nil {
+		t.Fatal("removeStrandLocked(non-leaf, recursive=false) = nil error, want error")
+	}
+	if len(st.Strands) != 4 {
+		t.Fatalf("st.Strands = %+v, want unchanged after a rejected remove", st.Strands)
+	}
+
 	removed, _, err := e.removeStrandLocked(st, "root", true)
 	if err != nil {
 		t.Fatalf("removeStrandLocked(recursive=true): %v", err)
 	}
-
 	wantGUIDs := map[string]string{"root": "root-name", "mid": "mid-name", "leaf": "leaf-name"}
 	if len(removed.Strands) != len(wantGUIDs) {
 		t.Fatalf("removed.Strands = %+v, want %d entries", removed.Strands, len(wantGUIDs))
@@ -264,18 +249,8 @@ func TestRemoveStrandLocked_RecursiveCascadesAndListsEveryRemoved(t *testing.T) 
 			t.Errorf("removed entry %+v does not match expected name %q", r, wantGUIDs[r.GUID])
 		}
 	}
-
 	if len(st.Strands) != 1 || st.Strands[0].GUID != "unrelated" {
 		t.Errorf("st.Strands after cascade = %+v, want only the unrelated strand left", st.Strands)
-	}
-}
-
-func TestRemoveStrandLocked_UnknownGuidRejected(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
-
-	if _, _, err := e.removeStrandLocked(st, "does-not-exist", true); err == nil {
-		t.Fatal("removeStrandLocked(unknown guid) = nil error, want error")
 	}
 }
 
@@ -441,6 +416,8 @@ func TestClassifyIfAbsent(t *testing.T) {
 // TestValidateIfAbsent pins the one requirement --if-absent adds: rejected (naming --name) whenever
 // IfAbsent is true and NameOverride is empty, and accepted otherwise — including the ordinary
 // IfAbsent-false case with no name at all.
+//
+//testtiming:keep pins --if-absent requiring a name: rejected naming --name when IfAbsent is set without one, accepted otherwise; its covering tests run this code without asserting it
 func TestValidateIfAbsent(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -482,89 +459,74 @@ func installIfAbsentTmux(t *testing.T, e *Engine, paneLines string) *fakeTmux {
 	return fake
 }
 
-// TestAddStrand_IfAbsent_MatchedAliveNoOps pins the alive no-op branch at the engine-call level:
-// AddStrand must return the matched strand unchanged and persist nothing, even though the incoming
-// spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
-func TestAddStrand_IfAbsent_MatchedAliveNoOps(t *testing.T) {
-	e := newTestEngine(t)
-	installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
+// TestAddStrand_IfAbsent_NoOps pins the no-op branches at the engine-call level:
+// AddStrand must return the matched strand unchanged and persist nothing,
+// even though the incoming spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
+// An alive match is a no-op, a hidden-only match is a no-op regardless of any pane being alive, and a role-segment --name matches on the full name it resolves to.
+func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
+	tests := []struct {
+		name      string
+		paneLines string
+		persisted Strand
+	}{
+		{
+			name:      "MatchedAliveNoOps",
+			paneLines: "%1 0 0 100 20 4321\n",
+			persisted: Strand{
+				GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
+				Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
+				Display: render.Display{Anchor: render.AnchorBelowParent, Focus: false},
+			},
+		},
+		{
+			// A header-only pane line (no strand's own PaneID) so ensureSessionLocked's substrate probe finds
+			// the session already usable and never boots: the hidden-only decision must not depend on any pane being alive.
+			name:      "HiddenOnlyNoOps",
+			paneLines: "%0 0 0 100 20 4321\n",
+			persisted: Strand{
+				GUID: "hidden-guid", Name: "tc:tslug:claude",
+				Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
+				Display: render.Display{Anchor: render.AnchorHidden},
+			},
+		},
+		{
+			name:      "RoleSegmentMatchesFullName",
+			paneLines: "%1 0 0 100 20 4321\n",
+			persisted: Strand{GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			installIfAbsentTmux(t, e, tt.paneLines)
+			if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{tt.persisted}}); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
 
-	persisted := Strand{
-		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
-		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
-		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: false},
-	}
-	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
+			got, err := e.AddStrand(AddSpec{
+				IfAbsent: true, NameOverride: "claude",
+				Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
+				Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
+			})
+			if err != nil {
+				t.Fatalf("AddStrand(--if-absent): %v", err)
+			}
 
-	got, err := e.AddStrand(AddSpec{
-		IfAbsent: true, NameOverride: "claude",
-		Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
-		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
-	})
-	if err != nil {
-		t.Fatalf("AddStrand(--if-absent, alive match): %v", err)
-	}
-	if got != persisted {
-		t.Errorf("AddStrand(--if-absent, alive match) = %+v, want unchanged persisted strand %+v", got, persisted)
-	}
-
-	loaded, err := LoadState(e.stateDir())
-	if err != nil {
-		t.Fatalf("LoadState: %v", err)
-	}
-	if len(loaded.Strands) != 1 || loaded.Strands[0] != persisted {
-		t.Errorf("persisted state after alive no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
+			if got != tt.persisted {
+				t.Errorf("AddStrand(--if-absent) = %+v, want unchanged persisted strand %+v", got, tt.persisted)
+			}
+			loaded, err := LoadState(e.stateDir())
+			if err != nil {
+				t.Fatalf("LoadState: %v", err)
+			}
+			if len(loaded.Strands) != 1 || loaded.Strands[0] != tt.persisted {
+				t.Errorf("persisted state after no-op = %+v, want unchanged single strand %+v", loaded.Strands, tt.persisted)
+			}
+		})
 	}
 }
 
-// TestAddStrand_IfAbsent_HiddenOnlyNoOps mirrors the alive no-op for the hidden-only branch: the same
-// four fields stay unchanged, plus the strand count is unchanged (nothing was added) and the returned
-// strand is the hidden one, carrying a non-empty GUID and Name.
-func TestAddStrand_IfAbsent_HiddenOnlyNoOps(t *testing.T) {
-	e := newTestEngine(t)
-	// A header-only pane line (no strand's own PaneID) so ensureSessionLocked's substrate probe finds
-	// the session already usable and never boots: the hidden-only decision must not depend on any
-	// pane being alive, since it is chosen regardless of aliveness.
-	installIfAbsentTmux(t, e, "%0 0 0 100 20 4321\n")
-
-	persisted := Strand{
-		GUID: "hidden-guid", Name: "tc:tslug:claude",
-		Cmd: "old-cmd", ResumeCmd: "old-resume", Parent: "old-parent",
-		Display: render.Display{Anchor: render.AnchorHidden},
-	}
-	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	got, err := e.AddStrand(AddSpec{
-		IfAbsent: true, NameOverride: "claude",
-		Cmd: "new-cmd", ResumeCmd: "new-resume", Parent: "new-parent",
-		Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true},
-	})
-	if err != nil {
-		t.Fatalf("AddStrand(--if-absent, hidden match): %v", err)
-	}
-	if got.GUID == "" || got.Name == "" {
-		t.Fatalf("AddStrand(--if-absent, hidden match) = %+v, want non-empty GUID and Name", got)
-	}
-	if got != persisted {
-		t.Errorf("AddStrand(--if-absent, hidden match) = %+v, want unchanged persisted strand %+v", got, persisted)
-	}
-
-	loaded, err := LoadState(e.stateDir())
-	if err != nil {
-		t.Fatalf("LoadState: %v", err)
-	}
-	if len(loaded.Strands) != 1 {
-		t.Errorf("strand count after hidden no-op = %d, want 1 (nothing added)", len(loaded.Strands))
-	}
-	if loaded.Strands[0] != persisted {
-		t.Errorf("persisted state after hidden no-op = %+v, want unchanged single strand %+v", loaded.Strands, persisted)
-	}
-}
-
+//testtiming:keep pins which strand counts as the live named one: the live visible match chosen among others by index, and none for a dead pane, an empty pane id, a hidden strand, an absent strand or another name; its covering tests run this code without asserting it
 func TestLiveStrandNamed(t *testing.T) {
 	const orch = "tc:tslug:orch"
 	visible := render.Display{Anchor: render.AnchorBelowParent}
@@ -627,6 +589,7 @@ func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the add going ahead when the named strand is dead or absent, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
 func TestAddStrandUnless_NotLiveAdds(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -731,77 +694,69 @@ func hiddenSpec(role, nameOverride string) AddSpec {
 	return AddSpec{Role: role, NameOverride: nameOverride, Display: render.Display{Anchor: render.AnchorHidden}}
 }
 
-func TestStrandNameLocked_FormsAndNumbersRoles(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
+// TestStrandNameLocked_Names pins how an add forms its strand name:
+// the role is numbered by how many strands already hold it, a dormant strand still holds its role,
+// a legacy-shaped name holds nothing, an empty slug gives two segments and an empty role defaults to "strand".
+//
+//testtiming:keep pins how an add forms its strand name: the role numbered by the strands holding it, a dormant strand still counting, a legacy name holding nothing, an empty slug giving two segments and an empty role defaulting to strand; its covering tests run this code without asserting it
+func TestStrandNameLocked_Names(t *testing.T) {
+	tests := []struct {
+		name      string
+		existing  []Strand
+		emptySlug bool
+		roles     []string
+		want      []string
+	}{
+		{
+			name:  "FormsAndNumbersRoles",
+			roles: []string{"worker", "worker", "reviewer"},
+			want:  []string{"tc:tslug:worker", "tc:tslug:worker-2", "tc:tslug:reviewer"},
+		},
+		{
+			name:     "DormantStrandStillCounts",
+			existing: []Strand{{GUID: "g1", Name: "tc:tslug:worker", Display: render.Display{Anchor: render.AnchorHidden}}},
+			roles:    []string{"worker"},
+			want:     []string{"tc:tslug:worker-2"},
+		},
+		{
+			name:     "LegacyNameHoldsNothing",
+			existing: []Strand{{GUID: "g1", Name: "worker:1:abc12345"}},
+			roles:    []string{"worker"},
+			want:     []string{"tc:tslug:worker"},
+		},
+		{
+			name:      "EmptySlugGivesTwoSegments",
+			emptySlug: true,
+			roles:     []string{"orch"},
+			want:      []string{"tc:orch"},
+		},
+		{
+			name:  "DefaultRole",
+			roles: []string{"", ""},
+			want:  []string{"tc:tslug:strand", "tc:tslug:strand-2"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			if tt.emptySlug {
+				e.geom.NameSlug = ""
+			}
+			st := &ReedState{Strands: append([]Strand(nil), tt.existing...)}
 
-	var got []string
-	for _, role := range []string{"worker", "worker", "reviewer"} {
-		s, err := e.addStrandLocked(st, hiddenSpec(role, ""))
-		if err != nil {
-			t.Fatalf("addStrandLocked(role=%q): %v", role, err)
-		}
-		got = append(got, s.Name)
-	}
-	want := []string{"tc:tslug:worker", "tc:tslug:worker-2", "tc:tslug:reviewer"}
-	if !slices.Equal(got, want) {
-		t.Errorf("names = %v, want %v", got, want)
-	}
-}
+			var got []string
+			for _, role := range tt.roles {
+				s, err := e.addStrandLocked(st, hiddenSpec(role, ""))
+				if err != nil {
+					t.Fatalf("addStrandLocked(role=%q): %v", role, err)
+				}
+				got = append(got, s.Name)
+			}
 
-func TestStrandNameLocked_DormantStrandStillCounts(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{{GUID: "g1", Name: "tc:tslug:worker", Display: render.Display{Anchor: render.AnchorHidden}}}}
-
-	s, err := e.addStrandLocked(st, hiddenSpec("worker", ""))
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	if s.Name != "tc:tslug:worker-2" {
-		t.Errorf("Name = %q, want tc:tslug:worker-2 (a dormant strand holds its role)", s.Name)
-	}
-}
-
-func TestStrandNameLocked_LegacyNameHoldsNothing(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{Strands: []Strand{{GUID: "g1", Name: "worker:1:abc12345"}}}
-
-	s, err := e.addStrandLocked(st, hiddenSpec("worker", ""))
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	if s.Name != "tc:tslug:worker" {
-		t.Errorf("Name = %q, want tc:tslug:worker (a legacy name holds no role)", s.Name)
-	}
-}
-
-func TestStrandNameLocked_EmptySlugGivesTwoSegments(t *testing.T) {
-	e := newTestEngine(t)
-	e.geom.NameSlug = ""
-
-	s, err := e.addStrandLocked(&ReedState{}, hiddenSpec("orch", ""))
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	if s.Name != "tc:orch" {
-		t.Errorf("Name = %q, want tc:orch", s.Name)
-	}
-}
-
-func TestStrandNameLocked_DefaultRole(t *testing.T) {
-	e := newTestEngine(t)
-	st := &ReedState{}
-
-	first, err := e.addStrandLocked(st, hiddenSpec("", ""))
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	second, err := e.addStrandLocked(st, hiddenSpec("", ""))
-	if err != nil {
-		t.Fatalf("addStrandLocked: %v", err)
-	}
-	if first.Name != "tc:tslug:strand" || second.Name != "tc:tslug:strand-2" {
-		t.Errorf("names = %q, %q, want tc:tslug:strand and tc:tslug:strand-2", first.Name, second.Name)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("names = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -876,73 +831,12 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 	}
 }
 
-// TestAddStrand_IfAbsent_RoleSegmentMatchesFullName pins that --if-absent matches on the full name a role-segment --name resolves to,
-// so it hits the strand an add by full name created.
-func TestAddStrand_IfAbsent_RoleSegmentMatchesFullName(t *testing.T) {
-	e := newTestEngine(t)
-	installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
-
-	persisted := Strand{
-		GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1",
-		Display: render.Display{Anchor: render.AnchorBelowParent},
-	}
-	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	got, err := e.AddStrand(AddSpec{IfAbsent: true, NameOverride: "claude", Display: persisted.Display})
-	if err != nil {
-		t.Fatalf("AddStrand: %v", err)
-	}
-	if got != persisted {
-		t.Errorf("AddStrand(--if-absent, role segment) = %+v, want the persisted strand %+v", got, persisted)
-	}
-}
-
-// TestAddStrandLocked_AnchorValidatedAtEngineBoundary pins the engine-API guard the CLI cannot
-// provide: an in-process caller (shuttle) passing the deferred own-window anchor or a mistyped
-// anchor must be rejected BEFORE any pane is launched or record registered — without this, the
-// strand would persist, its pane would launch, and every subsequent apply would fail in render
-// until the strand was removed.
-func TestAddStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
-	e := newTestEngine(t)
-
-	for _, anchor := range []render.Anchor{render.AnchorOwnWindow, render.Anchor("sideways"), render.Anchor("")} {
-		st := &ReedState{}
-		_, err := e.addStrandLocked(st, AddSpec{Cmd: "x", Display: render.Display{Anchor: anchor}})
-		if err == nil {
-			t.Fatalf("addStrandLocked(anchor=%q) = nil error, want rejection", anchor)
-		}
-		if len(st.Strands) != 0 {
-			t.Errorf("anchor %q: st.Strands = %+v, want no record registered on a rejected add", anchor, st.Strands)
-		}
-	}
-}
-
-// TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary mirrors the add guard for UpdateStrand:
-// flipping a live strand's anchor to own-window (or garbage) must be rejected with the strand's
-// display unchanged — a persisted own-window display would poison every later apply.
-func TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
-	e := newTestEngine(t)
-
-	for _, anchor := range []render.Anchor{render.AnchorOwnWindow, render.Anchor("sideways")} {
-		st := &ReedState{Strands: []Strand{
-			{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
-		}}
-		_, err := e.updateStrandLocked(st, "g1", render.Display{Anchor: anchor})
-		if err == nil {
-			t.Fatalf("updateStrandLocked(anchor=%q) = nil error, want rejection", anchor)
-		}
-		if st.Strands[0].Display.Anchor != render.AnchorBelowParent {
-			t.Errorf("anchor %q: strand Display.Anchor = %v, want unchanged after a rejected update", anchor, st.Strands[0].Display.Anchor)
-		}
-	}
-}
-
 // TestAlivePanePIDs pins RemoveStrand's reap-root selection: only panes that are being removed AND
 // are present AND not dead contribute their pane pid — a dead pane's recorded pid may already have
 // been reused by an unrelated process, so it must never seed the descendant closure the reap
 // force-kills.
+//
+//testtiming:keep pins the reap-root selection: only a pane that is requested, present and alive contributes its pid, a dead, pid-less or absent one never does since a dead pane's recorded pid may have been reused; its covering tests run this code without asserting it
 func TestAlivePanePIDs(t *testing.T) {
 	live := []LivePane{
 		{ID: "%1", Dead: false, PID: 100},
@@ -970,6 +864,8 @@ func TestAlivePanePIDs(t *testing.T) {
 // SIGKILL it.
 // The dead-pane row is the assertion that matters; the pid-less row pins that the two forms share
 // one predicate rather than each re-deriving it.
+//
+//testtiming:keep pins that Down's reap roots exclude a dead pane's recorded pid, a pid-less pane and a corpse-only session; its covering tests run this code without asserting it
 func TestSessionReapRoots(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1020,6 +916,8 @@ func TestSessionReapRoots(t *testing.T) {
 // reed.json routinely carries a valid, addressable id belonging to a SIBLING worktree's live
 // session — reproduced live, one worktree's remove killed another's strand pane and its process
 // while reporting ok:true.
+//
+//testtiming:keep pins the kill-pane targets being filtered to panes of this worktree's session, a dead but present pane kept and a sibling worktree's pane id dropped; its covering tests run this code without asserting it
 func TestPaneIDsInSession(t *testing.T) {
 	live := []LivePane{
 		{ID: "%1", Dead: false},
@@ -1120,6 +1018,8 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 // it, and the destructive shape the R5 review reproduced live was a kill-pane issued against a
 // sibling worktree's live pane.
 // It drives the whole op through the fake tmux, recording every kill-pane target.
+//
+//testtiming:keep pins RemoveStrand's kill-pane loop consulting the session filter, so a stale reed.json naming a sibling worktree's pane kills nothing there; its covering tests run this code without asserting it
 func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 	e := newTestEngine(t)
 

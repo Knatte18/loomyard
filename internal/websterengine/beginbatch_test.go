@@ -1,8 +1,6 @@
-//go:build integration
-
-// beginbatch_test.go exercises BeginBatch end to end (Tier 2 — see
-// docs/benchmarks/running-tests.md): a real scratch git repo backs
-// WorktreeRoot for the genuine HeadSHA capture, while the model-injection
+// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see
+// docs/benchmarks/running-tests.md): a temp directory backs
+// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the model-injection
 // seam (Injector) and the provider seam (shuttleengine.Engine) are local
 // fakes, webster's own package-local injection and provider fixture pattern. The plan
 // itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
@@ -21,17 +19,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -41,17 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-func newScratchRepo(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-
-	gitkit.Git(t, dir, "init")
-	gitkit.Git(t, dir, "config", "user.name", "Test User")
-	gitkit.Git(t, dir, "config", "user.email", "test@example.com")
-
-	return dir
-}
 
 // seedPlanDir creates a t.TempDir() seeded with one throwaway markdown file,
 // so the fingerprint gate has something real to hash — BeginBatch's
@@ -134,8 +120,9 @@ func (f *beginFakeInjector) Inject(guid string, inputs []shuttleengine.PaneInput
 
 var _ websterengine.Injector = (*beginFakeInjector)(nil)
 
-// beginFixture is a fully-wired set of BeginBatch dependencies: a real
-// scratch git repo as WorktreeRoot, fresh webster/reports/prompts temp dirs,
+// beginFixture is a fully-wired set of BeginBatch dependencies: a temp
+// directory holding base.txt as WorktreeRoot over a fakeGit at one commit,
+// fresh webster/reports/prompts temp dirs,
 // two literal single-card execution batches backed by a seeded plan dir for
 // the fingerprint gate, and webster's two roles pre-resolved with distinct
 // model names.
@@ -143,6 +130,7 @@ type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
 	Reed      *shuttlefake.Reed
+	Git       *fakeGit
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -163,8 +151,9 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		beginCard(2, "list-tests"),
 	}
 
-	worktree := newScratchRepo(t)
-	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
+	worktree := t.TempDir()
+	writeWorktreeFile(t, worktree, "base.txt", "base")
+	git := newFakeGit()
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -203,46 +192,119 @@ func newBeginFixture(t *testing.T) *beginFixture {
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			PlanDir:      planDir,
+			Git:          git,
 		},
 	}
 
-	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_PauseSentinel proves the pause gate fires before anything else — including before
-// the Injector is ever reached — and that the returned error satisfies errors.Is(err,
-// websterengine.ErrPaused).
-func TestBeginBatch_PauseSentinel(t *testing.T) {
-	fx := newBeginFixture(t)
+// TestBeginBatch_Refusals proves each entry refusal fires before the Injector is ever reached and
+// names its way forward: a pause, a plan edited after run init, a missing role resolution, a report
+// already on disk for a terminal record (left untouched) and one with no record (left for record-batch).
+func TestBeginBatch_Refusals(t *testing.T) {
+	t.Parallel()
 
-	if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
-		t.Fatalf("RequestPause() error = %v; want nil", err)
+	seedReport := func(t *testing.T, fx *beginFixture) string {
+		t.Helper()
+		reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+		if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+			t.Fatalf("seed report: %v", err)
+		}
+		return reportPath
 	}
 
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrPaused) {
-		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrPaused)", err)
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, fx *beginFixture)
+		// wantIs is the sentinel the error wraps, nil for none.
+		wantIs error
+		// wantText lists what the error names; wantNotText what it must not.
+		wantText    []string
+		wantNotText []string
+		check       func(t *testing.T, fx *beginFixture)
+	}{
+		{
+			name: "a pause request",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
+					t.Fatalf("RequestPause() error = %v; want nil", err)
+				}
+			},
+			wantIs: websterengine.ErrPaused,
+		},
+		{
+			name: "a plan edited after run init points at run --fresh",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
+			},
+			wantIs:   websterengine.ErrFingerprintMismatch,
+			wantText: []string{"--fresh"},
+		},
+		{
+			name:     "a missing role resolution names the role",
+			prepare:  func(t *testing.T, fx *beginFixture) { delete(fx.Deps.Roles, websterengine.RoleMaster) },
+			wantText: []string{string(websterengine.RoleMaster)},
+		},
+		{
+			name: "a report over a terminal record names recover-batch and leaves the record untouched",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
+				}
+			},
+			wantText:    []string{"recover-batch"},
+			wantNotText: []string{"--restart-chain"},
+			check: func(t *testing.T, fx *beginFixture) {
+				if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
+					t.Errorf("Batches[1] = %+v; want the terminal done record untouched by the refusal", bs)
+				}
+			},
+		},
+		{
+			name:     "a report with no record names record-batch and stays for it",
+			prepare:  func(t *testing.T, fx *beginFixture) { seedReport(t, fx) },
+			wantText: []string{"`lyx webster record-batch 1`"},
+			check: func(t *testing.T, fx *beginFixture) {
+				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if _, statErr := os.Stat(reportPath); statErr != nil {
+					t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
+				}
+			},
+		},
 	}
-	if len(fx.Injector.calls) != 0 {
-		t.Errorf("Injector was reached (%d calls) while paused; want zero", len(fx.Injector.calls))
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestBeginBatch_FingerprintMismatch proves a plan edited after run init is refused at begin-batch
-// entry with the ErrFingerprintMismatch sentinel, before the Injector is ever reached.
-func TestBeginBatch_FingerprintMismatch(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
+			fx := newBeginFixture(t)
+			tt.prepare(t, fx)
 
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
-		t.Fatalf("BeginBatch() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
-	}
-	if !strings.Contains(err.Error(), "--fresh") {
-		t.Errorf("BeginBatch() error = %q; want it to point at run --fresh", err.Error())
-	}
-	if len(fx.Injector.calls) != 0 {
-		t.Errorf("Injector was reached (%d calls) on a fingerprint mismatch; want zero", len(fx.Injector.calls))
+			_, err := websterengine.BeginBatch(fx.Deps, 1)
+			if err == nil {
+				t.Fatal("BeginBatch() error = nil; want a refusal")
+			}
+			if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+				t.Errorf("BeginBatch() error = %v; want errors.Is(err, %v)", err, tt.wantIs)
+			}
+			for _, want := range tt.wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("BeginBatch() error = %q; want it to name %q", err, want)
+				}
+			}
+			for _, notWant := range tt.wantNotText {
+				if strings.Contains(err.Error(), notWant) {
+					t.Errorf("BeginBatch() error = %q; want no %q", err, notWant)
+				}
+			}
+			if len(fx.Injector.calls) != 0 {
+				t.Errorf("Injector was reached (%d calls) on a refusal; want zero", len(fx.Injector.calls))
+			}
+			if tt.check != nil {
+				tt.check(t, fx)
+			}
+		})
 	}
 }
 
@@ -322,297 +384,221 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_PromptFilePrevDigest proves the fork prompt is written under PromptsDir with
-// {{.prev_digest}} populated from the immediately preceding batch's persisted digest for batch N>1,
-// and the first-batch sentinel when there is no preceding batch.
-func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
-	t.Run("batch 1 renders the first-batch sentinel", func(t *testing.T) {
-		fx := newBeginFixture(t)
+// TestBeginBatch_PromptFile proves the fork prompt is written under PromptsDir with {{.prev_digest}}
+// populated from the batch that ran immediately before in execution order, whatever the numbers, or
+// the first-batch sentinel for the batch sitting first, and with each card's Go-derived gate command.
+//
+//testtiming:keep pins the prompt's predecessor digest or first-batch sentinel in execution order, the prompt path and the card gate command; the covering tests render a prompt without reading these
+func TestBeginBatch_PromptFile(t *testing.T) {
+	t.Parallel()
 
-		result, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		data, err := os.ReadFile(result.PromptPath)
-		if err != nil {
-			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
-		}
-		if !strings.Contains(string(data), "none (first batch)") {
-			t.Errorf("prompt file does not contain the first-batch sentinel; got:\n%s", data)
-		}
-	})
-
-	t.Run("batch N>1 renders the persisted predecessor digest", func(t *testing.T) {
-		fx := newBeginFixture(t)
-		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-			1: {
-				Slug:     "json-flag",
-				Terminal: true,
-				Status:   "done",
-				Digest: &websterengine.Digest{
-					Batch:   "01-json-flag",
-					Status:  websterengine.DigestStatusDone,
-					HeadSHA: "deadbeef",
-				},
+	done := func(number int, slug, head string) *websterengine.BatchState {
+		return &websterengine.BatchState{
+			Slug:     slug,
+			Terminal: true,
+			Status:   "done",
+			Digest: &websterengine.Digest{
+				Batch:   fmt.Sprintf("%02d-%s", number, slug),
+				Status:  websterengine.DigestStatusDone,
+				HeadSHA: head,
 			},
 		}
+	}
+	reordered := func(t *testing.T, fx *beginFixture) {
+		// Batch 2 (list-tests) runs before batch 1 (json-flag) in execution order.
+		fx.Deps.Batches = []batcher.Batch{beginCard(2, "list-tests"), beginCard(1, "json-flag")}
+	}
 
-		result, err := websterengine.BeginBatch(fx.Deps, 2)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		data, err := os.ReadFile(result.PromptPath)
-		if err != nil {
-			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
-		}
-		for _, want := range []string{"01-json-flag", "done", "head_sha=deadbeef"} {
-			if !strings.Contains(string(data), want) {
-				t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
-			}
-		}
-	})
-
-	t.Run("prompt path is under PromptsDir", func(t *testing.T) {
-		fx := newBeginFixture(t)
-
-		result, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		if filepath.Dir(result.PromptPath) != fx.PromptDir {
-			t.Errorf("PromptPath dir = %q; want %q", filepath.Dir(result.PromptPath), fx.PromptDir)
-		}
-	})
-
-	t.Run("reordered execution: predecessor is the batch that actually ran before it", func(t *testing.T) {
-		fx := newBeginFixture(t)
-		// Batch 2 (list-tests) runs before batch 1 (json-flag) in execution
-		// order, even though batch 1's declared number is lower.
-		fx.Deps.Batches = []batcher.Batch{
-			beginCard(2, "list-tests"),
-			beginCard(1, "json-flag"),
-		}
-		fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-			2: {
-				Slug:     "list-tests",
-				Terminal: true,
-				Status:   "done",
-				Digest: &websterengine.Digest{
-					Batch:   "02-list-tests",
-					Status:  websterengine.DigestStatusDone,
-					HeadSHA: "cafef00d",
-				},
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, fx *beginFixture)
+		number  int
+		want    []string
+	}{
+		{name: "batch 1 renders the first-batch sentinel", number: 1, want: []string{"none (first batch)"}},
+		{
+			name: "batch N>1 renders the persisted predecessor digest",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: done(1, "json-flag", "deadbeef")}
 			},
-		}
+			number: 2,
+			want:   []string{"01-json-flag", "done", "head_sha=deadbeef"},
+		},
+		{
+			name: "reordered execution: the predecessor is the batch that ran before it",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				reordered(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{2: done(2, "list-tests", "cafef00d")}
+			},
+			number: 1,
+			want:   []string{"02-list-tests", "head_sha=cafef00d"},
+		},
+		{
+			name:    "reordered execution: the batch sitting first renders the sentinel regardless of its number",
+			prepare: reordered,
+			number:  2,
+			want:    []string{"none (first batch)"},
+		},
+		{
+			name: "each card carries its gate command",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				fx.Deps.Batches[0].Cards[0].TargetGroups = []planparser.TargetGroup{
+					{Type: planparser.CardTypeEdit, Refs: []string{"internal/alpha/alpha.go#"}},
+				}
+			},
+			number: 1,
+			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha`"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		result, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		data, err := os.ReadFile(result.PromptPath)
-		if err != nil {
-			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
-		}
-		for _, want := range []string{"02-list-tests", "head_sha=cafef00d"} {
-			if !strings.Contains(string(data), want) {
-				t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
+			fx := newBeginFixture(t)
+			if tt.prepare != nil {
+				tt.prepare(t, fx)
 			}
-		}
-	})
-
-	t.Run("reordered execution: the batch sitting first renders the sentinel regardless of its number", func(t *testing.T) {
-		fx := newBeginFixture(t)
-		// Same reordering as above: batch 2 sits first in execution order, so
-		// it renders the first-batch sentinel even though its number is not 1.
-		fx.Deps.Batches = []batcher.Batch{
-			beginCard(2, "list-tests"),
-			beginCard(1, "json-flag"),
-		}
-
-		result, err := websterengine.BeginBatch(fx.Deps, 2)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		data, err := os.ReadFile(result.PromptPath)
-		if err != nil {
-			t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
-		}
-		if !strings.Contains(string(data), "none (first batch)") {
-			t.Errorf("prompt file does not contain the first-batch sentinel; got:\n%s", data)
-		}
-	})
-}
-
-// TestBeginBatch_StateUpdated proves BeginBatch mutates State exactly as documented: CurrentBatch
-// and the fresh BatchState fields for the batch it began.
-// There is no chain/restart concept left under the flat card-list model.
-func TestBeginBatch_StateUpdated(t *testing.T) {
-	fx := newBeginFixture(t)
-
-	result, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-	if fx.Deps.State.CurrentBatch != 1 {
-		t.Errorf("State.CurrentBatch = %d; want 1", fx.Deps.State.CurrentBatch)
-	}
-	bs, ok := fx.Deps.State.Batches[1]
-	if !ok {
-		t.Fatal("State.Batches[1] missing after BeginBatch")
-	}
-	if bs.Slug != "json-flag" || bs.StartSHA != result.StartSHA || bs.Kind != "fork" || bs.SpawnedAt == "" {
-		t.Errorf("State.Batches[1] = %+v; want Slug=json-flag StartSHA=%q Kind=fork SpawnedAt=<non-empty>", bs, result.StartSHA)
+			result, err := websterengine.BeginBatch(fx.Deps, tt.number)
+			if err != nil {
+				t.Fatalf("BeginBatch() error = %v; want nil", err)
+			}
+			if filepath.Dir(result.PromptPath) != fx.PromptDir {
+				t.Errorf("PromptPath dir = %q; want %q", filepath.Dir(result.PromptPath), fx.PromptDir)
+			}
+			data, err := os.ReadFile(result.PromptPath)
+			if err != nil {
+				t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("prompt file does not contain %q; got:\n%s", want, data)
+				}
+			}
+		})
 	}
 }
 
-// TestBeginBatch_ReBeginKeepsStartSHA proves a re-begin over a non-terminal fork record that carries a StartSHA keeps it in both the record and the result,
-// though the worktree head has moved past it (the earlier fork landed a commit).
-func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	original := gitkit.RevParse(t, fx.Worktree, "HEAD")
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork", StartSHA: original},
-	}
-	moved := gitkit.CommitFile(t, fx.Worktree, "fork.txt", "fork", "earlier fork commit")
-	if moved == original {
-		t.Fatal("worktree head did not move past the recorded StartSHA")
-	}
+// TestBeginBatch_Record proves the batch record BeginBatch leaves: a first begin sets CurrentBatch,
+// a fresh fork record at the current head with its NN-<slug> card set, and creates a missing reports
+// dir, which a shell-writing fork's report needs; a re-begin over a non-terminal record keeps its
+// StartSHA (or records the head when it had none), its card set, its audit warnings and its fork
+// transcripts, and re-begins past its own already-landed Create target (the 2026-09-30 wedge).
+//
+//testtiming:keep pins every field a first begin and each re-begin shape records, and the reports dir a first begin creates; the covering tests check only that a begin succeeds
+func TestBeginBatch_Record(t *testing.T) {
+	t.Parallel()
 
-	result, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+	const recordedStart = "0123456789abcdef0123456789abcdef01234567"
+	warning := websterengine.AuditWarning{Identity: "s/parent:named-spawn:1", Class: "named-spawn", Detail: "spawned x"}
+	tests := []struct {
+		name string
+		// prior is the batch-1 record before the call; nil means a first begin.
+		prior   *websterengine.BatchState
+		prepare func(t *testing.T, fx *beginFixture)
+		// wantStart returns the StartSHA the record and result must carry.
+		wantStart func(fx *beginFixture) string
+		check     func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState)
+	}{
+		{
+			name: "a first begin records a fresh fork batch and creates the reports dir",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Geom.ReportsDir = filepath.Join(t.TempDir(), "reports")
+			},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if fx.Deps.State.CurrentBatch != 1 {
+					t.Errorf("State.CurrentBatch = %d; want 1", fx.Deps.State.CurrentBatch)
+				}
+				if bs.Slug != "json-flag" || bs.Kind != "fork" || bs.SpawnedAt == "" {
+					t.Errorf("State.Batches[1] = %+v; want Slug=json-flag Kind=fork SpawnedAt=<non-empty>", bs)
+				}
+				if info, err := os.Stat(fx.Deps.Geom.ReportsDir); err != nil || !info.IsDir() {
+					t.Errorf("stat(reports dir) = %v, %v; want the dir created by BeginBatch", info, err)
+				}
+			},
+		},
+		{
+			name:  "a re-begin keeps the recorded StartSHA though the head moved",
+			prior: &websterengine.BatchState{Slug: "json-flag", Kind: "fork", StartSHA: recordedStart},
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Git.commit()
+			},
+			wantStart: func(*beginFixture) string { return recordedStart },
+		},
+		{
+			name:      "a re-begin over a record without a StartSHA records the head",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "fork"},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+		},
+		{
+			name:      "a re-begin keeps the audit warnings and fork transcripts",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{warning}, ForkTranscripts: []string{"subagents/f1.jsonl"}},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if len(bs.AuditWarnings) != 1 || bs.AuditWarnings[0] != warning {
+					t.Errorf("Batches[1].AuditWarnings = %v; want [%v]", bs.AuditWarnings, warning)
+				}
+				if !slices.Equal(bs.ForkTranscripts, []string{"subagents/f1.jsonl"}) {
+					t.Errorf("Batches[1].ForkTranscripts = %v; want the prior record's transcripts", bs.ForkTranscripts)
+				}
+			},
+		},
+		{
+			name:  "a re-begin past its own landed Create target is not refused",
+			prior: &websterengine.BatchState{Slug: "json-flag", Kind: "fork", StartSHA: recordedStart},
+			prepare: func(t *testing.T, fx *beginFixture) {
+				writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n")
+				built := planparser.Card{
+					Number:         1,
+					Slug:           "json-flag",
+					Type:           planparser.CardTypeCreate,
+					TypeLabelCount: 1,
+					HasType:        true,
+					HasIntent:      true,
+					Intent:         "placeholder intent",
+					TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
+					Targets:        []string{"sub#Built"},
+				}
+				fx.Deps.Plan.Cards = []planparser.Card{built, fx.Deps.Plan.Cards[1]}
+				fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}}
+			},
+			wantStart: func(*beginFixture) string { return recordedStart },
+		},
 	}
-	if result.StartSHA != original {
-		t.Errorf("result.StartSHA = %q; want the kept %q", result.StartSHA, original)
-	}
-	if got := fx.Deps.State.Batches[1].StartSHA; got != original {
-		t.Errorf("Batches[1].StartSHA = %q; want the kept %q", got, original)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestBeginBatch_RecordsCardSet proves begin-batch persists the batch's card set as NN-<slug> entries, on a first begin and on a re-begin.
-func TestBeginBatch_RecordsCardSet(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	want := []string{"01-json-flag"}
+			fx := newBeginFixture(t)
+			fx.Deps.State.AssertedModel = "master-model" // skip the injector
+			if tt.prior != nil {
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: tt.prior}
+			}
+			if tt.prepare != nil {
+				tt.prepare(t, fx)
+			}
 
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
-		t.Errorf("Batches[1].Cards after begin = %v; want %v", got, want)
-	}
-
-	fx.Deps.State.Batches[1].Cards = nil
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("re-BeginBatch(1) error = %v; want nil", err)
-	}
-	if got := fx.Deps.State.Batches[1].Cards; !slices.Equal(got, want) {
-		t.Errorf("Batches[1].Cards after re-begin = %v; want %v", got, want)
-	}
-}
-
-// TestBeginBatch_ReBeginKeepsAuditWarnings proves a re-begin carries the prior record's recorded audit warnings onto the fresh record, since their identities stay dispositioned and no later call records them again.
-// It carries the prior record's fork transcripts too, so the run-exit audit still maps those forks to the batch's report.
-func TestBeginBatch_ReBeginKeepsAuditWarnings(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	w := websterengine.AuditWarning{Identity: "s/parent:named-spawn:1", Class: "named-spawn", Detail: "spawned x"}
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{w}, ForkTranscripts: []string{"subagents/f1.jsonl"}},
-	}
-
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-	got := fx.Deps.State.Batches[1].AuditWarnings
-	if len(got) != 1 || got[0] != w {
-		t.Errorf("Batches[1].AuditWarnings = %v; want [%v]", got, w)
-	}
-	if transcripts := fx.Deps.State.Batches[1].ForkTranscripts; !slices.Equal(transcripts, []string{"subagents/f1.jsonl"}) {
-		t.Errorf("Batches[1].ForkTranscripts = %v; want the prior record's transcripts", transcripts)
-	}
-}
-
-// TestBeginBatch_ReBeginEmptyStartSHARecordsHead proves a prior record without a StartSHA gets the current head, as a first begin does.
-func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork"},
-	}
-	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
-
-	result, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-	if result.StartSHA != head || fx.Deps.State.Batches[1].StartSHA != head {
-		t.Errorf("StartSHA result=%q record=%q; want current head %q", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, head)
-	}
-}
-
-// TestBeginBatch_CreatesReportsDir proves BeginBatch creates a missing reports dir itself: the fork
-// writes its report there with whatever tool it likes — a plain shell redirect included, which
-// never creates missing parents — and only the --fresh archive path recreated the dir before
-// (crucible round fable-r1's F5: an ordinary first run left it absent and a shell-writing fork's
-// report failed on ENOENT).
-func TestBeginBatch_CreatesReportsDir(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Deps.Geom.ReportsDir = filepath.Join(t.TempDir(), "reports")
-
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-	info, err := os.Stat(fx.Deps.Geom.ReportsDir)
-	if err != nil || !info.IsDir() {
-		t.Errorf("stat(reports dir) = %v, %v; want the dir created by BeginBatch", info, err)
-	}
-}
-
-// TestBeginBatch_UnknownRoleErrors proves a missing role resolution fails loud rather than
-// injecting a zero-value model, naming the missing role.
-func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
-	fx := newBeginFixture(t)
-	delete(fx.Deps.Roles, websterengine.RoleMaster)
-
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err == nil {
-		t.Fatal("BeginBatch() error = nil; want an error for a missing role resolution")
-	}
-	if !strings.Contains(err.Error(), string(websterengine.RoleMaster)) {
-		t.Errorf("BeginBatch() error = %q; want it to name the missing role %q (batch %s)", err.Error(), websterengine.RoleMaster, strconv.Itoa(1))
-	}
-}
-
-// TestBeginBatch_PreExistingReportRefused proves webster's own pre-existing-report guard applies to
-// the fork path: a batch whose report file already exists is refused loud (naming the recovery escape)
-// with its BatchState left untouched — finished work is never silently overwritten by an accidental
-// re-begin.
-// There is no --restart-chain escape under the flat card-list model.
-func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
-	fx := newBeginFixture(t)
-	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
-	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
-		t.Fatalf("seed report: %v", err)
-	}
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
-	}
-
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err == nil {
-		t.Fatal("BeginBatch() with an existing report = nil error; want the pre-existing-report refusal")
-	}
-	if !strings.Contains(err.Error(), "recover-batch") {
-		t.Errorf("error = %q; want it to name the recover-batch escape", err.Error())
-	}
-	if strings.Contains(err.Error(), "--restart-chain") {
-		t.Errorf("error = %q; want no --restart-chain escape (chain machinery is gone)", err.Error())
-	}
-	if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
-		t.Errorf("Batches[1] = %+v; want the terminal done record untouched by the refusal", bs)
+			result, err := websterengine.BeginBatch(fx.Deps, 1)
+			if err != nil {
+				t.Fatalf("BeginBatch(1) error = %v; want nil", err)
+			}
+			bs := fx.Deps.State.Batches[1]
+			if bs == nil {
+				t.Fatal("State.Batches[1] missing after BeginBatch")
+			}
+			if want := tt.wantStart(fx); result.StartSHA != want || bs.StartSHA != want {
+				t.Errorf("StartSHA result=%q record=%q; want %q", result.StartSHA, bs.StartSHA, want)
+			}
+			if want := []string{"01-json-flag"}; !slices.Equal(bs.Cards, want) {
+				t.Errorf("Batches[1].Cards = %v; want %v", bs.Cards, want)
+			}
+			if tt.check != nil {
+				tt.check(t, fx, bs)
+			}
+		})
 	}
 }
 
@@ -734,7 +720,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	fx := newBeginFixture(t)
 	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
-	gitkit.CommitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+	writeWorktreeFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n")
 
 	built := planparser.Card{
 		Number:         1,
@@ -869,40 +855,6 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch pins the 2026-09-30 wedge:
-// a batch begun but not yet recorded, whose own Create target has already landed, is re-begun (the master_asking resume path) and must neither be refused as create-already-exists nor lose the StartSHA its first begin recorded.
-func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
-	fx := newBeginFixture(t)
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
-
-	built := planparser.Card{
-		Number:         1,
-		Slug:           "json-flag",
-		Type:           planparser.CardTypeCreate,
-		TypeLabelCount: 1,
-		HasType:        true,
-		HasIntent:      true,
-		Intent:         "placeholder intent",
-		TargetGroups:   []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"sub#Built"}}},
-		Targets:        []string{"sub#Built"},
-	}
-	fx.Deps.Plan.Cards = []planparser.Card{built, fx.Deps.Plan.Cards[1]}
-	fx.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{built}}}
-
-	const recordedStart = "0123456789abcdef0123456789abcdef01234567"
-	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-		1: {Slug: "json-flag", Kind: "fork", StartSHA: recordedStart},
-	}
-
-	result, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err != nil {
-		t.Fatalf("BeginBatch(1) error = %v; want nil — a begun, unrecorded batch must re-begin past its own landed Create target", err)
-	}
-	if result.StartSHA != recordedStart || fx.Deps.State.Batches[1].StartSHA != recordedStart {
-		t.Errorf("StartSHA = %q (record %q); want the first begin's %q kept", result.StartSHA, fx.Deps.State.Batches[1].StartSHA, recordedStart)
-	}
-}
-
 // TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget pins #329: card 1 creates a file that card 2 Uses,
 // batch 1's first begin records it, no commit lands, and the second begin of batch 1 must not drop the Create target out of the later card's validation.
 func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing.T) {
@@ -928,8 +880,8 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 		}
 		return c
 	}
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n", "existing symbol")
-	gitkit.CommitFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n", "second existing symbol")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n")
+	writeWorktreeFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n")
 
 	creator := card(1, "json-flag", planparser.CardTypeCreate, "sub/new.go#", nil)
 	user := card(2, "list-tests", planparser.CardTypeEdit, "sub#Existing", []string{"sub/new.go#"})
@@ -978,46 +930,5 @@ func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
 	fx.Injector.err = nil
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch(1) after the retry error = %v; want nil", err)
-	}
-}
-
-// TestBeginBatch_WayForward_ReportExistsIsRecorded proves the report-exists refusal names record-batch and leaves the report in place for it.
-func TestBeginBatch_WayForward_ReportExistsIsRecorded(t *testing.T) {
-	fx := newBeginFixture(t)
-	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
-	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
-		t.Fatalf("seed report: %v", err)
-	}
-
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err == nil || !strings.Contains(err.Error(), "`lyx webster record-batch 1`") {
-		t.Fatalf("BeginBatch(1) error = %v; want the record-batch way forward", err)
-	}
-	if _, statErr := os.Stat(reportPath); statErr != nil {
-		t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
-	}
-}
-
-// TestBeginBatch_PromptFileCarriesCardGateCommand proves begin-batch renders each card's Go-derived gate command into the fork's prompt file.
-func TestBeginBatch_PromptFileCarriesCardGateCommand(t *testing.T) {
-	fx := newBeginFixture(t)
-	if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	fx.Deps.Batches[0].Cards[0].TargetGroups = []planparser.TargetGroup{
-		{Type: planparser.CardTypeEdit, Refs: []string{"internal/alpha/alpha.go#"}},
-	}
-
-	result, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err != nil {
-		t.Fatalf("BeginBatch() error = %v; want nil", err)
-	}
-	data, err := os.ReadFile(result.PromptPath)
-	if err != nil {
-		t.Fatalf("read prompt file %s: %v", result.PromptPath, err)
-	}
-	want := "`go build ./... && go test ./... && go test -tags integration ./internal/alpha`"
-	if !strings.Contains(string(data), want) {
-		t.Errorf("prompt file does not carry the card's gate command %s; got:\n%s", want, data)
 	}
 }

@@ -48,6 +48,8 @@ var paneCreationAllowlist = []scankit.Entry{
 // paneCreationAllowlist. Scanning the AST rather than raw bytes is what keeps a doc comment
 // mentioning split-window from tripping the check -- go/parser turns a comment into neither an
 // identifier nor a basic literal.
+//
+//testtiming:keep pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
 func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
 	allow := scankit.NewAllowlist(paneCreationAllowlist)
 
@@ -75,6 +77,8 @@ func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
 // what keeps the allowlisted chokepoint from silently becoming a plain pass-through: the previous test
 // proves no second pane-creation site exists, and this one proves the single site still composes the
 // prelude.
+//
+//testtiming:keep pins launchStrandLocked still calling composePaneLaunchLine, so the allowlisted chokepoint cannot become a plain pass-through; its covering tests run this code without asserting it
 func TestLaunchStrandLockedStillComposesThePrelude(t *testing.T) {
 	var fn *ast.FuncDecl
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{reedengineScanDir}, Shallow: true}, func(f *scankit.File) {

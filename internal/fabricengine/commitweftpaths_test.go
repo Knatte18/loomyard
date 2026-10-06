@@ -13,6 +13,8 @@ import (
 // TestWeftCommitPathspec covers anchorRel == "." (entries returned with no added segment) and
 // anchorRel == "backend" (each entry prefixed), asserting the result is positive-only with no
 // entry beginning with a ":(exclude)" marker.
+//
+//testtiming:keep weftCommitPathspec staying positive-only and prefixing each entry by the anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftCommitPathspec(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -57,6 +59,8 @@ func TestWeftCommitPathspec(t *testing.T) {
 // TestCommitWeftPaths_SkipGit asserts CommitWeftPaths returns ("", false, nil) for
 // SyncOptions{SkipGit: true} against a path that does not exist, proving no lock was taken and no
 // directory created, and that the passed recorder's snapshot stays empty.
+//
+//testtiming:keep CommitWeftPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftPaths_SkipGit(t *testing.T) {
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")

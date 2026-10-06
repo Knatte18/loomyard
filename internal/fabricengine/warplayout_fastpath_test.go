@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+//testtiming:keep the fast-path warp layout carrying every field; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
 	t.Parallel()
 

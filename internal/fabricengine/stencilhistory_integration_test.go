@@ -36,94 +36,86 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 	}
 }
 
-// TestStencilBaseByStamp_FindsOlderDefaultByStamp asserts StencilBaseByStamp finds the forked-from
-// revision for a file stamped from an older default, returning that older default's body.
-func TestStencilBaseByStamp_FindsOlderDefaultByStamp(t *testing.T) {
+// TestStencilBaseByStamp covers the three outcomes over one hub whose stencil history grows step by step.
+// The steps run in order on the same stencil.
+// Each seeds bodies no earlier step seeded last, and looks up a stamp only its own seeding (or none) produced, so a longer history never changes a step's expectation.
+func TestStencilBaseByStamp(t *testing.T) {
 	t.Parallel()
 
 	hub := hubforge.NewHub(t, ".")
 	const name = "loom-template-discussion"
 
-	older := []byte("older default body\n")
-	seedStencil(t, hub, name, older, "lyx: seed stencils (v1)")
-	olderStamp := stencilstore.BodyHash(older)
+	// A file stamped from an older default is found by that stamp, returning the older default's body.
+	t.Run("FindsOlderDefaultByStamp", func(t *testing.T) {
+		older := []byte("older default body\n")
+		seedStencil(t, hub, name, older, "lyx: seed stencils (v1)")
+		olderStamp := stencilstore.BodyHash(older)
 
-	newer := []byte("newer default body\n")
-	seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
+		newer := []byte("newer default body\n")
+		seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
 
-	base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, olderStamp)
-	if err != nil {
-		t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
-	}
-	if !found {
-		t.Fatalf("StencilBaseByStamp() found = false; want true")
-	}
-	if rev == "" {
-		t.Errorf("StencilBaseByStamp() rev = \"\"; want a non-empty revision SHA")
-	}
-	if string(base) != string(older) {
-		t.Errorf("StencilBaseByStamp() base = %q; want %q", base, older)
-	}
-}
+		base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, olderStamp)
+		if err != nil {
+			t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
+		}
+		if !found {
+			t.Fatalf("StencilBaseByStamp() found = false; want true")
+		}
+		if rev == "" {
+			t.Errorf("StencilBaseByStamp() rev = \"\"; want a non-empty revision SHA")
+		}
+		if string(base) != string(older) {
+			t.Errorf("StencilBaseByStamp() base = %q; want %q", base, older)
+		}
+	})
 
-// TestStencilBaseByStamp_NoMatchReturnsFoundFalse asserts StencilBaseByStamp returns found == false
-// and a nil error when no revision's body matches the stamp -- the case `diff` must report
-// explicitly instead of rendering an empty diff.
-func TestStencilBaseByStamp_NoMatchReturnsFoundFalse(t *testing.T) {
-	t.Parallel()
+	// No revision's body matches the stamp: found == false and a nil error -- the case `diff` must
+	// report explicitly instead of rendering an empty diff.
+	t.Run("NoMatchReturnsFoundFalse", func(t *testing.T) {
+		seedStencil(t, hub, name, []byte("only default body\n"), "lyx: seed stencils")
 
-	hub := hubforge.NewHub(t, ".")
-	const name = "loom-template-discussion"
+		const neverMatchedStamp = "0000000000000000000000000000000000000000000000000000000000000000"
+		base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, neverMatchedStamp)
+		if err != nil {
+			t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
+		}
+		if found {
+			t.Errorf("StencilBaseByStamp() found = true; want false (no revision matches the stamp)")
+		}
+		if base != nil {
+			t.Errorf("StencilBaseByStamp() base = %q; want nil", base)
+		}
+		if rev != "" {
+			t.Errorf("StencilBaseByStamp() rev = %q; want \"\"", rev)
+		}
+	})
 
-	seedStencil(t, hub, name, []byte("only default body\n"), "lyx: seed stencils")
+	// A stamp computed from a working-tree copy whose bytes were written with CRLF line endings still
+	// matches the LF-stored blob, in the base-recovery path specifically. go-git returns stored blob
+	// bytes untouched while CLI git converts on checkout, so the two sides can differ by line ending
+	// alone -- this is what keeps base recovery working on a machine with core.autocrlf=true, where a
+	// regression here would silently disable it entirely.
+	t.Run("HashNormalisationAcrossCRLF", func(t *testing.T) {
+		olderLF := []byte("older default body\nsecond line\n")
+		seedStencil(t, hub, name, olderLF, "lyx: seed stencils (v1)")
 
-	const neverMatchedStamp = "0000000000000000000000000000000000000000000000000000000000000000"
-	base, rev, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, neverMatchedStamp)
-	if err != nil {
-		t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
-	}
-	if found {
-		t.Errorf("StencilBaseByStamp() found = true; want false (no revision matches the stamp)")
-	}
-	if base != nil {
-		t.Errorf("StencilBaseByStamp() base = %q; want nil", base)
-	}
-	if rev != "" {
-		t.Errorf("StencilBaseByStamp() rev = %q; want \"\"", rev)
-	}
-}
+		// The stamp a CRLF working-tree checkout would have produced: BodyHash normalises LF internally,
+		// so this equals BodyHash(olderLF) even though the raw bytes differ.
+		olderCRLF := []byte("older default body\r\nsecond line\r\n")
+		stampFromCRLFCopy := stencilstore.BodyHash(olderCRLF)
 
-// TestStencilBaseByStamp_HashNormalisationAcrossCRLF asserts that a stamp computed from a
-// working-tree copy whose bytes were written with CRLF line endings still matches the LF-stored
-// blob, in the base-recovery path specifically. go-git returns stored blob bytes untouched while
-// CLI git converts on checkout, so the two sides can differ by line ending alone -- this is what
-// keeps base recovery working on a machine with core.autocrlf=true, where a regression here would
-// silently disable it entirely.
-func TestStencilBaseByStamp_HashNormalisationAcrossCRLF(t *testing.T) {
-	t.Parallel()
+		newer := []byte("newer default body\n")
+		seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
 
-	hub := hubforge.NewHub(t, ".")
-	const name = "loom-template-discussion"
-
-	olderLF := []byte("older default body\nsecond line\n")
-	seedStencil(t, hub, name, olderLF, "lyx: seed stencils (v1)")
-
-	// The stamp a CRLF working-tree checkout would have produced: BodyHash normalises LF internally,
-	// so this equals BodyHash(olderLF) even though the raw bytes differ.
-	olderCRLF := []byte("older default body\r\nsecond line\r\n")
-	stampFromCRLFCopy := stencilstore.BodyHash(olderCRLF)
-
-	newer := []byte("newer default body\n")
-	seedStencil(t, hub, name, newer, "lyx: seed stencils (v2)")
-
-	base, _, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, stampFromCRLFCopy)
-	if err != nil {
-		t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
-	}
-	if !found {
-		t.Fatalf("StencilBaseByStamp() found = false; want true (CRLF-derived stamp must still match the LF-stored blob)")
-	}
-	if string(base) != string(olderLF) {
-		t.Errorf("StencilBaseByStamp() base = %q; want %q", base, olderLF)
-	}
+		base, _, found, err := fabricengine.StencilBaseByStamp(hub.Path, name, stampFromCRLFCopy)
+		if err != nil {
+			t.Fatalf("StencilBaseByStamp() error = %v; want nil", err)
+		}
+		if !found {
+			t.Fatalf("StencilBaseByStamp() found = false; want true (CRLF-derived stamp must still match the LF-stored blob)")
+		}
+		if string(base) != string(olderLF) {
+			t.Errorf("StencilBaseByStamp() base = %q; want %q", base, olderLF)
+		}
+	})
 }

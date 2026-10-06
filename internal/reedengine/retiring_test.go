@@ -60,27 +60,46 @@ func TestMarkRetiring_RoundTripsThroughStateAndStatus(t *testing.T) {
 	}
 }
 
-func TestMarkRetiring_UnknownGUIDWrapsErrUnknownStrand(t *testing.T) {
-	e := newTestEngine(t)
-	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{{GUID: "a", Name: "a"}}}); err != nil {
-		t.Fatalf("SaveState: %v", err)
+// TestUnknownStrandRefusalsWrapErrUnknownStrand pins that every refusal naming a guid the state does not hold wraps ErrUnknownStrand,
+// whether the state file holds other strands, is absent, or is handed to the locked remove.
+func TestUnknownStrandRefusalsWrapErrUnknownStrand(t *testing.T) {
+	tests := []struct {
+		name    string
+		saved   *ReedState
+		refused func(e *Engine) error
+	}{
+		{
+			name:  "MarkRetiringUnknownGUID",
+			saved: &ReedState{Strands: []Strand{{GUID: "a", Name: "a"}}},
+			refused: func(e *Engine) error {
+				return e.MarkRetiring("missing", true)
+			},
+		},
+		{
+			name: "MarkRetiringNoStateFile",
+			refused: func(e *Engine) error {
+				return e.MarkRetiring("missing", true)
+			},
+		},
+		{
+			name: "RemoveStrandLockedUnknownGUID",
+			refused: func(e *Engine) error {
+				_, _, err := e.removeStrandLocked(&ReedState{}, "missing", false)
+				return err
+			},
+		},
 	}
-	if err := e.MarkRetiring("missing", true); !errors.Is(err, ErrUnknownStrand) {
-		t.Fatalf("MarkRetiring(unknown) = %v; want it to wrap ErrUnknownStrand", err)
-	}
-}
-
-func TestMarkRetiring_NoStateFileWrapsErrUnknownStrand(t *testing.T) {
-	e := newTestEngine(t)
-	if err := e.MarkRetiring("missing", true); !errors.Is(err, ErrUnknownStrand) {
-		t.Fatalf("MarkRetiring(no state) = %v; want it to wrap ErrUnknownStrand", err)
-	}
-}
-
-func TestRemoveStrandLocked_UnknownGUIDWrapsErrUnknownStrand(t *testing.T) {
-	e := newTestEngine(t)
-	_, _, err := e.removeStrandLocked(&ReedState{}, "missing", false)
-	if !errors.Is(err, ErrUnknownStrand) {
-		t.Fatalf("removeStrandLocked(unknown) = %v; want it to wrap ErrUnknownStrand", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			if tt.saved != nil {
+				if err := SaveState(e.stateDir(), tt.saved); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+			}
+			if err := tt.refused(e); !errors.Is(err, ErrUnknownStrand) {
+				t.Fatalf("refusal = %v; want it to wrap ErrUnknownStrand", err)
+			}
+		})
 	}
 }

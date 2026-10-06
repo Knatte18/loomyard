@@ -48,6 +48,8 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 // landing HEAD exactly at the older sha, when the warp checkout has no uncommitted changes.
 // This is the half of ResetHard's contract that is unaffected by the gate: a clean tracked
 // worktree is never dirty, so dirtyScopeTracked never refuses it.
+//
+//testtiming:keep ResetHard discarding a later commit and landing HEAD at the older sha on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +83,8 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 // uncommitted tracked changes. This is card 11's deliberate hardening of ResetHard's contract:
 // it no longer unconditionally discards, matching Pull's own pre-existing ErrWarpDirty check but
 // enforced at the ResetHard call site itself rather than only by callers who wrap it in Pull.
+//
+//testtiming:keep ResetHard refusing a dirty tracked checkout and leaving the commit and the change on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	t.Parallel()
 

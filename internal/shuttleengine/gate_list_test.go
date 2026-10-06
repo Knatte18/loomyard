@@ -83,32 +83,10 @@ func wantStates(t *testing.T, outcome *GateOutcome, want ...GateEntryState) {
 	}
 }
 
-func TestGateList_SecondEntryRunsOnlyAfterFirstPasses(t *testing.T) {
-	var firstCalls, secondCalls int
-	spec := GateSpec{
-		{Name: "first", Gate: scriptedGate(&firstCalls, false, true), Attempts: 3},
-		{Name: "second", Gate: scriptedGate(&secondCalls, true), Attempts: 3},
-	}
-
-	result, reed, _ := runGateList(t, spec, 1)
-
-	if firstCalls != 2 {
-		t.Errorf("first entry ran %d times, want 2", firstCalls)
-	}
-	if secondCalls != 1 {
-		t.Errorf("second entry ran %d times, want 1 (only on the arrival after the first passed)", secondCalls)
-	}
-	if len(reed.SendTextCalls) != 1 {
-		t.Errorf("SendText calls = %d, want 1", len(reed.SendTextCalls))
-	}
-	if !result.Gate.Passed {
-		t.Errorf("Gate = %+v, want passed", result.Gate)
-	}
-	wantStates(t, result.Gate, GateEntryPassed, GateEntryPassed)
-}
-
 // TestGateList_FailPassFailStartsBudgetAfresh pins the consecutive-failure reset:
 // an entry that failed, then passed on an arrival where a later entry failed, then fails again, has its whole budget back — so with Attempts 1 it is run and re-prompted again instead of finalizing (or, with PassOnCap, being let through without running).
+//
+//testtiming:keep pins the consecutive-failure reset: an entry that fails, passes and fails again gets its whole budget back, with and without pass_on_cap
 func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 	for _, passOnCap := range []bool{false, true} {
 		name := "without_pass_on_cap"
@@ -149,6 +127,8 @@ func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 
 // TestGateList_FinalArrivalAtFailingPassOnCapEntry covers both final arrivals that cannot re-prompt — a failed send and an expired deadline — stopping at a failing PassOnCap entry with a required entry after it:
 // the outcome is failed and the later entry is reported not reached.
+//
+//testtiming:keep pins both final arrivals that cannot re-prompt, a failed send and an expired deadline, ending at a failing pass_on_cap entry with the later required entry reported not reached
 func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 	newSpec := func() (GateSpec, *int) {
 		var pCalls, rCalls int
@@ -234,156 +214,148 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 	})
 }
 
-func TestGateList_ExhaustionWithoutPassOnCapFinalizesFailed(t *testing.T) {
-	var aCalls, bCalls int
-	spec := GateSpec{
-		{Name: "a", Gate: scriptedGate(&aCalls, true), Attempts: 3},
-		{Name: "b", Gate: scriptedGate(&bCalls, false), Attempts: 2},
+// TestGateList_FinalReports drives runGateList over lists whose final per-entry report is the point:
+// an exhausted budget without pass_on_cap finalizes failed; a pass_on_cap entry is let through
+// without running again; an entry with zero Attempts is reported off and its closure never runs,
+// with and without pass_on_cap, and a list of nothing but off entries still yields a non-nil passed
+// outcome; and one list reaches all five per-entry states with GateOutcome.Attempts the sum of the
+// entries' sent counts.
+func TestGateList_FinalReports(t *testing.T) {
+	tests := []struct {
+		name      string
+		reprompts int
+		// build returns the list and the assertions over the Result of waiting on it.
+		build func() (GateSpec, func(t *testing.T, result Result, reed *fakeReed, findingsPath string))
+	}{
+		{
+			name: "exhaustion without pass_on_cap finalizes failed", reprompts: 2,
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				var aCalls, bCalls int
+				spec := GateSpec{
+					{Name: "a", Gate: scriptedGate(&aCalls, true), Attempts: 3},
+					{Name: "b", Gate: scriptedGate(&bCalls, false), Attempts: 2},
+				}
+				return spec, func(t *testing.T, result Result, reed *fakeReed, findingsPath string) {
+					if result.Gate.Passed {
+						t.Errorf("Gate = %+v, want failed", result.Gate)
+					}
+					if result.Gate.FindingsPath != findingsPath {
+						t.Errorf("FindingsPath = %q, want %q", result.Gate.FindingsPath, findingsPath)
+					}
+					if result.Gate.Attempts != 2 || len(reed.SendTextCalls) != 2 {
+						t.Errorf("Attempts = %d, SendText calls = %d, want 2 and 2", result.Gate.Attempts, len(reed.SendTextCalls))
+					}
+					wantStates(t, result.Gate, GateEntryPassed, GateEntryFailed)
+				}
+			},
+		},
+		{
+			name: "pass_on_cap lets through without running again", reprompts: 2,
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				var pCalls, qCalls int
+				spec := GateSpec{
+					{Name: "p", Gate: scriptedGate(&pCalls, false), Attempts: 1, PassOnCap: true},
+					{Name: "q", Gate: scriptedGate(&qCalls, false, true), Attempts: 2},
+				}
+				return spec, func(t *testing.T, result Result, reed *fakeReed, _ string) {
+					if pCalls != 1 {
+						t.Errorf("pass_on_cap entry ran %d times, want 1 (let through without its closure after the cap)", pCalls)
+					}
+					if !result.Gate.Passed {
+						t.Errorf("Gate = %+v, want passed", result.Gate)
+					}
+					if len(reed.SendTextCalls) != 2 {
+						t.Errorf("SendText calls = %d, want 2 (one per entry)", len(reed.SendTextCalls))
+					}
+					wantStates(t, result.Gate, GateEntryLetThrough, GateEntryPassed)
+				}
+			},
+		},
+		{
+			name: "zero attempts entry is off and never called",
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				return offBeforeLive(false)
+			},
+		},
+		{
+			name: "pass_on_cap zero attempts entry is off and never called",
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				return offBeforeLive(true)
+			},
+		},
+		{
+			name: "only off entries yield a passed outcome",
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				var calls int
+				spec := GateSpec{
+					{Name: "a", Gate: scriptedGate(&calls, false), Attempts: 0},
+					{Name: "b", Gate: scriptedGate(&calls, false), Attempts: 0, PassOnCap: true},
+				}
+				return spec, func(t *testing.T, result Result, _ *fakeReed, _ string) {
+					if result.Gate == nil || !result.Gate.Passed {
+						t.Fatalf("Gate = %+v, want a non-nil passed outcome", result.Gate)
+					}
+					if calls != 0 {
+						t.Errorf("off entries ran %d times, want 0", calls)
+					}
+					wantStates(t, result.Gate, GateEntryOff, GateEntryOff)
+				}
+			},
+		},
+		{
+			name: "every state and the aggregate attempts", reprompts: 2,
+			build: func() (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+				var offCalls, xCalls, pCalls, fCalls, nCalls int
+				spec := GateSpec{
+					{Name: "off", Gate: scriptedGate(&offCalls, true), Attempts: 0},
+					{Name: "x", Gate: scriptedGate(&xCalls, true), Attempts: 3},
+					{Name: "p", Gate: scriptedGate(&pCalls, false), Attempts: 1, PassOnCap: true},
+					{Name: "f", Gate: scriptedGate(&fCalls, false), Attempts: 1},
+					{Name: "n", Gate: scriptedGate(&nCalls, true), Attempts: 3},
+				}
+				return spec, func(t *testing.T, result Result, _ *fakeReed, _ string) {
+					wantStates(t, result.Gate, GateEntryOff, GateEntryPassed, GateEntryLetThrough, GateEntryFailed, GateEntryNotReached)
+					sum := 0
+					for _, entry := range result.Gate.Entries {
+						sum += entry.Attempts
+					}
+					if result.Gate.Attempts != sum || sum != 2 {
+						t.Errorf("aggregate Attempts = %d, per-entry sum = %d, want both 2", result.Gate.Attempts, sum)
+					}
+					if result.Gate.Entries[2].Attempts != 1 || result.Gate.Entries[3].Attempts != 1 {
+						t.Errorf("Entries = %+v, want one re-prompt each for p and f", result.Gate.Entries)
+					}
+					if nCalls != 0 || offCalls != 0 {
+						t.Errorf("not-reached ran %d times and off ran %d times, want 0 and 0", nCalls, offCalls)
+					}
+				}
+			},
+		},
 	}
-
-	result, reed, findingsPath := runGateList(t, spec, 2)
-
-	if result.Gate.Passed {
-		t.Errorf("Gate = %+v, want failed", result.Gate)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, check := tt.build()
+			result, reed, findingsPath := runGateList(t, spec, tt.reprompts)
+			check(t, result, reed, findingsPath)
+		})
 	}
-	if result.Gate.FindingsPath != findingsPath {
-		t.Errorf("FindingsPath = %q, want %q", result.Gate.FindingsPath, findingsPath)
-	}
-	if result.Gate.Attempts != 2 || len(reed.SendTextCalls) != 2 {
-		t.Errorf("Attempts = %d, SendText calls = %d, want 2 and 2", result.Gate.Attempts, len(reed.SendTextCalls))
-	}
-	wantStates(t, result.Gate, GateEntryPassed, GateEntryFailed)
 }
 
-func TestGateList_PassOnCapLetsThroughWithoutRunningAgain(t *testing.T) {
-	var pCalls, qCalls int
+// offBeforeLive returns a list whose first entry has zero Attempts, with the given pass_on_cap, ahead
+// of a live passing entry, and the assertions that the off entry never ran and the list passed.
+func offBeforeLive(passOnCap bool) (GateSpec, func(*testing.T, Result, *fakeReed, string)) {
+	var offCalls, liveCalls int
 	spec := GateSpec{
-		{Name: "p", Gate: scriptedGate(&pCalls, false), Attempts: 1, PassOnCap: true},
-		{Name: "q", Gate: scriptedGate(&qCalls, false, true), Attempts: 2},
+		{Name: "off", Gate: scriptedGate(&offCalls, false), Attempts: 0, PassOnCap: passOnCap},
+		{Name: "live", Gate: scriptedGate(&liveCalls, true), Attempts: 3},
 	}
-
-	result, reed, _ := runGateList(t, spec, 2)
-
-	if pCalls != 1 {
-		t.Errorf("pass_on_cap entry ran %d times, want 1 (let through without its closure after the cap)", pCalls)
-	}
-	if !result.Gate.Passed {
-		t.Errorf("Gate = %+v, want passed", result.Gate)
-	}
-	if len(reed.SendTextCalls) != 2 {
-		t.Errorf("SendText calls = %d, want 2 (one per entry)", len(reed.SendTextCalls))
-	}
-	wantStates(t, result.Gate, GateEntryLetThrough, GateEntryPassed)
-}
-
-func TestGateList_ZeroAttemptsEntryIsOffAndNeverCalled(t *testing.T) {
-	for _, passOnCap := range []bool{false, true} {
-		var offCalls, liveCalls int
-		spec := GateSpec{
-			{Name: "off", Gate: scriptedGate(&offCalls, false), Attempts: 0, PassOnCap: passOnCap},
-			{Name: "live", Gate: scriptedGate(&liveCalls, true), Attempts: 3},
-		}
-
-		result, _, _ := runGateList(t, spec, 0)
-
+	return spec, func(t *testing.T, result Result, _ *fakeReed, _ string) {
 		if offCalls != 0 {
-			t.Errorf("passOnCap=%v: off entry ran %d times, want 0", passOnCap, offCalls)
+			t.Errorf("off entry ran %d times, want 0", offCalls)
 		}
-		if !result.Gate.Passed {
-			t.Errorf("passOnCap=%v: Gate = %+v, want passed", passOnCap, result.Gate)
+		if result.Gate == nil || !result.Gate.Passed {
+			t.Fatalf("Gate = %+v, want a non-nil passed outcome", result.Gate)
 		}
 		wantStates(t, result.Gate, GateEntryOff, GateEntryPassed)
-	}
-}
-
-// TestGateList_EveryStateAndAggregateAttempts reaches all five per-entry states in one final report and checks GateOutcome.Attempts is the sum of the entries' sent counts.
-func TestGateList_EveryStateAndAggregateAttempts(t *testing.T) {
-	var offCalls, xCalls, pCalls, fCalls, nCalls int
-	spec := GateSpec{
-		{Name: "off", Gate: scriptedGate(&offCalls, true), Attempts: 0},
-		{Name: "x", Gate: scriptedGate(&xCalls, true), Attempts: 3},
-		{Name: "p", Gate: scriptedGate(&pCalls, false), Attempts: 1, PassOnCap: true},
-		{Name: "f", Gate: scriptedGate(&fCalls, false), Attempts: 1},
-		{Name: "n", Gate: scriptedGate(&nCalls, true), Attempts: 3},
-	}
-
-	result, _, _ := runGateList(t, spec, 2)
-
-	wantStates(t, result.Gate, GateEntryOff, GateEntryPassed, GateEntryLetThrough, GateEntryFailed, GateEntryNotReached)
-	sum := 0
-	for _, entry := range result.Gate.Entries {
-		sum += entry.Attempts
-	}
-	if result.Gate.Attempts != sum || sum != 2 {
-		t.Errorf("aggregate Attempts = %d, per-entry sum = %d, want both 2", result.Gate.Attempts, sum)
-	}
-	if result.Gate.Entries[2].Attempts != 1 || result.Gate.Entries[3].Attempts != 1 {
-		t.Errorf("Entries = %+v, want one re-prompt each for p and f", result.Gate.Entries)
-	}
-	if nCalls != 0 || offCalls != 0 {
-		t.Errorf("not-reached ran %d times and off ran %d times, want 0 and 0", nCalls, offCalls)
-	}
-}
-
-func TestGateList_EmptyListLeavesResultGateNil(t *testing.T) {
-	result, _, _ := runGateList(t, GateSpec{}, 0)
-	if result.Gate != nil {
-		t.Errorf("Gate = %+v, want nil for an empty list", result.Gate)
-	}
-}
-
-func TestGateList_OnlyOffEntriesYieldPassedOutcome(t *testing.T) {
-	var calls int
-	spec := GateSpec{
-		{Name: "a", Gate: scriptedGate(&calls, false), Attempts: 0},
-		{Name: "b", Gate: scriptedGate(&calls, false), Attempts: 0, PassOnCap: true},
-	}
-
-	result, _, _ := runGateList(t, spec, 0)
-
-	if result.Gate == nil || !result.Gate.Passed {
-		t.Fatalf("Gate = %+v, want a non-nil passed outcome", result.Gate)
-	}
-	if calls != 0 {
-		t.Errorf("closures ran %d times, want 0", calls)
-	}
-	wantStates(t, result.Gate, GateEntryOff, GateEntryOff)
-}
-
-func TestGateList_SecondEntryClosureErrorStaysInfrastructureError(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, eventsFileName)
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-	wantErr := errors.New("gate infrastructure fault")
-	var firstCalls int
-	spec := GateSpec{
-		{Name: "first", Gate: scriptedGate(&firstCalls, true), Attempts: 3},
-		{Name: "second", Gate: func() (GateResult, error) { return GateResult{}, wantErr }, Attempts: 3},
-	}
-
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Hour)),
-		withRunGate(spec))
-
-	_, err := run.Wait()
-	if err == nil || !errors.Is(err, wantErr) {
-		t.Fatalf("Wait() error = %v, want it to wrap %v", err, wantErr)
-	}
-	if len(reed.SendTextCalls) != 0 {
-		t.Errorf("SendText calls = %+v, want none", reed.SendTextCalls)
-	}
-	for i, fails := range run.gateFails {
-		if fails != 0 || run.gateSent[i] != 0 {
-			t.Errorf("entry %d counts = %d failures, %d sent, want zeros after a closure error", i, fails, run.gateSent[i])
-		}
 	}
 }

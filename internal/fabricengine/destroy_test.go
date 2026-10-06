@@ -25,6 +25,8 @@ import (
 
 // TestGate_CheckOrdering proves the pipeline stops at the first failing check, by submitting a
 // request that would fail two checks and asserting the reported Check is the earlier one.
+//
+//testtiming:keep the gate stopping at the first failing check, containment before ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_CheckOrdering(t *testing.T) {
 	t.Run("ContainmentBeforeOwnership", func(t *testing.T) {
 		container := t.TempDir()
@@ -64,6 +66,8 @@ func TestGate_CheckOrdering(t *testing.T) {
 }
 
 // TestGate_Containment exercises refuseUncontainedPath's semantics through the gate.
+//
+//testtiming:keep containment refusing "..", a sibling via "..", the container itself, "." and an outside absolute path through the gate; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Containment(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -372,6 +376,8 @@ func TestGate_SlugValidation(t *testing.T) {
 // TestGate_Force proves force satisfies dirtiness and satisfies nothing else — not containment, not
 // ownership. The containment case matters as much as the ownership case: "remove .." is a containment
 // failure, so a force-satisfies-containment reading would bring it back behind a flag.
+//
+//testtiming:keep force satisfying dirtiness and nothing else, neither containment nor ownership; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Force(t *testing.T) {
 	t.Run("SatisfiesDirtiness", func(t *testing.T) {
 		container := t.TempDir()
@@ -428,6 +434,8 @@ func TestGate_Force(t *testing.T) {
 }
 
 // TestGate_DirtinessNAEmptyReason proves dirtinessNA("") is a refusal, not a pass.
+//
+//testtiming:keep dirtinessNA("") being a refusal and not a pass; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 	container := t.TempDir()
 	target := filepath.Join(container, "child")
@@ -711,6 +719,8 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 
 // TestGate_AbsentTargetIsNoOp proves an absent target is a no-op success, for every ownership kind,
 // before any check runs.
+//
+//testtiming:keep an absent target being a no-op success for every ownership kind before any check runs; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 	container := t.TempDir()
 	absent := filepath.Join(container, "does-not-exist")
@@ -903,6 +913,8 @@ func TestGate_LinkKinds(t *testing.T) {
 
 // TestGate_BestEffortPolicy proves surfaceRefusal's split: an operational failure is not matched, a
 // *destructiveRefusal always is.
+//
+//testtiming:keep surfaceRefusal matching a *destructiveRefusal always and an operational failure never; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_BestEffortPolicy(t *testing.T) {
 	t.Run("OperationalFailureIsDiscarded", func(t *testing.T) {
 		operational := fmt.Errorf("git exited nonzero")
@@ -935,6 +947,8 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 // Test Tier Purity Invariant — and their nonzero-exit-with-nil-error rule is asserted through
 // this package's own live-state harness (the livestate_-prefixed package fabricengine_test files)
 // tagged matrix in batch 7 instead.
+//
+//testtiming:keep the mutation record gaining an entry only when an effect was observed, over removePath, removeLink and createExclusiveDir; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 	t.Run("RemovePath_AbsentTargetRecordsNothing", func(t *testing.T) {
 		container := t.TempDir()
@@ -1161,6 +1175,8 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 
 // TestGate_PairWarpRequestShape proves the pair-warp ownership kind is declared, not unset, and that
 // a non-linked target refuses on ownership before dirtiness, so the new kind is a real declaration.
+//
+//testtiming:keep the pair-warp ownership kind being declared rather than unset and refusing a non-linked target on ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_PairWarpRequestShape(t *testing.T) {
 	container := t.TempDir()
 	target := filepath.Join(container, "task")

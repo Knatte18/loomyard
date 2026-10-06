@@ -10,6 +10,8 @@ import "testing"
 // inputs, a routingNames set with more than two entries, and the never-committed bucket — including
 // the case that distinguishes the correct implementation from the dangerous one: a never-committed
 // path must land in neither weft nor warp, not merely "not weft".
+//
+//testtiming:keep classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -167,6 +169,8 @@ func TestClassifyPaths(t *testing.T) {
 // TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts that for a mixed input,
 // every original path appears in exactly one of the three output slices, in input order, with no
 // path lost or duplicated.
+//
+//testtiming:keep every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
 	relPath := "."
 	routingNames := []string{"_lyx", "_extra"}

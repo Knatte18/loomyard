@@ -514,69 +514,60 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorTypoPathHardErrors asserts that a create-path clone against a subpath that
-// does not exist in the warp worktree (a typo like "backedn") is a hard error,
-// and that teardownHub removes the hub — mirroring TestCloneHub_StrictAbortRemovesHubOnFailure's
-// coverage for the anchor guard.
-func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
+// TestCloneHub_AnchorGuardHardErrors asserts that a create-path clone against an unusable subpath is
+// a hard error and that teardownHub removes the hub, mirroring
+// TestCloneHub_StrictAbortRemovesHubOnFailure's coverage for the anchor guard: a subpath that does
+// not exist in the warp worktree (a typo like "backedn"), and a subpath naming an existing FILE,
+// which is refused with a message that says so — "does not exist" alone misled, since the path
+// plainly exists.
+func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 	t.Parallel()
 
-	fixtures := t.TempDir()
-
-	warpBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-typo-warp", "backend")
-	weftBare := makeBareRemote(t, fixtures, "anchor-typo-weft")
-
-	cloneParent := t.TempDir()
-	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
-
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lyx-anchor.
-	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL:        filepath.ToSlash(weftBare),
-		WarpURL:        filepath.ToSlash(warpBare),
-		Subpath:        "backedn",
-		ForceBootstrap: true,
-		Shortname:      "tst",
-	})
-	if err == nil {
-		t.Fatalf("CloneHub() with a nonexistent subpath should have failed")
+	tests := []struct {
+		name         string
+		warpSubdir   string
+		subpath      string
+		wantErrorHas string
+	}{
+		{"typo_path", "backend", "backedn", ""},
+		{"file_not_directory", "", "README.md", "as a directory"},
 	}
-	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
-		t.Errorf("hub directory %s should have been removed by teardownHub after the anchor guard failure", expectedHubPath)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestCloneHub_AnchorFileNotDirectoryHardErrors asserts that a create-path clone against a subpath
-// naming an existing FILE is refused with a message that says so — "does not exist" alone misled,
-// since the path plainly exists — and that teardownHub removes the hub.
-func TestCloneHub_AnchorFileNotDirectoryHardErrors(t *testing.T) {
-	t.Parallel()
+			fixtures := t.TempDir()
 
-	fixtures := t.TempDir()
+			var warpBare string
+			if tt.warpSubdir != "" {
+				warpBare = makeBareRemoteWithSubdir(t, fixtures, "anchor-guard-warp", tt.warpSubdir)
+			} else {
+				warpBare = makeBareRemote(t, fixtures, "anchor-guard-warp")
+			}
+			weftBare := makeBareRemote(t, fixtures, "anchor-guard-weft")
 
-	warpBare := makeBareRemote(t, fixtures, "anchor-file-warp")
-	weftBare := makeBareRemote(t, fixtures, "anchor-file-weft")
+			cloneParent := t.TempDir()
+			expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-	cloneParent := t.TempDir()
-	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
-
-	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
-	// not a repo that has ever been one, so it carries no .lyx-anchor.
-	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL:        filepath.ToSlash(weftBare),
-		WarpURL:        filepath.ToSlash(warpBare),
-		Subpath:        "README.md",
-		ForceBootstrap: true,
-		Shortname:      "tst",
-	})
-	if err == nil {
-		t.Fatalf("CloneHub() with a file-valued subpath should have failed")
-	}
-	if !strings.Contains(err.Error(), "as a directory") {
-		t.Errorf("CloneHub() error = %q; want it to say the subpath is not a directory, not that it does not exist", err)
-	}
-	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
-		t.Errorf("hub directory %s should have been removed by teardownHub after the anchor guard failure", expectedHubPath)
+			// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+			// not a repo that has ever been one, so it carries no .lyx-anchor.
+			_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+				WeftURL:        filepath.ToSlash(weftBare),
+				WarpURL:        filepath.ToSlash(warpBare),
+				Subpath:        tt.subpath,
+				ForceBootstrap: true,
+				Shortname:      "tst",
+			})
+			if err == nil {
+				t.Fatalf("CloneHub() with subpath %q should have failed", tt.subpath)
+			}
+			if tt.wantErrorHas != "" && !strings.Contains(err.Error(), tt.wantErrorHas) {
+				t.Errorf("CloneHub() error = %q; want it to say the subpath is not a directory, not that it does not exist", err)
+			}
+			if _, statErr := os.Stat(expectedHubPath); statErr == nil {
+				t.Errorf("hub directory %s should have been removed by teardownHub after the anchor guard failure", expectedHubPath)
+			}
+		})
 	}
 }
 

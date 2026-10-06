@@ -58,6 +58,8 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 // two-sided case: an unpushed commit on each side,
 // and the no-warp-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path
 // never leaves a .gitrepo-push.lock at the warp worktree root.
+//
+//testtiming:keep both sides advancing and no push lock being left at the warp root; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
 	t.Parallel()
 

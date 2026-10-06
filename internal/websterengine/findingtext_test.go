@@ -14,77 +14,117 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-func TestPendingFindingsText_BoardModelFindingsGolden(t *testing.T) {
-	geom := evidenceGeom(t)
-	outcome := writeContractFile(t, geom)
-	summary := summaryparser.Path(geom.WebsterDir)
-	state := filepath.Join(geom.WebsterDir, "state.json")
-	engine := writesEngine(
-		[]shuttleengine.WriteEvent{succeeded(outcome, 0)},
-		[]shuttleengine.WriteEvent{succeeded(outcome, time.Minute), succeeded(summary, time.Minute)},
-	)
-	st := &State{MasterSessionID: "s1"}
-	items := []findingItem{
-		{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q — a contract file", outcome), Paths: []string{outcome}},
-		{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q — a contract file", summary), Paths: []string{summary}},
-		{Class: "parent-write", Detail: fmt.Sprintf("Master wrote %q — under the run state", state), Paths: []string{state}},
-	}
+// TestPendingFindingsText pins the findings clause and way forward as golden text: the board-model
+// findings take the reset route, a contract file a fork wrote last takes the delete-and-accept route,
+// one Master wrote last takes the accept route, and a pathless finding takes the reset route.
+func TestPendingFindingsText(t *testing.T) {
+	t.Parallel()
 
-	clause, wayForward, err := pendingFindingsText(engine, st, geom, items, "lyx webster run")
-	if err != nil {
-		t.Fatalf("pendingFindingsText: %v", err)
+	tests := []struct {
+		name string
+		// fixture builds the engine and findings over geom and returns the clause wanted, "" to skip it.
+		fixture func(t *testing.T, geom Geometry) (engine shuttleengine.Engine, items []findingItem, wantClause, wantWay string)
+		reentry string
+	}{
+		{
+			name:    "board-model findings golden",
+			reentry: "lyx webster run",
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+				outcome := writeContractFile(t, geom)
+				summary := summaryparser.Path(geom.WebsterDir)
+				state := filepath.Join(geom.WebsterDir, "state.json")
+				engine := writesEngine(
+					[]shuttleengine.WriteEvent{succeeded(outcome, 0)},
+					[]shuttleengine.WriteEvent{succeeded(outcome, time.Minute), succeeded(summary, time.Minute)},
+				)
+				items := []findingItem{
+					{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q — a contract file", outcome), Paths: []string{outcome}},
+					{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q — a contract file", summary), Paths: []string{summary}},
+					{Class: "parent-write", Detail: fmt.Sprintf("Master wrote %q — under the run state", state), Paths: []string{state}},
+				}
+				clause := fmt.Sprintf("3 correctness finding(s): "+
+					"1) fork-contract-write: fork wrote %q — a contract file (%s: a fork wrote it after Master's last write); "+
+					"2) fork-contract-write: fork wrote %q — a contract file (%s: cleared: absent, or Master wrote it last); "+
+					"3) parent-write: Master wrote %q — under the run state (%s: cannot be checked: under `%s`, outside the task worktree's tracked tree)",
+					outcome, outcome, summary, summary, state, state, lyxdirs.LyxDirName)
+				return engine, items, clause, "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"
+			},
+		},
+		{
+			name:    "a contract file a fork wrote last ends in one re-entry step after its delete",
+			reentry: "re-step the loom row",
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+				outcome := writeContractFile(t, geom)
+				engine := writesEngine(nil, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
+				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
+				return engine, items, "", fmt.Sprintf("way forward: 1) rm %s; 2) lyx webster accept-audit; 3) re-step the loom row", outcome)
+			},
+		},
+		{
+			name:    "a contract file Master wrote last needs no delete",
+			reentry: "lyx webster run",
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+				outcome := writeContractFile(t, geom)
+				engine := writesEngine([]shuttleengine.WriteEvent{succeeded(outcome, 2*time.Minute)}, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
+				items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
+				return engine, items, "", "way forward: 1) lyx webster accept-audit; 2) lyx webster run"
+			},
+		},
+		{
+			name:    "a pathless finding takes the reset route",
+			reentry: "lyx webster run",
+			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
+				items := []findingItem{{Class: "fabric-reference", Detail: "ran lyx fabric"}}
+				return nil, items,
+					"1 correctness finding(s): 1) fabric-reference: ran lyx fabric (the finding names no path)",
+					"way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"
+			},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	wantClause := fmt.Sprintf("3 correctness finding(s): "+
-		"1) fork-contract-write: fork wrote %q — a contract file (%s: a fork wrote it after Master's last write); "+
-		"2) fork-contract-write: fork wrote %q — a contract file (%s: cleared: absent, or Master wrote it last); "+
-		"3) parent-write: Master wrote %q — under the run state (%s: cannot be checked: under `%s`, outside the task worktree's tracked tree)",
-		outcome, outcome, summary, summary, state, state, lyxdirs.LyxDirName)
-	if clause != wantClause {
-		t.Errorf("clause =\n%s\nwant\n%s", clause, wantClause)
-	}
-	wantWay := "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"
-	if wayForward != wantWay {
-		t.Errorf("way forward = %q, want %q", wayForward, wantWay)
+			geom := evidenceGeom(t)
+			engine, items, wantClause, wantWay := tt.fixture(t, geom)
+			clause, wayForward, err := pendingFindingsText(engine, &State{MasterSessionID: "s1"}, geom, items, tt.reentry)
+			if err != nil {
+				t.Fatalf("pendingFindingsText: %v", err)
+			}
+			if wantClause != "" && clause != wantClause {
+				t.Errorf("clause =\n%s\nwant\n%s", clause, wantClause)
+			}
+			if wayForward != wantWay {
+				t.Errorf("way forward = %q, want %q", wayForward, wantWay)
+			}
+		})
 	}
 }
 
-func TestPendingFindingsText_AcceptRouteEndsInOneReentryStep(t *testing.T) {
-	geom := evidenceGeom(t)
-	outcome := writeContractFile(t, geom)
-	engine := writesEngine(nil, []shuttleengine.WriteEvent{succeeded(outcome, time.Minute)})
-	items := []findingItem{{Class: "fork-contract-write", Detail: fmt.Sprintf("fork wrote %q", outcome), Paths: []string{outcome}}}
+// TestFindingsClause pins the path parenthetical a finding with no note gets: its path when the
+// detail lacks it, and nothing when the detail already names it.
+//
+//testtiming:keep pins the bare-path suffix and its omission when the detail names the path; every pending-findings case carries a note per path
+func TestFindingsClause(t *testing.T) {
+	t.Parallel()
 
-	_, wayForward, err := pendingFindingsText(engine, &State{MasterSessionID: "s1"}, geom, items, "re-step the loom row")
-	if err != nil {
-		t.Fatalf("pendingFindingsText: %v", err)
+	tests := []struct {
+		name   string
+		detail string
+		want   string
+	}{
+		{name: "the detail lacks the path", detail: "Master wrote a file", want: "1 correctness finding(s): 1) parent-write: Master wrote a file (a.go)"},
+		{name: "the detail names the path", detail: "Master wrote a.go", want: "1 correctness finding(s): 1) parent-write: Master wrote a.go"},
 	}
-	want := fmt.Sprintf("way forward: 1) rm %s; 2) lyx webster accept-audit; 3) re-step the loom row", outcome)
-	if wayForward != want {
-		t.Errorf("way forward = %q, want %q", wayForward, want)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestPendingFindingsText_PathlessFindingTakesTheResetRoute(t *testing.T) {
-	geom := evidenceGeom(t)
-	items := []findingItem{{Class: "fabric-reference", Detail: "ran lyx fabric"}}
-
-	clause, wayForward, err := pendingFindingsText(nil, &State{}, geom, items, "lyx webster run")
-	if err != nil {
-		t.Fatalf("pendingFindingsText: %v", err)
-	}
-	if want := "1 correctness finding(s): 1) fabric-reference: ran lyx fabric (the finding names no path)"; clause != want {
-		t.Errorf("clause = %q, want %q", clause, want)
-	}
-	if want := "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"; wayForward != want {
-		t.Errorf("way forward = %q, want %q", wayForward, want)
-	}
-}
-
-func TestFindingsClause_NamesAPathTheDetailLacksOnce(t *testing.T) {
-	got := findingsClause([]findingItem{{Class: "parent-write", Detail: "Master wrote a file", Paths: []string{"a.go"}}}, nil)
-	if want := "1 correctness finding(s): 1) parent-write: Master wrote a file (a.go)"; got != want {
-		t.Errorf("clause = %q, want %q", got, want)
+			got := findingsClause([]findingItem{{Class: "parent-write", Detail: tt.detail, Paths: []string{"a.go"}}}, nil)
+			if got != tt.want {
+				t.Errorf("clause = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

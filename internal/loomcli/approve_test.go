@@ -151,39 +151,45 @@ func TestApproveVerb_Refusals(t *testing.T) {
 	}
 }
 
+// TestApproveVerb_Success asserts approval at the gate, whether the run is awaiting or blocked, writes one approval, prints the resume envelope and removes the rejection before it writes the approval.
+//
+//testtiming:keep pins approval at the gate when the run is awaiting or blocked: one approval with the PR number, head SHA and timestamp, the resume envelope with the PR URL, and the rejection removed before the approval is written; the refusal test re-runs only the blocked success without checking the envelope or order
 func TestApproveVerb_Success(t *testing.T) {
-	d, written := approveFixture()
-	var out bytes.Buffer
-	if code := approveVerb(context.Background(), &out, d); code != 0 {
-		t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
-	}
-	want := landingshed.Approval{PRNumber: 7, HeadSHA: "abc123", ApprovedAt: "2026-09-30T12:00:00Z"}
-	if len(*written) != 1 || (*written)[0] != want {
-		t.Fatalf("written = %+v; want [%+v]", *written, want)
-	}
-	var env map[string]any
-	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-		t.Fatalf("decode envelope %q: %v", out.String(), err)
-	}
-	if env["resume"] != "lyx loom start" || env["head_sha"] != "abc123" || env["pr_number"] != float64(7) {
-		t.Errorf("envelope = %v; want resume, head_sha and pr_number", env)
-	}
-	if !strings.Contains(out.String(), "pull/7") {
-		t.Errorf("envelope %q does not name the PR URL", out.String())
-	}
-}
-
-func TestApproveVerb_RemovesRejectionBeforeWritingApproval(t *testing.T) {
-	d, _ := approveFixture()
-	var calls []string
-	d.removeRejection = func() error { calls = append(calls, "remove"); return nil }
-	d.writeApproval = func(landingshed.Approval) error { calls = append(calls, "write"); return nil }
-	var out bytes.Buffer
-	if code := approveVerb(context.Background(), &out, d); code != 0 {
-		t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
-	}
-	if strings.Join(calls, ",") != "remove,write" {
-		t.Errorf("call order = %v; want remove then write", calls)
+	for _, state := range []shedengine.State{shedengine.StateBlocked, shedengine.StateAwaiting} {
+		t.Run(string(state), func(t *testing.T) {
+			d, written := approveFixture()
+			d.readStatus = func() (shedengine.Status, bool, error) {
+				return shedengine.Status{State: state, CurrentProducer: loomshed.NamePRGate}, true, nil
+			}
+			var calls []string
+			d.removeRejection = func() error { calls = append(calls, "remove"); return nil }
+			recordApproval := d.writeApproval
+			d.writeApproval = func(a landingshed.Approval) error {
+				calls = append(calls, "write")
+				return recordApproval(a)
+			}
+			var out bytes.Buffer
+			if code := approveVerb(context.Background(), &out, d); code != 0 {
+				t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+			}
+			want := landingshed.Approval{PRNumber: 7, HeadSHA: "abc123", ApprovedAt: "2026-09-30T12:00:00Z"}
+			if len(*written) != 1 || (*written)[0] != want {
+				t.Fatalf("written = %+v; want [%+v]", *written, want)
+			}
+			var env map[string]any
+			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+				t.Fatalf("decode envelope %q: %v", out.String(), err)
+			}
+			if env["resume"] != "lyx loom start" || env["head_sha"] != "abc123" || env["pr_number"] != float64(7) {
+				t.Errorf("envelope = %v; want resume, head_sha and pr_number", env)
+			}
+			if !strings.Contains(out.String(), "pull/7") {
+				t.Errorf("envelope %q does not name the PR URL", out.String())
+			}
+			if strings.Join(calls, ",") != "remove,write" {
+				t.Errorf("call order = %v; want remove then write", calls)
+			}
+		})
 	}
 }
 

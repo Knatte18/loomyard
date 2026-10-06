@@ -385,7 +385,7 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	if err != nil {
 		return "", err
 	}
-	others, err := otherWorktrees(worktree)
+	others, err := geom.git().OtherWorktrees(worktree)
 	if err != nil {
 		return "", err
 	}
@@ -405,7 +405,7 @@ func ClassifyViolation(v AuditViolation, geom Geometry) (AuditSeverity, error) {
 	if !pathWithin(worktree, written) {
 		return AuditSeverityPolicy, nil
 	}
-	ignored, err := ignoredPath(geom.WorktreeRoot, written)
+	ignored, err := geom.git().IgnoredPath(geom.WorktreeRoot, written)
 	if err != nil {
 		return "", err
 	}

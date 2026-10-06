@@ -10,6 +10,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep every slug validation rule over a table of accepted and refused slugs; coverage of its blocks by other tests does not show an assertion of this
 func TestValidateWorktreeSlug(t *testing.T) {
 	t.Parallel()
 

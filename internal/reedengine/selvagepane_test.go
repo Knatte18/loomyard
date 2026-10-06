@@ -150,6 +150,8 @@ func TestPlanPaneTarget(t *testing.T) {
 // questions independently rather than through a single combined predicate, so a future
 // fold-together fails here. The corpse case is the one that pins the distinction: it is exempt from
 // both kills and authorizes neither reap.
+//
+//testtiming:keep pins the reap policy's three questions apart: an alive Selvage is exempt from both kills and authorizes the reap, a present corpse is exempt from both but authorizes none, and an unrelated pane is never exempt; its covering tests run this code without asserting it
 func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
 	const selvagePane = "%selvage"
 	const otherPane = "%other"
@@ -221,6 +223,8 @@ func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
 
 // TestSelvageRenderParams asserts the present, absent and empty-id cases, and that HeightRows comes
 // through from the engine's config rather than being defaulted.
+//
+//testtiming:keep pins the render parameters: a present Selvage pane id passes through, an absent or empty one is blanked, and HeightRows comes from the engine's config; its covering tests run this code without asserting it
 func TestSelvageRenderParams(t *testing.T) {
 	const selvagePane = "%selvage"
 	const heightRows = 4
@@ -268,6 +272,8 @@ func TestSelvageRenderParams(t *testing.T) {
 }
 
 // TestSeedSelvageClaim asserts it adds the id when non-empty and leaves the map untouched when empty.
+//
+//testtiming:keep pins the seeded claim: the Selvage pane id is added to the claimed set when set and an absent Selvage claims nothing; its covering tests run this code without asserting it
 func TestSeedSelvageClaim(t *testing.T) {
 	t.Run("NonEmptyID_Added", func(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
@@ -289,6 +295,8 @@ func TestSeedSelvageClaim(t *testing.T) {
 }
 
 // TestClearSelvagePaneBinding asserts it empties a set id and is a no-op on an already-empty one.
+//
+//testtiming:keep pins the Selvage binding being emptied when set and left empty when already empty; its covering tests run this code without asserting it
 func TestClearSelvagePaneBinding(t *testing.T) {
 	t.Run("SetID_Cleared", func(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
@@ -309,6 +317,8 @@ func TestClearSelvagePaneBinding(t *testing.T) {
 
 // TestBottommostPaneID asserts the Selvage split target is chosen by pane_top rather than by
 // list-panes order, which tmux does not guarantee is top-to-bottom.
+//
+//testtiming:keep pins the split target being chosen by pane_top rather than list-panes order, which tmux does not guarantee is top to bottom; its covering tests run this code without asserting it
 func TestBottommostPaneID(t *testing.T) {
 	tests := []struct {
 		name string
@@ -326,55 +336,6 @@ func TestBottommostPaneID(t *testing.T) {
 				t.Errorf("bottommostPaneID(%v) = %q; want %q", tt.live, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath pins that the Selvage split-window call
-// pins its pane to Geometry.PaneCwd, not Geometry.AnchorPath — the two are distinct on newTestEngine's
-// fixture (lock_test.go), so this assertion cannot pass by coincidence.
-// This covers only the Selvage split site: the new-session spawn site is not reachable from this
-// seam, since it builds its argv and runs it through the os/exec package's Command function
-// directly rather than through e.tmux — that half of the same change is covered by the tagged reed
-// suites this batch's verify: also runs (contract_integration_test.go,
-// mouse_boot_integration_test.go).
-func TestEnsureSelvagePaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
-	e := newTestEngine(t)
-
-	const existingPaneID = "%0"
-	const newPaneID = "%1"
-	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
-
-	fake := installFakeTmux(t, e)
-	fake.answer("list-panes", listPanesOut, nil)
-	// A genuinely new pane id, distinct from the pre-split live set, so
-	// the silent-split guard (validateSplitCreatedNewPane) does not
-	// reject the call.
-	fake.answer("split-window", newPaneID+"\n", nil)
-
-	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureSelvagePaneLocked(st); err != nil {
-		t.Fatalf("ensureSelvagePaneLocked: %v", err)
-	}
-
-	splitArgs := fake.LastArgv("split-window")
-	found := false
-	for i, arg := range splitArgs {
-		if arg != "-c" {
-			continue
-		}
-		if i+1 >= len(splitArgs) {
-			t.Fatalf("split-window argv %v has a trailing -c with no value", splitArgs)
-		}
-		found = true
-		if splitArgs[i+1] != e.geom.PaneCwd {
-			t.Errorf("split-window -c value = %q, want %q (Geometry.PaneCwd)", splitArgs[i+1], e.geom.PaneCwd)
-		}
-		if splitArgs[i+1] == e.geom.AnchorPath {
-			t.Errorf("split-window -c value = %q, want it to differ from AnchorPath %q on this fixture", splitArgs[i+1], e.geom.AnchorPath)
-		}
-	}
-	if !found {
-		t.Fatalf("split-window argv %v has no -c flag", splitArgs)
 	}
 }
 
@@ -470,159 +431,31 @@ func TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit(t *t
 	if st.SelvagePaneID != rebuiltSelvagePaneID {
 		t.Errorf("SelvagePaneID = %q; want %q (the pane the retried split created)", st.SelvagePaneID, rebuiltSelvagePaneID)
 	}
-}
-
-// TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys is P1: it pins that
-// Selvage is booted by handing split-window e.cfg.Shell as its own trailing shell-command
-// argument, not by typing it into an interactive shell afterwards via send-keys. Both halves matter
-// — a fix that carries the command on the argv but still sends keys, or vice versa, must fail this.
-//
-// No #{pane_current_command} assertion is added: that value is shell-dependent and this fake-tmux
-// substrate never runs a real shell.
-func TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys(t *testing.T) {
-	e := newTestEngine(t)
-
-	const existingPaneID = "%0"
-	const newPaneID = "%1"
-	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
-
-	fake := installFakeTmux(t, e)
-	fake.answer("list-panes", listPanesOut, nil)
-	// A genuinely new pane id, distinct from the pre-split live set, so
-	// the silent-split guard (validateSplitCreatedNewPane) does not
-	// reject the call.
-	fake.answer("split-window", newPaneID+"\n", nil)
-
-	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureSelvagePaneLocked(st); err != nil {
-		t.Fatalf("ensureSelvagePaneLocked: %v", err)
-	}
-
-	splitArgs := fake.LastArgv("split-window")
-	fIndex := -1
-	for i, arg := range splitArgs {
-		if arg == "-F" {
-			fIndex = i
-			break
-		}
-	}
-	if fIndex == -1 {
-		t.Fatalf("split-window argv %v has no -F flag", splitArgs)
-	}
-	if fIndex+1 >= len(splitArgs) {
-		t.Fatalf("split-window argv %v has a trailing -F with no value", splitArgs)
-	}
-	if fIndex+2 >= len(splitArgs) {
-		t.Fatalf("split-window argv %v carries no trailing command argument after the -F value; want the launch line appended as split-window's own trailing shell-command argument", splitArgs)
-	}
-	launchArg := splitArgs[fIndex+2]
-	if launchArg != e.cfg.Shell {
-		t.Errorf("split-window trailing command argument = %q, want %q (e.cfg.Shell, launched the same way new-session launches the session's first pane)", launchArg, e.cfg.Shell)
-	}
-	if sendKeysCalls := fake.Count("send-keys"); sendKeysCalls != 0 {
-		t.Errorf("send-keys calls = %d, want 0 (Selvage must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
-	}
-}
-
-// TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch pins that the split pane's id is recorded
-// onto state even under go test's fake-tmux substrate, which never runs a real shell — recording
-// must not depend on anything the launched command actually does. This used to also pin a
-// suppressed, commandless launch under go test; that suppression mechanism is gone along with the
-// header pane's re-exec Selvage replaces, so the launch itself is covered by
-// TestEnsureSelvagePaneLocked_LaunchesTheCommandOnTheSplitNotViaSendKeys and this test narrows to the
-// recording half.
-func TestEnsureSelvagePaneLocked_RecordsThePaneIDAfterLaunch(t *testing.T) {
-	e := newTestEngine(t)
-
-	const existingPaneID = "%0"
-	const newPaneID = "%1"
-	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
-
-	fake := installFakeTmux(t, e)
-	fake.answer("list-panes", listPanesOut, nil)
-	fake.answer("split-window", newPaneID+"\n", nil)
-
-	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureSelvagePaneLocked(st); err != nil {
-		t.Fatalf("ensureSelvagePaneLocked: %v", err)
-	}
-
-	if st.SelvagePaneID != newPaneID {
-		t.Errorf("SelvagePaneID = %q, want %q", st.SelvagePaneID, newPaneID)
-	}
-}
-
-// TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand reuses
-// TestEnsureSelvagePaneLocked_RecoversWhenTheBottomPaneIsTooSmallToSplit's wedged/retiled scripted
-// substrate (a one-row bottom pane the first split-window refuses, an even-vertical re-tile, then a
-// successful retry), and pins that the RETRIED split-window call — not just a hypothetical first
-// one — carries the launch command too. A retry path that dropped launchCmd would boot a recovered
-// Selvage as a commandless shell, silently reopening this batch's noise class on exactly the
-// wedged-worktree recovery path R4-F4 exists for.
-func TestEnsureSelvagePaneLocked_RetriedSplitAlsoCarriesTheLaunchCommand(t *testing.T) {
-	e := newTestEngine(t)
-
-	const oneRowBottomPaneID = "%1"
-	const tallPaneID = "%0"
-	const rebuiltSelvagePaneID = "%7"
-	// pane_id pane_dead pane_top pane_width pane_height pane_pid
-	wedged := tallPaneID + " 0 0 100 48 4321\n" + oneRowBottomPaneID + " 0 48 100 1 4322\n"
-	retiled := tallPaneID + " 0 0 100 24 4321\n" + oneRowBottomPaneID + " 0 25 100 25 4322\n"
-
-	reTiled := false
-	fake := installFakeTmux(t, e)
-	fake.answerFunc("list-panes", func([]string) (string, error) {
-		if reTiled {
-			return retiled, nil
-		}
-		return wedged, nil
-	})
-	fake.answerFunc("select-layout", func([]string) (string, error) {
-		reTiled = true
-		return "", nil
-	})
-	fake.answerFunc("split-window", func([]string) (string, error) {
-		if !reTiled {
-			// tmux's real refusal against a one-row pane: exit 1, no pane.
-			return "", errors.New("exit status 1: no space for new pane")
-		}
-		return rebuiltSelvagePaneID + "\n", nil
-	})
-
-	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
-	if err := e.ensureSelvagePaneLocked(st); err != nil {
-		t.Fatalf("ensureSelvagePaneLocked() = %v; want nil", err)
-	}
-	if st.SelvagePaneID != rebuiltSelvagePaneID {
-		t.Fatalf("SelvagePaneID = %q; want %q (the pane the retried split created)", st.SelvagePaneID, rebuiltSelvagePaneID)
-	}
-
+	// The retried split carries the launch command too: a retry that dropped it would boot a recovered Selvage as a commandless shell.
 	retriedSplitArgs := fake.LastArgv("split-window")
-
-	if len(retriedSplitArgs) == 0 {
-		t.Fatalf("the retried split-window call was never recorded")
-	}
-	launchArg := retriedSplitArgs[len(retriedSplitArgs)-1]
-	if launchArg != e.cfg.Shell {
+	if launchArg := retriedSplitArgs[len(retriedSplitArgs)-1]; launchArg != e.cfg.Shell {
 		t.Errorf("retried split-window trailing argument = %q, want %q (a retried Selvage must never boot commandless)", launchArg, e.cfg.Shell)
 	}
 }
 
-// TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag pins the new split direction
-// end to end: given a scripted pane list whose largest pane_top is a known id, ensureSelvagePaneLocked
-// targets that id, and the split-window argv it issues carries no -b — tmux's default direction
-// (new pane below target) is exactly where Selvage must land now that render.Rules emits the band
-// cell last rather than first.
-func TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag(t *testing.T) {
+// TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane pins the Selvage create path on a scripted two-pane session:
+//   - the split targets the bottommost pane and carries no -b, so the new pane lands below it, where render.Rules emits the band cell last;
+//   - it pins its pane to Geometry.PaneCwd, not AnchorPath (the two are distinct on newTestEngine's fixture, so this cannot pass by coincidence);
+//   - it launches the shell as split-window's own trailing shell-command argument, never by typing into the pane with send-keys;
+//   - it records the new pane's id onto state even though the fake tmux never runs a real shell.
+//
+// The new-session spawn site is not reachable from this seam, since it builds its argv and runs it
+// through the os/exec package's Command function directly rather than through e.tmux; the tagged reed suites cover that half.
+//
+//testtiming:keep pins the Selvage create path's split-window call: targeting the bottommost pane with no -b, pinned to PaneCwd, launching the shell as the trailing argument and never via send-keys, then recording the new pane id; its covering tests run this code without asserting it
+func TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane(t *testing.T) {
 	e := newTestEngine(t)
-
 	const topPaneID = "%0"
 	const bottomPaneID = "%1"
 	const newPaneID = "%2"
-	listPanesOut := topPaneID + " 0 0 100 10 4321\n" + bottomPaneID + " 0 10 100 10 4322\n"
-
 	fake := installFakeTmux(t, e)
-	fake.answer("list-panes", listPanesOut, nil)
+	fake.answer("list-panes", topPaneID+" 0 0 100 10 4321\n"+bottomPaneID+" 0 10 100 10 4322\n", nil)
+	// A genuinely new pane id, distinct from the pre-split live set, so the silent-split guard (validateSplitCreatedNewPane) does not reject the call.
 	fake.answer("split-window", newPaneID+"\n", nil)
 
 	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
@@ -631,26 +464,47 @@ func TestEnsureSelvagePaneLocked_SplitsBelowTheBottommostPaneWithNoBFlag(t *test
 	}
 
 	splitArgs := fake.LastArgv("split-window")
+	flagValue := func(flag string) string {
+		t.Helper()
+		for i, arg := range splitArgs {
+			if arg == flag {
+				if i+1 >= len(splitArgs) {
+					t.Fatalf("split-window argv %v has a trailing %s with no value", splitArgs, flag)
+				}
+				return splitArgs[i+1]
+			}
+		}
+		t.Fatalf("split-window argv %v has no %s flag", splitArgs, flag)
+		return ""
+	}
 	for _, arg := range splitArgs {
 		if arg == "-b" {
-			t.Errorf("split-window argv %v carries -b; want no -b (Selvage now splits below, not above)", splitArgs)
+			t.Errorf("split-window argv %v carries -b; want no -b (Selvage splits below, not above)", splitArgs)
 		}
 	}
-
-	targetFound := false
+	if got := flagValue("-t"); got != bottomPaneID {
+		t.Errorf("split-window -t value = %q, want %q (the bottommost pane)", got, bottomPaneID)
+	}
+	if got := flagValue("-c"); got != e.geom.PaneCwd || got == e.geom.AnchorPath {
+		t.Errorf("split-window -c value = %q, want Geometry.PaneCwd %q and not AnchorPath %q", got, e.geom.PaneCwd, e.geom.AnchorPath)
+	}
+	// The value after -F is the format; the launch line is the one argument after it.
+	formatIdx := -1
 	for i, arg := range splitArgs {
-		if arg != "-t" {
-			continue
-		}
-		if i+1 >= len(splitArgs) {
-			t.Fatalf("split-window argv %v has a trailing -t with no value", splitArgs)
-		}
-		targetFound = true
-		if splitArgs[i+1] != bottomPaneID {
-			t.Errorf("split-window -t value = %q, want %q (the bottommost pane)", splitArgs[i+1], bottomPaneID)
+		if arg == "-F" {
+			formatIdx = i
 		}
 	}
-	if !targetFound {
-		t.Fatalf("split-window argv %v has no -t flag", splitArgs)
+	if formatIdx == -1 || formatIdx+2 >= len(splitArgs) {
+		t.Fatalf("split-window argv %v carries no trailing command argument after the -F value; want the launch line appended as split-window's own trailing shell-command argument", splitArgs)
+	}
+	if got := splitArgs[formatIdx+2]; got != e.cfg.Shell {
+		t.Errorf("split-window trailing command argument = %q, want %q (e.cfg.Shell, launched the same way new-session launches the session's first pane)", got, e.cfg.Shell)
+	}
+	if sendKeysCalls := fake.Count("send-keys"); sendKeysCalls != 0 {
+		t.Errorf("send-keys calls = %d, want 0 (Selvage must launch its own command on the split, not be typed into via send-keys)", sendKeysCalls)
+	}
+	if st.SelvagePaneID != newPaneID {
+		t.Errorf("SelvagePaneID = %q, want %q", st.SelvagePaneID, newPaneID)
 	}
 }

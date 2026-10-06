@@ -192,51 +192,51 @@ func TestRejectVerb_Refusals(t *testing.T) {
 	}
 }
 
-func TestRejectVerb_SuccessAtAwaitingGate(t *testing.T) {
-	d, calls := rejectFixture()
-	var out bytes.Buffer
-	if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {
-		t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+// TestRejectVerb_Success asserts a rejection at the awaiting gate, and a replacement rejection at the blocked rework row past the gate's budget, removes the approval, writes the rejection and prints the resume envelope.
+func TestRejectVerb_Success(t *testing.T) {
+	tests := []struct {
+		name   string
+		status shedengine.Status
+	}{
+		{"AwaitingGate", shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}},
+		// The budget is not consulted at the rework row, so a record is replaced past it.
+		{"BlockedReworkPastBudget", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework, History: stuckHistory(2)}},
 	}
-	if got := strings.Join(calls.order, ","); got != "remove,write" {
-		t.Errorf("call order = %q; want approval removed before the rejection is written", got)
-	}
-	want := landingshed.Rejection{PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-09-30T12:00:00Z", Findings: "fix the thing\n"}
-	if len(calls.written) != 1 || calls.written[0] != want {
-		t.Fatalf("written = %+v; want [%+v]", calls.written, want)
-	}
-	var env map[string]any
-	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-		t.Fatalf("decode envelope %q: %v", out.String(), err)
-	}
-	keys := map[string]bool{"pr_number": true, "pr_url": true, "head_sha": true, "resume": true}
-	for k := range env {
-		if k == "ok" {
-			continue
-		}
-		if !keys[k] {
-			t.Errorf("unexpected envelope key %q in %v", k, env)
-		}
-		delete(keys, k)
-	}
-	if len(keys) != 0 {
-		t.Errorf("envelope %v is missing keys %v", env, keys)
-	}
-	if env["resume"] != "lyx loom start" || env["head_sha"] != "abc123" || env["pr_number"] != float64(7) {
-		t.Errorf("envelope = %v; want resume, head_sha and pr_number", env)
-	}
-}
-
-func TestRejectVerb_BlockedReworkReplacesRecordPastBudget(t *testing.T) {
-	d, calls := rejectFixture()
-	d.readStatus = func() (shedengine.Status, bool, error) {
-		return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework, History: stuckHistory(2)}, true, nil
-	}
-	var out bytes.Buffer
-	if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {
-		t.Fatalf("exit = %d; want 0 (the budget is not consulted at the rework row); out = %s", code, out.String())
-	}
-	if len(calls.written) != 1 {
-		t.Fatalf("written = %+v; want one replacement rejection", calls.written)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, calls := rejectFixture()
+			d.readStatus = func() (shedengine.Status, bool, error) { return tt.status, true, nil }
+			var out bytes.Buffer
+			if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {
+				t.Fatalf("exit = %d; want 0; out = %s", code, out.String())
+			}
+			if got := strings.Join(calls.order, ","); got != "remove,write" {
+				t.Errorf("call order = %q; want approval removed before the rejection is written", got)
+			}
+			want := landingshed.Rejection{PRNumber: 7, HeadSHA: "abc123", RejectedAt: "2026-09-30T12:00:00Z", Findings: "fix the thing\n"}
+			if len(calls.written) != 1 || calls.written[0] != want {
+				t.Fatalf("written = %+v; want [%+v]", calls.written, want)
+			}
+			var env map[string]any
+			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+				t.Fatalf("decode envelope %q: %v", out.String(), err)
+			}
+			keys := map[string]bool{"pr_number": true, "pr_url": true, "head_sha": true, "resume": true}
+			for k := range env {
+				if k == "ok" {
+					continue
+				}
+				if !keys[k] {
+					t.Errorf("unexpected envelope key %q in %v", k, env)
+				}
+				delete(keys, k)
+			}
+			if len(keys) != 0 {
+				t.Errorf("envelope %v is missing keys %v", env, keys)
+			}
+			if env["resume"] != "lyx loom start" || env["head_sha"] != "abc123" || env["pr_number"] != float64(7) {
+				t.Errorf("envelope = %v; want resume, head_sha and pr_number", env)
+			}
+		})
 	}
 }

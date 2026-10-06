@@ -16,7 +16,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
-	"gopkg.in/yaml.v3"
 )
 
 // seedConfig writes module's content to <baseDir>/_lyx/config/<module>.yaml,
@@ -36,45 +35,15 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestConfigTemplate_ParsesAsYAML asserts the embedded template is well-formed YAML on its own,
-// independent of LoadConfig's strict-decode path.
-func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
-	var out map[string]any
-	if err := yaml.Unmarshal([]byte(websterengine.ConfigTemplate()), &out); err != nil {
-		t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
-	}
-}
+// TestConfigTemplate pins that every yaml tag of Config appears in the embedded template's text, so a
+// struct field added without a matching template line is caught mechanically rather than relying on
+// review to notice the gap.
+//
+//testtiming:keep pins every Config yaml tag having a template line; the load test only observes the keys the template already holds
+func TestConfigTemplate(t *testing.T) {
+	t.Parallel()
 
-// TestConfigTemplate_RoundTripsThroughLoadConfig seeds the template verbatim and asserts LoadConfig
-// resolves it into the documented defaults.
-func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
-	baseDir := t.TempDir()
-	seedConfig(t, baseDir, "webster", websterengine.ConfigTemplate())
-
-	cfg, err := websterengine.LoadConfig(baseDir, "webster")
-	if err != nil {
-		t.Fatalf("LoadConfig(template) = _, %v; want nil error", err)
-	}
-
-	want := websterengine.Config{
-		Master:             "sonnet[medium]",
-		Recovery:           "opus[high]",
-		SelfFixCap:         2,
-		MasterTimeoutMin:   480,
-		RecoveryTimeoutMin: 60,
-		VerifyGateAttempts: 3,
-	}
-	if cfg != want {
-		t.Errorf("LoadConfig(template) = %+v; want %+v", cfg, want)
-	}
-}
-
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts
-// every yaml tag appears in the template text — so a struct field added without a matching template
-// line is caught mechanically rather than relying on review to notice the gap.
-func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	text := websterengine.ConfigTemplate()
-
 	typ := reflect.TypeOf(websterengine.Config{})
 	for i := 0; i < typ.NumField(); i++ {
 		tag := typ.Field(i).Tag.Get("yaml")
@@ -99,157 +68,124 @@ func containsKey(text, key string) bool {
 	return false
 }
 
-func TestLoadConfig_OverridesRoundTrip(t *testing.T) {
-	baseDir := t.TempDir()
-	override := `master: opus[effort=high]
-recovery: opus[effort=max]
-self_fix_cap: 5
-master_timeout_min: 120
-recovery_timeout_min: 30
-verify_gate_attempts: 4
-`
-	seedConfig(t, baseDir, "webster", override)
+// TestLoadConfig pins how LoadConfig resolves a hub webster.yaml:
+// the template seeded verbatim loads its defaults, overrides round-trip, a file still carrying the retired poll_wait_s key keeps loading (the
+// unmarshal ignores an unknown key), a hand-written file missing numeric knobs loads them at the
+// template defaults rather than Go's zero value (RecoveryTimeoutMin at 0 would classify every
+// recovery batch dead/timeout on the first poll), an uninitialized _lyx/ degrades to the embedded
+// template, a malformed role model-spec fails loud naming the offending key, and webster's own
+// positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
+func TestLoadConfig(t *testing.T) {
+	t.Parallel()
 
-	cfg, err := websterengine.LoadConfig(baseDir, "webster")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	templateDefaults := websterengine.Config{
+		Master:             "sonnet[medium]",
+		Recovery:           "opus[high]",
+		SelfFixCap:         2,
+		MasterTimeoutMin:   480,
+		RecoveryTimeoutMin: 60,
+		VerifyGateAttempts: 3,
 	}
-
-	if cfg.Master != "opus[effort=high]" {
-		t.Errorf("Master = %q, want %q", cfg.Master, "opus[effort=high]")
+	absentKnobs := websterengine.Config{
+		Master:             "sonnet",
+		Recovery:           "opus",
+		SelfFixCap:         2,
+		MasterTimeoutMin:   480,
+		RecoveryTimeoutMin: 60,
+		VerifyGateAttempts: 3,
 	}
-	if cfg.Recovery != "opus[effort=max]" {
-		t.Errorf("Recovery = %q, want %q", cfg.Recovery, "opus[effort=max]")
-	}
-	if cfg.SelfFixCap != 5 {
-		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 5)
-	}
-	if cfg.VerifyGateAttempts != 4 {
-		t.Errorf("VerifyGateAttempts = %d, want %d", cfg.VerifyGateAttempts, 4)
-	}
-}
-
-// TestLoadConfig_RetiredPollWaitKeyStillLoads pins that a hub webster.yaml still carrying the retired poll_wait_s key keeps loading, since the unmarshal ignores an unknown key.
-func TestLoadConfig_RetiredPollWaitKeyStillLoads(t *testing.T) {
-	baseDir := t.TempDir()
-	seedConfig(t, baseDir, "webster", "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\npoll_wait_s: 480\n")
-
-	cfg, err := websterengine.LoadConfig(baseDir, "webster")
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v; want nil for a file still carrying poll_wait_s", err)
-	}
-	if cfg.SelfFixCap != 2 || cfg.VerifyGateAttempts != 3 {
-		t.Errorf("LoadConfig() = %+v; want the knobs the file carries", cfg)
-	}
-}
-
-func TestLoadConfig_BadRoleGrammarNamesTheKey(t *testing.T) {
-	baseDir := t.TempDir()
-	// "opus " has a trailing space — Parse rejects whitespace anywhere in
-	// a spec string.
-	badRole := `master: sonnet
-recovery: "opus "
-self_fix_cap: 2
-master_timeout_min: 480
-recovery_timeout_min: 60
-verify_gate_attempts: 3
-`
-	seedConfig(t, baseDir, "webster", badRole)
-
-	_, err := websterengine.LoadConfig(baseDir, "webster")
-	if err == nil {
-		t.Fatal("LoadConfig() = nil error; want error naming the offending key")
-	}
-	if !strings.Contains(err.Error(), "recovery") {
-		t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), "recovery")
-	}
-}
-
-func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded
-	// template.
-
-	cfg, err := websterengine.LoadConfig(tmpDir, "webster")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if cfg.Master != "sonnet[medium]" {
-		t.Errorf("Master = %q, want %q", cfg.Master, "sonnet[medium]")
-	}
-	if cfg.SelfFixCap != 2 {
-		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 2)
-	}
-	if cfg.MasterTimeoutMin != 480 {
-		t.Errorf("MasterTimeoutMin = %d, want %d", cfg.MasterTimeoutMin, 480)
-	}
-}
-
-// TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults covers the round-4 review's R4-16:
-// a hand-written webster.yaml missing numeric knobs must not leave them at Go's zero value, since RecoveryTimeoutMin at 0 would classify every recovery batch dead/timeout on the first poll.
-// configengine fills the absent keys from the template, so they load at the template defaults.
-func TestLoadConfig_MissingNumericKnobsLoadTemplateDefaults(t *testing.T) {
-	for _, tc := range []struct {
+	tests := []struct {
 		name string
-		body string
+		// body is the webster.yaml content; uninitialized skips seeding any _lyx/ at all.
+		body          string
+		uninitialized bool
+		want          websterengine.Config
+		wantErrKey    string
 	}{
 		{
-			name: "every numeric knob absent",
+			name: "overrides round-trip",
+			body: "master: opus[effort=high]\nrecovery: opus[effort=max]\nself_fix_cap: 5\nmaster_timeout_min: 120\nrecovery_timeout_min: 30\nverify_gate_attempts: 4\n",
+			want: websterengine.Config{
+				Master:             "opus[effort=high]",
+				Recovery:           "opus[effort=max]",
+				SelfFixCap:         5,
+				MasterTimeoutMin:   120,
+				RecoveryTimeoutMin: 30,
+				VerifyGateAttempts: 4,
+			},
+		},
+		{
+			name: "the retired poll_wait_s key still loads",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\npoll_wait_s: 480\n",
+			want: absentKnobs,
+		},
+		{
+			name: "every numeric knob absent loads the template defaults",
 			body: "master: sonnet\nrecovery: opus\n",
+			want: absentKnobs,
 		},
 		{
-			name: "recovery_timeout_min absent",
+			name: "recovery_timeout_min absent loads the template default",
 			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nverify_gate_attempts: 3\n",
+			want: absentKnobs,
 		},
 		{
-			name: "verify_gate_attempts absent",
+			name: "verify_gate_attempts absent loads the template default",
 			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\n",
+			want: absentKnobs,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+		{
+			name: "the template seeded verbatim loads its defaults",
+			body: websterengine.ConfigTemplate(),
+			want: templateDefaults,
+		},
+		{
+			// Do NOT create _lyx/ — LoadConfig must degrade to the embedded template.
+			name:          "an uninitialized hub falls back to the template",
+			uninitialized: true,
+			want:          templateDefaults,
+		},
+		{
+			// "opus " has a trailing space — Parse rejects whitespace anywhere in a spec string.
+			name:       "a bad role grammar names the key",
+			body:       "master: sonnet\nrecovery: \"opus \"\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\n",
+			wantErrKey: "recovery",
+		},
+		{
+			name:       "verify_gate_attempts explicitly zero names the key",
+			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 0\n",
+			wantErrKey: "verify_gate_attempts",
+		},
+		{
+			name:       "verify_gate_attempts negative names the key",
+			body:       "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: -1\n",
+			wantErrKey: "verify_gate_attempts",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			baseDir := t.TempDir()
-			seedConfig(t, baseDir, "webster", tc.body)
+			if !tt.uninitialized {
+				seedConfig(t, baseDir, "webster", tt.body)
+			}
 
 			cfg, err := websterengine.LoadConfig(baseDir, "webster")
+			if tt.wantErrKey != "" {
+				if err == nil {
+					t.Fatal("LoadConfig() = nil error; want an error naming the offending key")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrKey) {
+					t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tt.wantErrKey)
+				}
+				return
+			}
 			if err != nil {
-				t.Fatalf("LoadConfig() error = %v; want nil with the absent knobs at their template defaults", err)
+				t.Fatalf("LoadConfig() error = %v; want nil", err)
 			}
-			if cfg.SelfFixCap != 2 || cfg.MasterTimeoutMin != 480 || cfg.RecoveryTimeoutMin != 60 || cfg.VerifyGateAttempts != 3 {
-				t.Errorf("LoadConfig() = %+v; want the numeric knobs at their template defaults", cfg)
-			}
-		})
-	}
-}
-
-// TestLoadConfig_ExplicitZeroKnobNamesTheKey pins that webster's own positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
-func TestLoadConfig_ExplicitZeroKnobNamesTheKey(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		body    string
-		wantKey string
-	}{
-		{
-			name:    "verify_gate_attempts explicitly zero",
-			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 0\n",
-			wantKey: "verify_gate_attempts",
-		},
-		{
-			name:    "verify_gate_attempts negative",
-			body:    "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: -1\n",
-			wantKey: "verify_gate_attempts",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			baseDir := t.TempDir()
-			seedConfig(t, baseDir, "webster", tc.body)
-
-			_, err := websterengine.LoadConfig(baseDir, "webster")
-			if err == nil {
-				t.Fatal("LoadConfig() = nil error; want an error naming the offending key")
-			}
-			if !strings.Contains(err.Error(), tc.wantKey) {
-				t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tc.wantKey)
+			if cfg != tt.want {
+				t.Errorf("LoadConfig() = %+v; want %+v", cfg, tt.want)
 			}
 		})
 	}

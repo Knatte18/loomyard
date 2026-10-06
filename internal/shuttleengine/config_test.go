@@ -33,6 +33,12 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
+// TestLoadConfig_TemplateDefaultsResolve also pins the precondition the gate loop's per-attempt
+// done-signal narrowing rests on: the per-attempt done-signal is the next turn boundary and nothing
+// more, and that holds only because the in-process Agent tool is denied at every gated site.
+// The ClaudeDenyAgentTool failure message names what the value protects.
+//
+//testtiming:keep pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Seed the config file with the template itself: this is exactly the
@@ -67,7 +73,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		t.Errorf("Claude = %q, want empty default", cfg.Claude)
 	}
 	if !cfg.ClaudeDenyAgentTool {
-		t.Error("ClaudeDenyAgentTool = false, want true")
+		t.Error("Config.ClaudeDenyAgentTool = false against the shipped template: flipping this default " +
+			"re-opens the compound-quiescence question this task deliberately declined — a gate could now " +
+			"fire while an async in-process subagent, spawned through the Agent tool, is still working, " +
+			"undermining the narrowing that the per-attempt done-signal is the next turn boundary and " +
+			"nothing more. The narrowing decision must be re-opened deliberately, not " +
+			"this test updated.")
 	}
 	if !cfg.ClaudeDenyAskUserQuestion {
 		t.Error("ClaudeDenyAskUserQuestion = false, want true")
@@ -151,35 +162,6 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	}
 	if defaultCfg.PollIntervalMS != 500 {
 		t.Errorf("PollIntervalMS = %d, want 500 (template default)", defaultCfg.PollIntervalMS)
-	}
-}
-
-// TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition pins the precondition the gate
-// loop's per-attempt done-signal narrowing rests on: the per-attempt done-signal is the next turn
-// boundary and nothing more, and that narrowing holds only because the in-process Agent tool is
-// denied at every gated site. Two other tests in this file already assert
-// Config.ClaudeDenyAgentTool == true against the shipped template as one line item among a dozen
-// parsed defaults, and the overlap with those is deliberate rather than an oversight to dedupe: this
-// test's distinct value is its failure message, which names what the value protects, rather than
-// merely reporting the value is wrong — the same tripwire shape batch 5's own quiescence test takes
-// for the paired half of this precondition (that none of the four gated sites sets
-// Spec.ForkSubagents, which cannot be seen from this package and is pinned there instead).
-func TestLoadConfig_ClaudeDenyAgentTool_PinsGateNarrowingPrecondition(t *testing.T) {
-	tmpDir := t.TempDir()
-	seedLyxConfig(t, tmpDir, "shuttle", shuttleengine.ConfigTemplate())
-
-	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if !cfg.ClaudeDenyAgentTool {
-		t.Fatal("Config.ClaudeDenyAgentTool = false against the shipped template: flipping this default " +
-			"re-opens the compound-quiescence question this task deliberately declined — a gate could now " +
-			"fire while an async in-process subagent, spawned through the Agent tool, is still working, " +
-			"undermining the narrowing that the per-attempt done-signal is the next turn boundary and " +
-			"nothing more. The narrowing decision must be re-opened deliberately, not " +
-			"this test updated.")
 	}
 }
 

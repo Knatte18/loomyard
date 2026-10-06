@@ -45,6 +45,7 @@ func loadStateFromJSON(t *testing.T, doc string) *ReedState {
 	return got
 }
 
+//testtiming:keep pins a reed.json still carrying the retired display keys loading with them ignored and laying out exactly like one without; its covering tests run this code without asserting it
 func TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged(t *testing.T) {
 	old := loadStateFromJSON(t, retiredKeysState)
 	current := loadStateFromJSON(t, currentKeysState)

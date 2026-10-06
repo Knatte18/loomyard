@@ -46,77 +46,83 @@ func paneTitle(t *testing.T, e *Engine, paneID string) string {
 	return ""
 }
 
-func TestNaming_TaskWorktreeStrandNameTitleAndEnv(t *testing.T) {
-	e := newColdScratchEngine(t)
-	e.geom.ParentName = "tc:tslug:orch"
-
-	strand, probe := addEnvProbeStrand(t, e, "worker")
-
-	const want = "tc:tslug:worker"
-	if strand.Name != want {
-		t.Errorf("strand name = %q, want %q", strand.Name, want)
-	}
-	if got := paneTitle(t, e, strand.PaneID); got != want {
-		t.Errorf("pane title = %q, want %q", got, want)
-	}
-
-	// Older tmux (3.4 included) has no allow-set-title option; spawn only warns then, so the check applies only where the option exists.
-	out, err := e.tmux.output("show-options", "-p", "-v", "-t", strand.PaneID, "allow-set-title")
-	switch {
-	case err != nil && strings.Contains(err.Error(), "invalid option"):
-		t.Logf("tmux has no allow-set-title option, skipping its check: %v", err)
-	case err != nil:
-		t.Fatalf("show-options: %v", err)
-	case strings.TrimSpace(out) != "off":
-		t.Errorf("allow-set-title = %q, want off", strings.TrimSpace(out))
-	}
-
-	waitUntil(t, 10*time.Second, "strand command never wrote its env probe", func() bool {
-		return strings.Count(readOrEmpty(probe), "\n") >= 2
-	})
-	lines := strings.Split(strings.TrimRight(readOrEmpty(probe), "\n"), "\n")
-	if lines[0] != want {
-		t.Errorf("LYX_STRAND_NAME in pane = %q, want %q", lines[0], want)
-	}
-	if lines[1] != "tc:tslug:orch" {
-		t.Errorf("LYX_PARENT in pane = %q, want %q", lines[1], "tc:tslug:orch")
-	}
-}
-
-func TestNaming_EmptySlugGivesShortnameAndRole(t *testing.T) {
-	e := newColdScratchEngine(t)
-	e.geom.NameSlug = ""
-
-	strand, _ := addEnvProbeStrand(t, e, "worker")
-
-	const want = "tc:worker"
-	if strand.Name != want {
-		t.Errorf("strand name = %q, want %q", strand.Name, want)
-	}
-	if got := paneTitle(t, e, strand.PaneID); got != want {
-		t.Errorf("pane title = %q, want %q", got, want)
-	}
-}
-
-func TestNaming_RepairNamesRestoresAHandChangedTitle(t *testing.T) {
+// TestNaming runs the naming steps against one cold session; each step adds its own role's strand, and the geometry fields a step needs are set on the shared engine for that step alone.
+// Process-global state: withInjectedExecutablePath and the captured log, so the scenario is not parallel.
+func TestNaming(t *testing.T) {
 	logs := logcapture.CaptureVerbose(t)
 	e := newColdScratchEngine(t)
-	strand, _ := addEnvProbeStrand(t, e, "worker")
 
-	if err := e.tmux.run("select-pane", "-t", strand.PaneID, "-T", "hand-edited"); err != nil {
-		t.Fatalf("select-pane: %v", err)
-	}
-	if got := paneTitle(t, e, strand.PaneID); got != "hand-edited" {
-		t.Fatalf("pane title = %q after the hand edit, want hand-edited", got)
-	}
+	t.Run("TaskWorktreeStrandNameTitleAndEnv", func(t *testing.T) {
+		e.geom.ParentName = "tc:tslug:orch"
+		t.Cleanup(func() { e.geom.ParentName = "" })
 
-	if err := e.repairNames(nil); err != nil {
-		t.Fatalf("repairNames: %v", err)
-	}
-	if got := paneTitle(t, e, strand.PaneID); got != strand.Name {
-		t.Errorf("pane title = %q after repair, want %q", got, strand.Name)
-	}
-	if !strings.Contains(logs.String(), "reed: repaired pane title") {
-		t.Errorf("log = %q, want the title repair line", logs.String())
-	}
+		strand, probe := addEnvProbeStrand(t, e, "worker")
+
+		const want = "tc:tslug:worker"
+		if strand.Name != want {
+			t.Errorf("strand name = %q, want %q", strand.Name, want)
+		}
+		if got := paneTitle(t, e, strand.PaneID); got != want {
+			t.Errorf("pane title = %q, want %q", got, want)
+		}
+
+		// Older tmux (3.4 included) has no allow-set-title option; spawn only warns then, so the check applies only where the option exists.
+		out, err := e.tmux.output("show-options", "-p", "-v", "-t", strand.PaneID, "allow-set-title")
+		switch {
+		case err != nil && strings.Contains(err.Error(), "invalid option"):
+			t.Logf("tmux has no allow-set-title option, skipping its check: %v", err)
+		case err != nil:
+			t.Fatalf("show-options: %v", err)
+		case strings.TrimSpace(out) != "off":
+			t.Errorf("allow-set-title = %q, want off", strings.TrimSpace(out))
+		}
+
+		waitUntil(t, 10*time.Second, "strand command never wrote its env probe", func() bool {
+			return strings.Count(readOrEmpty(probe), "\n") >= 2
+		})
+		lines := strings.Split(strings.TrimRight(readOrEmpty(probe), "\n"), "\n")
+		if lines[0] != want {
+			t.Errorf("LYX_STRAND_NAME in pane = %q, want %q", lines[0], want)
+		}
+		if lines[1] != "tc:tslug:orch" {
+			t.Errorf("LYX_PARENT in pane = %q, want %q", lines[1], "tc:tslug:orch")
+		}
+	})
+
+	t.Run("EmptySlugGivesShortnameAndRole", func(t *testing.T) {
+		e.geom.NameSlug = ""
+		t.Cleanup(func() { e.geom.NameSlug = "tslug" })
+
+		strand, _ := addEnvProbeStrand(t, e, "helper")
+
+		const want = "tc:helper"
+		if strand.Name != want {
+			t.Errorf("strand name = %q, want %q", strand.Name, want)
+		}
+		if got := paneTitle(t, e, strand.PaneID); got != want {
+			t.Errorf("pane title = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("RepairNamesRestoresAHandChangedTitle", func(t *testing.T) {
+		logs.Reset()
+		strand, _ := addEnvProbeStrand(t, e, "repaired")
+
+		if err := e.tmux.run("select-pane", "-t", strand.PaneID, "-T", "hand-edited"); err != nil {
+			t.Fatalf("select-pane: %v", err)
+		}
+		if got := paneTitle(t, e, strand.PaneID); got != "hand-edited" {
+			t.Fatalf("pane title = %q after the hand edit, want hand-edited", got)
+		}
+
+		if err := e.repairNames(nil); err != nil {
+			t.Fatalf("repairNames: %v", err)
+		}
+		if got := paneTitle(t, e, strand.PaneID); got != strand.Name {
+			t.Errorf("pane title = %q after repair, want %q", got, strand.Name)
+		}
+		if !strings.Contains(logs.String(), "reed: repaired pane title") {
+			t.Errorf("log = %q, want the title repair line", logs.String())
+		}
+	})
 }

@@ -17,6 +17,8 @@ import (
 // TestProviderSeamImportRule verifies that no non-test file in internal/shuttleengine imports
 // internal/shuttleengine/claudeengine.
 // It reads actual import paths through the harness parse (avoiding false positives from string literals in doc comments), in the style of internal/gitkit/leaf_enforcement_test.go's TestLeafInvariant_AllowlistOnly.
+//
+//testtiming:keep scans this package's import paths for the banned claudeengine import, which no other test reads
 func TestProviderSeamImportRule(t *testing.T) {
 	const bannedImport = "github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 

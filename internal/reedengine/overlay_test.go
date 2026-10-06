@@ -82,6 +82,7 @@ func TestListSessions(t *testing.T) {
 // reap-seam tests fast and free of real-process dependence, per the batch's Requirements.
 const unreachablePaneLine = "%1 0 0 80 24 999999\n"
 
+//testtiming:keep pins the exact kill-session argv with the exact-match target and that it runs uncaptured; its covering tests run this code without asserting it
 func TestReapSessionKill(t *testing.T) {
 	cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 	fake := installFakeTmuxOn(t, &cmd)
@@ -108,6 +109,7 @@ func TestReapSessionKill(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins list-panes output parsed into LivePane rows and a listing failure surfacing as an error; its covering tests run this code without asserting it
 func TestReapSessionPanes(t *testing.T) {
 	t.Run("successful listing", func(t *testing.T) {
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
@@ -140,6 +142,8 @@ func TestReapSessionPanes(t *testing.T) {
 // ReapSession itself builds a fresh, unhookable TmuxCmd internally via NewTmuxCmd. This does not
 // re-test sessionReapRoots' own safeReapRoot filter, which strand.go's existing coverage already
 // owns.
+//
+//testtiming:keep pins list-panes running before kill-session and a list-panes failure still reaching kill-session, with the pane list feeding the reap roots; its covering tests run this code without asserting it
 func TestReapSession_CallOrdering(t *testing.T) {
 	tests := []struct {
 		name         string

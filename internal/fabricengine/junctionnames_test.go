@@ -16,6 +16,8 @@ import (
 
 // TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at
 // baseDir is surfaced as a non-nil error and a nil name slice, never silently defaulted to `_lyx`.
+//
+//testtiming:keep a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lyx; coverage of its blocks by other tests does not show an assertion of this
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 	baseDir := t.TempDir() // no _lyx/, so LoadConfig cannot find fabric.yaml
 
@@ -98,6 +100,8 @@ func TestFilterHubReserved(t *testing.T) {
 }
 
 // TestBoardDir verifies that BoardDir joins hub with BoardDirName.
+//
+//testtiming:keep BoardDir joining the hub with BoardDirName; coverage of its blocks by other tests does not show an assertion of this
 func TestBoardDir(t *testing.T) {
 	t.Parallel()
 
@@ -133,6 +137,8 @@ func TestBoardDir(t *testing.T) {
 // -LYXHUB suffix value, so a future change to HubSuffix fails this test, while "nested parent"
 // pins composition through HubSuffix, so the test still covers that HubPath composes from the
 // constant rather than from a hardcoded string of its own.
+//
+//testtiming:keep HubPath joining parent and name with HubSuffix, pinning the literal -LYXHUB suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestHubPath(t *testing.T) {
 	t.Parallel()
 
@@ -169,6 +175,8 @@ func TestHubPath(t *testing.T) {
 // TestIsReservedHubName verifies the reserved hub-entry name predicate slug validation (fabric's
 // Add) gates on: every geometry-owned hub-level entry name is reserved (union of HubReservedNames()
 // and the caller-supplied junctionNames), ordinary slugs and near-misses are not.
+//
+//testtiming:keep the reserved hub-entry predicate slug validation gates on, over every geometry-owned name and near-misses; coverage of its blocks by other tests does not show an assertion of this
 func TestIsReservedHubName(t *testing.T) {
 	t.Parallel()
 

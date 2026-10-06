@@ -21,7 +21,9 @@ import (
 
 // TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush covers the successful push path: a warp
 // checkout with a commit ahead of its bare origin pushes it, the bare remote advances to the local
-// HEAD, and the returned record contains a KindBranchPushed entry.
+// HEAD, the returned record contains a KindBranchPushed entry, and no gitrepo.PushLockFileName file
+// is left behind at the warp worktree root — the residue property PushWarpRebaseFreeAt exists to
+// guarantee.
 func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +51,10 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("PushWarpRebaseFreeAt() record = %+v; want a KindBranchPushed entry", entries)
+	}
+
+	if _, err := os.Stat(filepath.Join(warpPath, gitrepo.PushLockFileName)); !os.IsNotExist(err) {
+		t.Errorf("%s exists at warp worktree root after PushWarpRebaseFreeAt(); want it absent (lock-free push)", gitrepo.PushLockFileName)
 	}
 }
 
@@ -86,26 +92,5 @@ func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 				t.Errorf("warp bare main = %q; want it unadvanced at %q", got, bareHeadBefore)
 			}
 		})
-	}
-}
-
-// TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue asserts the residue property PushWarpRebaseFreeAt
-// exists to guarantee: after a successful push, no gitrepo.PushLockFileName file is left behind at
-// the warp worktree root.
-func TestPushWarpRebaseFreeAt_LeavesNoPushLockResidue(t *testing.T) {
-	t.Parallel()
-
-	fixtures := t.TempDir()
-
-	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	addWarpBareRemote(t, fixtures, warpPath)
-	gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
-
-	if _, err := fabricengine.PushWarpRebaseFreeAt(warpPath, fabricengine.SyncOptions{}); err != nil {
-		t.Fatalf("PushWarpRebaseFreeAt() error = %v; want nil", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(warpPath, gitrepo.PushLockFileName)); !os.IsNotExist(err) {
-		t.Errorf("%s exists at warp worktree root after PushWarpRebaseFreeAt(); want it absent (lock-free push)", gitrepo.PushLockFileName)
 	}
 }

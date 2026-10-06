@@ -141,8 +141,8 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			}
 			return plan.Verify, nil
 		},
-		dirty: func() ([]string, error) { return verifytree.DirtyPaths(geom.WorktreeRoot) },
-		head:  func() (string, error) { return headSHA(geom.WorktreeRoot) },
+		dirty: func() ([]string, error) { return geom.git().DirtyPaths(geom.WorktreeRoot) },
+		head:  func() (string, error) { return geom.git().HeadSHA(geom.WorktreeRoot) },
 		fixRejection: func(base string) (string, string, error) {
 			return fixCommitRejection(geom.WorktreeRoot, base, parentBranch)
 		},

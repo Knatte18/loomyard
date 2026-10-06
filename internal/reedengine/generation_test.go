@@ -10,6 +10,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins the generation answer parser: a well-formed answer, trimmed whitespace, and an error for an empty, short, long, blank-field or tmux absent-session answer; its covering tests run this code without asserting it
 func TestParsePaneGeneration(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -73,6 +74,7 @@ func TestParsePaneGeneration(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins Recorded and SameIncarnation: a renamed session is the same incarnation, a different session id, server pid or creation time is not; its covering tests run this code without asserting it
 func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
 	base := PaneGeneration{SessionName: "svc", TmuxSessionID: "$0", ServerPID: "100", Created: "5"}
 

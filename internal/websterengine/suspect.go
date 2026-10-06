@@ -39,7 +39,8 @@ type evidenceBases struct {
 // a missing commit blanks the pick rather than being skipped, since the pick among the rest would name an older commit.
 // A state recording no SHA returns the zero value without running git.
 // The error is an IsAncestor failure.
-func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
+func runEvidenceBases(geom Geometry, st *State) (evidenceBases, error) {
+	git, worktree := geom.git(), geom.WorktreeRoot
 	var starts, heads []string
 	for _, bs := range st.Batches {
 		if bs == nil {
@@ -59,13 +60,13 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	out.Starts = slices.Sorted(slices.Values(starts))
 	startsMissing, headsMissing := false, false
 	for _, sha := range starts {
-		if !shaExists(worktree, sha) {
+		if !git.SHAExists(worktree, sha) {
 			startsMissing = true
 			out.Missing = append(out.Missing, sha)
 		}
 	}
 	for _, sha := range heads {
-		if !shaExists(worktree, sha) {
+		if !git.SHAExists(worktree, sha) {
 			headsMissing = true
 			if !slices.Contains(out.Missing, sha) {
 				out.Missing = append(out.Missing, sha)
@@ -75,12 +76,12 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 	sort.Strings(out.Missing)
 	var err error
 	if !startsMissing {
-		if out.Start, err = pickByAncestry(worktree, starts, true); err != nil {
+		if out.Start, err = pickByAncestry(git, worktree, starts, true); err != nil {
 			return evidenceBases{}, err
 		}
 	}
 	if !headsMissing {
-		if out.Last, err = pickByAncestry(worktree, heads, false); err != nil {
+		if out.Last, err = pickByAncestry(git, worktree, heads, false); err != nil {
 			return evidenceBases{}, err
 		}
 	}
@@ -88,7 +89,7 @@ func runEvidenceBases(worktree string, st *State) (evidenceBases, error) {
 }
 
 // pickByAncestry returns the commit of shas that is an ancestor of every other (oldest) or that every other is an ancestor of (!oldest), or "" when none qualifies.
-func pickByAncestry(worktree string, shas []string, oldest bool) (string, error) {
+func pickByAncestry(git Git, worktree string, shas []string, oldest bool) (string, error) {
 	for _, cand := range shas {
 		qualifies := true
 		for _, other := range shas {
@@ -99,7 +100,7 @@ func pickByAncestry(worktree string, shas []string, oldest bool) (string, error)
 			if !oldest {
 				sha, ref = other, cand
 			}
-			ok, err := isAncestor(worktree, sha, ref)
+			ok, err := git.IsAncestor(worktree, sha, ref)
 			if err != nil {
 				return "", err
 			}
@@ -189,7 +190,8 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 	if err != nil {
 		return nil, nil, err
 	}
-	if base != "" && !shaExists(geom.WorktreeRoot, base) {
+	git := geom.git()
+	if base != "" && !git.SHAExists(geom.WorktreeRoot, base) {
 		base = ""
 	}
 	for _, p := range paths {
@@ -214,7 +216,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 			pathWithin(scratch, canon):
 			unverifiable = append(unverifiable, p)
 		default:
-			ignored, err := ignoredPath(geom.WorktreeRoot, canon)
+			ignored, err := git.IgnoredPath(geom.WorktreeRoot, canon)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -222,7 +224,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 				unverifiable = append(unverifiable, p)
 				continue
 			}
-			differs, err := worktreePathDiffers(geom.WorktreeRoot, base, canon)
+			differs, err := git.PathDiffers(geom.WorktreeRoot, base, canon)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -262,7 +264,7 @@ func planFileDiffers(st *State, planDir, canon string) (differs, ok bool, err er
 // trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
 // inside the worktree, outside its _lyx and not git-ignored.
 // ok is false for every other path, which has no blob to compare.
-func trackedRel(worktree, p string) (rel string, ok bool, err error) {
+func trackedRel(git Git, worktree, p string) (rel string, ok bool, err error) {
 	root, err := canonicalPath(worktree)
 	if err != nil {
 		return "", false, err
@@ -280,7 +282,7 @@ func trackedRel(worktree, p string) (rel string, ok bool, err error) {
 	if !pathWithin(root, canon) || pathWithin(lyxReal, canon) || pathWithin(lyxLink, lexical) {
 		return "", false, nil
 	}
-	ignored, err := ignoredPath(worktree, canon)
+	ignored, err := git.IgnoredPath(worktree, canon)
 	if err != nil || ignored {
 		return "", false, err
 	}
@@ -312,16 +314,16 @@ func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, er
 
 // suspectBlobs records, for each of paths, the blob of its worktree content now.
 // A path outside the tracked tree, or an absent file, gets an empty Blob.
-func suspectBlobs(worktree string, paths []string) ([]SuspectPath, error) {
+func suspectBlobs(git Git, worktree string, paths []string) ([]SuspectPath, error) {
 	var out []SuspectPath
 	for _, p := range paths {
 		sp := SuspectPath{Path: p}
-		rel, ok, err := trackedRel(worktree, p)
+		rel, ok, err := trackedRel(git, worktree, p)
 		if err != nil {
 			return nil, err
 		}
 		if ok {
-			if sp.Blob, err = worktreeBlob(worktree, filepath.Join(worktree, filepath.FromSlash(rel))); err != nil {
+			if sp.Blob, err = git.WorktreeBlob(worktree, filepath.Join(worktree, filepath.FromSlash(rel))); err != nil {
 				return nil, err
 			}
 		}
@@ -368,7 +370,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 		if isPlan[p] || blobs[p] == "" || slices.Contains(headDiff, p) {
 			continue
 		}
-		listed, err := treePathsWithBlob(geom.WorktreeRoot, head, blobs[p])
+		listed, err := geom.git().TreePathsWithBlob(geom.WorktreeRoot, head, blobs[p])
 		if err != nil {
 			return nil, err
 		}
@@ -377,7 +379,7 @@ func checkRecoveredSuspects(geom Geometry, st *State, bs *BatchState, number int
 			// commitBlob would otherwise read ":<path>", the index entry.
 			atStart := ""
 			if bs.StartSHA != "" {
-				if atStart, err = commitBlob(geom.WorktreeRoot, bs.StartSHA, lp); err != nil {
+				if atStart, err = geom.git().CommitBlob(geom.WorktreeRoot, bs.StartSHA, lp); err != nil {
 					return nil, err
 				}
 			}

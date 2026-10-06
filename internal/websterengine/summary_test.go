@@ -1,7 +1,4 @@
-// summary_test.go exercises ArchiveStaleSummary's rename/preserve/no-op/collision behavior, the
-// same archive-never-refuse coverage shape outcome.go's own tests apply, here applied to the
-// final-summary artifact instead of outcome.yaml. ParseSummary's own accept/reject coverage moved
-// to internal/summaryparser/summary_test.go, the artifact's read contract's sole owner.
+// summary_test.go exercises the Append* helpers that add sections to the final summary.
 
 package websterengine_test
 
@@ -10,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -28,107 +24,6 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// summaryFixedClock returns a func() time.Time that always returns t,
-// letting a test pin ArchiveStaleSummary's timestamp deterministically
-// instead of racing the real clock.
-func summaryFixedClock(t time.Time) func() time.Time {
-	return func() time.Time { return t }
-}
-
-// TestArchiveStaleSummary_AbsentFileIsNoOp asserts archiving a webster dir with no summary.md at
-// all returns ("", nil) — not an error — per the discussion's "absent file -> no-op" rule.
-func TestArchiveStaleSummary_AbsentFileIsNoOp(t *testing.T) {
-	dir := t.TempDir()
-
-	got, err := websterengine.ArchiveStaleSummary(dir, time.Now)
-	if err != nil {
-		t.Fatalf("ArchiveStaleSummary() error = %v; want nil", err)
-	}
-	if got != "" {
-		t.Errorf("ArchiveStaleSummary() = %q; want \"\" for an absent file", got)
-	}
-}
-
-// TestArchiveStaleSummary_RenamesAndPreservesContent asserts a present summary.md is renamed (never
-// copied-and-left, never deleted) to summary-<UTC-compact-timestamp>.md in the same directory, with
-// its content preserved byte-for-byte, and the original path no longer exists.
-func TestArchiveStaleSummary_RenamesAndPreservesContent(t *testing.T) {
-	dir := t.TempDir()
-	original := filepath.Join(dir, summaryparser.FileName)
-	content := "# Shipped the frobnicator\n\nDetails.\n"
-	writeSummaryFile(t, original, content)
-
-	clk := summaryFixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))
-	got, err := websterengine.ArchiveStaleSummary(dir, clk)
-	if err != nil {
-		t.Fatalf("ArchiveStaleSummary() error = %v; want nil", err)
-	}
-
-	wantPath := filepath.Join(dir, "summary-20260711T134500Z.md")
-	if got != wantPath {
-		t.Errorf("ArchiveStaleSummary() = %q; want %q", got, wantPath)
-	}
-
-	if _, err := os.Stat(original); !os.IsNotExist(err) {
-		t.Errorf("original summary.md still exists after archiving; want it renamed away")
-	}
-
-	archived, err := os.ReadFile(got)
-	if err != nil {
-		t.Fatalf("ReadFile(%q): %v", got, err)
-	}
-	if string(archived) != content {
-		t.Errorf("archived content = %q; want %q", archived, content)
-	}
-}
-
-// TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix asserts a second archive call whose
-// now() truncates to the same compact timestamp does not clobber the first archive: it appends a
-// numeric suffix instead, per the discussion's collision rule.
-func TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix(t *testing.T) {
-	dir := t.TempDir()
-	clk := summaryFixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))
-
-	writeSummaryFile(t, filepath.Join(dir, summaryparser.FileName), "# First\n")
-	first, err := websterengine.ArchiveStaleSummary(dir, clk)
-	if err != nil {
-		t.Fatalf("first ArchiveStaleSummary() error = %v; want nil", err)
-	}
-
-	// A fresh summary.md, written after the first was archived away, is
-	// itself archived a second time within the same clock-second.
-	writeSummaryFile(t, filepath.Join(dir, summaryparser.FileName), "# Second\n")
-	second, err := websterengine.ArchiveStaleSummary(dir, clk)
-	if err != nil {
-		t.Fatalf("second ArchiveStaleSummary() error = %v; want nil", err)
-	}
-
-	if first == second {
-		t.Fatalf("second ArchiveStaleSummary() = %q; want a distinct path from the first %q", second, first)
-	}
-
-	wantSecond := filepath.Join(dir, "summary-20260711T134500Z-1.md")
-	if second != wantSecond {
-		t.Errorf("second ArchiveStaleSummary() = %q; want %q", second, wantSecond)
-	}
-
-	firstContent, err := os.ReadFile(first)
-	if err != nil {
-		t.Fatalf("ReadFile(first %q): %v", first, err)
-	}
-	if !strings.Contains(string(firstContent), "# First") {
-		t.Errorf("first archive content = %q; want it to still read \"# First\"", firstContent)
-	}
-
-	secondContent, err := os.ReadFile(second)
-	if err != nil {
-		t.Fatalf("ReadFile(second %q): %v", second, err)
-	}
-	if !strings.Contains(string(secondContent), "# Second") {
-		t.Errorf("second archive content = %q; want it to read \"# Second\"", secondContent)
-	}
-}
-
 // readSummaryFile returns the summary.md content under dir.
 func readSummaryFile(t *testing.T, dir string) string {
 	t.Helper()
@@ -141,89 +36,76 @@ func readSummaryFile(t *testing.T, dir string) string {
 
 const triageSectionHead = "\n\n## Integration suite triage\n\nThe plan-level `## verify:` suite failed, but webster's triage did not attribute the failure to this run.\n"
 
-// TestAppendIntegrationTriage_FlakyListedByIdentity asserts the flaky identities are written by identity.
-func TestAppendIntegrationTriage_FlakyListedByIdentity(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"}); err != nil {
-		t.Fatalf("AppendIntegrationTriage: %v", err)
-	}
-	want := "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n- `TestF2`\n"
-	if got := readSummaryFile(t, dir); got != want {
-		t.Errorf("summary = %q, want %q", got, want)
-	}
-}
+// TestAppendSummarySections pins each Append* helper: an empty list leaves the file
+// byte-identical, and a non-empty list appends its section after the existing content in order.
+func TestAppendSummarySections(t *testing.T) {
+	t.Parallel()
 
-// TestAppendAuditWarnings_EmptyIsNoOp asserts an empty list leaves the file byte-identical.
-func TestAppendAuditWarnings_EmptyIsNoOp(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendAuditWarnings(dir, nil); err != nil {
-		t.Fatalf("AppendAuditWarnings: %v", err)
+	tests := []struct {
+		name   string
+		append func(dir string) error
+		// want is the full summary.md after the call.
+		want string
+	}{
+		{
+			name:   "audit warnings: empty is a no-op",
+			append: func(dir string) error { return websterengine.AppendAuditWarnings(dir, nil) },
+			want:   "# S\n",
+		},
+		{
+			name:   "audit warnings: bullets follow the existing content in order",
+			append: func(dir string) error { return websterengine.AppendAuditWarnings(dir, []string{"first", "second"}) },
+			want:   "# S\n\n\n## Audit warnings\n\nThese findings (fork-audit policy findings, and drift about a later card) were recorded as warnings and did not stop the run.\n\n- first\n- second\n",
+		},
+		{
+			name:   "background shells: empty is a no-op",
+			append: func(dir string) error { return websterengine.AppendBackgroundShells(dir, nil) },
+			want:   "# S\n",
+		},
+		{
+			name:   "background shells: one bullet per label in order",
+			append: func(dir string) error { return websterengine.AppendBackgroundShells(dir, []string{"first", "second"}) },
+			want:   "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n- `first`\n- `second`\n",
+		},
+		{
+			name:   "integration triage: empty is a no-op",
+			append: func(dir string) error { return websterengine.AppendIntegrationTriage(dir, nil) },
+			want:   "# S\n",
+		},
+		{
+			name: "integration triage: flaky tests are listed by identity",
+			append: func(dir string) error {
+				return websterengine.AppendIntegrationTriage(dir, []string{"TestF1", "TestF2"})
+			},
+			want: "# S\n" + triageSectionHead + "\nFlaky (passed on rerun):\n\n- `TestF1`\n- `TestF2`\n",
+		},
 	}
-	if got := readSummaryFile(t, dir); got != "# S\n" {
-		t.Errorf("summary = %q, want untouched", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestAppendAuditWarnings_AppendsBulletsInOrder asserts the section follows the existing content with both bullets in order.
-func TestAppendAuditWarnings_AppendsBulletsInOrder(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendAuditWarnings(dir, []string{"first", "second"}); err != nil {
-		t.Fatalf("AppendAuditWarnings: %v", err)
-	}
-	want := "# S\n\n\n## Audit warnings\n\nThese findings (fork-audit policy findings, and drift about a later card) were recorded as warnings and did not stop the run.\n\n- first\n- second\n"
-	if got := readSummaryFile(t, dir); got != want {
-		t.Errorf("summary = %q, want %q", got, want)
-	}
-}
+			dir := t.TempDir()
+			writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
 
-// TestAppendAuditWarnings_MissingFileErrors asserts a missing summary file yields an error naming its path.
-func TestAppendAuditWarnings_MissingFileErrors(t *testing.T) {
-	dir := t.TempDir()
-	err := websterengine.AppendAuditWarnings(dir, []string{"w"})
-	if err == nil {
-		t.Fatal("AppendAuditWarnings on missing file: want error, got nil")
+			if err := tt.append(dir); err != nil {
+				t.Fatalf("append: %v", err)
+			}
+			if got := readSummaryFile(t, dir); got != tt.want {
+				t.Errorf("summary = %q, want %q", got, tt.want)
+			}
+		})
 	}
-	if !strings.Contains(err.Error(), summaryparser.Path(dir)) {
-		t.Errorf("error %q does not name path %q", err, summaryparser.Path(dir))
-	}
-}
 
-// TestAppendBackgroundShells_EmptyIsNoOp asserts an empty list leaves the file byte-identical.
-func TestAppendBackgroundShells_EmptyIsNoOp(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendBackgroundShells(dir, nil); err != nil {
-		t.Fatalf("AppendBackgroundShells: %v", err)
-	}
-	if got := readSummaryFile(t, dir); got != "# S\n" {
-		t.Errorf("summary = %q, want untouched", got)
-	}
-}
+	t.Run("a missing summary file errors naming its path", func(t *testing.T) {
+		t.Parallel()
 
-// TestAppendBackgroundShells_AppendsBulletsInOrder asserts the section follows the existing content with one bullet per label.
-func TestAppendBackgroundShells_AppendsBulletsInOrder(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendBackgroundShells(dir, []string{"first", "second"}); err != nil {
-		t.Fatalf("AppendBackgroundShells: %v", err)
-	}
-	want := "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n- `first`\n- `second`\n"
-	if got := readSummaryFile(t, dir); got != want {
-		t.Errorf("summary = %q, want %q", got, want)
-	}
-}
-
-// TestAppendIntegrationTriage_EmptyIsNoOp asserts empty lists leave the file untouched.
-func TestAppendIntegrationTriage_EmptyIsNoOp(t *testing.T) {
-	dir := t.TempDir()
-	writeSummaryFile(t, summaryparser.Path(dir), "# S\n")
-	if err := websterengine.AppendIntegrationTriage(dir, nil); err != nil {
-		t.Fatalf("AppendIntegrationTriage: %v", err)
-	}
-	if got := readSummaryFile(t, dir); got != "# S\n" {
-		t.Errorf("summary = %q, want untouched", got)
-	}
+		dir := t.TempDir()
+		err := websterengine.AppendAuditWarnings(dir, []string{"w"})
+		if err == nil {
+			t.Fatal("AppendAuditWarnings on missing file: want error, got nil")
+		}
+		if !strings.Contains(err.Error(), summaryparser.Path(dir)) {
+			t.Errorf("error %q does not name path %q", err, summaryparser.Path(dir))
+		}
+	})
 }

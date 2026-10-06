@@ -57,52 +57,85 @@ func hiddenStrand(guid, parent string) Strand {
 	return Strand{GUID: guid, Name: guid, Parent: parent, Display: render.Display{Anchor: render.AnchorHidden}}
 }
 
-func TestRemoveStrand_DeletesLeafScriptKeepsSibling(t *testing.T) {
-	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", ""), hiddenStrand("b", "")}})
-	paths := seedLaunchScripts(t, e, "a", "b")
-
-	if _, err := e.RemoveStrand("a", false); err != nil {
-		t.Fatalf("RemoveStrand: %v", err)
+// TestLaunchScriptCleanup pins that every path forgetting a strand deletes exactly that strand's launch script (a recursive remove, the subtree's),
+// leaves every surviving strand's script, and succeeds without a launch-script warning when the strand had no script.
+//
+//testtiming:keep pins every path forgetting a strand deleting exactly that strand's launch script, a recursive remove deleting the subtree's, a replace keeping the survivor's, and a remove without a script succeeding with no launch-script warning; its covering tests run this code without asserting it
+func TestLaunchScriptCleanup(t *testing.T) {
+	tests := []struct {
+		name        string
+		strands     []Strand
+		seeded      []string
+		forget      func(e *Engine) error
+		wantDeleted []string
+		wantKept    []string
+	}{
+		{
+			name:    "RemoveDeletesLeafScriptKeepsSibling",
+			strands: []Strand{hiddenStrand("a", ""), hiddenStrand("b", "")},
+			seeded:  []string{"a", "b"},
+			forget: func(e *Engine) error {
+				_, err := e.RemoveStrand("a", false)
+				return err
+			},
+			wantDeleted: []string{"a"},
+			wantKept:    []string{"b"},
+		},
+		{
+			name: "RecursiveRemoveDeletesSubtreeScripts",
+			strands: []Strand{
+				hiddenStrand("parent", ""), hiddenStrand("child", "parent"), hiddenStrand("grandchild", "child"), hiddenStrand("other", ""),
+			},
+			seeded: []string{"parent", "child", "grandchild", "other"},
+			forget: func(e *Engine) error {
+				_, err := e.RemoveStrand("parent", true)
+				return err
+			},
+			wantDeleted: []string{"parent", "child", "grandchild"},
+			wantKept:    []string{"other"},
+		},
+		{
+			name:    "ReplaceDeletesReplacedScriptKeepsSurvivor",
+			strands: []Strand{hiddenStrand("old", ""), hiddenStrand("keep", "")},
+			seeded:  []string{"old", "keep"},
+			forget: func(e *Engine) error {
+				_, err := e.ReplaceStrand("old", AddSpec{Role: "worker", NameOverride: "new", Display: render.Display{Anchor: render.AnchorHidden}})
+				return err
+			},
+			wantDeleted: []string{"old"},
+			wantKept:    []string{"keep"},
+		},
+		{
+			name:    "RemoveWithoutAScriptSucceedsSilently",
+			strands: []Strand{hiddenStrand("a", "")},
+			forget: func(e *Engine) error {
+				_, err := e.RemoveStrand("a", false)
+				return err
+			},
+		},
 	}
-	assertScriptPresence(t, paths[0], false)
-	assertScriptPresence(t, paths[1], true)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newCleanupEngine(t, &ReedState{Strands: tt.strands})
+			paths := map[string]string{}
+			for i, path := range seedLaunchScripts(t, e, tt.seeded...) {
+				paths[tt.seeded[i]] = path
+			}
+			buf := logcapture.CaptureVerbose(t)
 
-func TestRemoveStrand_RecursiveDeletesSubtreeScripts(t *testing.T) {
-	e := newCleanupEngine(t, &ReedState{Strands: []Strand{
-		hiddenStrand("parent", ""), hiddenStrand("child", "parent"), hiddenStrand("grandchild", "child"), hiddenStrand("other", ""),
-	}})
-	paths := seedLaunchScripts(t, e, "parent", "child", "grandchild", "other")
-
-	if _, err := e.RemoveStrand("parent", true); err != nil {
-		t.Fatalf("RemoveStrand: %v", err)
-	}
-	for _, p := range paths[:3] {
-		assertScriptPresence(t, p, false)
-	}
-	assertScriptPresence(t, paths[3], true)
-}
-
-func TestReplaceStrand_DeletesReplacedScriptKeepsSurvivor(t *testing.T) {
-	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("old", ""), hiddenStrand("keep", "")}})
-	paths := seedLaunchScripts(t, e, "old", "keep")
-
-	if _, err := e.ReplaceStrand("old", AddSpec{Role: "worker", NameOverride: "new", Display: render.Display{Anchor: render.AnchorHidden}}); err != nil {
-		t.Fatalf("ReplaceStrand: %v", err)
-	}
-	assertScriptPresence(t, paths[0], false)
-	assertScriptPresence(t, paths[1], true)
-}
-
-func TestRemoveStrand_NoScriptSucceedsSilently(t *testing.T) {
-	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", "")}})
-	buf := logcapture.CaptureVerbose(t)
-
-	if _, err := e.RemoveStrand("a", false); err != nil {
-		t.Fatalf("RemoveStrand: %v", err)
-	}
-	if strings.Contains(buf.String(), "launch script") {
-		t.Fatalf("expected no launch-script warning, got %q", buf.String())
+			if err := tt.forget(e); err != nil {
+				t.Fatalf("forgetting the strand: %v", err)
+			}
+			for _, guid := range tt.wantDeleted {
+				assertScriptPresence(t, paths[guid], false)
+			}
+			for _, guid := range tt.wantKept {
+				assertScriptPresence(t, paths[guid], true)
+			}
+			if strings.Contains(buf.String(), "launch script") {
+				t.Fatalf("expected no launch-script warning, got %q", buf.String())
+			}
+		})
 	}
 }
 

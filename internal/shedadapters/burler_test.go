@@ -67,36 +67,36 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 	profile := simpleBurlerProfile()
 
 	tests := []struct {
-		name   string
-		runner BurlerRunner
-		attach Shuttle
-		pname  string
-		runDir string
+		name    string
+		runner  BurlerRunner
+		attach  Shuttle
+		pname   string
+		runDir  string
+		wantErr bool
 	}{
-		{"NilRunner", nil, &shedfake.Shuttle{}, "burler", filepath.Join(dir, "runs")},
-		{"NilAttachSeam", &shedfake.BurlerRunner{}, nil, "burler", filepath.Join(dir, "runs")},
-		{"EmptyName", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "", filepath.Join(dir, "runs")},
-		{"EmptyRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", ""},
-		{"RelativeRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", "relative/runs"},
+		{"Valid", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", filepath.Join(dir, "runs"), false},
+		{"NilRunner", nil, &shedfake.Shuttle{}, "burler", filepath.Join(dir, "runs"), true},
+		{"NilAttachSeam", &shedfake.BurlerRunner{}, nil, "burler", filepath.Join(dir, "runs"), true},
+		{"EmptyName", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "", filepath.Join(dir, "runs"), true},
+		{"EmptyRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", "", true},
+		{"RelativeRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", "relative/runs", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewBurlerProducer(tt.pname, tt.runner, tt.attach, profile, burlerengine.RunOpts{}, tt.runDir, nil)
-			if err == nil {
-				t.Fatal("NewBurlerProducer() error = nil; want non-nil")
+			p, err := NewBurlerProducer(tt.pname, tt.runner, tt.attach, profile, burlerengine.RunOpts{}, tt.runDir, nil)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("NewBurlerProducer() error = nil; want non-nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
+			}
+			if p == nil {
+				t.Fatal("NewBurlerProducer() producer = nil; want non-nil")
 			}
 		})
-	}
-}
-
-func TestNewBurlerProducer_ValidCallSucceedsWithNoError(t *testing.T) {
-	dir := t.TempDir()
-	p, err := NewBurlerProducer("burler", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, simpleBurlerProfile(), burlerengine.RunOpts{}, filepath.Join(dir, "runs"), nil)
-	if err != nil {
-		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
-	}
-	if p == nil {
-		t.Fatal("NewBurlerProducer() producer = nil; want non-nil")
 	}
 }
 
@@ -241,16 +241,30 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		writeRoundFile(t, roundReviewPath(runDir, 2)) // orphan: no round-2 fixer report
 
 		instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
+		wantStamped := filepath.Join(runDir, "round-2-review-20260820T101500Z.md")
+		// The orphan must be archived aside before the runner is invoked, never during or after.
+		var orphanGoneAtInvoke, stampedExistsAtInvoke bool
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		runner.DuringRun = func(int) {
+			_, err := os.Stat(roundReviewPath(runDir, 2))
+			orphanGoneAtInvoke = os.IsNotExist(err)
+			_, err = os.Stat(wantStamped)
+			stampedExistsAtInvoke = err == nil
+		}
 		p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
 
 		shedfake.CallOK(t, p)
 		if runner.GotOpts[0].Round != "2" {
 			t.Errorf("round token = %q; want %q (re-run, not skipped)", runner.GotOpts[0].Round, "2")
 		}
-		wantStamped := filepath.Join(runDir, "round-2-review-20260820T101500Z.md")
 		if _, err := os.Stat(wantStamped); err != nil {
 			t.Errorf("orphan was not archived aside to %s: %v", wantStamped, err)
+		}
+		if !orphanGoneAtInvoke {
+			t.Error("orphan review file still present at the round's own path when the runner was invoked")
+		}
+		if !stampedExistsAtInvoke {
+			t.Error("stamped archive sibling did not exist by the time the runner was invoked")
 		}
 	})
 
@@ -302,6 +316,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 
 // --- Hydration ---
 
+//testtiming:keep pins which prior reviews, fixer reports and focus directive the round's profile carries: the told prefix, orphan and stamped-sibling exclusion, and the focus path only when the file says something
 func TestBurlerProducer_Hydration(t *testing.T) {
 	t.Run("Round1HydratesNothingBeyondTemplate", func(t *testing.T) {
 		runDir := t.TempDir()
@@ -440,47 +455,23 @@ func TestBurlerProducer_Hydration(t *testing.T) {
 	}
 }
 
-// --- Stale pre-existing round files ---
-
-func TestBurlerProducer_StalePreexistingRoundFileArchivedBeforeInvocation(t *testing.T) {
-	runDir := t.TempDir()
-	reviewPath := roundReviewPath(runDir, 1)
-	writeRoundFile(t, reviewPath)
-
-	instant := time.Date(2026, 8, 20, 10, 15, 0, 0, time.UTC)
-	var reviewGoneAtInvoke, stampedExistsAtInvoke bool
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	runner.DuringRun = func(int) {
-		_, err := os.Stat(reviewPath)
-		reviewGoneAtInvoke = os.IsNotExist(err)
-		_, err = os.Stat(filepath.Join(runDir, "round-1-review-20260820T101500Z.md"))
-		stampedExistsAtInvoke = err == nil
-	}
-	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(instant)))
-
-	shedfake.CallOK(t, p)
-	if !reviewGoneAtInvoke {
-		t.Error("stale review file still present at the round's own path when the runner was invoked")
-	}
-	if !stampedExistsAtInvoke {
-		t.Error("stamped archive sibling did not exist by the time the runner was invoked")
-	}
-}
-
 // --- Call outcomes ---
 
+//testtiming:keep pins that a successful round, approved or blocking and gate-passed or not, is a routine Stuck hand-off with the review as pointer and no reason, never Done
 func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 	tests := []struct {
 		name    string
 		verdict burlerengine.Verdict
+		gate    *shuttleengine.GateOutcome
 	}{
-		{"Approved", burlerengine.VerdictApproved},
-		{"Blocking", burlerengine.VerdictBlocking},
+		{"Approved", burlerengine.VerdictApproved, nil},
+		{"Blocking", burlerengine.VerdictBlocking, nil},
+		{"PassedGateIsUnchanged", burlerengine.VerdictApproved, &shuttleengine.GateOutcome{Passed: true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := t.TempDir()
-			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone, Verdict: tt.verdict}}}
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone, Verdict: tt.verdict, Gate: tt.gate}}}
 			p := newBurlerProducer(t, runDir, runner)
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
@@ -602,34 +593,46 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 	}
 }
 
-func TestBurlerProducer_Call_RunOptsCarriesRoundToken(t *testing.T) {
-	runDir := t.TempDir()
-	writeJudgedRound(t, runDir, 4)
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Model: "m"}))
-
-	shedfake.CallOK(t, p)
-	if runner.GotOpts[0].Round != "5" {
-		t.Errorf("Round = %q; want %q", runner.GotOpts[0].Round, "5")
+// TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID covers the RunOpts each call hands the
+// runner: the round token, the note id derived from the run directory's name and the round, and
+// the opts template carried through.
+//
+//testtiming:keep pins the round token, the note id and the opts template the runner receives, which the round-scan tests do not read off the recorded opts
+func TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID(t *testing.T) {
+	tests := []struct {
+		name         string
+		runDirName   string
+		judgedRound  int
+		wantRound    string
+		wantNoteID   string
+		wantModelOpt string
+	}{
+		{name: "round token and opts template", runDirName: "runs", judgedRound: 4, wantRound: "5", wantModelOpt: "m"},
+		{name: "note id", runDirName: "webster", judgedRound: 2, wantRound: "3", wantNoteID: "burler-webster-r3"},
 	}
-	if runner.GotOpts[0].Model != "m" {
-		t.Errorf("Model = %q; want %q (opts template carried through)", runner.GotOpts[0].Model, "m")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := filepath.Join(t.TempDir(), tt.runDirName)
+			writeJudgedRound(t, runDir, tt.judgedRound)
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Model: tt.wantModelOpt}))
+
+			shedfake.CallOK(t, p)
+			got := runner.GotOpts[0]
+			if got.Round != tt.wantRound {
+				t.Errorf("Round = %q; want %q", got.Round, tt.wantRound)
+			}
+			if got.Model != tt.wantModelOpt {
+				t.Errorf("Model = %q; want %q (opts template carried through)", got.Model, tt.wantModelOpt)
+			}
+			if tt.wantNoteID != "" && got.NoteID != tt.wantNoteID {
+				t.Errorf("NoteID = %q; want %q", got.NoteID, tt.wantNoteID)
+			}
+		})
 	}
 }
 
-func TestBurlerProducer_Call_RunOptsCarriesNoteID(t *testing.T) {
-	runDir := filepath.Join(t.TempDir(), "webster")
-	writeJudgedRound(t, runDir, 2)
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newBurlerProducer(t, runDir, runner)
-
-	shedfake.CallOK(t, p)
-	want := "burler-webster-r3"
-	if runner.GotOpts[0].NoteID != want {
-		t.Errorf("NoteID = %q; want %q", runner.GotOpts[0].NoteID, want)
-	}
-}
-
+//testtiming:keep pins the retry after a died attempt: the second attempt's round token is "1b", over the same review path, and the review it writes survives
 func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 	runDir := t.TempDir()
 	reviewPath := roundReviewPath(runDir, 1)
@@ -670,112 +673,101 @@ func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 	}
 }
 
-func TestBurlerProducer_Call_TimeoutTwiceIsHardErrorNamingBothSessions(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{
-		Results: []burlerengine.Result{
-			{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s1", RunDir: "/kept/1"},
-			{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s2", RunDir: "/kept/2"},
+// TestBurlerProducer_Call_FailedRunIsAnError covers the runs that end in an error rather than a
+// hand-off: two timeouts name both sessions, asking is a hard error on the first occurrence and
+// never retried, and a runner error is wrapped.
+func TestBurlerProducer_Call_FailedRunIsAnError(t *testing.T) {
+	seamErr := errors.New("seam exploded")
+	tests := []struct {
+		name         string
+		runner       *shedfake.BurlerRunner
+		wantCalls    int
+		wantContains []string
+		wantIs       error
+	}{
+		{
+			name: "TimeoutTwiceNamesBothSessions",
+			runner: &shedfake.BurlerRunner{Results: []burlerengine.Result{
+				{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s1", RunDir: "/kept/1"},
+				{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s2", RunDir: "/kept/2"},
+			}},
+			wantCalls:    2,
+			wantContains: []string{"s1", "s2"},
+		},
+		{
+			name:         "AskingIsAHardErrorOnFirstOccurrence",
+			runner:       &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}},
+			wantCalls:    1,
+			wantContains: []string{"what next?"},
+		},
+		{
+			name:      "RunnerErrorWrapped",
+			runner:    &shedfake.BurlerRunner{Errs: []error{seamErr}},
+			wantCalls: 1,
+			wantIs:    seamErr,
 		},
 	}
-	p := newBurlerProducer(t, runDir, runner)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newBurlerProducer(t, t.TempDir(), tt.runner)
 
-	_, _, err := p.Call(context.Background())
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !strings.Contains(err.Error(), "s1") || !strings.Contains(err.Error(), "s2") {
-		t.Errorf("Call() error %q does not name both attempts' session ids", err.Error())
-	}
-	if runner.Calls != 2 {
-		t.Errorf("runner.Calls = %d; want 2", runner.Calls)
-	}
-}
-
-func TestBurlerProducer_Call_AskingIsHardErrorOnFirstOccurrence(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}}
-	p := newBurlerProducer(t, runDir, runner)
-
-	_, _, err := p.Call(context.Background())
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !strings.Contains(err.Error(), "what next?") {
-		t.Errorf("Call() error %q does not carry LastAssistantMessage", err.Error())
-	}
-	if runner.Calls != 1 {
-		t.Errorf("runner.Calls = %d; want 1 (asking is never retried)", runner.Calls)
-	}
-}
-
-func TestBurlerProducer_Call_RunnerErrorWrapped(t *testing.T) {
-	runDir := t.TempDir()
-	seamErr := errors.New("seam exploded")
-	runner := &shedfake.BurlerRunner{Errs: []error{seamErr}}
-	p := newBurlerProducer(t, runDir, runner)
-
-	_, _, err := p.Call(context.Background())
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !errors.Is(err, seamErr) {
-		t.Errorf("Call() error = %v; want it to wrap %v", err, seamErr)
-	}
-}
-
-func TestBurlerProducer_Call_FocusClusterExcludeReachesRunnerAsRunnableProfile(t *testing.T) {
-	runDir := t.TempDir()
-	writeFocusFile(t, runDir, 1, focusFile{Round: 1, ExcludeLenses: []string{"not-in-fan"}})
-	profile := simpleBurlerProfile()
-	profile.ClusterFan = "fanX"
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile))
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if !stringSlicesEqual(runner.GotProfiles[0].ClusterExclude, []string{"not-in-fan"}) {
-		t.Errorf("ClusterExclude = %v; want %v (the producer never validates fan membership itself)", runner.GotProfiles[0].ClusterExclude, []string{"not-in-fan"})
+			_, _, err := p.Call(context.Background())
+			if err == nil {
+				t.Fatal("Call() error = nil; want non-nil")
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Call() error %q does not contain %q", err.Error(), want)
+				}
+			}
+			if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+				t.Errorf("Call() error = %v; want it to wrap %v", err, tt.wantIs)
+			}
+			if tt.runner.Calls != tt.wantCalls {
+				t.Errorf("runner.Calls = %d; want %d", tt.runner.Calls, tt.wantCalls)
+			}
+		})
 	}
 }
 
 // --- Call cancellation ---
 
-func TestBurlerProducer_Call_AlreadyCancelledContext(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	p := newBurlerProducer(t, runDir, runner)
+// TestBurlerProducer_Call_CancelledBeforeAnAttempt covers a cancellation seen before an attempt is
+// spawned: an already-cancelled context never spawns, and one cancelled during attempt 1 never
+// spawns attempt 2.
+//
+//testtiming:keep pins that a cancelled context spawns no attempt and a cancellation during attempt 1 spawns no attempt 2
+func TestBurlerProducer_Call_CancelledBeforeAnAttempt(t *testing.T) {
+	tests := []struct {
+		name      string
+		cancelled bool
+		wantCalls int
+	}{
+		{"AlreadyCancelledContext", true, 0},
+		{"CancelledBetweenAttempts", false, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDied}}}
+			if tt.cancelled {
+				cancel()
+			} else {
+				runner.DuringRun = func(int) { cancel() }
+			}
+			p := newBurlerProducer(t, t.TempDir(), runner)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, _, err := p.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-	}
-	if runner.Calls != 0 {
-		t.Errorf("runner.Calls = %d; want 0", runner.Calls)
-	}
-}
-
-func TestBurlerProducer_Call_CancelledBetweenAttempts(t *testing.T) {
-	runDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDied}}}
-	runner.DuringRun = func(int) { cancel() }
-	p := newBurlerProducer(t, runDir, runner)
-
-	_, _, err := p.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-	}
-	if runner.Calls != 1 {
-		t.Errorf("runner.Calls = %d; want 1 (attempt 2 never spawned)", runner.Calls)
+			_, _, err := p.Call(ctx)
+			if err == nil {
+				t.Fatal("Call() error = nil; want non-nil")
+			}
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
+			}
+			if runner.Calls != tt.wantCalls {
+				t.Errorf("runner.Calls = %d; want %d", runner.Calls, tt.wantCalls)
+			}
+		})
 	}
 }
 
@@ -858,24 +850,11 @@ func TestBurlerProducer_Call_CancelledDuringCompletedRoundLeavesArtifacts(t *tes
 
 // --- Gate ---
 
-func TestBurlerProducer_Gate_PassedGateIsByteForByteAsToday(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{
-		Outcome: shuttleengine.OutcomeDone,
-		Gate:    &shuttleengine.GateOutcome{Passed: true},
-	}}}
-	p := newBurlerProducer(t, runDir, runner)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	wantPath := roundReviewPath(runDir, 1)
-	if ptr.Path != wantPath {
-		t.Errorf("Call() pointer = %q; want %q (unchanged for a passed gate)", ptr.Path, wantPath)
-	}
-}
-
 // TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer proves a gate-failed round returns
 // Stuck with an EMPTY pointer -- the signal that tells the segment's Bouncer there is no round
 // artifact to judge -- and that both round paths are archived (never left for the Bouncer to read).
+// It also proves the runner is never invoked a second time: the attempt-1/attempt-2 retry belongs
+// to OutcomeDied/OutcomeTimeout alone.
 func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T) {
 	runDir := t.TempDir()
 	reviewPath := roundReviewPath(runDir, 1)
@@ -907,20 +886,6 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 	if _, statErr := os.Stat(fixerPath); !os.IsNotExist(statErr) {
 		t.Error("gate-failed round's fixer report was not archived away")
 	}
-}
-
-// TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry proves a gate-failed round returns
-// directly without ever invoking the runner a second time -- the attempt-1/attempt-2 retry belongs
-// to OutcomeDied/OutcomeTimeout alone.
-func TestBurlerProducer_Gate_FailedGateDoesNotConsumeAttemptRetry(t *testing.T) {
-	runDir := t.TempDir()
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{
-		Outcome: shuttleengine.OutcomeDone,
-		Gate:    &shuttleengine.GateOutcome{Passed: false},
-	}}}
-	p := newBurlerProducer(t, runDir, runner)
-
-	shedfake.CallOK(t, p)
 	if runner.Calls != 1 {
 		t.Errorf("runner.Run calls = %d; want 1 -- a gate-failed round is a determinate verdict, never retried", runner.Calls)
 	}

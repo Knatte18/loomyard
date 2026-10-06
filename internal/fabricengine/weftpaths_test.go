@@ -16,6 +16,8 @@ import (
 
 // TestWeftPathAccessors covers WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor,
 // verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
+//
+//testtiming:keep WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
 	tests := []struct {
 		name    string

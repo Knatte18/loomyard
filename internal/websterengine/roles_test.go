@@ -13,115 +13,85 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// baseValidConfig returns a Config whose two roles both resolve cleanly
-// against reg, for tests that need to isolate a single role's failure.
-func baseValidConfig() websterengine.Config {
-	return websterengine.Config{
-		Master:   "sonnet",
-		Recovery: "opus[effort=high]",
-	}
-}
+func TestResolveRoles(t *testing.T) {
+	t.Parallel()
 
-func TestResolveRoles_BothRolesResolve(t *testing.T) {
-	reg := modelspec.Registry{
+	sonnetOpusRegistry := modelspec.Registry{
 		"sonnet": {Engine: "claude", Model: "sonnet"},
 		"opus":   {Engine: "claude", Model: "opus", Defaults: map[string]string{"effort": "high"}},
 	}
+	tests := []struct {
+		name string
+		cfg  websterengine.Config
+		reg  modelspec.Registry
+		// wantErrParts, when non-empty, are the substrings the refusal must carry.
+		wantErrParts []string
+		wantModel    string
+		wantEffort   string
+	}{
+		{
+			name:       "both roles resolve and no oversized role exists",
+			cfg:        websterengine.Config{Master: "sonnet", Recovery: "opus[effort=high]"},
+			reg:        sonnetOpusRegistry,
+			wantModel:  "opus",
+			wantEffort: "high",
+		},
+		{
+			name:         "an unknown alias fails naming the role and the alias",
+			cfg:          websterengine.Config{Master: "typo-alias", Recovery: "opus[effort=high]"},
+			reg:          sonnetOpusRegistry,
+			wantErrParts: []string{string(websterengine.RoleMaster), "typo-alias"},
+		},
+		{
+			// Every role is escape form here, since a nil registry never resolves an alias — this
+			// isolates the one behavior under test: escape form never consults the registry at all.
+			name:       "escape form needs no registry entry",
+			cfg:        websterengine.Config{Master: "claude:sonnet", Recovery: "claude:claude-sonnet-4-5[effort=high]"},
+			reg:        nil,
+			wantModel:  "claude-sonnet-4-5",
+			wantEffort: "high",
+		},
+		{
+			// The bracket param (max) overrides the registry default (high) per the documented
+			// "bracket param > registry default" precedence.
+			name:       "a bracket param overrides the registry default",
+			cfg:        websterengine.Config{Master: "sonnet", Recovery: "opus[effort=max]"},
+			reg:        sonnetOpusRegistry,
+			wantModel:  "opus",
+			wantEffort: "max",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	resolved, err := websterengine.ResolveRoles(baseValidConfig(), reg)
-	if err != nil {
-		t.Fatalf("ResolveRoles() = _, %v; want nil error", err)
-	}
-
-	for _, role := range []websterengine.Role{
-		websterengine.RoleMaster,
-		websterengine.RoleRecovery,
-	} {
-		if _, ok := resolved[role]; !ok {
-			t.Errorf("ResolveRoles() result missing role %q", role)
-		}
-	}
-
-	if got := resolved[websterengine.RoleRecovery]; got.Engine != "claude" || got.Model != "opus" || got.Params["effort"] != "high" {
-		t.Errorf("resolved[RoleRecovery] = %+v; want engine claude, model opus, effort high", got)
-	}
-}
-
-func TestResolveRoles_NoOversizedRole(t *testing.T) {
-	reg := modelspec.Registry{
-		"sonnet": {Engine: "claude", Model: "sonnet"},
-		"opus":   {Engine: "claude", Model: "opus"},
-	}
-
-	resolved, err := websterengine.ResolveRoles(baseValidConfig(), reg)
-	if err != nil {
-		t.Fatalf("ResolveRoles() = _, %v; want nil error", err)
-	}
-	if len(resolved) != 2 {
-		t.Errorf("len(ResolveRoles()) = %d; want exactly 2 roles (master, recovery) — no oversized role", len(resolved))
-	}
-}
-
-func TestResolveRoles_UnknownAliasNamesTheRole(t *testing.T) {
-	cfg := baseValidConfig()
-	cfg.Master = "typo-alias"
-	reg := modelspec.Registry{
-		"sonnet": {Engine: "claude", Model: "sonnet"},
-		"opus":   {Engine: "claude", Model: "opus"},
-	}
-
-	_, err := websterengine.ResolveRoles(cfg, reg)
-	if err == nil {
-		t.Fatal("ResolveRoles() = nil error; want error naming the offending role")
-	}
-	if !strings.Contains(err.Error(), string(websterengine.RoleMaster)) {
-		t.Errorf("ResolveRoles() error = %q; want it to name role %q", err.Error(), websterengine.RoleMaster)
-	}
-	if !strings.Contains(err.Error(), "typo-alias") {
-		t.Errorf("ResolveRoles() error = %q; want it to name the unknown alias %q", err.Error(), "typo-alias")
-	}
-}
-
-func TestResolveRoles_EscapeFormNeedsNoRegistryEntry(t *testing.T) {
-	// Every role is escape form here, since a nil registry never resolves an
-	// alias — this isolates the one behavior under test: escape form never
-	// consults the registry at all.
-	cfg := websterengine.Config{
-		Master:   "claude:sonnet",
-		Recovery: "claude:claude-sonnet-4-5[effort=high]",
-	}
-	var reg modelspec.Registry
-
-	resolved, err := websterengine.ResolveRoles(cfg, reg)
-	if err != nil {
-		t.Fatalf("ResolveRoles() = _, %v; want nil error (escape form needs no registry entry)", err)
-	}
-
-	got := resolved[websterengine.RoleRecovery]
-	if got.Engine != "claude" || got.Model != "claude-sonnet-4-5" {
-		t.Errorf("resolved[RoleRecovery] = %+v; want engine claude, model claude-sonnet-4-5", got)
-	}
-	if got.Params["effort"] != "high" {
-		t.Errorf("resolved[RoleRecovery].Params[\"effort\"] = %q; want %q", got.Params["effort"], "high")
-	}
-}
-
-func TestResolveRoles_BracketParamsSurviveIntoResolved(t *testing.T) {
-	cfg := baseValidConfig()
-	cfg.Recovery = "opus[effort=max]"
-	reg := modelspec.Registry{
-		"sonnet": {Engine: "claude", Model: "sonnet"},
-		"opus":   {Engine: "claude", Model: "opus", Defaults: map[string]string{"effort": "high"}},
-	}
-
-	resolved, err := websterengine.ResolveRoles(cfg, reg)
-	if err != nil {
-		t.Fatalf("ResolveRoles() = _, %v; want nil error", err)
-	}
-
-	// bracket param (max) overrides the registry default (high) per the
-	// documented "bracket param > registry default" precedence.
-	if got := resolved[websterengine.RoleRecovery].Params["effort"]; got != "max" {
-		t.Errorf("resolved[RoleRecovery].Params[\"effort\"] = %q; want %q (bracket overrides registry default)", got, "max")
+			resolved, err := websterengine.ResolveRoles(tt.cfg, tt.reg)
+			if len(tt.wantErrParts) > 0 {
+				if err == nil {
+					t.Fatal("ResolveRoles() = nil error; want error naming the offending role")
+				}
+				for _, part := range tt.wantErrParts {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("ResolveRoles() error = %q; want it to name %q", err.Error(), part)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveRoles() = _, %v; want nil error", err)
+			}
+			for _, role := range []websterengine.Role{websterengine.RoleMaster, websterengine.RoleRecovery} {
+				if _, ok := resolved[role]; !ok {
+					t.Errorf("ResolveRoles() result missing role %q", role)
+				}
+			}
+			if len(resolved) != 2 {
+				t.Errorf("len(ResolveRoles()) = %d; want exactly 2 roles (master, recovery) — no oversized role", len(resolved))
+			}
+			got := resolved[websterengine.RoleRecovery]
+			if got.Engine != "claude" || got.Model != tt.wantModel || got.Params["effort"] != tt.wantEffort {
+				t.Errorf("resolved[RoleRecovery] = %+v; want engine claude, model %q, effort %q", got, tt.wantModel, tt.wantEffort)
+			}
+		})
 	}
 }

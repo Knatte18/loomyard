@@ -16,6 +16,8 @@ import (
 // TestNormalizeWarpURL covers normalizeWarpURL's trailing-slash strip, trailing-.git strip, and
 // scheme/host lowercasing, in that order, plus the local-path and scp-form cases that must keep
 // their case byte-for-byte.
+//
+//testtiming:keep normalizeWarpURL's trailing-slash and .git stripping and host lowercasing while local paths and scp forms keep their case; coverage of its blocks by other tests does not show an assertion of this
 func TestNormalizeWarpURL(t *testing.T) {
 	tests := []struct {
 		name string
@@ -74,6 +76,8 @@ func TestWarpURLTransportIdentity(t *testing.T) {
 // TestResolveEffectiveWarpURL covers every row of the conflict rule resolveEffectiveWarpURL encodes:
 // absent/supplied, present/absent, matching, normalized-matching, and the two conflicting rows
 // (transport swap and differing repo).
+//
+//testtiming:keep every row of the warp-binding conflict rule; coverage of its blocks by other tests does not show an assertion of this
 func TestResolveEffectiveWarpURL(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -65,7 +65,18 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 	}
 }
 
+// TestBouncer_Clear_ApprovedRunDirClearsAndReseeds also pins the clear's own log line and the
+// numeric suffix a second clear in the same clock second takes.
+// A Bouncer value constructed fresh over a run directory a previous process already settled clears
+// on its very first Call: the trigger reads only what a previous settle wrote to disk.
+// The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1,
+// costing a fresh judge spawn plus a fresh round, and it can spend the leftover budget that halts
+// the run because the round producer's episode never resets, so an operator whose run suddenly
+// cost a second generation needs the log line to read.
+//
+//testtiming:keep pins that the whole approved generation moves to one archived sibling, the recreated run dir holds only the seed's focus file, the log line and the collision suffix
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
+	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
 	layoutApprovedGeneration(t, cfg, 1)
@@ -74,8 +85,16 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 	if ptr != (shedengine.OutputPointer{}) {
 		t.Errorf("Call() pointer = %+v; want empty", ptr)
 	}
+	if !shuttle.AttachCalled {
+		t.Error("Attach was not called; want the entry probe to run even when nothing is live")
+	}
 	if !shuttle.Called {
 		t.Error("Call() did not invoke the shuttle seam; want the seed spawn the clear falls through to")
+	}
+	for _, want := range []string{"clearing an already-approved run directory", cfg.Name, "approvedRound=1"} {
+		if !strings.Contains(logBuf.String(), want) {
+			t.Errorf("clear log = %q; want it to contain %q", logBuf.String(), want)
+		}
 	}
 
 	archived := archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")
@@ -112,14 +131,6 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 		}
 		t.Errorf("recreated run dir entries = %v; want exactly [round-1-focus.md] (only what seedCall writes)", names)
 	}
-}
-
-func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
-	layoutApprovedGeneration(t, cfg, 1)
-
-	shedfake.CallOK(t, b)
 
 	// Re-approve a second generation in the freshly recreated run dir, under the same injected
 	// clock second, so the second clear's archive target collides with the first.
@@ -137,6 +148,7 @@ func TestBouncer_Clear_CollisionTakesNumericSuffix(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that none of the non-triggering states archives the run dir, which the outcome assertions of the tests that reach them do not check
 func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 	t.Run("InSegmentBlockingReplay", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -207,22 +219,22 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 		}
 		assertNoArchivedRunDirSibling(t, cfg.RunDir)
 	})
-}
 
-func TestBouncer_Clear_HarvestApprovedDoesNotClear(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+	t.Run("HarvestApproved", func(t *testing.T) {
+		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
+		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-	}
-	if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
-		t.Errorf("round 1's verdict file was removed on the very call that produced it: %v", err)
-	}
-	assertNoArchivedRunDirSibling(t, cfg.RunDir)
+		ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
+		wantPointer := ledgerPath(cfg.RunDir, 1)
+		if ptr.Path != wantPointer {
+			t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+		}
+		if _, err := os.Stat(verdictPath(cfg.RunDir, 1)); err != nil {
+			t.Errorf("round 1's verdict file was removed on the very call that produced it: %v", err)
+		}
+		assertNoArchivedRunDirSibling(t, cfg.RunDir)
+	})
 }
 
 // TestBouncer_Clear_ArchiveFailureDegradesToStuck proves a failed clear degrades to Stuck with an
@@ -261,33 +273,11 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 	}
 }
 
-// TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir is the cross-invocation case: a
-// Bouncer value constructed fresh over a run directory a previous process already settled clears
-// and re-seeds on its very first Call, exactly as an in-process re-entry does. Nothing about the
-// trigger depends on in-memory state, since it reads only what a previous settle wrote to disk.
-func TestBouncer_Clear_FreshBouncerOverPreviouslyApprovedRunDir(t *testing.T) {
-	cfg := newBouncerFixture(t, withNestedRunDir()).Config
-	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	layoutApprovedGeneration(t, cfg, 1)
-
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
-	}
-	archived := archivedRunDirPath(cfg.RunDir, bouncerJudgeTestClock, "")
-	if _, err := os.Stat(archived); err != nil {
-		t.Errorf("expected archived sibling %s from the previous process's generation to exist: %v", archived, err)
-	}
-}
-
 // TestBouncer_Clear_AfterCommitFailureSubsequentCallClears is the accepted-regression case:
 // a Commit failure surfaces from settle unchanged (the run directory is left CONVERGED, since settle never archives on that path),
 // and the next Call over that same still-CONVERGED directory clears and re-seeds instead of retrying the commit -- both halves asserted in one test so the sequence is the subject.
+//
+//testtiming:keep pins the commit-failure then re-entry sequence: the failed commit leaves the directory CONVERGED and the next Call clears it instead of retrying the commit
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
@@ -341,6 +331,8 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 }
 
 // TestBouncer_Clear_EndToEndSequence runs a full within-package sequence -- seed, judge CONTINUE, judge CONVERGED with Done, re-enter -- and asserts the re-entering Call is itself a seed call that writes round-1-focus.md into a fresh run directory with the prior generation preserved beside it.
+//
+//testtiming:keep pins the whole seed, judge, approve and re-entry sequence on one Bouncer value across calls, which no single-call test chains
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	// Round 1: seed.
 	seedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
@@ -431,36 +423,5 @@ func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
 	}
 	if len(entries) == 0 {
 		t.Error("archived sibling is empty; want the prior two-round generation preserved")
-	}
-}
-
-// TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration pins the clear's own log line.
-// The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1, costing a fresh judge spawn plus a fresh round,
-// and it can spend the leftover budget that halts the run because the round producer's episode never resets.
-// The failure branch beside it has always logged;
-// the branch that actually fires did not, so an operator whose run suddenly cost a second generation
-// had nothing to read anywhere.
-func TestBouncer_Clear_LogsBeforeDiscardingTheApprovedGeneration(t *testing.T) {
-	cfg := newBouncerFixture(t, withNestedRunDir()).Config
-	cfg.Shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{
-		round:   1,
-		report:  bouncerReport(1),
-		verdict: bouncerVerdictContent("CONVERGED"),
-		ledger:  bouncerLedgerContent(1),
-	}})
-
-	logBuf := logcapture.Capture(t)
-	shedfake.CallOK(t, b)
-
-	got := logBuf.String()
-	for _, want := range []string{"clearing an already-approved run directory", cfg.Name, "approvedRound=1"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("clear log = %q; want it to contain %q", got, want)
-		}
 	}
 }

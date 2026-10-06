@@ -1,8 +1,5 @@
-//go:build integration
-
-// landingdeps_integration_test.go drives landingDeps' MarkTaskDone closure against a real hub built
-// by internal/hubforge, so the board config load, the hub-board path and the status write all run
-// for real rather than through a stub.
+// landingdeps_markdone_test.go drives landingDeps' MarkTaskDone closure against a hub directory holding only the board config, so the board config load, the hub-board path and the status write run for real with no git and no hub fixture.
+// Every test sets the board skip variables, which are process-global, so none calls t.Parallel.
 
 package loomcli
 
@@ -13,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -22,46 +19,36 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// markDoneFixture builds a hub with one pair and returns landingDeps' MarkTaskDone closure for that
-// pair, plus the hub-board handle and the pair's slug.
-func markDoneFixture(t *testing.T) (markDone func() error, board *boardengine.Board, slug string) {
-	t.Helper()
-	markDone, board, slug, _ = markDoneFixtureDir(t)
-	return markDone, board, slug
-}
-
-// markDoneFixtureDir is markDoneFixture that also returns the hub board directory.
+// markDoneFixtureDir builds a hub directory whose board directory carries the board config, and returns landingDeps' MarkTaskDone closure for a pair named slug, the hub-board handle, the slug and the hub board directory.
 func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine.Board, slug, boardDir string) {
 	t.Helper()
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
-	hub := hubforge.NewHub(t, ".")
 	slug = "markdone"
-	hubforge.AddPair(t, hub, slug)
-
-	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
-	if err != nil {
-		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: slug, AnchorRel: "."}
+	boardDir = fabricengine.BoardDir(location.HubPath)
+	configFile := configengine.ConfigFile(boardDir, "board")
+	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(configFile), err)
+	}
+	if err := os.WriteFile(configFile, []byte(boardengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 	}
 
 	deps := landingDeps(location, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
 		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "")
 
-	hubBoardDir := fabricengine.BoardDir(location.HubPath)
-	bc, err := boardengine.LoadConfig(hubBoardDir, "board")
+	bc, err := boardengine.LoadConfig(boardDir, "board")
 	if err != nil {
 		t.Fatalf("LoadConfig error = %v; want nil", err)
 	}
-	bc.Path = hubBoardDir
-	if _, err := os.Stat(bc.Path); err != nil {
-		t.Fatalf("hub board dir %s: %v", bc.Path, err)
-	}
-	return deps.MarkTaskDone, boardengine.New(boardengine.ApplySkipEnv(bc)), slug, bc.Path
+	bc.Path = boardDir
+	return deps.MarkTaskDone, boardengine.New(boardengine.ApplySkipEnv(bc)), slug, boardDir
 }
 
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
-	markDone, board, slug := markDoneFixture(t)
+	markDone, board, slug, _ := markDoneFixtureDir(t)
 
 	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Mark done", "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("UpsertTask error = %v; want nil", err)
@@ -80,7 +67,7 @@ func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 }
 
 func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
-	markDone, _, _ := markDoneFixture(t)
+	markDone, _, _, _ := markDoneFixtureDir(t)
 
 	if err := markDone(); err == nil {
 		t.Error("MarkTaskDone() error = nil for a slug with no board task; want an error")

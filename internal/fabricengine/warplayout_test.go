@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+//testtiming:keep the fast-path layout equalling the resolved worktree layout; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	t.Parallel()
 

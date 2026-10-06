@@ -46,7 +46,7 @@ var pinnedMergeReasons = map[string]string{
 // mergeReasonHomeFile is the one file the closed guard-reason set is declared in, per
 // mergeerrors.go's own const-block godoc. mergeReasonConstsFromSource scans the WHOLE package for
 // mergeReason* declarations and reports each one's file, so this name is what
-// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile compares against rather than a scope the
+// MatchesConstBlock compares against rather than a scope the
 // scan itself silently imposes.
 const mergeReasonHomeFile = "mergeerrors.go"
 
@@ -130,10 +130,18 @@ func collectMergeReasonConsts(t *testing.T, fileName string, file *ast.File, got
 // declares, scanned across every production file rather than one. This is what makes the
 // same-commit rule detectable: a member added to the source without touching pinnedMergeReasons
 // fails here, wherever in the package it was added.
+// Every member must also live in mergeerrors.go, which is what that file's own const-block godoc
+// claims and what the closed set's same-commit rule assumes when it names one const list to
+// update; the scan deliberately reads the whole package so a stray member cannot hide from the
+// pinned-map equality, and this check turns "declared in mergeerrors.go" from an unenforced
+// convention into a checked one.
 func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
 	got := mergeReasonConstsFromSource(t)
 
 	for name, decl := range got {
+		if decl.file != mergeReasonHomeFile {
+			t.Errorf("const %s is declared in %s; every mergeReason* member must be declared in %s, beside the rest of the closed set", name, decl.file, mergeReasonHomeFile)
+		}
 		pinnedValue, pinned := pinnedMergeReasons[name]
 		if !pinned {
 			t.Errorf("%s declares %s = %q, which pinnedMergeReasons does not pin -- update the pinned map in the same commit as any change to the closed set", decl.file, name, decl.value)
@@ -146,20 +154,6 @@ func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
 	for name := range pinnedMergeReasons {
 		if _, declared := got[name]; !declared {
 			t.Errorf("pinnedMergeReasons pins %s, which no production file in this package declares -- update the pinned map in the same commit as any change to the closed set", name)
-		}
-	}
-}
-
-// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile asserts every mergeReason* constant lives in
-// mergeerrors.go, which is what that file's own const-block godoc claims and what the closed set's
-// same-commit rule assumes when it names one const list to update.
-// It is a second, independent assertion rather than a scan restriction: the scan deliberately reads
-// the whole package (so a stray member cannot hide from the pinned-map equality above), and this
-// test is what turns "declared in mergeerrors.go" from an unenforced convention into a checked one.
-func TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile(t *testing.T) {
-	for name, decl := range mergeReasonConstsFromSource(t) {
-		if decl.file != mergeReasonHomeFile {
-			t.Errorf("const %s is declared in %s; every mergeReason* member must be declared in %s, beside the rest of the closed set", name, decl.file, mergeReasonHomeFile)
 		}
 	}
 }
@@ -229,6 +223,8 @@ func assertStructFieldsSideFree(t *testing.T, v any) {
 // every exported field name and every JSON tag must contain no warp/weft token and no fabric-sense
 // host phrase -- the enforcement walk permits warp/weft tokens inside fabricengine's own owner set,
 // so this is the one place that still catches a leak onto the public merge surface.
+//
+//testtiming:keep every exported field name and JSON tag of MergeResult and MergeOptions being free of warp/weft and host phrases; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 	assertStructFieldsSideFree(t, MergeResult{})
 	assertStructFieldsSideFree(t, MergeOptions{})
@@ -238,6 +234,8 @@ func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 // output is side-free by the same token check, and that ErrMergeInRequired's message does not
 // contain its own Source field's value -- the one detail that error carries outside its fixed
 // message, and which must never leak into the message itself.
+//
+//testtiming:keep every named merge error rendering side-free and ErrMergeInRequired never echoing its Source; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 	reasons := make([]string, 0, len(pinnedMergeReasons))
 	for _, reason := range pinnedMergeReasons {
@@ -261,12 +259,15 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 }
 
 // TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree asserts every member of the closed
-// guard-reason set is side-free and path-free (no "/" or "\"), iterating pinnedMergeReasons --
+// guard-reason set is side-free (including the bare "host " token) and path-free (no "/" or "\"), iterating pinnedMergeReasons --
 // whose equality with the real const block TestMergeVocabulary_GuardReasonSetMatchesConstBlock
 // proves by parsing the source, so a member added to the set cannot escape these assertions.
+//
+//testtiming:keep every member of the closed guard-reason set being side-free and path-free; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
 	for name, reason := range pinnedMergeReasons {
 		assertSideFree(t, "guard reason "+name, reason)
+		assertNoVocabularyLeak(t, name, reason)
 		if strings.ContainsAny(reason, `/\`) {
 			t.Errorf("guard reason %s = %q contains a path separator; the closed set must be path-free", name, reason)
 		}

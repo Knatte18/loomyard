@@ -31,67 +31,146 @@ func newReapplyTestEngine(t *testing.T) (*Engine, *ReedState) {
 	return e, st
 }
 
-// TestReapplyLayout_GuardInheritance pins that reapplyLayout inherits applyLayoutLockedOpts' two
-// session-survival guards: fewer than two live panes, and two panes with no strand owning a present
-// pane, both issue no select-layout, return Applied: false, BoxIsLive: false, and nil.
-func TestReapplyLayout_GuardInheritance(t *testing.T) {
-	t.Run("FewerThanTwoLivePanes", func(t *testing.T) {
-		e, _ := newReapplyTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}}, "100 21", nil)
-		fake.mustNotCall("select-layout")
-
-		got, err := e.reapplyLayout(render.Box{}, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if got.Applied || got.BoxIsLive {
-			t.Errorf("reapplyLayout() = %+v, want Applied false and BoxIsLive false", got)
-		}
-	})
-
-	t.Run("NoStrandOwnsAPresentPane", func(t *testing.T) {
-		e := newTestEngine(t)
-		st := &ReedState{}
-		if err := SaveState(e.stateDir(), st); err != nil {
-			t.Fatalf("SaveState: %v", err)
-		}
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "100 21", nil)
-		fake.mustNotCall("select-layout")
-
-		got, err := e.reapplyLayout(render.Box{}, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if got.Applied || got.BoxIsLive {
-			t.Errorf("reapplyLayout() = %+v, want Applied false and BoxIsLive false", got)
-		}
-	})
-}
-
-// TestReapplyLayout_FocusIsNeverMoved pins that a successful re-apply issues select-layout and no
-// select-pane, even though the persisted strand carries Display.Focus: true.
-func TestReapplyLayout_FocusIsNeverMoved(t *testing.T) {
-	e, _ := newReapplyTestEngine(t)
-	fake := installFakeTmux(t, e)
-	fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "80 24", nil)
-	fake.mustNotCall("select-pane")
-
-	got, err := e.reapplyLayout(render.Box{X: 0, Y: 0, W: 100, H: 21}, false)
-	if err != nil {
-		t.Fatalf("reapplyLayout() error = %v, want nil", err)
+// TestReapplyLayout pins reapplyLayout's outcome per scenario, driven through the fake tmux:
+//   - it inherits applyLayoutLockedOpts' two session-survival guards (fewer than two live panes, two panes with no strand owning a present pane):
+//     no select-layout, Applied false, BoxIsLive false;
+//   - a box differing from lastApplied applies with select-layout, never moving focus (no select-pane) even though the strand carries Display.Focus: true;
+//   - a live box equal to lastApplied issues no select-layout and reports Applied false, BoxIsLive true;
+//   - with display-message erroring, BoxIsLive is false whether or not the fallback box happens to equal lastApplied, and select-layout is still issued;
+//   - probeHook: true runs exactly one show-options even when the apply guards skip, probeHook: false asks nothing and reports HookKnown false;
+//
+// and in every scenario reed.json is left byte-identical.
+//
+//testtiming:keep pins reapplyLayout's outcome per scenario: both session-survival guards issuing no select-layout, a differing box applying without moving focus, an equal live box skipping, a degraded box never counting as live, the hook probe running once even when the guards skip, and reed.json left byte-identical; its covering tests run this code without asserting it
+func TestReapplyLayout(t *testing.T) {
+	tests := []struct {
+		name             string
+		noStrands        bool
+		live             []LivePane
+		box              string
+		boxErr           error
+		lastApplied      func(e *Engine) render.Box
+		probeHook        bool
+		wantApplied      bool
+		wantBoxIsLive    bool
+		wantHookKnown    bool
+		wantSelectLayout bool
+		wantShowOptions  int
+	}{
+		{
+			name: "GuardFewerThanTwoLivePanes",
+			live: []LivePane{{ID: "%1"}},
+			box:  "100 21",
+		},
+		{
+			name:      "GuardNoStrandOwnsAPresentPane",
+			noStrands: true,
+			live:      []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:       "100 21",
+		},
+		{
+			name:             "DifferingBoxAppliesAndNeverMovesFocus",
+			live:             []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:              "80 24",
+			lastApplied:      func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 100, H: 21} },
+			wantApplied:      true,
+			wantBoxIsLive:    true,
+			wantSelectLayout: true,
+		},
+		{
+			name:          "EqualBoxSkips",
+			live:          []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:           "100 21",
+			lastApplied:   func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 100, H: 21} },
+			wantBoxIsLive: true,
+		},
+		{
+			name:   "DegradedBoxFallbackHappensToEqualLastApplied",
+			live:   []LivePane{{ID: "%1"}, {ID: "%2"}},
+			boxErr: errors.New("boom"),
+			lastApplied: func(e *Engine) render.Box {
+				return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
+			},
+			wantApplied:      true,
+			wantSelectLayout: true,
+		},
+		{
+			name:             "DegradedBoxFallbackDiffersFromLastApplied",
+			live:             []LivePane{{ID: "%1"}, {ID: "%2"}},
+			boxErr:           errors.New("boom"),
+			lastApplied:      func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 5, H: 5} },
+			wantApplied:      true,
+			wantSelectLayout: true,
+		},
+		{
+			// The probe must run even when the apply guard skips.
+			name:            "ProbeRunsOnceEvenWhenTheApplyGuardSkips",
+			live:            []LivePane{{ID: "%1"}},
+			box:             "100 21",
+			probeHook:       true,
+			wantHookKnown:   true,
+			wantShowOptions: 1,
+		},
+		{
+			// "Not asked", indistinguishable from a deferral's undecided shape and deliberately so.
+			name: "ProbeHookFalseAsksNothing",
+			live: []LivePane{{ID: "%1"}},
+			box:  "100 21",
+		},
 	}
-	if !got.Applied {
-		t.Errorf("reapplyLayout() Applied = false, want true")
-	}
-	if fake.Count("select-layout") == 0 {
-		t.Errorf("calls = %v, want select-layout", fake.Sequence())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, _ := newReapplyTestEngine(t)
+			if tt.noStrands {
+				if err := SaveState(e.stateDir(), &ReedState{}); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+			}
+			fake := installFakeTmux(t, e)
+			fake.answerSession(tt.live, tt.box, tt.boxErr)
+			fake.mustNotCall("select-pane")
+			var lastApplied render.Box
+			if tt.lastApplied != nil {
+				lastApplied = tt.lastApplied(e)
+			}
+			path := filepath.Join(e.stateDir(), reedStateFileName)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile before: %v", err)
+			}
+
+			got, err := e.reapplyLayout(lastApplied, tt.probeHook)
+			if err != nil {
+				t.Fatalf("reapplyLayout() error = %v, want nil", err)
+			}
+
+			if got.Applied != tt.wantApplied || got.BoxIsLive != tt.wantBoxIsLive {
+				t.Errorf("reapplyLayout() = %+v, want Applied %v and BoxIsLive %v", got, tt.wantApplied, tt.wantBoxIsLive)
+			}
+			if got.HookKnown != tt.wantHookKnown || got.HookInstalled {
+				t.Errorf("reapplyLayout() hook = (%v, %v), want (false, %v)", got.HookInstalled, got.HookKnown, tt.wantHookKnown)
+			}
+			if issued := fake.Count("select-layout") > 0; issued != tt.wantSelectLayout {
+				t.Errorf("select-layout issued = %v, want %v: %v", issued, tt.wantSelectLayout, fake.Sequence())
+			}
+			if count := fake.Count("show-options"); count != tt.wantShowOptions {
+				t.Errorf("show-options round trips = %d, want %d", count, tt.wantShowOptions)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile after: %v", err)
+			}
+			if string(before) != string(after) {
+				t.Errorf("reed.json changed across reapplyLayout: before=%q after=%q", before, after)
+			}
+		})
 	}
 }
 
 // TestReapplyLayout_Deferral pins that with reed.lock already held, reapplyLayout returns
 // ReapplyResult{Deferred: true} and nil, issues no tmux call at all, and reports HookKnown: false.
+//
+//testtiming:keep pins reapplyLayout returning exactly ReapplyResult{Deferred: true} with no tmux call while reed.lock is held; its covering tests run this code without asserting it
 func TestReapplyLayout_Deferral(t *testing.T) {
 	e, _ := newReapplyTestEngine(t)
 
@@ -118,86 +197,6 @@ func TestReapplyLayout_Deferral(t *testing.T) {
 	if calls := fake.Calls(); len(calls) != 0 {
 		t.Errorf("calls = %v, want zero tmux calls on a deferral", calls)
 	}
-}
-
-// TestReapplyLayout_BoxEqualityGuard pins that a call whose scripted live box equals lastApplied
-// issues no select-layout and returns Applied: false, BoxIsLive: true; a call whose box differs
-// applies.
-func TestReapplyLayout_BoxEqualityGuard(t *testing.T) {
-	t.Run("EqualBoxSkips", func(t *testing.T) {
-		e, _ := newReapplyTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "100 21", nil)
-		fake.mustNotCall("select-layout")
-
-		lastApplied := render.Box{X: 0, Y: 0, W: 100, H: 21}
-		got, err := e.reapplyLayout(lastApplied, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if got.Applied || !got.BoxIsLive {
-			t.Errorf("reapplyLayout() = %+v, want Applied false and BoxIsLive true", got)
-		}
-	})
-
-	t.Run("DifferingBoxApplies", func(t *testing.T) {
-		e, _ := newReapplyTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "80 24", nil)
-
-		lastApplied := render.Box{X: 0, Y: 0, W: 100, H: 21}
-		got, err := e.reapplyLayout(lastApplied, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if !got.Applied || !got.BoxIsLive {
-			t.Errorf("reapplyLayout() = %+v, want Applied true and BoxIsLive true", got)
-		}
-		if fake.Count("select-layout") == 0 {
-			t.Errorf("calls = %v, want select-layout", fake.Sequence())
-		}
-	})
-}
-
-// TestReapplyLayout_DegradedBox pins that with display-message scripted to error, reapplyLayout
-// returns BoxIsLive: false whether or not the fallback box happens to equal lastApplied, and — in the
-// happens-to-equal case — still issues select-layout.
-func TestReapplyLayout_DegradedBox(t *testing.T) {
-	t.Run("FallbackHappensToEqualLastApplied", func(t *testing.T) {
-		e, _ := newReapplyTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "", errors.New("boom"))
-
-		lastApplied := render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}
-		got, err := e.reapplyLayout(lastApplied, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if got.BoxIsLive {
-			t.Errorf("reapplyLayout() BoxIsLive = true, want false (a fallback box is not an observation)")
-		}
-		if fake.Count("select-layout") == 0 {
-			t.Errorf("calls = %v, want select-layout still issued", fake.Sequence())
-		}
-	})
-
-	t.Run("FallbackDoesNotEqualLastApplied", func(t *testing.T) {
-		e, _ := newReapplyTestEngine(t)
-		fake := installFakeTmux(t, e)
-		fake.answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "", errors.New("boom"))
-
-		lastApplied := render.Box{X: 0, Y: 0, W: 5, H: 5}
-		got, err := e.reapplyLayout(lastApplied, false)
-		if err != nil {
-			t.Fatalf("reapplyLayout() error = %v, want nil", err)
-		}
-		if got.BoxIsLive {
-			t.Errorf("reapplyLayout() BoxIsLive = true, want false")
-		}
-		if fake.Count("select-layout") == 0 {
-			t.Errorf("calls = %v, want select-layout still issued", fake.Sequence())
-		}
-	})
 }
 
 // TestReapplyLayout_HookProbeExactMatchOnly is the table for probeHook: true, asserting
@@ -249,77 +248,5 @@ func TestReapplyLayout_HookProbeExactMatchOnly(t *testing.T) {
 				t.Errorf("reapplyLayout() hook = (%v, %v), want (%v, %v)", got.HookInstalled, got.HookKnown, tt.wantInstalled, tt.wantKnown)
 			}
 		})
-	}
-}
-
-// TestReapplyLayout_ProbeOrdering pins that with probeHook: true on a session the apply guards skip
-// (fewer than two panes), the probe still ran: HookKnown is true and show-options appears in the
-// recorded argv.
-func TestReapplyLayout_ProbeOrdering(t *testing.T) {
-	e, _ := newReapplyTestEngine(t)
-	fake := installFakeTmux(t, e)
-	fake.answerSession([]LivePane{{ID: "%1"}}, "100 21", nil)
-
-	got, err := e.reapplyLayout(render.Box{}, true)
-	if err != nil {
-		t.Fatalf("reapplyLayout() error = %v, want nil", err)
-	}
-	if !got.HookKnown {
-		t.Errorf("reapplyLayout() HookKnown = false, want true (the probe must run even when the apply guard skips)")
-	}
-	if fake.Count("show-options") == 0 {
-		t.Errorf("calls = %v, want show-options", fake.Sequence())
-	}
-}
-
-// TestReapplyLayout_ProbeHookFalseAsksNothing pins that probeHook: false issues no show-options round
-// trip at all and returns HookInstalled: false, HookKnown: false — "not asked", indistinguishable
-// from a deferral's undecided shape and deliberately so.
-func TestReapplyLayout_ProbeHookFalseAsksNothing(t *testing.T) {
-	e, _ := newReapplyTestEngine(t)
-	fake := installFakeTmux(t, e)
-	fake.answerSession([]LivePane{{ID: "%1"}}, "100 21", nil)
-	fake.mustNotCall("show-options")
-
-	got, err := e.reapplyLayout(render.Box{}, false)
-	if err != nil {
-		t.Fatalf("reapplyLayout() error = %v, want nil", err)
-	}
-	if got.HookInstalled || got.HookKnown {
-		t.Errorf("reapplyLayout() hook = (%v, %v), want (false, false)", got.HookInstalled, got.HookKnown)
-	}
-
-	// Exactly one show-options round trip on the current GOOS when probeHook is true, the mirror
-	// assertion this GOOS-conditional test can make without a build-tagged Windows file.
-	probed := installFakeTmux(t, e)
-	probed.answerSession([]LivePane{{ID: "%1"}}, "100 21", nil)
-	if _, err := e.reapplyLayout(render.Box{}, true); err != nil {
-		t.Fatalf("reapplyLayout() error = %v, want nil", err)
-	}
-	if count := probed.Count("show-options"); count != 1 {
-		t.Errorf("show-options round trips = %d, want exactly 1", count)
-	}
-}
-
-func TestReapplyLayout_PersistsNothing(t *testing.T) {
-	e, _ := newReapplyTestEngine(t)
-	installFakeTmux(t, e).answerSession([]LivePane{{ID: "%1"}, {ID: "%2"}}, "80 24", nil)
-
-	path := filepath.Join(e.stateDir(), reedStateFileName)
-	before, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile before: %v", err)
-	}
-
-	if _, err := e.reapplyLayout(render.Box{X: 0, Y: 0, W: 100, H: 21}, false); err != nil {
-		t.Fatalf("reapplyLayout() error = %v, want nil", err)
-	}
-
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile after: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("reed.json changed across reapplyLayout: before=%q after=%q", before, after)
 	}
 }

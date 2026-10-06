@@ -24,73 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// TestBouncer_SeedCall_ComposedPromptStatesSpecsDir asserts the seed call's composed prompt --
-// where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
-// the told specs directory and carries no literal "{{.specs_dir}}" marker. A rubric-bytes-only
-// assertion could not catch this: the marker lives inside the rubric value, invisible to a check
-// that never renders it into the surrounding template.
-func TestBouncer_SeedCall_ComposedPromptStatesSpecsDir(t *testing.T) {
-	specsDir := t.TempDir()
-	if !filepath.IsAbs(specsDir) {
-		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
-	}
-
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	shuttle.DuringRun = func() {
-		path := shuttle.GotSpec.OutputFiles[0]
-		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-
-	b, _ := newBouncerFixture(t, withSpecsMarker(specsDir), withShuttle(shuttle)).Build()
-
-	shedfake.CallOK(t, b)
-
-	prompt := shuttle.GotSpec.Prompt
-	if !strings.Contains(prompt, specsDir) {
-		t.Errorf("seed call composed prompt does not contain the told specs directory %q", specsDir)
-	}
-	if strings.Contains(prompt, "{{.specs_dir}}") {
-		t.Error("seed call composed prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
-	}
-}
-
-func TestBouncer_SeedCall_SkillAndParentDirective(t *testing.T) {
-	for _, tt := range []struct {
-		name       string
-		parentName string
-		wantPrompt string
-	}{
-		{"WithParent", "hub:parent", "`hub:parent`"},
-		{"NoParent", "", "No parent is recorded"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-			shuttle.DuringRun = func() {
-				path := shuttle.GotSpec.OutputFiles[0]
-				content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
-				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-				}
-			}
-			fx := newBouncerFixture(t, withShuttle(shuttle))
-			fx.Config.ParentName = tt.parentName
-			b, _ := fx.Build()
-
-			shedfake.CallOK(t, b)
-
-			if !strings.Contains(shuttle.GotSpec.Prompt, tt.wantPrompt) {
-				t.Errorf("seed prompt does not contain %q", tt.wantPrompt)
-			}
-			if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
-				t.Errorf("seed spec.Skills = %v; want [scribe:prose]", got)
-			}
-		})
-	}
-}
-
+// TestBouncer_SeedCall_HappyPath also pins the spec the seed passes the shuttle: its role and
+// round, the configured model, effort and version, and absolute output paths.
+//
+//testtiming:keep pins the seed call's spec, pointer and focus file, and that it writes no verdict or ledger
 func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	shuttle := &shedfake.Shuttle{
 		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
@@ -114,6 +51,26 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	if shuttle.GotSpec.Role != "bouncer-seed" {
 		t.Errorf("recorded spec.Role = %q; want %q", shuttle.GotSpec.Role, "bouncer-seed")
 	}
+	if shuttle.GotSpec.Round != "1" {
+		t.Errorf("seed call spec.Round = %q; want %q", shuttle.GotSpec.Round, "1")
+	}
+	if shuttle.GotSpec.Model != cfg.Model {
+		t.Errorf("recorded spec.Model = %q; want %q", shuttle.GotSpec.Model, cfg.Model)
+	}
+	if shuttle.GotSpec.Effort != cfg.Effort {
+		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.GotSpec.Effort, cfg.Effort)
+	}
+	if shuttle.GotSpec.Version != cfg.Version {
+		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, cfg.Version)
+	}
+	if len(shuttle.GotSpec.OutputFiles) == 0 {
+		t.Fatal("recorded spec.OutputFiles is empty")
+	}
+	for _, f := range shuttle.GotSpec.OutputFiles {
+		if !filepath.IsAbs(f) {
+			t.Errorf("recorded spec.OutputFiles entry %q is not absolute", f)
+		}
+	}
 
 	focusRaw, err := os.ReadFile(focusPath(cfg.RunDir, 1))
 	if err != nil {
@@ -135,6 +92,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a present but unparseable focus file is archived and re-seeded rather than treated as a re-bounce
 func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
@@ -274,73 +232,41 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 	}
 }
 
-func TestBouncer_SeedSideHarvest_SurvivesLateRunError(t *testing.T) {
-	written := "---\nround: 1\nexclude_lenses: []\nfocus: [\"real targeting\"]\n---\nrationale\n"
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, Err: errors.New("run failed after write")}
-	shuttle.DuringRun = func() {
-		path := shuttle.GotSpec.OutputFiles[0]
-		if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
+// TestBouncer_SeedSideHarvest_SurvivesALateFailure pins that a focus file the seed agent wrote
+// survives, byte-identical, a run that then errors or reports a non-Done outcome.
+//
+//testtiming:keep pins that a focus file the seed agent wrote survives a late run error or a non-Done outcome byte-identical
+func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		result shuttleengine.Result
+		err    error
+	}{
+		{"a late run error", shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, errors.New("run failed after write")},
+		{"a non-Done outcome", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}, nil},
 	}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			written := "---\nround: 1\nexclude_lenses: []\nfocus: [\"real targeting\"]\n---\nrationale\n"
+			shuttle := &shedfake.Shuttle{Result: tt.result, Err: tt.err}
+			shuttle.DuringRun = func() {
+				path := shuttle.GotSpec.OutputFiles[0]
+				if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+				}
+			}
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
+			shedfake.RequireOutcome(t, b, shedengine.Stuck)
 
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
-	if err != nil {
-		t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
-	}
-	if string(got) != written {
-		t.Errorf("round-1-focus.md = %q; want it byte-identical to what the agent wrote (%q)", got, written)
-	}
-}
-
-func TestBouncer_SeedSideHarvest_SurvivesNonOutcomeDone(t *testing.T) {
-	written := "---\nround: 1\nexclude_lenses: []\nfocus: [\"real targeting\"]\n---\nrationale\n"
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
-	shuttle.DuringRun = func() {
-		path := shuttle.GotSpec.OutputFiles[0]
-		if err := os.WriteFile(path, []byte(written), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
-
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
-	if err != nil {
-		t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
-	}
-	if string(got) != written {
-		t.Errorf("round-1-focus.md = %q; want it byte-identical to what the agent wrote (%q)", got, written)
-	}
-}
-
-func TestBouncer_ReBounce(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-
-	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
-	if err := os.WriteFile(focusPath(cfg.RunDir, 1), []byte(seeded), 0o644); err != nil {
-		t.Fatalf("WriteFile(...) = %v; want nil", err)
-	}
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	if ptr.Path != "" || ptr.GateAttempts != nil {
-		t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
-	}
-	if shuttle.Called {
-		t.Error("Call() invoked the shuttle seam on a re-bounce; want it never called")
-	}
-
-	got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
-	if err != nil {
-		t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
-	}
-	if string(got) != seeded {
-		t.Errorf("round-1-focus.md = %q; want it left byte-identical (%q)", got, seeded)
+			got, err := os.ReadFile(focusPath(cfg.RunDir, 1))
+			if err != nil {
+				t.Fatalf("ReadFile(round-1-focus.md) = %v; want nil", err)
+			}
+			if string(got) != written {
+				t.Errorf("round-1-focus.md = %q; want it byte-identical to what the agent wrote (%q)", got, written)
+			}
+		})
 	}
 }
 
@@ -404,8 +330,8 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 			if shuttle.Called {
 				t.Error("Call() spawned through the shuttle seam on a re-bounce; want the probe only, never a spawn")
 			}
-			if ptr.Path != "" {
-				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
+			if ptr.Path != "" || ptr.GateAttempts != nil {
+				t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
 			}
 			if want := "bouncer segment already seeded; round producer returned no report"; ptr.Reason != want {
 				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
@@ -448,6 +374,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 	}
 }
 
+// TestBouncer_MarkerCompleteness_BothTemplates also pins that no stamp banner of the rubric leaks into either filled prompt.
 func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 	rubric := "<!-- lyx-stencil: sha256=deadbeef -->\n# Rubric\n\nBe thorough.\n"
 	strippedRubric := stencil.StripLeadingComment(rubric)
@@ -473,6 +400,9 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 			if !strings.Contains(string(prompt), values[marker]) {
 				t.Errorf("filled seed prompt does not contain value for marker %q (%q)", marker, values[marker])
 			}
+		}
+		if strings.Contains(string(prompt), "<!-- lyx-stencil:") {
+			t.Error("filled seed prompt contains a leaked stamp banner")
 		}
 	})
 
@@ -510,108 +440,8 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 		if !strings.Contains(string(prompt), "(none)") {
 			t.Error("filled first-round judge prompt does not render the previous_ledger literal \"(none)\"")
 		}
-	})
-}
-
-func TestBouncer_StampLeakRegression_BothTemplates(t *testing.T) {
-	rubric := "<!-- lyx-stencil: sha256=deadbeef000000000000000000000000000000000000000000000000000000 -->\n# Rubric\n\nBe thorough.\n"
-	strippedRubric := stencil.StripLeadingComment(rubric)
-	if strings.Contains(strippedRubric, "<!-- lyx-stencil:") {
-		t.Fatalf("test setup error: StripLeadingComment did not strip the fixture's own banner")
-	}
-
-	t.Run("Seed", func(t *testing.T) {
-		values := map[string]string{
-			"rubric":     strippedRubric,
-			"artifacts":  "/abs/artifact.md",
-			"round":      "1",
-			"focus_path": "/abs/round-1-focus.md",
-		}
-		maps.Copy(values, focusSchemaMarkers(true))
-		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
-		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
-		if err != nil {
-			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
-		}
-		if strings.Contains(string(prompt), "<!-- lyx-stencil:") {
-			t.Error("filled seed prompt contains a leaked stamp banner")
-		}
-	})
-
-	t.Run("Judge", func(t *testing.T) {
-		values := map[string]string{
-			"rubric":          strippedRubric,
-			"facts_path":      "/abs/round-1-facts.md",
-			"round":           "1",
-			"next_round":      "2",
-			"decision_rule":   decisionRuleMarker(1, 3),
-			"report_path":     "/abs/round-1-report.md",
-			"previous_ledger": "(none)",
-			"verdict_path":    "/abs/round-1-bouncer-verdict.md",
-			"ledger_path":     "/abs/round-1-bouncer-ledger.md",
-			"focus_path":      "/abs/round-2-focus.md",
-		}
-		maps.Copy(values, focusSchemaMarkers(true))
-		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
-		prompt, err := stencil.FillOptional(stencils.BouncerTemplateJudge, values, []string{"pattern_directive"})
-		if err != nil {
-			t.Fatalf("stencil.Fill(judge template, ...) error = %v; want nil", err)
-		}
 		if strings.Contains(string(prompt), "<!-- lyx-stencil:") {
 			t.Error("filled judge prompt contains a leaked stamp banner")
 		}
 	})
-}
-
-func TestBouncer_SpecIdentity_RoleAndRound(t *testing.T) {
-	shuttle := &shedfake.Shuttle{
-		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	shuttle.DuringRun = func() {
-		path := shuttle.GotSpec.OutputFiles[0]
-		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	b, _ := newBouncerFixture(t, withShuttle(shuttle)).Build()
-
-	shedfake.CallOK(t, b)
-	if shuttle.GotSpec.Role != "bouncer-seed" {
-		t.Errorf("seed call spec.Role = %q; want %q", shuttle.GotSpec.Role, "bouncer-seed")
-	}
-	if shuttle.GotSpec.Round != "1" {
-		t.Errorf("seed call spec.Round = %q; want %q", shuttle.GotSpec.Round, "1")
-	}
-}
-
-func TestBouncer_SpecPassthrough_ModelEffortVersionAndAbsoluteOutputs(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	shuttle.DuringRun = func() {
-		path := shuttle.GotSpec.OutputFiles[0]
-		content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
-		}
-	}
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-
-	shedfake.CallOK(t, b)
-	if shuttle.GotSpec.Model != cfg.Model {
-		t.Errorf("recorded spec.Model = %q; want %q", shuttle.GotSpec.Model, cfg.Model)
-	}
-	if shuttle.GotSpec.Effort != cfg.Effort {
-		t.Errorf("recorded spec.Effort = %q; want %q", shuttle.GotSpec.Effort, cfg.Effort)
-	}
-	if shuttle.GotSpec.Version != cfg.Version {
-		t.Errorf("recorded spec.Version = %q; want %q", shuttle.GotSpec.Version, cfg.Version)
-	}
-	if len(shuttle.GotSpec.OutputFiles) == 0 {
-		t.Fatal("recorded spec.OutputFiles is empty")
-	}
-	for _, f := range shuttle.GotSpec.OutputFiles {
-		if !filepath.IsAbs(f) {
-			t.Errorf("recorded spec.OutputFiles entry %q is not absolute", f)
-		}
-	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
+//testtiming:keep pins the watchdog option validating and normalizing: on and off in any case or padding, and an empty, numeric, true, yes or misspelled value rejected naming the offending value; its covering tests run this code without asserting it
 func TestWatchdogOption(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -59,6 +60,8 @@ func TestWatchdogOption(t *testing.T) {
 // path, since ConfigTemplate() only ever exposes the GOOS this build embedded (template_posix.go
 // carries !windows, template_windows.go carries windows) — the same limit
 // TestLoadConfig_UninitializedFallsBackToTemplate documents in config_test.go.
+//
+//testtiming:keep pins both embedded templates and the shipped accessor declaring the watchdog default line, reading the posix and windows files directly since ConfigTemplate exposes only one; its covering tests run this code without asserting it
 func TestWatchdogTemplateDefault_BothGOOS(t *testing.T) {
 	for _, path := range []string{"template_posix.yaml", "template_windows.yaml"} {
 		t.Run(path, func(t *testing.T) {
@@ -78,54 +81,59 @@ func TestWatchdogTemplateDefault_BothGOOS(t *testing.T) {
 	}
 }
 
-func TestResizeHookCommand_Posix(t *testing.T) {
-	const signalPath = "/tmp/wt/.lyx/reed-resize.signal"
-	got := resizeHookCommand(shell.Posix(), signalPath)
-	want := `run-shell -b ": > '/tmp/wt/.lyx/reed-resize.signal'"`
-	if got != want {
-		t.Errorf("resizeHookCommand(Posix(), %q) = %q; want %q", signalPath, got, want)
+// TestResizeHookCommand pins resizeHookCommand's exact hook string per shell dialect:
+// a run-shell -b entry whose double-quoted body is the dialect's own touch fragment for the signal path, kept intact for a path with a space,
+// and, for posix, exactly `: > '<path>'` with no -a flag anywhere.
+func TestResizeHookCommand(t *testing.T) {
+	tests := []struct {
+		name       string
+		sh         shell.Shell
+		signalPath string
+		want       string
+		posix      bool
+	}{
+		{
+			name:       "Posix",
+			sh:         shell.Posix(),
+			signalPath: "/tmp/wt/.lyx/reed-resize.signal",
+			want:       `run-shell -b ": > '/tmp/wt/.lyx/reed-resize.signal'"`,
+			posix:      true,
+		},
+		{
+			name:       "Pwsh",
+			sh:         shell.Pwsh(),
+			signalPath: "/tmp/wt/.lyx/reed-resize.signal",
+			want:       "run-shell -b " + tmuxQuoteValue(shell.Pwsh().Touch("/tmp/wt/.lyx/reed-resize.signal")),
+		},
+		{name: "PosixPathWithSpace", sh: shell.Posix(), signalPath: "/tmp/wt space/.lyx/reed-resize.signal", posix: true},
+		{name: "PwshPathWithSpace", sh: shell.Pwsh(), signalPath: "/tmp/wt space/.lyx/reed-resize.signal"},
 	}
-	if !strings.HasPrefix(got, "run-shell -b ") {
-		t.Errorf("resizeHookCommand(Posix(), %q) = %q; want prefix %q", signalPath, got, "run-shell -b ")
-	}
-	remainder := strings.TrimPrefix(got, "run-shell -b ")
-	if !strings.HasPrefix(remainder, `"`) || !strings.HasSuffix(remainder, `"`) {
-		t.Errorf("resizeHookCommand(Posix(), %q) remainder = %q; want double-quoted", signalPath, remainder)
-	}
-	if strings.Contains(got, "-a") {
-		t.Errorf("resizeHookCommand(Posix(), %q) = %q; want no -a flag anywhere", signalPath, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resizeHookCommand(tt.sh, tt.signalPath)
+
+			if tt.want != "" && got != tt.want {
+				t.Errorf("resizeHookCommand(%q) = %q; want %q", tt.signalPath, got, tt.want)
+			}
+			fragment := tt.sh.Touch(tt.signalPath)
+			if !strings.Contains(got, fragment) {
+				t.Errorf("resizeHookCommand(%q) = %q; want it to contain the intact fragment %q", tt.signalPath, got, fragment)
+			}
+			remainder, hasPrefix := strings.CutPrefix(got, "run-shell -b ")
+			if !hasPrefix {
+				t.Fatalf("resizeHookCommand(%q) = %q; want prefix %q", tt.signalPath, got, "run-shell -b ")
+			}
+			if !strings.HasPrefix(remainder, `"`) || !strings.HasSuffix(remainder, `"`) {
+				t.Errorf("resizeHookCommand(%q) remainder = %q; want double-quoted", tt.signalPath, remainder)
+			}
+			if tt.posix && strings.Contains(got, "-a") {
+				t.Errorf("resizeHookCommand(%q) = %q; want no -a flag anywhere", tt.signalPath, got)
+			}
+		})
 	}
 }
 
-func TestResizeHookCommand_Pwsh(t *testing.T) {
-	const signalPath = "/tmp/wt/.lyx/reed-resize.signal"
-	got := resizeHookCommand(shell.Pwsh(), signalPath)
-	pwshFragment := shell.Pwsh().Touch(signalPath)
-	want := "run-shell -b " + tmuxQuoteValue(pwshFragment)
-	if got != want {
-		t.Errorf("resizeHookCommand(Pwsh(), %q) = %q; want %q", signalPath, got, want)
-	}
-	if !strings.Contains(got, pwshFragment) {
-		t.Errorf("resizeHookCommand(Pwsh(), %q) = %q; want it to contain the pwsh fragment %q", signalPath, got, pwshFragment)
-	}
-}
-
-func TestResizeHookCommand_PathWithSpace(t *testing.T) {
-	const signalPath = "/tmp/wt space/.lyx/reed-resize.signal"
-
-	posixGot := resizeHookCommand(shell.Posix(), signalPath)
-	posixFragment := shell.Posix().Touch(signalPath)
-	if !strings.Contains(posixGot, posixFragment) {
-		t.Errorf("resizeHookCommand(Posix(), %q) = %q; want it to contain the intact fragment %q", signalPath, posixGot, posixFragment)
-	}
-
-	pwshGot := resizeHookCommand(shell.Pwsh(), signalPath)
-	pwshFragment := shell.Pwsh().Touch(signalPath)
-	if !strings.Contains(pwshGot, pwshFragment) {
-		t.Errorf("resizeHookCommand(Pwsh(), %q) = %q; want it to contain the intact fragment %q", signalPath, pwshGot, pwshFragment)
-	}
-}
-
+//testtiming:keep pins the tmux double-quote escaping of a double quote, a backslash and a dollar sign; its covering tests run this code without asserting it
 func TestTmuxQuoteValue(t *testing.T) {
 	tests := []struct {
 		name string
@@ -146,6 +154,7 @@ func TestTmuxQuoteValue(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the signal path being the anchor path's .lyx directory plus reed-resize.signal, the same directory as the state; its covering tests run this code without asserting it
 func TestResizeSignalPath(t *testing.T) {
 	e := newTestEngine(t)
 	anchor := t.TempDir()

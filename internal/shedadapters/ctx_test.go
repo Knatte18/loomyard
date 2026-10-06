@@ -5,95 +5,61 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestEntryErr_HealthyContext(t *testing.T) {
-	ctx := context.Background()
-	if err := entryErr(ctx, "loom", "shuttle"); err != nil {
-		t.Errorf("entryErr(healthy) = %v; want nil", err)
-	}
-}
-
-func TestCancelErr_HealthyContext(t *testing.T) {
-	ctx := context.Background()
-	if err := cancelErr(ctx, "loom", "shuttle"); err != nil {
-		t.Errorf("cancelErr(healthy) = %v; want nil", err)
-	}
-}
-
-func TestEntryErr_CancelledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+//testtiming:keep pins that the entry and cancel errors name the producer and engine, wrap the context error and read differently
+func TestEntryErrAndCancelErr(t *testing.T) {
+	t.Parallel()
+	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
+	expired, cancelExpired := context.WithTimeout(context.Background(), 0)
+	defer cancelExpired()
+	<-expired.Done()
 
-	err := entryErr(ctx, "loom", "shuttle")
-	if err == nil {
-		t.Fatal("entryErr(cancelled) = nil; want non-nil")
+	functions := []struct {
+		name string
+		call func(ctx context.Context, producer, engine string) error
+	}{
+		{"entryErr", entryErr},
+		{"cancelErr", cancelErr},
 	}
-	if !strings.Contains(err.Error(), "loom") {
-		t.Errorf("entryErr error %q does not contain producer name %q", err.Error(), "loom")
+	contexts := []struct {
+		name    string
+		ctx     context.Context
+		wantErr error
+	}{
+		{"healthy", context.Background(), nil},
+		{"cancelled", cancelled, context.Canceled},
+		{"deadline exceeded", expired, context.DeadlineExceeded},
 	}
-	if !strings.Contains(err.Error(), "shuttle") {
-		t.Errorf("entryErr error %q does not contain engine label %q", err.Error(), "shuttle")
+	for _, function := range functions {
+		for _, tt := range contexts {
+			t.Run(function.name+"/"+tt.name, func(t *testing.T) {
+				t.Parallel()
+				err := function.call(tt.ctx, "loom", "shuttle")
+				if tt.wantErr == nil {
+					if err != nil {
+						t.Errorf("%s(healthy) = %v; want nil", function.name, err)
+					}
+					return
+				}
+				if err == nil {
+					t.Fatalf("%s(%s) = nil; want non-nil", function.name, tt.name)
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("%s(%s) = %v; want errors.Is(err, %v)", function.name, tt.name, err, tt.wantErr)
+				}
+				for _, part := range []string{"loom", "shuttle"} {
+					if !strings.Contains(err.Error(), part) {
+						t.Errorf("%s(%s) error %q does not contain %q", function.name, tt.name, err.Error(), part)
+					}
+				}
+			})
+		}
 	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("entryErr(cancelled) = %v; want errors.Is(err, context.Canceled)", err)
-	}
-}
 
-func TestCancelErr_CancelledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := cancelErr(ctx, "loom", "shuttle")
-	if err == nil {
-		t.Fatal("cancelErr(cancelled) = nil; want non-nil")
-	}
-	if !strings.Contains(err.Error(), "loom") {
-		t.Errorf("cancelErr error %q does not contain producer name %q", err.Error(), "loom")
-	}
-	if !strings.Contains(err.Error(), "shuttle") {
-		t.Errorf("cancelErr error %q does not contain engine label %q", err.Error(), "shuttle")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("cancelErr(cancelled) = %v; want errors.Is(err, context.Canceled)", err)
-	}
-}
-
-func TestEntryErr_DeadlineExceeded(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 0)
-	defer cancel()
-	time.Sleep(time.Millisecond)
-
-	err := entryErr(ctx, "loom", "shuttle")
-	if err == nil {
-		t.Fatal("entryErr(deadline exceeded) = nil; want non-nil")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("entryErr(deadline exceeded) = %v; want errors.Is(err, context.DeadlineExceeded)", err)
-	}
-}
-
-func TestCancelErr_DeadlineExceeded(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 0)
-	defer cancel()
-	time.Sleep(time.Millisecond)
-
-	err := cancelErr(ctx, "loom", "shuttle")
-	if err == nil {
-		t.Fatal("cancelErr(deadline exceeded) = nil; want non-nil")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("cancelErr(deadline exceeded) = %v; want errors.Is(err, context.DeadlineExceeded)", err)
-	}
-}
-
-func TestEntryErrAndCancelErr_MessagesDiffer(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	entry := entryErr(ctx, "loom", "shuttle")
-	exit := cancelErr(ctx, "loom", "shuttle")
+	entry := entryErr(cancelled, "loom", "shuttle")
+	exit := cancelErr(cancelled, "loom", "shuttle")
 	if entry.Error() == exit.Error() {
 		t.Errorf("entryErr and cancelErr produced identical messages %q; want distinguishable text", entry.Error())
 	}

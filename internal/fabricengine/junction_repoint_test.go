@@ -34,181 +34,94 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestWireJunctions_RepointsWrongTargetJunction points the warp _lyx junction at an unrelated (but
-// real) directory instead of the weft _lyx dir, then asserts WireJunctions removes and recreates it
-// at the correct target instead of refusing it as pre-existing user content.
-func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
+// TestWireJunctions_RepairsCorruptedJunctions points a warp junction at an unrelated (but real)
+// directory, and at a target that does not exist, once for the _lyx junction and once for the
+// second, non-_lyx junction, then asserts WireJunctions removes and recreates each at the correct
+// weft target instead of refusing it as pre-existing user content.
+// The steps share one hub and run serially in table order: each step's WireJunctions call leaves
+// every junction healthy again, so the next step starts from a repaired hub.
+func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
-
 	l := h.Location
 	slug := l.WorktreeName
-	link := fabricengine.WarpLyxLink(l, slug)
-	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
-	// Point the junction at an unrelated real directory instead.
-	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-lyx-dir")
-	if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
-		t.Fatalf("mkdir wrong target: %v", err)
-	}
-	if err := os.RemoveAll(link); err != nil {
-		t.Fatalf("remove existing junction: %v", err)
-	}
-	if err := fslink.CreateDirLink(link, wrongTarget); err != nil {
-		t.Fatalf("seed wrong-target junction: %v", err)
-	}
+	extraLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
+	extraTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
+	realDirectory := func(t *testing.T, name string) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir wrong target: %v", err)
+		}
+		return dir
+	}
+	missingDirectory := func(t *testing.T, name string) string {
+		t.Helper()
+		return filepath.Join(t.TempDir(), name)
 	}
 
-	isLink, err := fslink.IsLink(link)
-	if err != nil || !isLink {
-		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
+	tests := []struct {
+		name          string
+		link          string
+		correctTarget string
+		corruptTarget func(t *testing.T) string
+	}{
+		{
+			name:          "lyx_wrong_target",
+			link:          fabricengine.WarpLyxLink(l, slug),
+			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
+			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-lyx-dir") },
+		},
+		{
+			name:          "extra_wrong_target",
+			link:          extraLink,
+			correctTarget: extraTarget,
+			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-extra-dir") },
+		},
+		{
+			name:          "lyx_dangling",
+			link:          fabricengine.WarpLyxLink(l, slug),
+			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
+			corruptTarget: func(t *testing.T) string { return missingDirectory(t, "does-not-exist") },
+		},
+		{
+			name:          "extra_dangling",
+			link:          extraLink,
+			correctTarget: extraTarget,
+			corruptTarget: func(t *testing.T) string { return missingDirectory(t, "does-not-exist-extra") },
+		},
 	}
-	resolved, err := fslink.PointsTo(link)
-	if err != nil {
-		t.Fatalf("PointsTo(%s): %v", link, err)
-	}
-	wantResolved, err := filepath.EvalSymlinks(correctTarget)
-	if err != nil {
-		t.Fatalf("EvalSymlinks(%s): %v", correctTarget, err)
-	}
-	if resolved != wantResolved {
-		t.Errorf("junction resolves to %s; want %s", resolved, wantResolved)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := os.RemoveAll(tt.link); err != nil {
+				t.Fatalf("remove existing junction: %v", err)
+			}
+			if err := fslink.CreateDirLink(tt.link, tt.corruptTarget(t)); err != nil {
+				t.Fatalf("seed corrupted junction: %v", err)
+			}
 
-// TestWireJunctions_RepointsWrongTargetJunction_Extra is the non-_lyx counterpart of
-// TestWireJunctions_RepointsWrongTargetJunction: the warp non-_lyx junction, not _lyx, is pointed
-// at an unrelated real directory, and WireJunctions must re-point it at the correct weft non-_lyx
-// target — the same per-junction repair behaviour, exercised against the second junction.
-func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
-	t.Parallel()
+			if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+				t.Fatalf("WireJunctions: %v", err)
+			}
 
-	h := hubforge.NewHub(t, ".")
-
-	l := h.Location
-	slug := l.WorktreeName
-	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
-	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
-
-	// Point the junction at an unrelated real directory instead.
-	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-extra-dir")
-	if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
-		t.Fatalf("mkdir wrong target: %v", err)
-	}
-	if err := os.RemoveAll(link); err != nil {
-		t.Fatalf("remove existing junction: %v", err)
-	}
-	if err := fslink.CreateDirLink(link, wrongTarget); err != nil {
-		t.Fatalf("seed wrong-target junction: %v", err)
-	}
-
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
-	}
-
-	isLink, err := fslink.IsLink(link)
-	if err != nil || !isLink {
-		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
-	}
-	resolved, err := fslink.PointsTo(link)
-	if err != nil {
-		t.Fatalf("PointsTo(%s): %v", link, err)
-	}
-	wantResolved, err := filepath.EvalSymlinks(correctTarget)
-	if err != nil {
-		t.Fatalf("EvalSymlinks(%s): %v", correctTarget, err)
-	}
-	if resolved != wantResolved {
-		t.Errorf("junction resolves to %s; want %s", resolved, wantResolved)
-	}
-}
-
-// TestWireJunctions_RepointsDanglingJunction points the warp _lyx junction at a target that does
-// not exist, then asserts WireJunctions removes and recreates it at the correct target instead of
-// refusing it.
-func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-
-	l := h.Location
-	slug := l.WorktreeName
-	link := fabricengine.WarpLyxLink(l, slug)
-	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
-
-	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist")
-	if err := os.RemoveAll(link); err != nil {
-		t.Fatalf("remove existing junction: %v", err)
-	}
-	if err := fslink.CreateDirLink(link, danglingTarget); err != nil {
-		t.Fatalf("seed dangling junction: %v", err)
-	}
-
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
-	}
-
-	isLink, err := fslink.IsLink(link)
-	if err != nil || !isLink {
-		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
-	}
-	resolved, err := fslink.PointsTo(link)
-	if err != nil {
-		t.Fatalf("PointsTo(%s): %v", link, err)
-	}
-	wantResolved, err := filepath.EvalSymlinks(correctTarget)
-	if err != nil {
-		t.Fatalf("EvalSymlinks(%s): %v", correctTarget, err)
-	}
-	if resolved != wantResolved {
-		t.Errorf("junction resolves to %s; want %s", resolved, wantResolved)
-	}
-}
-
-// TestWireJunctions_RepointsDanglingJunction_Extra is the non-_lyx counterpart of
-// TestWireJunctions_RepointsDanglingJunction: the warp non-_lyx junction, not _lyx, dangles (points
-// at a nonexistent target), and WireJunctions must re-point it at the correct weft non-_lyx target
-// rather than refusing it — the same per-junction repair behaviour, exercised against the second
-// junction.
-func TestWireJunctions_RepointsDanglingJunction_Extra(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-
-	l := h.Location
-	slug := l.WorktreeName
-	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
-	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
-
-	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist-extra")
-	if err := os.RemoveAll(link); err != nil {
-		t.Fatalf("remove existing junction: %v", err)
-	}
-	if err := fslink.CreateDirLink(link, danglingTarget); err != nil {
-		t.Fatalf("seed dangling junction: %v", err)
-	}
-
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
-		t.Fatalf("WireJunctions: %v", err)
-	}
-
-	isLink, err := fslink.IsLink(link)
-	if err != nil || !isLink {
-		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
-	}
-	resolved, err := fslink.PointsTo(link)
-	if err != nil {
-		t.Fatalf("PointsTo(%s): %v", link, err)
-	}
-	wantResolved, err := filepath.EvalSymlinks(correctTarget)
-	if err != nil {
-		t.Fatalf("EvalSymlinks(%s): %v", correctTarget, err)
-	}
-	if resolved != wantResolved {
-		t.Errorf("junction resolves to %s; want %s", resolved, wantResolved)
+			isLink, err := fslink.IsLink(tt.link)
+			if err != nil || !isLink {
+				t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", tt.link, isLink, err)
+			}
+			resolved, err := fslink.PointsTo(tt.link)
+			if err != nil {
+				t.Fatalf("PointsTo(%s): %v", tt.link, err)
+			}
+			wantResolved, err := filepath.EvalSymlinks(tt.correctTarget)
+			if err != nil {
+				t.Fatalf("EvalSymlinks(%s): %v", tt.correctTarget, err)
+			}
+			if resolved != wantResolved {
+				t.Errorf("junction resolves to %s; want %s", resolved, wantResolved)
+			}
+		})
 	}
 }

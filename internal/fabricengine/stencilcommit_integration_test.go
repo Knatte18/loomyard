@@ -43,6 +43,8 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 // list lands exactly one commit whose changed-file set is confined to the stencils subtree
 // (including a seeded .gitattributes), leaves an unrelated dirty board file untouched, records
 // file_written and commit_created entries, and never pushes.
+//
+//testtiming:keep a scoped commit confined to the stencils subtree, leaving unrelated board dirt untouched, recording file_written and commit_created and never pushing; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 	t.Parallel()
 

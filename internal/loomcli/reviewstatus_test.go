@@ -37,76 +37,81 @@ func waitingNote(t *testing.T, s parentreview.Store) string {
 	return note
 }
 
-func TestReviewWaiting_AbsentDirIsEmpty(t *testing.T) {
-	if note := waitingNote(t, reviewStore(t)); note != "" {
-		t.Errorf("note = %q, want empty", note)
+// TestReviewWaiting asserts the waiting note names an open request and whether its notice was delivered, and is empty when there is no review, a settled round or a superseded one.
+func TestReviewWaiting(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(t *testing.T, s parentreview.Store)
+		wantEmpty  bool
+		wantPrefix string
+		wantIn     string
+	}{
+		{name: "absent dir is empty", wantEmpty: true},
+		{
+			name:       "open undelivered",
+			setup:      openReview,
+			wantPrefix: "parent review: waiting on reviewer hub:orch",
+			wantIn:     "notice not delivered",
+		},
+		{
+			name: "open delivered",
+			setup: func(t *testing.T, s parentreview.Store) {
+				openReview(t, s)
+				if err := s.RecordDelivered(""); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantIn: "notice delivered at",
+		},
+		{
+			name: "verdicted round reports nothing",
+			setup: func(t *testing.T, s parentreview.Store) {
+				openReview(t, s)
+				if err := s.RecordVerdict(parentreview.VerdictApprove, ""); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "expired round reports nothing",
+			setup: func(t *testing.T, s parentreview.Store) {
+				openReview(t, s)
+				if err := s.MarkExpired(); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantEmpty: true,
+		},
+		{
+			// Only the latest round counts: the superseded round's open request must not leak.
+			name: "superseded round reports nothing",
+			setup: func(t *testing.T, s parentreview.Store) {
+				openReview(t, s)
+				if _, err := s.BeginRound(); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Stat(filepath.Join(s.Root, "round-2")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantEmpty: true,
+		},
 	}
-}
-
-func TestReviewWaiting_OpenUndelivered(t *testing.T) {
-	s := reviewStore(t)
-	openReview(t, s)
-	note := waitingNote(t, s)
-	if !strings.HasPrefix(note, "parent review: waiting on reviewer hub:orch") || !strings.Contains(note, "notice not delivered") {
-		t.Errorf("note = %q", note)
-	}
-}
-
-func TestReviewWaiting_OpenDelivered(t *testing.T) {
-	s := reviewStore(t)
-	openReview(t, s)
-	if err := s.RecordDelivered(""); err != nil {
-		t.Fatal(err)
-	}
-	if note := waitingNote(t, s); !strings.Contains(note, "notice delivered at") {
-		t.Errorf("note = %q", note)
-	}
-}
-
-func TestReviewWaiting_SettledRoundsReportNothing(t *testing.T) {
-	t.Run("verdicted", func(t *testing.T) {
-		s := reviewStore(t)
-		openReview(t, s)
-		if err := s.RecordVerdict(parentreview.VerdictApprove, ""); err != nil {
-			t.Fatal(err)
-		}
-		if note := waitingNote(t, s); note != "" {
-			t.Errorf("note = %q, want empty", note)
-		}
-	})
-	t.Run("expired", func(t *testing.T) {
-		s := reviewStore(t)
-		openReview(t, s)
-		if err := s.MarkExpired(); err != nil {
-			t.Fatal(err)
-		}
-		if note := waitingNote(t, s); note != "" {
-			t.Errorf("note = %q, want empty", note)
-		}
-	})
-	t.Run("superseded", func(t *testing.T) {
-		s := reviewStore(t)
-		openReview(t, s)
-		if _, err := s.BeginRound(); err != nil {
-			t.Fatal(err)
-		}
-		if note := waitingNote(t, s); note != "" {
-			t.Errorf("note = %q, want empty", note)
-		}
-	})
-}
-
-func TestReviewWaiting_LatestRoundOnly(t *testing.T) {
-	s := reviewStore(t)
-	openReview(t, s)
-	if _, err := s.BeginRound(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(s.Root, "round-2")); err != nil {
-		t.Fatal(err)
-	}
-	if note := waitingNote(t, s); note != "" {
-		t.Errorf("superseded round leaked: %q", note)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := reviewStore(t)
+			if tt.setup != nil {
+				tt.setup(t, s)
+			}
+			note := waitingNote(t, s)
+			if tt.wantEmpty && note != "" {
+				t.Errorf("note = %q, want empty", note)
+			}
+			if !strings.HasPrefix(note, tt.wantPrefix) || !strings.Contains(note, tt.wantIn) {
+				t.Errorf("note = %q; want prefix %q containing %q", note, tt.wantPrefix, tt.wantIn)
+			}
+		})
 	}
 }
 
@@ -121,44 +126,60 @@ func writeVerifyMarker(t *testing.T, pid int) string {
 	return path
 }
 
-func TestVerifyWaiting_LiveMarkerAheadOfReview(t *testing.T) {
-	s := reviewStore(t)
-	openReview(t, s)
-	hook := verifyWaiting(writeVerifyMarker(t, os.Getpid()), reviewWaiting(s.Root, s.LockDir))
-	note, err := hook()
-	if err != nil {
-		t.Fatal(err)
+// TestVerifyWaiting asserts a live verify marker is reported ahead of an open review, a dead marker falls through to the review note, and no marker with no review is empty.
+func TestVerifyWaiting(t *testing.T) {
+	tests := []struct {
+		name       string
+		openReview bool
+		marker     func(t *testing.T) string
+		check      func(t *testing.T, note string)
+	}{
+		{
+			name:       "live marker ahead of review",
+			openReview: true,
+			marker:     func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid()) },
+			check: func(t *testing.T, note string) {
+				if !strings.HasPrefix(note, "verify Publish (attempt 2, since ") || strings.Contains(note, "parent review") {
+					t.Errorf("note = %q", note)
+				}
+			},
+		},
+		{
+			name:       "dead marker falls to review",
+			openReview: true,
+			marker:     func(t *testing.T) string { return writeVerifyMarker(t, 2147483646) },
+			check: func(t *testing.T, note string) {
+				if !strings.HasPrefix(note, "parent review: ") {
+					t.Errorf("note = %q", note)
+				}
+			},
+		},
+		{
+			name:   "no marker no review is empty",
+			marker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			check: func(t *testing.T, note string) {
+				if note != "" {
+					t.Errorf("note = %q, want empty", note)
+				}
+			},
+		},
 	}
-	if !strings.HasPrefix(note, "verify Publish (attempt 2, since ") || strings.Contains(note, "parent review") {
-		t.Errorf("note = %q", note)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := reviewStore(t)
+			if tt.openReview {
+				openReview(t, s)
+			}
+			note, err := verifyWaiting(tt.marker(t), reviewWaiting(s.Root, s.LockDir))()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, note)
+		})
 	}
 }
 
-func TestVerifyWaiting_DeadMarkerFallsToReview(t *testing.T) {
-	s := reviewStore(t)
-	openReview(t, s)
-	hook := verifyWaiting(writeVerifyMarker(t, 2147483646), reviewWaiting(s.Root, s.LockDir))
-	note, err := hook()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(note, "parent review: ") {
-		t.Errorf("note = %q", note)
-	}
-}
-
-func TestVerifyWaiting_NoMarkerNoReviewIsEmpty(t *testing.T) {
-	s := reviewStore(t)
-	hook := verifyWaiting(filepath.Join(t.TempDir(), "absent.yaml"), reviewWaiting(s.Root, s.LockDir))
-	note, err := hook()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if note != "" {
-		t.Errorf("note = %q, want empty", note)
-	}
-}
-
+//testtiming:keep pins the status spec carrying no waiting hook when the CLI has no location; its covering tests build the spec without asserting its hooks
 func TestSpecFor_WaitingHookNilWithoutLocation(t *testing.T) {
 	c := &loomCLI{}
 	if got := c.specFor("status").Hooks.Waiting; got != nil {

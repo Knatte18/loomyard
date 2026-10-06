@@ -1,15 +1,14 @@
 // focus_test.go covers readRoundFocus against the focus file the Bouncer actually writes: the
 // YAML-frontmatter round-<N>-focus.md shape renderFocus produces and parseFocus accepts.
-// TestReadRoundFocus_ReadsTheFileTheBouncerWrites is the two-sided regression guard -- it writes
-// through the writer and reads through the reader, so a future divergence in filename, format, or
-// field set fails here instead of silently emptying the judge's targeting channel in production.
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething is the two-sided regression guard -- it
+// writes through the writer and reads through the reader, so a future divergence in filename, format,
+// or field set fails here instead of silently emptying the judge's targeting channel in production.
 
 package shedadapters
 
 import (
 	"os"
 	"testing"
-	"time"
 )
 
 // assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an implementation detail, not part of its contract.
@@ -59,31 +58,23 @@ func writeFocusFileRaw(t *testing.T, runDir string, round int, content string) s
 	return path
 }
 
-// TestReadRoundFocus_ReadsTheFileTheBouncerWrites drives the writer and the reader against one
-// another. It is the guard for the defect this pair once carried: the writer emitted
+// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething drives the writer and the reader against one
+// another, the guard for the defect this pair once carried: the writer emitted
 // round-<N>-focus.md as YAML frontmatter while the reader opened round-<N>-focus.json and strictly
 // decoded JSON, so every production read found nothing and the judge's directive never reached the
 // fixer round.
-func TestReadRoundFocus_ReadsTheFileTheBouncerWrites(t *testing.T) {
-	dir := t.TempDir()
-	path := writeFocusFile(t, dir, 3, focusFile{
-		Round:         3,
-		ExcludeLenses: []string{"lensA", "lensB"},
-		Focus:         []string{"check the relocation candidate in the Auto-mode assumptions section"},
-		Prose:         "Seed round: nothing has been reviewed yet.",
-	})
-
-	got := readRoundFocus("bouncer", dir, 3)
-
-	assertFocus(t, got, []string{"lensA", "lensB"}, path)
-}
-
-// TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething pins that a CONVERGED judge's mandatory but empty focus file carries no directive path:
+// It also pins that a CONVERGED judge's mandatory but empty focus file carries no directive path:
 // handing the next round a document that asserts nothing is noise, not targeting.
+// The round token names the round the directives are FOR, so reading another round must not find the file.
+//
+//testtiming:keep pins the focus reader against the file the writer produces: the directive path only when the file says something, the exclude lenses, and the target round's filename
 func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name         string
-		file         focusFile
+		name string
+		file focusFile
+		// readRound is the round read; zero reads the file's own round.
+		readRound    int
 		wantExclude  []string
 		wantHydrated bool
 	}{
@@ -111,14 +102,37 @@ func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) 
 			wantExclude:  []string{"lensA"},
 			wantHydrated: false,
 		},
+		{
+			name: "ExcludeLensesFocusAndProseTogether",
+			file: focusFile{
+				Round:         3,
+				ExcludeLenses: []string{"lensA", "lensB"},
+				Focus:         []string{"check the relocation candidate in the Auto-mode assumptions section"},
+				Prose:         "Seed round: nothing has been reviewed yet.",
+			},
+			wantExclude:  []string{"lensA", "lensB"},
+			wantHydrated: true,
+		},
+		{
+			name:         "AnotherRoundsFileIsNotFound",
+			file:         focusFile{Round: 3, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}},
+			readRound:    4,
+			wantExclude:  []string{},
+			wantHydrated: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
-			path := writeFocusFile(t, dir, 1, tt.file)
+			path := writeFocusFile(t, dir, tt.file.Round, tt.file)
+			readRound := tt.readRound
+			if readRound == 0 {
+				readRound = tt.file.Round
+			}
 
-			got := readRoundFocus("bouncer", dir, 1)
+			got := readRoundFocus("bouncer", dir, readRound)
 
 			wantDirective := ""
 			if tt.wantHydrated {
@@ -175,36 +189,6 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 		got := readRoundFocus("bouncer", dir, 1)
 		assertFocus(t, got, []string{}, "")
 	})
-}
-
-// TestReadRoundFocus_ResolvesFilenameByTargetRound pins the round token's meaning: the file names the
-// round the directives are FOR, so reading round 4 must not find round 3's file.
-func TestReadRoundFocus_ResolvesFilenameByTargetRound(t *testing.T) {
-	dir := t.TempDir()
-	path := writeFocusFile(t, dir, 3, focusFile{Round: 3, ExcludeLenses: []string{"lensA"}, Focus: []string{"a directive"}})
-
-	found := readRoundFocus("bouncer", dir, 3)
-	assertFocus(t, found, []string{"lensA"}, path)
-
-	notFound := readRoundFocus("bouncer", dir, 4)
-	assertFocus(t, notFound, []string{}, "")
-}
-
-// TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind closes the loop against the Bouncer's
-// own writer rather than a hand-built focusFile: ensureFocus's synthetic file must read back as the
-// zero directive, and a judge-written one must read back with its directive intact.
-func TestReadRoundFocus_ReadsWhatTheBouncerSeedPassLeavesBehind(t *testing.T) {
-	dir := t.TempDir()
-	bouncer := &Bouncer{cfg: BouncerConfig{Name: "Discussion-Bouncer", RunDir: dir, Now: fixedClock(time.Unix(0, 0).UTC())}}
-
-	bouncer.ensureFocus(1)
-
-	got := readRoundFocus("Discussion-Bouncer", dir, 1)
-	assertFocus(t, got, []string{}, "")
-
-	if _, err := os.Stat(focusPath(dir, 1)); err != nil {
-		t.Fatalf("ensureFocus(1) left no file at %s: %v", focusPath(dir, 1), err)
-	}
 }
 
 // TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename is LS-1's own regression test

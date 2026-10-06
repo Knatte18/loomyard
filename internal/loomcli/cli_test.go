@@ -67,24 +67,19 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	if alias.Flags().Lookup("no-attach") == nil {
 		t.Error("StartAliasCommand() is missing the --no-attach flag the subtree's start verb exposes")
 	}
-}
 
-// TestCommand_StartVerb_RegistersNoAttachFlag asserts that the "start" verb registered under the
-// "loom" parent command -- not just its bare-root alias -- exposes --no-attach, since it is the
-// flag's primary home.
-func TestCommand_StartVerb_RegistersNoAttachFlag(t *testing.T) {
-	parent := Command()
-
-	var start *cobra.Command
-	for _, sub := range parent.Commands() {
+	// The start verb registered under the loom parent command, not just its bare-root alias, exposes
+	// --no-attach: it is the flag's primary home.
+	var registered *cobra.Command
+	for _, sub := range Command().Commands() {
 		if sub.Name() == "start" {
-			start = sub
+			registered = sub
 		}
 	}
-	if start == nil {
+	if registered == nil {
 		t.Fatal(`"start" verb is not registered under the loom parent command`)
 	}
-	if start.Flags().Lookup("no-attach") == nil {
+	if registered.Flags().Lookup("no-attach") == nil {
 		t.Error(`"loom start" is missing the --no-attach flag`)
 	}
 }
@@ -105,6 +100,8 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 }
 
 // TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since neither Command() nor StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely for a test.
+//
+//testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge and suppressWatchdogSpawn, fields neither constructor's callers expose; its covering tests build the CLI without asserting them
 func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	c := newLoomCLI()
 
@@ -127,6 +124,8 @@ func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 // static form.
 //
 // Together with TestNewLoomCLI_SetsInjectedSeams above, this is what would have caught the alias gotcha newLoomCLI now designs out: that test proves the fields are set, this one proves both constructors go through the place that sets them.
+//
+//testtiming:keep scans the package's production files for a loomCLI composite literal outside newLoomCLI's file, a source-shape guard no behavior test reaches
 func TestProductionFiles_LoomCLILiteralOnlyInFactory(t *testing.T) {
 	matches, err := filepath.Glob("*.go")
 	if err != nil {
@@ -222,6 +221,8 @@ func TestVerbRefusals(t *testing.T) {
 
 // TestSpecFor_ScratchAndFrictionDir asserts specFor tells the generic verbs the run's scratch
 // directory and the friction directory, and tolerates a receiver with no location.
+//
+//testtiming:keep pins specFor's scratch directory from the location and run-id, the friction directory passed through, and a nil location giving no scratch directory; its covering tests run specFor without asserting those fields
 func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 

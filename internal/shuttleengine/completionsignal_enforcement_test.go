@@ -179,6 +179,8 @@ var auditedFileContractCallSites = map[string]int{
 
 // TestCompletionSignal_NegativeVerdictReturnSites trips when a return statement yielding a negative
 // run verdict is added to or removed from wait.go or attach.go.
+//
+//testtiming:keep scans wait.go and attach.go for the negative-verdict return sites, catching an unguarded new exit, which no other test reads
 func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
 	got := scanNegativeVerdictReturns(t)
 	assertAuditedSet(t, "negative-verdict return site", got, auditedNegativeVerdictReturns,
@@ -190,6 +192,8 @@ func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
 
 // TestCompletionSignal_FileContractCallSites trips when an allOutputFilesExist call is added to or
 // removed from wait.go or attach.go.
+//
+//testtiming:keep scans the allOutputFilesExist call sites, catching a guard deleted from an exit that already has one, which the return-site scan cannot see
 func TestCompletionSignal_FileContractCallSites(t *testing.T) {
 	got := scanFileContractCallSites(t)
 	assertAuditedSet(t, "allOutputFilesExist call site", got, auditedFileContractCallSites,

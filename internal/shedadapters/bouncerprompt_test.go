@@ -1,19 +1,15 @@
-// bouncerprompt_test.go covers focusSchemaMarkers' two variants against both shipped Bouncer
-// stencils, and that BouncerConfig.ClusterExcludes reaches the seed and judge fills.
+// bouncerprompt_test.go covers that BouncerConfig.ClusterExcludes reaches the seed and judge fills
+// and that the judge prompt offers CIRCLING only from the checkpoint round.
 
 package shedadapters
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -41,51 +37,6 @@ func assertExcludeLensesText(t *testing.T, prompt string, clusterExcludes bool) 
 	}
 }
 
-func TestFocusSchemaMarkers_BothStencilsBothModes(t *testing.T) {
-	seedBase := map[string]string{
-		"rubric":     "# Rubric\n\nBe thorough.\n",
-		"artifacts":  "/abs/artifact.md",
-		"round":      "1",
-		"focus_path": "/abs/round-1-focus.md",
-
-		parentdirective.MarkerName: "PARENT DIRECTIVE",
-	}
-	judgeBase := map[string]string{
-		"rubric":          "# Rubric\n\nBe thorough.\n",
-		"facts_path":      "/abs/round-1-facts.md",
-		"round":           "1",
-		"next_round":      "2",
-		"decision_rule":   decisionRuleMarker(1, 3),
-		"report_path":     "/abs/round-1-report.md",
-		"previous_ledger": "(none)",
-		"verdict_path":    "/abs/round-1-bouncer-verdict.md",
-		"ledger_path":     "/abs/round-1-bouncer-ledger.md",
-		"focus_path":      "/abs/round-2-focus.md",
-
-		parentdirective.MarkerName: "PARENT DIRECTIVE",
-	}
-
-	for _, clusterExcludes := range []bool{false, true} {
-		for name, tc := range map[string]struct {
-			template []byte
-			base     map[string]string
-		}{
-			"Seed":  {stencils.BouncerTemplateSeed, seedBase},
-			"Judge": {stencils.BouncerTemplateJudge, judgeBase},
-		} {
-			t.Run(fmt.Sprintf("%s_ClusterExcludes=%t", name, clusterExcludes), func(t *testing.T) {
-				values := maps.Clone(tc.base)
-				maps.Copy(values, focusSchemaMarkers(clusterExcludes))
-				prompt, err := stencil.FillOptional(tc.template, values, []string{"pattern_directive"})
-				if err != nil {
-					t.Fatalf("stencil.Fill(%s, clusterExcludes=%v) error = %v; want nil", name, clusterExcludes, err)
-				}
-				assertExcludeLensesText(t, string(prompt), clusterExcludes)
-			})
-		}
-	}
-}
-
 // decisionRuleSection returns the part of a rendered judge prompt between its Decision rule and Output files headings.
 func decisionRuleSection(t *testing.T, prompt string) string {
 	t.Helper()
@@ -101,6 +52,7 @@ func decisionRuleSection(t *testing.T, prompt string) string {
 	return section
 }
 
+//testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered and the rising-count caveat comes with CIRCLING
 func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
@@ -129,6 +81,7 @@ func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that the checkpoint round configured on the Bouncer reaches the judge prompt's decision rule
 func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
@@ -161,6 +114,7 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 	for _, clusterExcludes := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Seed_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {

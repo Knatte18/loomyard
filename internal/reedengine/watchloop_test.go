@@ -22,9 +22,36 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// TestWatchDefaultTiming_MatchesTheSixConstants pins that watchDefaultTiming returns exactly the
+// TestWatchState pins the watcher's pure timing contracts against a synthetic clock, each a named step below:
+// the default timing, the per-mode ticker cadence, and watchState's debounce, coalescing and per-event retry-cap behaviour.
+//
+//testtiming:keep pins the watcher's pure contracts on a synthetic clock: default timing, per-mode ticker cadence, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
+func TestWatchState(t *testing.T) {
+	steps := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{"DefaultTimingMatchesTheSixConstants", watchDefaultTimingMatchesTheSixConstants},
+		{"TickerPeriodForAnswersPerModeCadence", tickerPeriodForAnswersPerModeCadence},
+		{"SingleSignalWaitsThenApplies", watchStateSingleSignalWaitsThenApplies},
+		{"CoalescesABurstIntoOneApply", watchStateCoalescesABurstIntoOneApply},
+		{"SignalInsideQuietRestartsIt", watchStateSignalInsideQuietRestartsIt},
+		{"SignalDuringInFlightApplySchedulesOneFollowUp", watchStateSignalDuringInFlightApplySchedulesOneFollowUp},
+		{"SucceededClearsTheOwedApply", watchStateSucceededClearsTheOwedApply},
+		{"FailedEscalatesAndCaps", watchStateFailedEscalatesAndCaps},
+		{"StreakResetsOnSuccess", watchStateStreakResetsOnSuccess},
+		{"StreakResetsOnFreshSignal", watchStateStreakResetsOnFreshSignal},
+		{"DeferredChangesNothing", watchStateDeferredChangesNothing},
+		{"FreshSignalAfterExhaustedStreakReArms", watchStateFreshSignalAfterExhaustedStreakReArms},
+	}
+	for _, step := range steps {
+		t.Run(step.name, step.run)
+	}
+}
+
+// watchDefaultTimingMatchesTheSixConstants pins that watchDefaultTiming returns exactly the
 // six package constants, so a later tuning change moves one line and does not break the suite.
-func TestWatchDefaultTiming_MatchesTheSixConstants(t *testing.T) {
+func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 	got := watchDefaultTiming()
 	want := watchTiming{
 		SignalTick:  watchdogSignalTick,
@@ -39,11 +66,11 @@ func TestWatchDefaultTiming_MatchesTheSixConstants(t *testing.T) {
 	}
 }
 
-// TestTickerPeriodFor_AnswersPerModeCadence pins tickerPeriodFor's cadence-per-mode contract
+// tickerPeriodForAnswersPerModeCadence pins tickerPeriodFor's cadence-per-mode contract
 // directly: while dormant the loop refuses before any tmux round trip, so the recording hook
 // observes nothing and cannot measure the interval, which is why this is pinned as a pure
 // function test rather than through a driver-test timing measurement.
-func TestTickerPeriodFor_AnswersPerModeCadence(t *testing.T) {
+func tickerPeriodForAnswersPerModeCadence(t *testing.T) {
 	timing := watchdogTestTiming()
 	tests := []struct {
 		name string
@@ -63,9 +90,9 @@ func TestTickerPeriodFor_AnswersPerModeCadence(t *testing.T) {
 	}
 }
 
-// TestWatchState_SingleSignalWaitsThenApplies pins that a single Signal yields watchPlanWait until
+// watchStateSingleSignalWaitsThenApplies pins that a single Signal yields watchPlanWait until
 // the quiet period has elapsed and watchPlanApply at and after it.
-func TestWatchState_SingleSignalWaitsThenApplies(t *testing.T) {
+func watchStateSingleSignalWaitsThenApplies(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -85,10 +112,10 @@ func TestWatchState_SingleSignalWaitsThenApplies(t *testing.T) {
 	}
 }
 
-// TestWatchState_CoalescesABurstIntoOneApply pins the coalescing contract: twenty Signal calls at
+// watchStateCoalescesABurstIntoOneApply pins the coalescing contract: twenty Signal calls at
 // Quiet/4 intervals yield watchPlanWait throughout and exactly one watchPlanApply, after the last
 // signal's quiet period.
-func TestWatchState_CoalescesABurstIntoOneApply(t *testing.T) {
+func watchStateCoalescesABurstIntoOneApply(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -111,9 +138,9 @@ func TestWatchState_CoalescesABurstIntoOneApply(t *testing.T) {
 	}
 }
 
-// TestWatchState_SignalInsideQuietRestartsIt pins that a Signal arriving inside the quiet period
+// watchStateSignalInsideQuietRestartsIt pins that a Signal arriving inside the quiet period
 // restarts it: the apply is owed relative to the later signal, not the earlier one.
-func TestWatchState_SignalInsideQuietRestartsIt(t *testing.T) {
+func watchStateSignalInsideQuietRestartsIt(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -131,10 +158,10 @@ func TestWatchState_SignalInsideQuietRestartsIt(t *testing.T) {
 	}
 }
 
-// TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp pins that a Signal arriving while an
+// watchStateSignalDuringInFlightApplySchedulesOneFollowUp pins that a Signal arriving while an
 // apply is notionally in flight schedules exactly one follow-up, not a queue: two Signal calls
 // before a single Succeeded leave the state with at most one owed apply.
-func TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp(t *testing.T) {
+func watchStateSignalDuringInFlightApplySchedulesOneFollowUp(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -148,9 +175,9 @@ func TestWatchState_SignalDuringInFlightApplySchedulesOneFollowUp(t *testing.T) 
 	}
 }
 
-// TestWatchState_SucceededClearsTheOwedApply pins that Succeeded clears the owed apply: the next
+// watchStateSucceededClearsTheOwedApply pins that Succeeded clears the owed apply: the next
 // Plan at any later time yields watchPlanWait.
-func TestWatchState_SucceededClearsTheOwedApply(t *testing.T) {
+func watchStateSucceededClearsTheOwedApply(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -165,10 +192,10 @@ func TestWatchState_SucceededClearsTheOwedApply(t *testing.T) {
 	}
 }
 
-// TestWatchState_FailedEscalatesAndCaps pins that attempts 1 and 2 report abandoned == false and
+// watchStateFailedEscalatesAndCaps pins that attempts 1 and 2 report abandoned == false and
 // push the next apply out by BaseDelay then 2*BaseDelay; attempt 3 (MaxAttempts) reports
 // abandoned == true and leaves Plan yielding watchPlanWait forever after.
-func TestWatchState_FailedEscalatesAndCaps(t *testing.T) {
+func watchStateFailedEscalatesAndCaps(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -205,10 +232,10 @@ func TestWatchState_FailedEscalatesAndCaps(t *testing.T) {
 	}
 }
 
-// TestWatchState_StreakResetsOnSuccess pins that the cap is per streak, not cumulative: Failed,
+// watchStateStreakResetsOnSuccess pins that the cap is per streak, not cumulative: Failed,
 // Failed, Succeeded, then a fresh Signal and two more Failed calls must again report
 // abandoned == false.
-func TestWatchState_StreakResetsOnSuccess(t *testing.T) {
+func watchStateStreakResetsOnSuccess(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -231,9 +258,9 @@ func TestWatchState_StreakResetsOnSuccess(t *testing.T) {
 	}
 }
 
-// TestWatchState_StreakResetsOnFreshSignal pins that the streak resets on a fresh signal too:
+// watchStateStreakResetsOnFreshSignal pins that the streak resets on a fresh signal too:
 // Failed, Failed, then Signal, then two more Failed calls must again report abandoned == false.
-func TestWatchState_StreakResetsOnFreshSignal(t *testing.T) {
+func watchStateStreakResetsOnFreshSignal(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -255,9 +282,9 @@ func TestWatchState_StreakResetsOnFreshSignal(t *testing.T) {
 	}
 }
 
-// TestWatchState_DeferredChangesNothing pins that Deferred leaves the attempt count and the
+// watchStateDeferredChangesNothing pins that Deferred leaves the attempt count and the
 // next-apply time untouched, whether taken between two Failed calls or while an apply is owed.
-func TestWatchState_DeferredChangesNothing(t *testing.T) {
+func watchStateDeferredChangesNothing(t *testing.T) {
 	t.Run("BetweenTwoFailedCalls", func(t *testing.T) {
 		timing := watchDefaultTiming()
 		s := newWatchState(timing)
@@ -294,10 +321,10 @@ func TestWatchState_DeferredChangesNothing(t *testing.T) {
 	})
 }
 
-// TestWatchState_FreshSignalAfterExhaustedStreakReArms pins the load-bearing assertion that
+// watchStateFreshSignalAfterExhaustedStreakReArms pins the load-bearing assertion that
 // separates the per-event cap from a loop-level cap: after an exhausted streak, a fresh Signal
 // re-arms the state and the very next quiet period yields watchPlanApply.
-func TestWatchState_FreshSignalAfterExhaustedStreakReArms(t *testing.T) {
+func watchStateFreshSignalAfterExhaustedStreakReArms(t *testing.T) {
 	timing := watchDefaultTiming()
 	s := newWatchState(timing)
 	now := time.Now()
@@ -400,62 +427,40 @@ func eventually(t *testing.T, timeout time.Duration, cond func() bool) bool {
 	}
 }
 
-// TestWatchLoop_DisabledNeverReturnsWhileCtxLive pins that with Watchdog: "off", watchLoop issues
-// no tmux call, does not return within a bounded wait, and returns only after ctx is cancelled.
-func TestWatchLoop_DisabledNeverReturnsWhileCtxLive(t *testing.T) {
-	e, fake := newWatchLoopTestEngine(t, "off")
-	cancel, done := startWatchLoop(t, e, watchdogTestTiming())
+// TestWatchLoop_ParkedWhenNotEnabled pins that with Watchdog "off" or an invalid value watchLoop issues no tmux call,
+// does not return within a bounded wait, and returns context.Canceled only after ctx is cancelled:
+// a config typo parks the loop rather than killing the keepalive, so it must not return an error and must not return at all until cancellation.
+func TestWatchLoop_ParkedWhenNotEnabled(t *testing.T) {
+	for _, watchdog := range []string{"off", "garbage"} {
+		t.Run(watchdog, func(t *testing.T) {
+			e, fake := newWatchLoopTestEngine(t, watchdog)
+			cancel, done := startWatchLoop(t, e, watchdogTestTiming())
 
-	select {
-	case err := <-done:
-		t.Fatalf("watchLoop returned %v before cancellation, want it parked", err)
-	case <-time.After(30 * time.Millisecond):
-	}
-	if calls := fake.Calls(); len(calls) != 0 {
-		t.Errorf("tmux calls = %v, want zero tmux calls while disabled", calls)
-	}
-
-	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("watchLoop() error = %v, want context.Canceled", err)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatalf("watchLoop did not return after cancellation")
-	}
-}
-
-// TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive pins the identical contract for an invalid
-// Watchdog value: the header tail's contract is that a config typo parks the loop rather than
-// killing the keepalive, so this must not return an error and must not return at all until
-// cancellation.
-func TestWatchLoop_InvalidValueNeverReturnsWhileCtxLive(t *testing.T) {
-	e, fake := newWatchLoopTestEngine(t, "garbage")
-	cancel, done := startWatchLoop(t, e, watchdogTestTiming())
-
-	select {
-	case err := <-done:
-		t.Fatalf("watchLoop returned %v before cancellation, want it parked", err)
-	case <-time.After(30 * time.Millisecond):
-	}
-	if calls := fake.Calls(); len(calls) != 0 {
-		t.Errorf("tmux calls = %v, want zero tmux calls on an invalid value", calls)
-	}
-
-	cancel()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("watchLoop() error = %v, want context.Canceled", err)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatalf("watchLoop did not return after cancellation")
+			select {
+			case err := <-done:
+				t.Fatalf("watchLoop returned %v before cancellation, want it parked", err)
+			case <-time.After(30 * time.Millisecond):
+			}
+			if calls := fake.Calls(); len(calls) != 0 {
+				t.Errorf("tmux calls = %v, want zero tmux calls while parked", calls)
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Errorf("watchLoop() error = %v, want context.Canceled", err)
+				}
+			case <-time.After(200 * time.Millisecond):
+				t.Fatalf("watchLoop did not return after cancellation")
+			}
+		})
 	}
 }
 
 // TestWatchLoop_StaleSignalFileRemovedAtStart pins that a signal file present before the call is
 // gone shortly after the loop starts.
+//
+//testtiming:keep pins a signal file present before the loop starts being removed at start, so an old resize does not trigger an apply; its covering tests run this code without asserting it
 func TestWatchLoop_StaleSignalFileRemovedAtStart(t *testing.T) {
 	e, _ := newWatchLoopTestEngine(t, "on")
 	signalPath := e.resizeSignalPath()
@@ -478,6 +483,8 @@ func TestWatchLoop_StaleSignalFileRemovedAtStart(t *testing.T) {
 
 // TestWatchLoop_PollModeByDefault pins that with show-options reporting no hook, the loop issues
 // repeated reapplyLayout cycles at PollCycle and never promotes into signal-mode behaviour.
+//
+//testtiming:keep pins the loop repeating reapplyLayout cycles at the poll cadence and probing the hook every cycle while show-options reports no hook, never promoting; its covering tests run this code without asserting it
 func TestWatchLoop_PollModeByDefault(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
@@ -511,53 +518,48 @@ func waitForPromotion(t *testing.T, fake *fakeTmux) int {
 	return stableCount
 }
 
-// TestWatchLoop_ModePromotion pins that with show-options scripted to return reed's own command
-// string, the loop promotes: after promotion it stops issuing per-cycle reapplyLayout calls, and it
-// applies only after a signal file appears.
-func TestWatchLoop_ModePromotion(t *testing.T) {
+// TestWatchLoop_SignalMode pins, as ordered steps on one running loop, the promotion into signal mode and what the loop does there.
+// With show-options returning reed's own command string the loop promotes and stops issuing per-cycle reapplyLayout calls.
+// Each later step builds on the state the earlier ones left.
+// Signal mode never re-probes, so scripting show-options to return the empty string afterwards produces no further probe round trips.
+// A signal file then causes exactly one select-layout after the quiet period, and the file is gone before that select-layout appears in the recorded argv.
+//
+//testtiming:keep pins promotion into signal mode stopping per-cycle polling, a signal file producing exactly one select-layout after the file is removed, and signal mode never re-probing the hook; its covering tests run this code without asserting it
+func TestWatchLoop_SignalMode(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 	fake.answer("show-options", ownCommand, nil)
-
 	startWatchLoop(t, e, watchdogTestTiming())
 
 	stable := waitForPromotion(t, fake)
+	probesAtPromotion := fake.Count("show-options")
 	// The promotion tick's own first-ever apply (lastApplied starts as the zero box, which never
 	// equals a live box) already issued one select-layout; the baseline below is what the
-	// signal-triggered apply below must exceed.
+	// signal-triggered apply must exceed by exactly one.
 	baseline := fake.Count("select-layout")
 
+	// A demoting implementation would re-probe and see the hook gone.
+	fake.answer("show-options", "", nil)
 	// Change the box so the coming signal-triggered apply is a real, observable select-layout rather
 	// than one the box-equality guard skips.
-	fake.answer("display-message", "120 30", nil)
-	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
+	fake.answer("display-message", "130 40", nil)
+	signalPath := e.resizeSignalPath()
+	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
-
 	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") > stable }) {
 		t.Errorf("list-panes calls = %d, want more than %d after the signal file appeared", fake.Count("list-panes"), stable)
 	}
-	if !eventually(t, 100*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
-		t.Errorf("select-layout calls = %d, want more than %d after the signal-triggered apply", fake.Count("select-layout"), baseline)
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
+		t.Fatalf("select-layout calls = %d, want more than %d after the signal-triggered apply", fake.Count("select-layout"), baseline)
 	}
-}
-
-// TestWatchLoop_NeverDemotes pins that after a promotion, scripting show-options to return the
-// empty string produces no further probe round trips at all — signal mode never re-probes.
-func TestWatchLoop_NeverDemotes(t *testing.T) {
-	e, fake := newWatchLoopTestEngine(t, "on")
-	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	fake.answer("show-options", ownCommand, nil)
-
-	startWatchLoop(t, e, watchdogTestTiming())
-	waitForPromotion(t, fake)
-
-	probesAtPromotion := fake.Count("show-options")
-	fake.answer("show-options", "", nil)
-
-	// Give the loop many more signal ticks than it took to promote; a demoting implementation would
-	// re-probe and see the hook gone.
-	time.Sleep(50 * time.Millisecond)
+	if _, err := os.Stat(signalPath); !os.IsNotExist(err) {
+		t.Errorf("signal file still present once select-layout was observed, want it removed before the apply")
+	}
+	if got := fake.Count("select-layout"); got != baseline+1 {
+		t.Errorf("select-layout calls = %d, want exactly %d for one signal", got, baseline+1)
+	}
+	time.Sleep(30 * time.Millisecond)
 	if got := fake.Count("show-options"); got != probesAtPromotion {
 		t.Errorf("show-options calls = %d after clearing the hook, want unchanged from %d (signal mode never re-probes)", got, probesAtPromotion)
 	}
@@ -566,6 +568,8 @@ func TestWatchLoop_NeverDemotes(t *testing.T) {
 // TestWatchLoop_UndecidedProbeDoesNotGuess pins that with reed.lock held for the first few cycles
 // so every call defers, the mode stays poll and no promotion occurs; releasing the lock and then
 // reporting the hook promotes as normal.
+//
+//testtiming:keep pins the mode staying poll with no tmux call while reed.lock is held and every tick defers, then promoting as normal once the lock is released and the hook reported; its covering tests run this code without asserting it
 func TestWatchLoop_UndecidedProbeDoesNotGuess(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
@@ -598,41 +602,11 @@ func TestWatchLoop_UndecidedProbeDoesNotGuess(t *testing.T) {
 	waitForPromotion(t, fake)
 }
 
-// TestWatchLoop_SignalConsumedByRemovalBeforeTheApply pins that in signal mode, creating the signal
-// file causes exactly one select-layout after the quiet period, and the file is gone before that
-// select-layout appears in the recorded argv.
-func TestWatchLoop_SignalConsumedByRemovalBeforeTheApply(t *testing.T) {
-	e, fake := newWatchLoopTestEngine(t, "on")
-	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	fake.answer("show-options", ownCommand, nil)
-
-	startWatchLoop(t, e, watchdogTestTiming())
-	waitForPromotion(t, fake)
-	// The promotion tick's own first-ever apply already issued one select-layout (lastApplied starts
-	// as the zero box); baseline is what this test's one signal must add exactly one to.
-	baseline := fake.Count("select-layout")
-
-	// A differing box so the apply this signal triggers is a real, observable select-layout.
-	fake.answer("display-message", "130 40", nil)
-	signalPath := e.resizeSignalPath()
-	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
-		t.Fatalf("WriteFile signal: %v", err)
-	}
-
-	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("select-layout") > baseline }) {
-		t.Fatalf("no select-layout observed after the signal file appeared")
-	}
-	if _, err := os.Stat(signalPath); !os.IsNotExist(err) {
-		t.Errorf("signal file still present once select-layout was observed, want it removed before the apply")
-	}
-	if got := fake.Count("select-layout"); got != baseline+1 {
-		t.Errorf("select-layout calls = %d, want exactly %d for one signal", got, baseline+1)
-	}
-}
-
 // TestWatchLoop_TakeEffectBoundary pins that rewriting e.cfg.Watchdog on disk-equivalent state
 // (flipped directly in the fixture, standing in for a reed.yaml edit) changes nothing while the
 // loop runs: the loop reads e.cfg.Watchdog exactly once, at start.
+//
+//testtiming:keep pins the loop reading e.cfg.Watchdog once at start, so flipping it mid-run neither stops the loop nor changes its cadence; its covering tests run this code without asserting it
 func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
@@ -765,6 +739,8 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 // TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot pins that when the told worktree root
 // vanishes while the loop is in poll mode, the loop stops issuing tmux calls, keeps running rather
 // than returning, and logs exactly one warning.
+//
+//testtiming:keep pins the poll-mode loop stopping its tmux round trips when the told worktree root vanishes, staying alive and logging exactly one dormancy warning; its covering tests run this code without asserting it
 func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")
@@ -799,55 +775,6 @@ func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	}
 }
 
-// TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot pins the identical entry-into-dormancy
-// contract from signal mode, so the per-event retry-streak machinery cannot swallow the transition.
-func TestWatchLoop_SignalModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	e, fake := newWatchLoopTestEngine(t, "on")
-	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
-	fake.answer("show-options", ownCommand, nil)
-
-	// A generously wide quiet window: the sequence below writes the signal file, waits for the
-	// loop to consume it into a pending apply, and only then removes the worktree root — the
-	// window has to comfortably outlast that handoff without becoming a multi-second sleep.
-	timing := watchdogTestTiming()
-	timing.Quiet = 30 * time.Millisecond
-
-	_, done := startWatchLoop(t, e, timing)
-	waitForPromotion(t, fake)
-
-	signalPath := e.resizeSignalPath()
-	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
-		t.Fatalf("WriteFile signal: %v", err)
-	}
-	if !eventually(t, 200*time.Millisecond, func() bool {
-		_, err := os.Stat(signalPath)
-		return os.IsNotExist(err)
-	}) {
-		t.Fatalf("signal file was not consumed before the quiet period elapsed")
-	}
-
-	if err := os.RemoveAll(e.geom.WorktreeRoot); err != nil {
-		t.Fatalf("RemoveAll worktree root: %v", err)
-	}
-
-	if !eventually(t, 300*time.Millisecond, func() bool {
-		return strings.Contains(buf.String(), "told worktree root is gone")
-	}) {
-		t.Fatalf("no dormancy warning observed after the worktree root vanished mid-quiet-period; log:\n%s", buf.String())
-	}
-
-	select {
-	case err := <-done:
-		t.Fatalf("watchLoop returned %v after the worktree root vanished, want it to keep running", err)
-	case <-time.After(20 * time.Millisecond):
-	}
-
-	if got := strings.Count(buf.String(), "dropping the resize watcher into dormant mode"); got != 1 {
-		t.Errorf("dormancy warning lines = %d, want exactly 1; log:\n%s", got, buf.String())
-	}
-}
-
 // TestWatchLoop_RecoversFromDormancyToItsPriorMode pins that once the told worktree root exists
 // again, a dormant watcher logs exactly one recovery line and resumes at the mode it was in before
 // dormancy — signal mode here, so the regression guard is that it does not come back demoted to
@@ -861,7 +788,7 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 	timing := watchdogTestTiming()
 	timing.Quiet = 30 * time.Millisecond
 
-	startWatchLoop(t, e, timing)
+	_, done := startWatchLoop(t, e, timing)
 	waitForPromotion(t, fake)
 
 	signalPath := e.resizeSignalPath()
@@ -885,6 +812,11 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 		t.Fatalf("no dormancy warning observed after the worktree root vanished; log:\n%s", buf.String())
 	}
 
+	select {
+	case err := <-done:
+		t.Fatalf("watchLoop returned %v after the worktree root vanished, want it to keep running", err)
+	case <-time.After(20 * time.Millisecond):
+	}
 	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
 		t.Fatalf("MkdirAll (recreate) worktree root: %v", err)
 	}
@@ -910,6 +842,8 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 // TestWatchLoop_NonSentinelFailureDoesNotGoDormant pins the narrowing itself: a re-apply failure
 // that is NOT errWorktreeRootGone must not drop the loop into dormancy, so the loop keeps
 // re-applying at its existing (poll) cadence exactly as it does today.
+//
+//testtiming:keep pins a re-apply failure other than errWorktreeRootGone leaving the loop at its poll cadence with no dormancy warning; its covering tests run this code without asserting it
 func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	buf := logcapture.CaptureVerbose(t)
 	e, fake := newWatchLoopTestEngine(t, "on")

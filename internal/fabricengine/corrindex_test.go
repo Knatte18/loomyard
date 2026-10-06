@@ -14,7 +14,10 @@ import (
 )
 
 // TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one corrIndex handle
-// are visible after reloading the same path into a fresh handle.
+// are visible after reloading the same path into a fresh handle, and that exact() misses a warp SHA
+// that was never recorded.
+//
+//testtiming:keep entries surviving a reload into a fresh handle and exact() missing a never-recorded warp SHA; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 
@@ -42,24 +45,15 @@ func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 	if !ok || got2.WeftSHA != "weft2" {
 		t.Errorf("reloaded.exact(warp2) = %+v, %v; want {weft2 ...}, true", got2, ok)
 	}
-}
-
-// TestCorrIndex_LoadMissingFileIsEmpty asserts that loading a path with no existing file yields an
-// empty index rather than an error.
-func TestCorrIndex_LoadMissingFileIsEmpty(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "does-not-exist.json")
-
-	ix, err := loadCorrIndex(path)
-	if err != nil {
-		t.Fatalf("loadCorrIndex() error = %v", err)
-	}
-	if got := ix.entries(); len(got) != 0 {
-		t.Errorf("entries() = %v; want empty", got)
+	if _, ok := reloaded.exact("nonexistent"); ok {
+		t.Errorf("reloaded.exact(nonexistent) ok = true; want false")
 	}
 }
 
 // TestCorrIndex_RecordUpsertOverwritesWeftSHA asserts that recording a second entry for an
 // already-present warp SHA overwrites its weft SHA rather than appending a duplicate.
+//
+//testtiming:keep recording a known warp SHA again overwriting its weft SHA instead of appending; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
@@ -86,32 +80,20 @@ func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_ExactHitAndMiss covers exact() for a recorded warp SHA and an unrecorded one.
-func TestCorrIndex_ExactHitAndMiss(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "corr.json")
-	ix, err := loadCorrIndex(path)
-	if err != nil {
-		t.Fatalf("loadCorrIndex() error = %v", err)
-	}
-	if err := ix.record(corrEntry{WarpSHA: "warp1", WeftSHA: "weft1", WarpSeq: 1}); err != nil {
-		t.Fatalf("record() error = %v", err)
-	}
-
-	if got, ok := ix.exact("warp1"); !ok || got.WeftSHA != "weft1" {
-		t.Errorf("exact(warp1) = %+v, %v; want {weft1 ...}, true", got, ok)
-	}
-	if _, ok := ix.exact("nonexistent"); ok {
-		t.Errorf("exact(nonexistent) ok = true; want false")
-	}
-}
-
-// TestCorrIndex_NearestAtOrBefore covers the binary-search "nearest older" lookup: an empty index,
-// a target below every recorded seq, an exact-seq hit, and a between-seqs hit.
+// TestCorrIndex_NearestAtOrBefore covers loading a path with no file (an empty index, not an error),
+// the binary-search "nearest older" lookup: an empty index, a target below every recorded seq, an
+// exact-seq hit, a between-seqs hit and a target above every seq; and, when several entries share
+// the qualifying WarpSeq, the last one recorded winning per record's stable-sort ordering guarantee.
+//
+//testtiming:keep the binary-search nearest-older lookup over an empty, below-range, exact, between and above-range index, and the last-recorded entry winning a shared seq; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() error = %v", err)
+	}
+	if got := ix.entries(); len(got) != 0 {
+		t.Errorf("entries() of a never-written path = %v; want empty", got)
 	}
 
 	if _, ok := ix.nearestAtOrBefore(5); ok {
@@ -146,31 +128,22 @@ func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 	if !ok || got.WarpSHA != "w30" {
 		t.Errorf("nearestAtOrBefore(100) above all seqs = %+v, %v; want w30, true", got, ok)
 	}
-}
 
-// TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins asserts that when multiple entries
-// share the qualifying WarpSeq, nearestAtOrBefore returns the last one recorded, per record's
-// stable-sort ordering guarantee.
-func TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "corr.json")
-	ix, err := loadCorrIndex(path)
+	shared, err := loadCorrIndex(filepath.Join(t.TempDir(), "shared.json"))
 	if err != nil {
 		t.Fatalf("loadCorrIndex() error = %v", err)
 	}
-
-	if err := ix.record(corrEntry{WarpSHA: "first", WeftSHA: "f1", WarpSeq: 10}); err != nil {
-		t.Fatalf("record() error = %v", err)
+	for _, e := range []corrEntry{
+		{WarpSHA: "first", WeftSHA: "f1", WarpSeq: 10},
+		{WarpSHA: "second", WeftSHA: "f2", WarpSeq: 10},
+	} {
+		if err := shared.record(e); err != nil {
+			t.Fatalf("record(%+v) error = %v", e, err)
+		}
 	}
-	if err := ix.record(corrEntry{WarpSHA: "second", WeftSHA: "f2", WarpSeq: 10}); err != nil {
-		t.Fatalf("record() error = %v", err)
-	}
-
-	got, ok := ix.nearestAtOrBefore(10)
-	if !ok {
-		t.Fatalf("nearestAtOrBefore(10) ok = false; want true")
-	}
-	if got.WarpSHA != "second" {
-		t.Errorf("nearestAtOrBefore(10) = %q; want %q (last recorded)", got.WarpSHA, "second")
+	got, ok = shared.nearestAtOrBefore(10)
+	if !ok || got.WarpSHA != "second" {
+		t.Errorf("nearestAtOrBefore(10) with a shared seq = %+v, %v; want second (last recorded), true", got, ok)
 	}
 }
 
@@ -178,6 +151,8 @@ func TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins(t *testing.T) {
 // the freshly-read on-disk base rather than the handle's own possibly-stale in-memory snapshot: an
 // external state.WriteJSON call (standing in for RebuildIndex's write) that lands after the handle
 // is loaded but before record() runs must not be lost when record() persists.
+//
+//testtiming:keep record() upserting against the freshly read on-disk base so a write landed after the handle loaded survives; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 
@@ -210,6 +185,8 @@ func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
 
 // TestCorrIndex_PersistenceIsAtomic asserts that after every record() call, the backing file is
 // fully written and parses as valid JSON — never half-written or transiently corrupt.
+//
+//testtiming:keep the index file parsing as complete JSON after every record() call; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_PersistenceIsAtomic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)

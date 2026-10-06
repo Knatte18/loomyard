@@ -111,7 +111,7 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	if pathWithin(scratch, canon) {
 		return reasonScratch, true, nil
 	}
-	if _, ok, err := trackedRel(geom.WorktreeRoot, path); err != nil || ok {
+	if _, ok, err := trackedRel(geom.git(), geom.WorktreeRoot, path); err != nil || ok {
 		return "", false, err
 	}
 	root, err := canonicalPath(geom.WorktreeRoot)

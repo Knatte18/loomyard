@@ -16,6 +16,8 @@ import (
 // rather than treating the whole multi-line value as a single tag.
 // Written first and run against the pre-split implementation to confirm it fails before the split
 // is added.
+//
+//testtiming:keep a multi-line Snapshot value splitting into one tag per line; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
 	t.Parallel()
 
@@ -47,6 +49,8 @@ func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
 // TestParseTrailerScanRecord covers the remaining record shapes as a table: no Snapshot field at
 // all, exactly one tag, a Warp-SHA-less record (skipped even though it carries a Snapshot value),
 // an empty record, and surrounding-newline trimming.
+//
+//testtiming:keep the record shapes of the trailer scan: no Snapshot field, one tag, a Warp-SHA-less record skipped, an empty record and newline trimming; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord(t *testing.T) {
 	t.Parallel()
 

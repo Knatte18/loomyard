@@ -46,6 +46,8 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 
 // TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook twice does
 // not duplicate the script or alter the file content after the first install.
+//
+//testtiming:keep a second InstallPostCheckoutHook call leaving the script content unchanged and unduplicated; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
@@ -89,6 +91,8 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 // TestInstallPostCheckoutHook_ChainIdempotent verifies that when a user hook exists,
 // InstallPostCheckoutHook backs it up to post-checkout.user, writes a chained wrapper that
 // references the backup, and that a second install is a no-op (sentinel already present).
+//
+//testtiming:keep an existing user hook being backed up to post-checkout.user, chained and left alone by a second install; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -153,6 +157,8 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 // the weft prime must sit on WeftBranchName(warpBranch) to be considered in sync, not on a literal
 // warp-branch-name match.
 // A real git checkout is performed for both the in-sync and diverged cases.
+//
+//testtiming:keep the installed hook resolving the <PrimeName>-weft sibling for a prime worktree under the suffixed branch scheme, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
@@ -211,6 +217,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 // To trigger the hook without hitting that constraint, we create an extra branch in the child warp
 // and switch between it and slug while the weft child stays on a third, non-overlapping branch for
 // the diverged case.
+//
+//testtiming:keep the installed hook resolving the <slug>-weft sibling for a child worktree, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	t.Parallel()
 
@@ -272,6 +280,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 // os.WriteFile applies its perm argument only when it CREATES the file, so chaining around an
 // existing non-executable user hook used to leave the wrapper non-executable, and git then ignored
 // the hook entirely — silently retiring both the operator's hook and fabric's drift warning.
+//
+//testtiming:keep the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	t.Parallel()
 
@@ -330,6 +340,8 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 // look for it.
 // Composing <git-common-dir>/hooks ignores core.hooksPath, so on a repo that sets it fabric wrote
 // the hook into a directory git no longer consults and reported success.
+//
+//testtiming:keep the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 	t.Parallel()
 

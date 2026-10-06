@@ -51,33 +51,8 @@ const (
 	testSummaryPath = "/lyx/webster/summary.md"
 )
 
-// TestRenderPrompts_CarryCardGates asserts the fork and recovery prompts both render the caller's per-card gate list verbatim and leave no literal card_gates marker.
-func TestRenderPrompts_CarryCardGates(t *testing.T) {
-	batch := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "gate", "add the gate")}}
-	anchorRoot, stencilsDir := testLayout(t)
-	planDir := filepath.Join(anchorRoot, "_lyx", "plan")
-
-	fork, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-gate.yaml", planDir, anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-	if err != nil {
-		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-	}
-	recovery, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-gate.yaml", anchorRoot, planDir, anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-	if err != nil {
-		t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-	}
-	requireContains(t, string(fork), testOutcomePath)
-	requireContains(t, string(fork), testSummaryPath)
-	for name, got := range map[string][]byte{"fork": fork, "recovery": recovery} {
-		text := string(got)
-		requireContains(t, text, testCardGates)
-		if strings.Contains(text, "{{.card_gates}}") {
-			t.Errorf("%s prompt contains a literal \"{{.card_gates}}\" marker; want it rendered", name)
-		}
-		if strings.Contains(text, "this card's package's unit tests") {
-			t.Errorf("%s prompt still tells the fork to derive the gate itself", name)
-		}
-	}
-}
+// testVerifyFixPromptPath is the placeholder fixer-prompt path passed as RenderMasterPrompt's verifyFixPromptPath parameter.
+const testVerifyFixPromptPath = "/lyx/webster/prompts/verify-fix.md"
 
 // newTestSpecsDir returns a real, non-empty directory to pass as RenderForkPrompt's/
 // RenderRecoveryPrompt's specsDir parameter, alongside newTestStencilsDir. A real directory rather
@@ -171,6 +146,14 @@ func frictionActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
 	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
+}
+
+// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like patternActiveLayout — PATTERN active, every stencil seeded — but then removes the pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
+func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
+	t.Helper()
+	anchorRoot, stencilsDir = patternActiveLayout(t)
+	stencilkit.Remove(t, stencilsDir, "pattern-directive-implementer", "pattern-directive-review-fix", "pattern-directive-orchestrator")
+	return anchorRoot, stencilsDir
 }
 
 // stripFrictionMarker rewrites the named webster stencil under stencilsDir, dropping the literal
@@ -328,291 +311,6 @@ func cardWithSourcePath(number int, slug, summary string) planparser.Card {
 	}
 }
 
-// TestMasterTemplate_QuotesDigestFieldsAndNoOthers asserts the master template's digest-field
-// bullet list names exactly webster's own six Digest field names (json tags), in the struct's own
-// declared order — no fewer, no extras — the mechanical half of "Master reads only the minimal
-// fork-return digest".
-func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	want := []string{"batch", "status", "head_sha", "deviations", "dead_reason", "elapsed_s"}
-	got := extractBacktickBullets(text, digestSectionHeading)
-
-	if len(got) != len(want) {
-		t.Fatalf("digest field bullets = %v (%d); want %v (%d)", got, len(got), want, len(want))
-	}
-	for i, field := range want {
-		if got[i] != field {
-			t.Errorf("digest field bullet %d = %q; want %q", i, got[i], field)
-		}
-	}
-}
-
-// TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list names exactly the outcome.yaml schema keys.
-func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
-	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
-
-	want := []string{"outcome", "stuck_reason", "batches_done"}
-	got := extractBacktickBullets(text, outcomeKeysHeadingSub)
-	if len(got) != len(want) {
-		t.Fatalf("outcome schema key bullets = %v (%d); want %v (%d)", got, len(got), want, len(want))
-	}
-	for i, key := range want {
-		if got[i] != key {
-			t.Errorf("outcome schema key bullet %d = %q; want %q", i, got[i], key)
-		}
-	}
-}
-
-// TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of
-// MasterTemplate's seven required markers plus the two optional markers (pattern_directive,
-// friction_directive) is supplied, and fails — naming the marker — when any single REQUIRED one is
-// absent.
-// pattern_directive and friction_directive are deliberately excluded from this deletion sweep: they
-// are the two optional markers (see the template's own banner comment), so deleting either must not
-// error.
-func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), masterTemplateMarkerValues(), []string{"pattern_directive", "friction_directive", "parent_directive"}); err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-	})
-
-	for _, marker := range []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := masterTemplateMarkerValues()
-			delete(values, marker)
-			_, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive", "friction_directive", "parent_directive"})
-			if err == nil {
-				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
-	}
-}
-
-// TestMasterTemplate_PatternDirectiveOptional asserts pattern_directive behaves as an optional
-// marker: an empty value renders cleanly with no leftover `{{`, no orphan `## Constraints` heading,
-// and no stray blank-line block where the directive would have sat, and a non-empty value places
-// the directive block ahead of the first work instruction ("## Orientation").
-func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
-		values := masterTemplateMarkerValues()
-		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive", "friction_directive", "parent_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-		if strings.Contains(text, "## Constraints") {
-			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
-		}
-		if strings.Contains(text, "\n\n\n\n") {
-			t.Errorf("rendered output contains a stray blank-line block: %q", text)
-		}
-	})
-
-	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
-		values := masterTemplateMarkerValues()
-		got, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive", "friction_directive", "parent_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		directiveIdx := strings.Index(text, values["pattern_directive"])
-		workIdx := strings.Index(text, "## Orientation")
-		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
-		}
-	})
-}
-
-// TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures asserts the rendered fork prompt's "Bounded self-fix, then stop" section carries the caused-by-the-card rule with both causes, the rendered cap, the FAILED-on-exhaustion rule, and the report-but-never-fix rule for a failure the card did not cause.
-func TestRenderForkPrompt_SelfFixSectionCountsCardCausedFailures(t *testing.T) {
-	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	anchorRoot, stencilsDir := testLayout(t)
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 7, "")
-	if err != nil {
-		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	_, rest, ok := strings.Cut(text, "## Bounded self-fix, then stop")
-	if !ok {
-		t.Fatalf("rendered prompt has no \"## Bounded self-fix, then stop\" section")
-	}
-	section, _, _ := strings.Cut(rest, "\n## ")
-
-	requireContains(t, section, "at most `7` in-session fix attempts")
-	requireContains(t, section, "in any other test run you make, counts as that card's gate failure when the card's change caused it")
-	requireContains(t, section, "the failing test exercises code or files the card changed")
-	requireContains(t, section, "a repo scan or enforcement test flags a file the card wrote")
-	requireContains(t, section, "under the same `7`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out")
-	requireContains(t, section, "A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master")
-}
-
-// TestForkTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of the
-// composed fork template's six required markers plus the optional friction_directive marker is
-// supplied, and fails — naming the marker — when any single REQUIRED one is absent.
-// shared_decisions, rename_mechanic, and pattern_directive are gone entirely, per the
-// fork-context-hygiene Shared Decision; friction_directive is the fork template's own one optional
-// marker (this card's addition) and is deliberately excluded from the deletion sweep below, so
-// deleting it must not error.
-func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(mustForkTemplate(t, stencilsDir), forkTemplateMarkerValues(), []string{"friction_directive"}); err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-	})
-
-	for _, marker := range []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := forkTemplateMarkerValues()
-			delete(values, marker)
-			_, err := stencil.FillOptional(mustForkTemplate(t, stencilsDir), values, []string{"friction_directive"})
-			if err == nil {
-				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
-	}
-}
-
-// TestRecoveryTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of
-// the composed recovery template's six required markers plus the two optional markers
-// (pattern_directive, friction_directive) is supplied,
-// and fails — naming the marker — when any single REQUIRED one is absent.
-// pattern_directive and friction_directive are excluded from the deletion sweep: they are the
-// recovery template's two optional markers, so deleting either must not error.
-func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), recoveryTemplateMarkerValues(), []string{"pattern_directive", "failure_digest", "friction_directive", "parent_directive"}); err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-	})
-
-	for _, marker := range []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := recoveryTemplateMarkerValues()
-			delete(values, marker)
-			_, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), values, []string{"pattern_directive", "failure_digest", "friction_directive", "parent_directive"})
-			if err == nil {
-				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
-	}
-}
-
-// TestTemplates_ForkAndRecoveryShareImplementerBody asserts the reuse guarantee behind the
-// fork-context-hygiene Shared Decision: both ForkTemplate() and RecoveryTemplate() carry
-// ImplementerBodyTemplate()'s exact pre-Fill byte sequence — the shared body's raw template text,
-// not a byte-equality of the two renderers' own rendered output, which legitimately diverges on
-// per-caller values (card_pointers, prev_digest, and so on).
-func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
-	stencilsDir := newTestStencilsDir(t)
-
-	body := []byte(stencil.StripLeadingComment(string(mustImplementerBodyTemplate(t, stencilsDir))))
-	if len(body) == 0 {
-		t.Fatalf("ImplementerBodyTemplate() = empty; want non-empty shared body bytes")
-	}
-	if !bytes.Contains(mustForkTemplate(t, stencilsDir), body) {
-		t.Errorf("ForkTemplate() does not contain ImplementerBodyTemplate()'s bytes")
-	}
-	if !bytes.Contains(mustRecoveryTemplate(t, stencilsDir), body) {
-		t.Errorf("RecoveryTemplate() does not contain ImplementerBodyTemplate()'s bytes")
-	}
-}
-
-// TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty asserts RenderForkPrompt renders the
-// literal "none (first batch)" sentinel into {{.prev_digest}} when prevDigest is empty (the first
-// executed batch's own call site never has a preceding digest to pass),
-// and passes a non-empty prevDigest through verbatim otherwise — the fork prompt's cross-batch
-// digest context is always Go-rendered from the caller's own persisted value, never re-derived
-// here.
-func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
-	batch := batcher.Batch{Cards: []planparser.Card{
-		cardWithSourcePath(1, "seam-extensions", "add the seam"),
-	}}
-
-	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-seam-extensions.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), "none (first batch)")
-	})
-
-	t.Run("non-empty prevDigest passes through verbatim", func(t *testing.T) {
-		digest := "01-seam-extensions: done head_sha=abc123"
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, digest, "/reports/02-webster-foundation.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), digest)
-	})
-}
-
-// TestRenderForkPrompt_StatesSpecsDir asserts the composed in-session fork prompt contains the told
-// specs directory, verbatim and absolute, and no literal "{{.specs_dir}}" marker survives -- the
-// shared implementer-job body's normative citations must resolve to a real, openable path.
-func TestRenderForkPrompt_StatesSpecsDir(t *testing.T) {
-	batch := batcher.Batch{Cards: []planparser.Card{
-		cardWithSourcePath(1, "seam-extensions", "add the seam"),
-	}}
-	anchorRoot, stencilsDir := testLayout(t)
-	specsDir := newTestSpecsDir(t)
-	if !filepath.IsAbs(specsDir) {
-		t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path", specsDir)
-	}
-
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-seam-extensions.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, testOutcomePath, testSummaryPath, 2, "")
-	if err != nil {
-		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	requireContains(t, text, specsDir)
-	if strings.Contains(text, "{{.specs_dir}}") {
-		t.Errorf("RenderForkPrompt() output contains a literal \"{{.specs_dir}}\" marker; want it rendered: %q", text)
-	}
-}
-
-// TestRenderForkPrompt_EmptySpecsDirErrors asserts RenderForkPrompt returns an error, rather than a
-// prompt carrying a blank path, when handed an empty specsDir -- specs_dir is a required marker in
-// the shared implementer-job body.
-func TestRenderForkPrompt_EmptySpecsDirErrors(t *testing.T) {
-	batch := batcher.Batch{Cards: []planparser.Card{
-		cardWithSourcePath(1, "seam-extensions", "add the seam"),
-	}}
-	anchorRoot, stencilsDir := testLayout(t)
-
-	if _, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-seam-extensions.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, "", testOutcomePath, testSummaryPath, 2, ""); err == nil {
-		t.Error("RenderForkPrompt(..., specsDir=\"\") = _, nil; want an error")
-	}
-}
-
 // assertCardPointerIsRelative fails the test if got does not contain the
 // card's own SourcePath, or if that pointer is not worktree-relative (an
 // absolute prefix, or a leaked t.TempDir() path, would mean the renderer
@@ -629,644 +327,559 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 	}
 }
 
-// TestRenderForkPrompt_OmitsSharedDecisions asserts the composed thin fork prompt never carries a
-// "## Shared Decisions" section — that plan-level context is already in the fork's inherited Master
-// context, per the fork-context-hygiene Shared Decision — and that it DOES carry the card's own
-// relative SourcePath pointer.
-func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
-	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	anchorRoot, stencilsDir := testLayout(t)
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-json-flag.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-	if err != nil {
-		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	requireNotContains(t, text, "## Shared Decisions")
-	assertCardPointerIsRelative(t, text, card.SourcePath)
+// renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
+// anchor root and the prompt worktree root, and the plan directory is derived under it.
+func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
+	got, err := websterengine.RenderForkPrompt(batch, testCardGates, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lyx", "plan"), root, stencilsDir, specsDir, testOutcomePath, testSummaryPath, selfFixCap, notePath)
+	return string(got), err
 }
 
-// TestRenderForkPrompt_OmitsRenameMechanic asserts the composed thin fork prompt never carries a
-// "## Rename mechanic" section, regardless of whether the batch has a rename-bearing card — that
-// mechanism, like Shared Decisions, is already in the fork's inherited Master context — and that it
-// DOES carry the card's own relative SourcePath pointer.
-func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
-	card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
-	card.Type = planparser.CardTypeRename
-	pair := planparser.MovePair{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}
-	card.Pairs = []planparser.MovePair{pair}
-	card.Targets = []string{pair.Old, pair.New}
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	anchorRoot, stencilsDir := testLayout(t)
-	got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/04-helptree-rename.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-	if err != nil {
-		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	requireNotContains(t, text, "## Rename mechanic")
-	assertCardPointerIsRelative(t, text, card.SourcePath)
+// renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
+// directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
+func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, notePath, parent string) (string, error) {
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", failureDigest, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, notePath, parent)
+	return string(got), err
 }
 
-// TestRenderRecoveryPrompt_InstructsColdOrientation asserts RenderRecoveryPrompt's rendered prompt
-// points the cold recovery strand at `00-overview.md`, carries the card's own
-// SourcePath pointer and the shared implementer-body text, and — for the PATTERN-active case — also
-// carries the PATTERN overview via the injected pattern_directive.
-// The PATTERN-inactive case renders cleanly: no leftover `{{`, no `CONSTRAINTS.md` and no orphan `## Constraints` heading.
-func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	t.Run("PATTERN inactive", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		text := string(got)
-
-		requireContains(t, text, "00-overview.md")
-		requireNotContains(t, text, "CONSTRAINTS.md")
-		requireContains(t, text, card.SourcePath)
-		requireContains(t, text, "## Your final action: the minimal batch-report")
-
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-		if strings.Contains(text, "## Constraints") {
-			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
-		}
-	})
-
-	t.Run("PATTERN active", func(t *testing.T) {
-		anchorRoot, stencilsDir := patternActiveLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		text := string(got)
-
-		requireContains(t, text, "some constraints")
-		requireContains(t, text, "## Constraints")
-	})
+// renderMaster renders Merriam's prompt for batches with a nil state and the shared placeholder paths.
+func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string) (string, error) {
+	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, notePath, parent)
+	return string(got), err
 }
 
-// TestRenderPrompts_PatternDirectiveFromRepoRoot proves the recovery and master renderers read
-// PATTERN.md from the told repoRoot and not from the anchor or prompt worktree root: the overview is
-// planted at the repo root only, and the anchor-shaped roots are a subdirectory of it, as in a
-// subpath-anchored hub.
-func TestRenderPrompts_PatternDirectiveFromRepoRoot(t *testing.T) {
-	repoRoot, stencilsDir := patternActiveLayout(t)
-	anchorRoot := filepath.Join(repoRoot, "backend")
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	recovery, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-	if err != nil {
-		t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-	}
-	requireContains(t, string(recovery), "some constraints")
-
-	master, err := websterengine.RenderMasterPrompt([]batcher.Batch{batch}, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, "", "")
-	if err != nil {
-		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-	}
-	requireContains(t, string(master), "some constraints")
-
-	wrong, err := websterengine.RenderMasterPrompt([]batcher.Batch{batch}, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", "")
-	if err != nil {
-		t.Fatalf("RenderMasterPrompt(anchor as repoRoot) = _, %v; want nil error", err)
-	}
-	requireNotContains(t, string(wrong), "some constraints")
+// renderVerifyFix renders the fixer prompt for reportPath with the shared placeholder paths.
+func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (string, error) {
+	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath)
+	return string(got), err
 }
 
-// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like patternActiveLayout — PATTERN active, every stencil seeded — but then removes the pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
-func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
+// promptCheck is one rendered prompt and the assertions its case makes on it: wantErr expects the
+// render to fail, otherwise every contains needle is present, every notContains needle is absent,
+// and the inOrder needles appear in that order.
+type promptCheck struct {
+	text        string
+	err         error
+	wantErr     bool
+	contains    []string
+	notContains []string
+	inOrder     []string
+}
+
+func (c promptCheck) verify(t *testing.T) {
 	t.Helper()
-	hub := t.TempDir()
-	seedHubStencils(t, hub)
-	stencilkit.Remove(t, fabricengine.StencilsDir(hub), "pattern-directive-implementer", "pattern-directive-review-fix", "pattern-directive-orchestrator")
-	dir := filepath.Join(hub, "worktree")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v", dir, err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
-	}
-	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
-}
-
-// TestRenderRecoveryPrompt_MissingPatternStencilErrors asserts RenderRecoveryPrompt's hoisted
-// pattern.Directive call propagates a non-nil error when PATTERN is active but the pattern-directive
-// stencils are absent, rather than dropping the error the hoist out of the map literal made
-// checkable in the first place.
-func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
-
-	if _, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", ""); err == nil {
-		t.Fatal("RenderRecoveryPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
-	}
-}
-
-// TestRenderRecoveryPrompt_StatesSpecsDir asserts the composed cold-recovery prompt contains the
-// told specs directory, verbatim and absolute, and no literal "{{.specs_dir}}" marker survives --
-// both prompts compose the same shared implementer-job body carrying the marker.
-func TestRenderRecoveryPrompt_StatesSpecsDir(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-	anchorRoot, stencilsDir := testLayout(t)
-	specsDir := newTestSpecsDir(t)
-	if !filepath.IsAbs(specsDir) {
-		t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path", specsDir)
-	}
-
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, "", "")
-	if err != nil {
-		t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	requireContains(t, text, specsDir)
-	if strings.Contains(text, "{{.specs_dir}}") {
-		t.Errorf("RenderRecoveryPrompt() output contains a literal \"{{.specs_dir}}\" marker; want it rendered: %q", text)
-	}
-}
-
-// TestRenderRecoveryPrompt_FailureDigest asserts a non-empty failure digest renders verbatim and an empty one renders "none", with no literal marker surviving either way.
-func TestRenderRecoveryPrompt_FailureDigest(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-	anchorRoot, stencilsDir := testLayout(t)
-	render := func(digest string) string {
-		t.Helper()
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", digest, "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
+	if c.wantErr {
+		if c.err == nil {
+			t.Fatal("render error = nil; want an error")
 		}
-		return string(got)
+		return
 	}
-
-	const digest = "- fork wrote outside its worktree\n- suspect path: internal/x/y.go"
-	text := render(digest)
-	requireContains(t, text, digest)
-	if strings.Contains(text, "{{.failure_digest}}") {
-		t.Errorf("non-empty digest: output contains a literal \"{{.failure_digest}}\" marker: %q", text)
+	if c.err != nil {
+		t.Fatalf("render = _, %v; want nil error", c.err)
 	}
-
-	text = render("")
-	requireContains(t, text, "Why this batch is being recovered\n\nnone\n")
-}
-
-// TestRenderRecoveryPrompt_EmptySpecsDirErrors asserts RenderRecoveryPrompt returns an error, rather
-// than a prompt carrying a blank path, when handed an empty specsDir.
-func TestRenderRecoveryPrompt_EmptySpecsDirErrors(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-	anchorRoot, stencilsDir := testLayout(t)
-
-	if _, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, "", 2, "", ""); err == nil {
-		t.Error("RenderRecoveryPrompt(..., specsDir=\"\") = _, nil; want an error")
+	for _, needle := range c.contains {
+		requireContains(t, c.text, needle)
 	}
-}
-
-// TestRenderMasterPrompt_MissingPatternStencilErrors asserts RenderMasterPrompt's hoisted
-// pattern.Directive call propagates a non-nil error when PATTERN is active but the pattern-directive
-// stencils are absent, rather than dropping the error the hoist out of the map literal made
-// checkable in the first place.
-func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
-	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
-	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
-
-	if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", ""); err == nil {
-		t.Fatal("RenderMasterPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
+	for _, needle := range c.notContains {
+		requireNotContains(t, c.text, needle)
 	}
-}
-
-// TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot pins the told-root split for
-// RenderForkPrompt: a hub-shaped fixture where anchorRoot and promptWorktreeRoot coincide cannot
-// distinguish "fills {{.worktree_root}} from promptWorktreeRoot" from "fills it from anchorRoot",
-// since the two values are byte-identical there.
-// The second case forces them apart: only promptWorktreeRoot must appear, and the (never-passed)
-// anchorRoot value must not leak in anyway.
-func TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	last := -1
+	for _, needle := range c.inOrder {
+		idx := strings.Index(c.text, needle)
+		if idx == -1 || idx <= last {
+			t.Errorf("%q (idx %d) does not follow the previous ordered needle (idx %d)", needle, idx, last)
 		}
-		requireContains(t, string(got), anchorRoot)
-	})
+		last = idx
+	}
+}
 
-	t.Run("anchor root and prompt worktree root differ", func(t *testing.T) {
-		_, stencilsDir := testLayout(t)
-		const anchorRoot = "/hub/master-builder"
-		const promptWorktreeRoot = "/standalone/state/worktree"
+// TestMasterTemplate_QuotesBulletLists asserts the master template's digest-field bullet list names
+// exactly webster's own six Digest field names (json tags) in the struct's declared order, and its
+// outcome-file bullet list names exactly the outcome.yaml schema keys — no fewer, no extras — the
+// mechanical half of "Master reads only the minimal fork-return digest".
+//
+//testtiming:keep pins the master template's digest-field and outcome-key bullet lists matching the Digest fields and outcome schema exactly, in order; the composition test checks markers and sections, not these lists
+func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
+	t.Parallel()
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-alpha.yaml", filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	cases := []struct {
+		name    string
+		heading string
+		want    []string
+	}{
+		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "dead_reason", "elapsed_s"}},
+		{"outcome schema keys", outcomeKeysHeadingSub, []string{"outcome", "stuck_reason", "batches_done"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := extractBacktickBullets(text, tc.heading)
+			if len(got) != len(tc.want) {
+				t.Fatalf("bullets = %v (%d); want %v (%d)", got, len(got), tc.want, len(tc.want))
+			}
+			for i, field := range tc.want {
+				if got[i] != field {
+					t.Errorf("bullet %d = %q; want %q", i, got[i], field)
+				}
+			}
+		})
+	}
+}
+
+// TestTemplates_FillRequiresEveryRequiredMarker asserts stencil.FillOptional succeeds for each of
+// the master, composed fork and composed recovery templates when every required marker plus the
+// optional ones is supplied, and fails — naming the marker — when any single required one is absent.
+// The optional markers are excluded from the deletion sweep: deleting one must not error.
+//
+//testtiming:keep pins each template refusing a fill missing any single required marker, naming it, and accepting each optional marker absent; the render tests always supply every marker
+func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
+	t.Parallel()
+	stencilsDir := newTestStencilsDir(t)
+
+	cases := []struct {
+		name     string
+		template func(*testing.T, string) []byte
+		values   func() map[string]string
+		optional []string
+		required []string
+	}{
+		{
+			name:     "master",
+			template: mustMasterTemplate,
+			values:   masterTemplateMarkerValues,
+			optional: []string{"pattern_directive", "friction_directive", "parent_directive"},
+			required: []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap"},
+		},
+		{
+			name:     "fork",
+			template: mustForkTemplate,
+			values:   forkTemplateMarkerValues,
+			optional: []string{"friction_directive"},
+			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "outcome_path", "summary_path"},
+		},
+		{
+			name:     "recovery",
+			template: mustRecoveryTemplate,
+			values:   recoveryTemplateMarkerValues,
+			optional: []string{"pattern_directive", "failure_digest", "friction_directive", "parent_directive"},
+			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			t.Run("all markers supplied", func(t *testing.T) {
+				t.Parallel()
+				if _, err := stencil.FillOptional(tc.template(t, stencilsDir), tc.values(), tc.optional); err != nil {
+					t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+				}
+			})
+			for _, marker := range tc.required {
+				t.Run("missing "+marker, func(t *testing.T) {
+					t.Parallel()
+					values := tc.values()
+					delete(values, marker)
+					_, err := stencil.FillOptional(tc.template(t, stencilsDir), values, tc.optional)
+					if err == nil {
+						t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
+					}
+					if !strings.Contains(err.Error(), marker) {
+						t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestTemplates_Composition asserts the composed fork and recovery templates carry the shared
+// implementer body's exact pre-Fill bytes and no stencil banner, re-read the stencil files on every
+// call instead of caching them, and that a missing stencils directory is a hard error naming the
+// stencil rather than a fallback to an embedded default.
+func TestTemplates_Composition(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fork and recovery share the implementer body", func(t *testing.T) {
+		t.Parallel()
+		stencilsDir := newTestStencilsDir(t)
+
+		body := []byte(stencil.StripLeadingComment(string(mustImplementerBodyTemplate(t, stencilsDir))))
+		if len(body) == 0 {
+			t.Fatalf("ImplementerBodyTemplate() = empty; want non-empty shared body bytes")
 		}
-		text := string(got)
-		requireContains(t, text, promptWorktreeRoot)
-		requireNotContains(t, text, anchorRoot)
-	})
-}
-
-// TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot is
-// TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot's RenderRecoveryPrompt mirror: same
-// hub-fixture blind spot, same two-case pin, over a renderer that also takes repoRoot (for
-// pattern.Directive's own read) — proving {{.worktree_root}} still comes from promptWorktreeRoot,
-// never anchorRoot, even though anchorRoot is a real parameter here.
-func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
-
-	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), anchorRoot)
-	})
-
-	t.Run("anchor root and prompt worktree root differ", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		const promptWorktreeRoot = "/standalone/state/worktree"
-
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(promptWorktreeRoot, "_lyx", "plan"), promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		text := string(got)
-		requireContains(t, text, promptWorktreeRoot)
-		requireNotContains(t, text, anchorRoot)
-	})
-}
-
-// TestRenderMasterPrompt_NeverFillsWorktreeRoot asserts RenderMasterPrompt's rendered output carries
-// no worktree_root value at all: unlike RenderForkPrompt and RenderRecoveryPrompt, this renderer
-// fills no {{.worktree_root}} key, and webster-template-master must never gain the token.
-func TestRenderMasterPrompt_NeverFillsWorktreeRoot(t *testing.T) {
-	anchorRoot, stencilsDir := testLayout(t)
-	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
-
-	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", "")
-	if err != nil {
-		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-	requireNotContains(t, text, "worktree_root")
-	requireNotContains(t, text, anchorRoot)
-}
-
-// TestRenderVerifyFixPrompt_NamesGateReport asserts the fixer prompt names the gate report it is told and renders no leftover marker.
-func TestRenderVerifyFixPrompt_NamesGateReport(t *testing.T) {
-	anchorRoot, stencilsDir := testLayout(t)
-	reportPath := "/lyx/webster/reports/verify-gate.yaml"
-
-	got, err := websterengine.RenderVerifyFixPrompt(reportPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, "")
-	if err != nil {
-		t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-	requireContains(t, text, reportPath)
-	requireContains(t, text, testOutcomePath)
-	requireContains(t, text, testSummaryPath)
-	requireContains(t, text, "`_lyx/plan`")
-	requireNotContains(t, text, "{{")
-}
-
-// TestRenderVerifyFixPrompt_EmptyReportPathErrors asserts the fixer prompt refuses an empty report path.
-func TestRenderVerifyFixPrompt_EmptyReportPathErrors(t *testing.T) {
-	anchorRoot, stencilsDir := testLayout(t)
-
-	if _, err := websterengine.RenderVerifyFixPrompt("", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, ""); err == nil {
-		t.Fatal("RenderVerifyFixPrompt() error = nil; want an error for an empty report path")
-	}
-}
-
-// TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork asserts Merriam's prompt names the fixer prompt file and carries no integration fork.
-func TestRenderMasterPrompt_FixerForkInPlaceOfIntegrationFork(t *testing.T) {
-	anchorRoot, stencilsDir := testLayout(t)
-	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
-
-	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", "")
-	if err != nil {
-		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-	requireContains(t, text, "/lyx/webster/prompts/verify-fix.md")
-	requireContains(t, text, "Gate findings recorded at")
-	requireContains(t, text, "## Verify gate fixes")
-	requireNotContains(t, text, "integration fork")
-	requireNotContains(t, text, "integration.yaml")
-}
-
-// TestTemplates_ComposedOutputCarriesNoBannerLeak is the regression guard for the hazard this
-// batch's joinTemplateAssets fix closes: it seeds the stencils directory through
-// stencilstore.Reconcile, so every one of webster's five assets carries a real `lyx-stencil:` stamp
-// in its banner, then asserts ForkTemplate and RecoveryTemplate's output contains no `lyx-stencil:`
-// substring and no `<!--` at all — the assertion that fails if joinTemplateAssets ever stops
-// stripping the second asset's banner.
-func TestTemplates_ComposedOutputCarriesNoBannerLeak(t *testing.T) {
-	dir := stencilkit.Seed(t)
-
-	fork := string(mustForkTemplate(t, dir))
-	requireNotContains(t, fork, "lyx-stencil:")
-	requireNotContains(t, fork, "<!--")
-
-	recovery := string(mustRecoveryTemplate(t, dir))
-	requireNotContains(t, recovery, "lyx-stencil:")
-	requireNotContains(t, recovery, "<!--")
-}
-
-// TestTemplates_ComposedReadsReflectOnDiskEdits asserts the composed reads are genuinely runtime
-// reads, not a cached copy: overwriting webster-prefix-fork.md changes only ForkTemplate's output,
-// and overwriting webster-body-implementer.md — the body shared by both composed prompts — changes
-// BOTH ForkTemplate's and RecoveryTemplate's output, since three files participate in two composed
-// prompts.
-func TestTemplates_ComposedReadsReflectOnDiskEdits(t *testing.T) {
-	dir := newTestStencilsDir(t)
-
-	beforeFork := mustForkTemplate(t, dir)
-	beforeRecovery := mustRecoveryTemplate(t, dir)
-
-	forkPrefixPath := filepath.Join(dir, "webster", "webster-prefix-fork.md")
-	editedPrefix := append(append([]byte{}, stencils.WebsterPrefixFork...), []byte("\n\nEDITED FORK PREFIX MARKER\n")...)
-	if err := os.WriteFile(forkPrefixPath, editedPrefix, 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", forkPrefixPath, err)
-	}
-
-	afterPrefixEditFork := mustForkTemplate(t, dir)
-	if bytes.Equal(afterPrefixEditFork, beforeFork) {
-		t.Errorf("ForkTemplate() unchanged after editing webster-prefix-fork.md; want the on-disk edit to reach the composed output")
-	}
-	afterPrefixEditRecovery := mustRecoveryTemplate(t, dir)
-	if !bytes.Equal(afterPrefixEditRecovery, beforeRecovery) {
-		t.Errorf("RecoveryTemplate() changed after editing webster-prefix-fork.md; want it unaffected by a fork-only prefix edit")
-	}
-
-	bodyPath := filepath.Join(dir, "webster", "webster-body-implementer.md")
-	editedBody := append(append([]byte{}, stencils.WebsterBodyImplementer...), []byte("\n\nEDITED SHARED BODY MARKER\n")...)
-	if err := os.WriteFile(bodyPath, editedBody, 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
-	}
-
-	afterBodyEditFork := mustForkTemplate(t, dir)
-	if bytes.Equal(afterBodyEditFork, afterPrefixEditFork) {
-		t.Errorf("ForkTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach the composed output")
-	}
-	afterBodyEditRecovery := mustRecoveryTemplate(t, dir)
-	if bytes.Equal(afterBodyEditRecovery, afterPrefixEditRecovery) {
-		t.Errorf("RecoveryTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach both composed prompts")
-	}
-}
-
-// TestMasterTemplate_MissingBoardIsAHardError asserts MasterTemplate returns an error naming the
-// missing stencil when the stencils directory does not exist, rather than falling back to the
-// embedded default — the missing-board-is-a-hard-error Shared Decision.
-func TestMasterTemplate_MissingBoardIsAHardError(t *testing.T) {
-	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
-
-	_, err := websterengine.MasterTemplate(missingDir)
-	if err == nil {
-		t.Fatalf("MasterTemplate(%q) error = nil; want an error naming the missing stencil", missingDir)
-	}
-	requireContains(t, err.Error(), "webster-template-master")
-}
-
-// TestRenderProgress_ListsOnlyTerminalBatches asserts RenderProgress lists exactly the batches
-// whose persisted BatchState is Terminal, one "NN-slug: status" line per batch in plan order,
-// omitting any batch with no BatchState entry yet or one recorded but not yet terminal — never
-// re-parsing a report file, only ever reading the persisted record.
-func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}},
-		{Cards: []planparser.Card{cardWithSourcePath(2, "webster-foundation", "add the foundation")}},
-		{Cards: []planparser.Card{cardWithSourcePath(3, "webster-audit-policy", "add the audit policy")}},
-		{Cards: []planparser.Card{cardWithSourcePath(4, "webster-templates", "add the templates")}},
-	}
-
-	t.Run("nil state renders none", func(t *testing.T) {
-		if got := websterengine.RenderProgress(batches, nil); got != "none" {
-			t.Errorf("RenderProgress(batches, nil) = %q; want %q", got, "none")
+		for name, composed := range map[string][]byte{"ForkTemplate": mustForkTemplate(t, stencilsDir), "RecoveryTemplate": mustRecoveryTemplate(t, stencilsDir)} {
+			if !bytes.Contains(composed, body) {
+				t.Errorf("%s() does not contain ImplementerBodyTemplate()'s bytes", name)
+			}
+			// Every asset carries a real `lyx-stencil:` banner stamp, so a leak here means the
+			// composition stopped stripping the second asset's banner.
+			requireNotContains(t, string(composed), "lyx-stencil:")
+			requireNotContains(t, string(composed), "<!--")
 		}
 	})
 
-	t.Run("no terminal batches renders none", func(t *testing.T) {
-		st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "seam-extensions", Terminal: false},
-		}}
-		if got := websterengine.RenderProgress(batches, st); got != "none" {
-			t.Errorf("RenderProgress(batches, st) = %q; want %q", got, "none")
+	t.Run("reads reflect on-disk edits", func(t *testing.T) {
+		t.Parallel()
+		dir := newTestStencilsDir(t)
+
+		beforeFork := mustForkTemplate(t, dir)
+		beforeRecovery := mustRecoveryTemplate(t, dir)
+
+		forkPrefixPath := filepath.Join(dir, "webster", "webster-prefix-fork.md")
+		editedPrefix := append(append([]byte{}, stencils.WebsterPrefixFork...), []byte("\n\nEDITED FORK PREFIX MARKER\n")...)
+		if err := os.WriteFile(forkPrefixPath, editedPrefix, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", forkPrefixPath, err)
+		}
+
+		afterPrefixEditFork := mustForkTemplate(t, dir)
+		if bytes.Equal(afterPrefixEditFork, beforeFork) {
+			t.Errorf("ForkTemplate() unchanged after editing webster-prefix-fork.md; want the on-disk edit to reach the composed output")
+		}
+		afterPrefixEditRecovery := mustRecoveryTemplate(t, dir)
+		if !bytes.Equal(afterPrefixEditRecovery, beforeRecovery) {
+			t.Errorf("RecoveryTemplate() changed after editing webster-prefix-fork.md; want it unaffected by a fork-only prefix edit")
+		}
+
+		bodyPath := filepath.Join(dir, "webster", "webster-body-implementer.md")
+		editedBody := append(append([]byte{}, stencils.WebsterBodyImplementer...), []byte("\n\nEDITED SHARED BODY MARKER\n")...)
+		if err := os.WriteFile(bodyPath, editedBody, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
+		}
+
+		afterBodyEditFork := mustForkTemplate(t, dir)
+		if bytes.Equal(afterBodyEditFork, afterPrefixEditFork) {
+			t.Errorf("ForkTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach the composed output")
+		}
+		afterBodyEditRecovery := mustRecoveryTemplate(t, dir)
+		if bytes.Equal(afterBodyEditRecovery, afterPrefixEditRecovery) {
+			t.Errorf("RecoveryTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach both composed prompts")
 		}
 	})
 
-	t.Run("mixed terminal and in-flight batches", func(t *testing.T) {
-		st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
-			2: {Slug: "webster-foundation", Terminal: true, Status: "stuck"},
-			3: {Slug: "webster-audit-policy", Terminal: false},
-			// Batch 4 has no BatchState entry at all yet.
-		}}
+	t.Run("missing stencils directory is a hard error", func(t *testing.T) {
+		t.Parallel()
+		missingDir := filepath.Join(t.TempDir(), "does-not-exist")
 
-		want := "01-seam-extensions: done\n02-webster-foundation: stuck"
-		if got := websterengine.RenderProgress(batches, st); got != want {
-			t.Errorf("RenderProgress(batches, st) = %q; want %q", got, want)
+		_, err := websterengine.MasterTemplate(missingDir)
+		if err == nil {
+			t.Fatalf("MasterTemplate(%q) error = nil; want an error naming the missing stencil", missingDir)
 		}
+		requireContains(t, err.Error(), "webster-template-master")
 	})
 }
 
-// TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord covers a resumed run whose plan grew:
-// the batches with no terminal record are named in execution order, so Master cannot read a long
-// done trail as the whole run.
-func TestRenderRemaining_NamesEveryBatchWithoutATerminalRecord(t *testing.T) {
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
+// TestRenderPrompts asserts the rendered fork, recovery, master and fixer prompts: every required
+// marker resolves, nothing the fork-context-hygiene Shared Decision moved out of the fork prompt
+// leaks back in, the told roots land where they belong, and a missing or empty input fails the
+// render instead of producing a blank path.
+func TestRenderPrompts(t *testing.T) {
+	t.Parallel()
+
+	alpha := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}
+	seam := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}
+	seamBatches := []batcher.Batch{seam}
+
+	cases := []struct {
+		name   string
+		render func(t *testing.T) promptCheck
+	}{
+		{"fork carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			return promptCheck{text: text, err: err,
+				contains:    []string{testCardGates, testOutcomePath, testSummaryPath},
+				notContains: []string{"{{.card_gates}}", "this card's package's unit tests"}}
+		}},
+		{"recovery carries the card gates and no leftover marker", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err,
+				contains:    []string{testCardGates},
+				notContains: []string{"{{.card_gates}}", "this card's package's unit tests"}}
+		}},
+		{"fork self-fix section counts card-caused failures", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 7, "")
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			_, rest, ok := strings.Cut(text, "## Bounded self-fix, then stop")
+			if !ok {
+				t.Fatalf("rendered prompt has no \"## Bounded self-fix, then stop\" section")
+			}
+			section, _, _ := strings.Cut(rest, "\n## ")
+			return promptCheck{text: section, contains: []string{
+				"at most `7` in-session fix attempts",
+				"in any other test run you make, counts as that card's gate failure when the card's change caused it",
+				"the failing test exercises code or files the card changed",
+				"a repo scan or enforcement test flags a file the card wrote",
+				"under the same `7`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out",
+				"A failure the card did not cause is never yours to fix and never a `FAILED` on its own: name it in your final reply to Master",
+			}}
+		}},
+		{"fork renders the first-batch sentinel for an empty prevDigest", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(seam, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			return promptCheck{text: text, err: err, contains: []string{"none (first batch)"}}
+		}},
+		{"fork passes a non-empty prevDigest through verbatim", func(t *testing.T) promptCheck {
+			const digest = "01-seam-extensions: done head_sha=abc123"
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(seam, root, stencilsDir, newTestSpecsDir(t), digest, 2, "")
+			return promptCheck{text: text, err: err, contains: []string{digest}}
+		}},
+		{"fork states the specs dir", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			specsDir := newTestSpecsDir(t)
+			if !filepath.IsAbs(specsDir) {
+				t.Fatalf("newTestSpecsDir(t) = %q; want an absolute path", specsDir)
+			}
+			text, err := renderFork(seam, root, stencilsDir, specsDir, "", 2, "")
+			return promptCheck{text: text, err: err, contains: []string{specsDir}, notContains: []string{"{{.specs_dir}}"}}
+		}},
+		{"recovery states the specs dir", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			specsDir := newTestSpecsDir(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, specsDir, "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{specsDir}, notContains: []string{"{{.specs_dir}}"}}
+		}},
+		{"fork refuses an empty specs dir", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			_, err := renderFork(seam, root, stencilsDir, "", "", 2, "")
+			return promptCheck{err: err, wantErr: true}
+		}},
+		{"recovery refuses an empty specs dir", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			_, err := renderRecovery(alpha, root, root, stencilsDir, "", "", "", "")
+			return promptCheck{err: err, wantErr: true}
+		}},
+		{"fork omits shared decisions and points at the card", func(t *testing.T) promptCheck {
+			card := cardWithSourcePath(1, "json-flag", "add the --json flag")
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{card}}, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			if err == nil {
+				assertCardPointerIsRelative(t, text, card.SourcePath)
+			}
+			return promptCheck{text: text, err: err, notContains: []string{"## Shared Decisions"}}
+		}},
+		{"fork omits the rename mechanic and points at the card", func(t *testing.T) promptCheck {
+			card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
+			card.Type = planparser.CardTypeRename
+			pair := planparser.MovePair{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}
+			card.Pairs = []planparser.MovePair{pair}
+			card.Targets = []string{pair.Old, pair.New}
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(batcher.Batch{Cards: []planparser.Card{card}}, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			if err == nil {
+				assertCardPointerIsRelative(t, text, card.SourcePath)
+			}
+			return promptCheck{text: text, err: err, notContains: []string{"## Rename mechanic"}}
+		}},
+		{"fork fills worktree_root from the prompt worktree root", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			return promptCheck{text: text, err: err, contains: []string{root}}
+		}},
+		{"fork takes worktree_root from the prompt worktree root when the anchor differs", func(t *testing.T) promptCheck {
+			_, stencilsDir := testLayout(t)
+			const promptWorktreeRoot = "/standalone/state/worktree"
+			text, err := renderFork(alpha, promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			return promptCheck{text: text, err: err, contains: []string{promptWorktreeRoot}, notContains: []string{"/hub/master-builder"}}
+		}},
+		{"recovery fills worktree_root from the prompt worktree root", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{root}}
+		}},
+		{"recovery takes worktree_root from the prompt worktree root when the anchor differs", func(t *testing.T) promptCheck {
+			layoutRoot, stencilsDir := testLayout(t)
+			const promptWorktreeRoot = "/standalone/state/worktree"
+			text, err := renderRecovery(alpha, layoutRoot, promptWorktreeRoot, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{promptWorktreeRoot}, notContains: []string{layoutRoot}}
+		}},
+		{"recovery points a cold strand at the overview with PATTERN inactive", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err,
+				contains:    []string{"00-overview.md", alpha.Cards[0].SourcePath, "## Your final action: the minimal batch-report"},
+				notContains: []string{"CONSTRAINTS.md", "{{", "## Constraints"}}
+		}},
+		{"recovery carries the PATTERN overview when PATTERN is active", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{"some constraints", "## Constraints"}}
+		}},
+		{"recovery reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
+			repoRoot, stencilsDir := patternActiveLayout(t)
+			text, err := renderRecovery(alpha, repoRoot, filepath.Join(repoRoot, "backend"), stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{"some constraints"}}
+		}},
+		{"recovery refuses a missing pattern-directive stencil", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
+			_, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{err: err, wantErr: true}
+		}},
+		{"recovery renders a failure digest verbatim", func(t *testing.T) promptCheck {
+			const digest = "- fork wrote outside its worktree\n- suspect path: internal/x/y.go"
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), digest, "", "")
+			return promptCheck{text: text, err: err, contains: []string{digest}, notContains: []string{"{{.failure_digest}}"}}
+		}},
+		{"recovery renders none for an empty failure digest", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{"Why this batch is being recovered\n\nnone\n"}}
+		}},
+		{"master never fills worktree_root", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, notContains: []string{"worktree_root", root}}
+		}},
+		{"master names the fixer prompt and carries no integration fork", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			return promptCheck{text: text, err: err,
+				contains:    []string{testVerifyFixPromptPath, "Gate findings recorded at", "## Verify gate fixes"},
+				notContains: []string{"integration fork", "integration.yaml"}}
+		}},
+		{"master lists the batches in the sequenced order it was handed", func(t *testing.T) promptCheck {
+			batches := []batcher.Batch{
+				{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
+				{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
+			}
+			root, stencilsDir := testLayout(t)
+			text, err := renderMaster(batches, root, root, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, inOrder: []string{"02 — second", "01 — first"}}
+		}},
+		{"master with PATTERN inactive renders no constraints block", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, notContains: []string{"{{", "## Constraints", "\n\n\n\n"}}
+		}},
+		{"master places the PATTERN directive ahead of the first work instruction", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, inOrder: []string{"some constraints", "## Orientation"}}
+		}},
+		{"master reads PATTERN.md from the told repo root", func(t *testing.T) promptCheck {
+			repoRoot, stencilsDir := patternActiveLayout(t)
+			text, err := renderMaster(seamBatches, filepath.Join(repoRoot, "backend"), repoRoot, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, contains: []string{"some constraints"}}
+		}},
+		{"master does not read PATTERN.md from the anchor root", func(t *testing.T) promptCheck {
+			repoRoot, stencilsDir := patternActiveLayout(t)
+			anchorRoot := filepath.Join(repoRoot, "backend")
+			text, err := renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, "", "")
+			return promptCheck{text: text, err: err, notContains: []string{"some constraints"}}
+		}},
+		{"master refuses a missing pattern-directive stencil", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
+			_, err := renderMaster(seamBatches, root, root, stencilsDir, "", "")
+			return promptCheck{err: err, wantErr: true}
+		}},
+		{"fixer prompt names the gate report and the contract files", func(t *testing.T) promptCheck {
+			const reportPath = "/lyx/webster/reports/verify-gate.yaml"
+			root, stencilsDir := testLayout(t)
+			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
+			return promptCheck{text: text, err: err,
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "`_lyx/plan`"},
+				notContains: []string{"{{"}}
+		}},
+		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			_, err := renderVerifyFix("", root, stencilsDir, "")
+			return promptCheck{err: err, wantErr: true}
+		}},
 	}
-	if got, want := websterengine.RenderRemaining(batches, nil), "02-second, 01-first, 03-third"; got != want {
-		t.Errorf("RenderRemaining(batches, nil) = %q; want %q", got, want)
-	}
-	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
-		2: {Slug: "second", Terminal: true, Status: "done"},
-		1: {Slug: "first", Terminal: false},
-	}}
-	if got, want := websterengine.RenderRemaining(batches, st), "01-first, 03-third"; got != want {
-		t.Errorf("RenderRemaining(batches, st) = %q; want %q", got, want)
-	}
-	st.Batches[1] = &websterengine.BatchState{Slug: "first", Terminal: true, Status: "done"}
-	st.Batches[3] = &websterengine.BatchState{Slug: "third", Terminal: true, Status: "done"}
-	if got := websterengine.RenderRemaining(batches, st); got != "none" {
-		t.Errorf("RenderRemaining(all terminal) = %q; want none", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.render(t).verify(t)
+		})
 	}
 }
 
-// TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber asserts RenderBatchIndex emits one line
-// per batch in the slice's own order, not sorted by ascending batch number: handed a slice already
-// ordered 03, 01, 02, the rendered lines appear in that same order, each still carrying its own
-// batch number.
-func TestRenderBatchIndex_FollowsSliceOrderNotAscendingNumber(t *testing.T) {
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
-	}
-
-	want := "03 — third — do the third thing\n01 — first — do the first thing\n02 — second — do the second thing"
-	if got := websterengine.RenderBatchIndex(batches); got != want {
-		t.Errorf("RenderBatchIndex(batches) = %q; want %q", got, want)
-	}
-}
-
-// TestRenderProgress_FollowsSliceOrderNotAscendingNumber asserts RenderProgress walks batches in
-// the slice's own order, not sorted by ascending batch number, against a state where all three
-// batches are terminal.
-func TestRenderProgress_FollowsSliceOrderNotAscendingNumber(t *testing.T) {
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{cardWithSourcePath(3, "third", "do the third thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
-	}
-	st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
-		1: {Slug: "first", Terminal: true, Status: "done"},
-		2: {Slug: "second", Terminal: true, Status: "done"},
-		3: {Slug: "third", Terminal: true, Status: "done"},
-	}}
-
-	want := "03-third: done\n01-first: done\n02-second: done"
-	if got := websterengine.RenderProgress(batches, st); got != want {
-		t.Errorf("RenderProgress(batches, st) = %q; want %q", got, want)
-	}
-}
-
-// TestRenderMasterPrompt_ReflectsSequencedOrder asserts the {{.batch_index}} region of
-// RenderMasterPrompt's rendered output reflects the sequenced order it was handed, so the rendered
-// list and the verbs Master drives cannot diverge.
-func TestRenderMasterPrompt_ReflectsSequencedOrder(t *testing.T) {
-	batches := []batcher.Batch{
-		{Cards: []planparser.Card{cardWithSourcePath(2, "second", "do the second thing")}},
-		{Cards: []planparser.Card{cardWithSourcePath(1, "first", "do the first thing")}},
-	}
-	anchorRoot, stencilsDir := testLayout(t)
-
-	got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", "")
-	if err != nil {
-		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-	}
-	text := string(got)
-
-	idxSecond := strings.Index(text, "02 — second")
-	idxFirst := strings.Index(text, "01 — first")
-	if idxSecond == -1 || idxFirst == -1 || idxSecond >= idxFirst {
-		t.Errorf("rendered batch_index does not list batch 02 above batch 01: idxSecond=%d idxFirst=%d", idxSecond, idxFirst)
-	}
-}
-
-// TestRenderForkPrompt_FrictionDirective covers RenderForkPrompt's friction_directive marker: a
+// TestRenderPrompts_FrictionDirective covers every renderer's friction_directive marker: a
 // non-empty note path injects the composed directive verbatim, an empty note path composes cleanly
-// with no directive and no friction stencil read, and a marker-free webster-prefix-fork.md still
-// composes without error.
-func TestRenderForkPrompt_FrictionDirective(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
+// with no directive and no friction stencil read, and a marker-free stencil still composes
+// without error.
+func TestRenderPrompts_FrictionDirective(t *testing.T) {
+	t.Parallel()
 
-	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha.md")
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, notePath)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), notePath)
-	})
+	alpha := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}
+	seamBatches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
 
-	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
-		// testLayout seeds no friction stencils at all, so a read attempt here would fail loud —
-		// a clean render proves friction.Directive's empty-notePath early return, not a swallowed
-		// error.
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireNotContains(t, string(got), "Friction note")
-	})
+	cases := []struct {
+		name     string
+		stencil  string
+		noteFile string
+		render   func(anchorRoot, stencilsDir, notePath string) (string, error)
+	}{
+		{"fork", "webster-prefix-fork", "01-alpha.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderFork(alpha, anchorRoot, stencilsDir, newTestSpecsDir(t), "", 2, notePath)
+		}},
+		{"recovery", "webster-prefix-recovery", "01-alpha-recovery.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderRecovery(alpha, anchorRoot, anchorRoot, stencilsDir, newTestSpecsDir(t), "", notePath, "")
+		}},
+		{"master", "webster-template-master", "webster-master.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, notePath, "")
+		}},
+		{"verify-fix", "webster-body-verify-fix", "webster-verify-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderVerifyFix("/reports/verify-gate.yaml", anchorRoot, stencilsDir, notePath)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		stripFrictionMarker(t, stencilsDir, "webster-prefix-fork")
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha.md")
-		if _, err := websterengine.RenderForkPrompt(batch, testCardGates, "", "/reports/01-alpha.yaml", filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, notePath); err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error even with a marker-free template", err)
-		}
-	})
-}
+			t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
+				t.Parallel()
+				anchorRoot, stencilsDir := frictionActiveLayout(t)
+				notePath := filepath.Join(anchorRoot, "_lyx", "friction", tc.noteFile)
+				text, err := tc.render(anchorRoot, stencilsDir, notePath)
+				promptCheck{text: text, err: err, contains: []string{notePath}}.verify(t)
+			})
 
-// TestRenderRecoveryPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's
-// RenderRecoveryPrompt mirror.
-func TestRenderRecoveryPrompt_FrictionDirective(t *testing.T) {
-	card := cardWithSourcePath(1, "alpha", "add the flag")
-	batch := batcher.Batch{Cards: []planparser.Card{card}}
+			t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
+				t.Parallel()
+				// testLayout seeds no friction stencils at all, so a read attempt here would fail
+				// loud — a clean render proves friction.Directive's empty-notePath early return, not
+				// a swallowed error.
+				anchorRoot, stencilsDir := testLayout(t)
+				text, err := tc.render(anchorRoot, stencilsDir, "")
+				promptCheck{text: text, err: err, notContains: []string{"Friction note"}}.verify(t)
+			})
 
-	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath, "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), notePath)
-	})
-
-	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", "")
-		if err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
-		}
-		requireNotContains(t, string(got), "Friction note")
-	})
-
-	t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		stripFrictionMarker(t, stencilsDir, "webster-prefix-recovery")
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "01-alpha-recovery.md")
-		if _, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, newTestSpecsDir(t), 2, notePath, ""); err != nil {
-			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error even with a marker-free template", err)
-		}
-	})
+			t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
+				t.Parallel()
+				anchorRoot, stencilsDir := frictionActiveLayout(t)
+				stripFrictionMarker(t, stencilsDir, tc.stencil)
+				notePath := filepath.Join(anchorRoot, "_lyx", "friction", tc.noteFile)
+				_, err := tc.render(anchorRoot, stencilsDir, notePath)
+				promptCheck{err: err}.verify(t)
+			})
+		})
+	}
 }
 
 // TestRenderPrompts_ParentDirective asserts the master and recovery prompts render the parent variant for a told name and the no-parent variant for an empty one, and that the fork prompt carries neither.
 func TestRenderPrompts_ParentDirective(t *testing.T) {
+	t.Parallel()
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}}
 	anchorRoot, stencilsDir := testLayout(t)
-	planDir := filepath.Join(anchorRoot, "_lyx", "plan")
 	master := func(parent string) string {
-		got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, "/lyx/webster/prompts/verify-fix.md", planDir, 2, anchorRoot, anchorRoot, stencilsDir, "", parent)
+		got, err := renderMaster(batches, anchorRoot, anchorRoot, stencilsDir, "", parent)
 		if err != nil {
 			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
 		}
-		return string(got)
+		return got
 	}
 	recovery := func(parent string) string {
-		got, err := websterengine.RenderRecoveryPrompt(batches[0], testCardGates, "", "", "/reports/01-alpha.yaml", anchorRoot, planDir, anchorRoot, stencilsDir, newTestSpecsDir(t), 2, "", parent)
+		got, err := renderRecovery(batches[0], anchorRoot, anchorRoot, stencilsDir, newTestSpecsDir(t), "", "", parent)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
-		return string(got)
+		return got
 	}
 
 	const parent = "ab:orch"
@@ -1283,78 +896,76 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 		}
 	}
 
-	fork, err := websterengine.RenderForkPrompt(batches[0], testCardGates, "", "/reports/01-alpha.yaml", planDir, anchorRoot, stencilsDir, newTestSpecsDir(t), testOutcomePath, testSummaryPath, 2, "")
+	fork, err := renderFork(batches[0], anchorRoot, stencilsDir, newTestSpecsDir(t), "", 2, "")
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
-	requireNotContains(t, string(fork), "## Your parent")
+	requireNotContains(t, fork, "## Your parent")
 }
 
-// TestRenderVerifyFixPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's RenderVerifyFixPrompt mirror.
-func TestRenderVerifyFixPrompt_FrictionDirective(t *testing.T) {
-	render := func(anchorRoot, stencilsDir, notePath string) ([]byte, error) {
-		return websterengine.RenderVerifyFixPrompt("/reports/verify-gate.yaml", anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath)
+// TestRenderBatchLists asserts the batch index, progress trail and remaining list render the
+// batches in the slice's own order, never ascending batch number, and that progress and remaining
+// read only the persisted terminal records, skipping a nil one.
+//
+//testtiming:keep pins each list's exact text in slice order and its none forms; the covering prompt and run-exit tests check only that a list is present
+func TestRenderBatchLists(t *testing.T) {
+	t.Parallel()
+
+	batchOf := func(number int, slug, summary string) batcher.Batch {
+		return batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(number, slug, summary)}}
 	}
+	inOrder := []batcher.Batch{
+		batchOf(1, "seam-extensions", "add the seam"),
+		batchOf(2, "webster-foundation", "add the foundation"),
+		batchOf(3, "webster-audit-policy", "add the audit policy"),
+		batchOf(4, "webster-templates", "add the templates"),
+	}
+	reordered := []batcher.Batch{
+		batchOf(3, "third", "do the third thing"),
+		batchOf(1, "first", "do the first thing"),
+		batchOf(2, "second", "do the second thing"),
+	}
+	allDone := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		1: {Slug: "first", Terminal: true, Status: "done"},
+		2: {Slug: "second", Terminal: true, Status: "done"},
+		3: {Slug: "third", Terminal: true, Status: "done"},
+	}}
+	partial := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		3: {Slug: "third", Terminal: true, Status: "done"},
+		1: {Slug: "first", Terminal: false},
+	}}
 
-	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-verify-fix.md")
-		got, err := render(anchorRoot, stencilsDir, notePath)
-		if err != nil {
-			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), notePath)
-	})
-
-	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := render(anchorRoot, stencilsDir, "")
-		if err != nil {
-			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error", err)
-		}
-		requireNotContains(t, string(got), "Friction note")
-	})
-
-	t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		stripFrictionMarker(t, stencilsDir, "webster-body-verify-fix")
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-verify-fix.md")
-		if _, err := render(anchorRoot, stencilsDir, notePath); err != nil {
-			t.Fatalf("RenderVerifyFixPrompt() = _, %v; want nil error even with a marker-free template", err)
-		}
-	})
-}
-
-// TestRenderMasterPrompt_FrictionDirective is TestRenderForkPrompt_FrictionDirective's
-// RenderMasterPrompt mirror.
-func TestRenderMasterPrompt_FrictionDirective(t *testing.T) {
-	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "seam-extensions", "add the seam")}}}
-
-	t.Run("enabled: a non-empty note path appears in the composed prompt verbatim", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-master.md")
-		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, notePath, "")
-		if err != nil {
-			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), notePath)
-	})
-
-	t.Run("disabled: an empty note path composes cleanly and reads no friction stencil", func(t *testing.T) {
-		anchorRoot, stencilsDir := testLayout(t)
-		got, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, "", "")
-		if err != nil {
-			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
-		}
-		requireNotContains(t, string(got), "Friction note")
-	})
-
-	t.Run("marker-free template: a stencil with no {{.friction_directive}} literal still composes", func(t *testing.T) {
-		anchorRoot, stencilsDir := frictionActiveLayout(t)
-		stripFrictionMarker(t, stencilsDir, "webster-template-master")
-		notePath := filepath.Join(anchorRoot, "_lyx", "friction", "webster-master.md")
-		if _, err := websterengine.RenderMasterPrompt(batches, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "/lyx/webster/prompts/verify-fix.md", filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, anchorRoot, stencilsDir, notePath, ""); err != nil {
-			t.Fatalf("RenderMasterPrompt() = _, %v; want nil error even with a marker-free template", err)
-		}
-	})
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"progress with nil state is none", websterengine.RenderProgress(inOrder, nil), "none"},
+		{"progress with no terminal batch is none", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "seam-extensions", Terminal: false},
+		}}), "none"},
+		{"progress lists terminal batches only, omitting in-flight and unrecorded ones", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
+			2: {Slug: "webster-foundation", Terminal: true, Status: "stuck"},
+			3: {Slug: "webster-audit-policy", Terminal: false},
+		}}), "01-seam-extensions: done\n02-webster-foundation: stuck"},
+		{"progress follows slice order", websterengine.RenderProgress(reordered, allDone), "03-third: done\n01-first: done\n02-second: done"},
+		// A state.json carrying an explicit null for a batch key parses to a present-but-nil entry.
+		{"progress skips a nil batch record", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: nil,
+			2: {Slug: "webster-foundation", Terminal: true, Status: "done"},
+		}}), "02-webster-foundation: done"},
+		{"remaining names every batch in execution order for a nil state", websterengine.RenderRemaining(reordered, nil), "03-third, 01-first, 02-second"},
+		{"remaining drops terminal batches", websterengine.RenderRemaining(reordered, partial), "01-first, 02-second"},
+		{"remaining is none once every batch is terminal", websterengine.RenderRemaining(reordered, allDone), "none"},
+		{"batch index follows slice order", websterengine.RenderBatchIndex(reordered), "03 — third — do the third thing\n01 — first — do the first thing\n02 — second — do the second thing"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.got != tc.want {
+				t.Errorf("got %q; want %q", tc.got, tc.want)
+			}
+		})
+	}
 }

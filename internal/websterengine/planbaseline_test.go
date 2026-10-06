@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 	return &baselineFixture{st: st, geom: geom}
 }
 
+//testtiming:keep pins each stored copy's bytes under its own hash and an existing copy left unrewritten by a second store; the covering begin-batch test only counts copies
 func TestStorePlanBaseline_ContentAddressed(t *testing.T) {
 	t.Parallel()
 	planDir := t.TempDir()
@@ -102,73 +104,95 @@ func TestStorePlanBaseline_EmptyWebsterDirIsAnError(t *testing.T) {
 	}
 }
 
-func TestRestorePlan_RestoresEditedAndRemovesUnrecorded(t *testing.T) {
+// TestRestorePlan proves RestorePlan rewrites every edited or removed recorded file from its stored
+// copy and removes files the record lacks, returning the touched names sorted, touches nothing on an
+// unchanged plan, and refuses, naming the file and the fresh-run way forward and leaving the plan as
+// it was, when a stored copy or the recorded hashes are missing.
+func TestRestorePlan(t *testing.T) {
 	t.Parallel()
-	fx := newBaselineFixture(t)
-	dir := fx.geom.PlanDir
-	fingerprintWriteFiles(t, dir, map[string]string{"01-first.md": "edited", "03-new.md": "new"})
-	if err := os.Remove(filepath.Join(dir, "02-second.md")); err != nil {
-		t.Fatal(err)
-	}
 
-	restored, err := RestorePlan(fx.st, fx.geom)
-	if err != nil {
-		t.Fatalf("RestorePlan() error = %v", err)
+	tests := []struct {
+		name string
+		// prepare edits the fixture's plan or store.
+		prepare func(t *testing.T, fx *baselineFixture)
+		// wantRestored is the sorted names restored; ignored on a refusal.
+		wantRestored []string
+		// wantRefusal lists what an ErrPlanBaselineMissing refusal names; nil expects success.
+		wantRefusal []string
+		// wantFiles maps plan files to their content after the call; "" means absent.
+		wantFiles map[string]string
+	}{
+		{
+			name: "restores edited and removed files and removes unrecorded ones",
+			prepare: func(t *testing.T, fx *baselineFixture) {
+				fingerprintWriteFiles(t, fx.geom.PlanDir, map[string]string{"01-first.md": "edited", "03-new.md": "new"})
+				if err := os.Remove(filepath.Join(fx.geom.PlanDir, "02-second.md")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRestored: []string{"01-first.md", "02-second.md", "03-new.md"},
+			wantFiles:    map[string]string{"01-first.md": "first", "02-second.md": "second", "03-new.md": ""},
+		},
+		{
+			name:      "an unchanged plan restores nothing",
+			wantFiles: map[string]string{"01-first.md": "first", "02-second.md": "second"},
+		},
+		{
+			name: "a missing stored copy refuses and leaves the plan",
+			prepare: func(t *testing.T, fx *baselineFixture) {
+				fingerprintWriteFiles(t, fx.geom.PlanDir, map[string]string{"01-first.md": "edited", "02-second.md": "also edited"})
+				if err := os.Remove(planBaselinePath(fx.geom.WebsterDir, fx.st.PlanFileHashes["01-first.md"])); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRefusal: []string{"01-first.md", "way forward:", "lyx webster run --fresh"},
+			wantFiles:   map[string]string{"02-second.md": "also edited"},
+		},
+		{
+			name:        "a state without hashes refuses",
+			prepare:     func(t *testing.T, fx *baselineFixture) { fx.st = &State{} },
+			wantRefusal: []string{"way forward:"},
+		},
 	}
-	if got := strings.Join(restored, ","); got != "01-first.md,02-second.md,03-new.md" {
-		t.Errorf("restored = %q; want all three files, sorted", got)
-	}
-	for name, want := range map[string]string{"01-first.md": "first", "02-second.md": "second"} {
-		got, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil || string(got) != want {
-			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, "03-new.md")); !os.IsNotExist(err) {
-		t.Errorf("03-new.md stat error = %v; want not-exist", err)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestRestorePlan_RefusesMissingCopy(t *testing.T) {
-	t.Parallel()
-	fx := newBaselineFixture(t)
-	dir := fx.geom.PlanDir
-	fingerprintWriteFiles(t, dir, map[string]string{"01-first.md": "edited", "02-second.md": "also edited"})
-	if err := os.Remove(planBaselinePath(fx.geom.WebsterDir, fx.st.PlanFileHashes["01-first.md"])); err != nil {
-		t.Fatal(err)
-	}
+			fx := newBaselineFixture(t)
+			if tt.prepare != nil {
+				tt.prepare(t, fx)
+			}
 
-	_, err := RestorePlan(fx.st, fx.geom)
-	if !errors.Is(err, ErrPlanBaselineMissing) {
-		t.Fatalf("RestorePlan() error = %v; want ErrPlanBaselineMissing", err)
-	}
-	for _, want := range []string{"01-first.md", "way forward:", "lyx webster run --fresh"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q missing %q", err, want)
-		}
-	}
-	got, readErr := os.ReadFile(filepath.Join(dir, "02-second.md"))
-	if readErr != nil || string(got) != "also edited" {
-		t.Errorf("02-second.md = %q, %v; want it unchanged by a refused restore", got, readErr)
-	}
-}
-
-func TestRestorePlan_RefusesStateWithoutHashes(t *testing.T) {
-	t.Parallel()
-	geom := Geometry{PlanDir: t.TempDir(), WebsterDir: t.TempDir()}
-	if _, err := RestorePlan(&State{}, geom); !errors.Is(err, ErrPlanBaselineMissing) {
-		t.Fatalf("RestorePlan() error = %v; want ErrPlanBaselineMissing", err)
-	}
-}
-
-func TestRestorePlan_NothingChanged(t *testing.T) {
-	t.Parallel()
-	fx := newBaselineFixture(t)
-	restored, err := RestorePlan(fx.st, fx.geom)
-	if err != nil {
-		t.Fatalf("RestorePlan() error = %v", err)
-	}
-	if len(restored) != 0 {
-		t.Errorf("restored = %v; want none", restored)
+			restored, err := RestorePlan(fx.st, fx.geom)
+			if tt.wantRefusal != nil {
+				if !errors.Is(err, ErrPlanBaselineMissing) {
+					t.Fatalf("RestorePlan() error = %v; want ErrPlanBaselineMissing", err)
+				}
+				for _, want := range tt.wantRefusal {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q missing %q", err, want)
+					}
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("RestorePlan() error = %v", err)
+				}
+				if !slices.Equal(restored, tt.wantRestored) {
+					t.Errorf("restored = %v; want %v", restored, tt.wantRestored)
+				}
+			}
+			for name, want := range tt.wantFiles {
+				got, readErr := os.ReadFile(filepath.Join(fx.geom.PlanDir, name))
+				if want == "" {
+					if !os.IsNotExist(readErr) {
+						t.Errorf("%s stat error = %v; want not-exist", name, readErr)
+					}
+					continue
+				}
+				if readErr != nil || string(got) != want {
+					t.Errorf("%s = %q, %v; want %q", name, got, readErr, want)
+				}
+			}
+		})
 	}
 }

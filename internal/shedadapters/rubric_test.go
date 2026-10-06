@@ -28,126 +28,101 @@ func writeStampedRubric(t *testing.T, dir, name, body string) {
 	}
 }
 
-func TestReadRubric_SubstitutesTheSpecsDir(t *testing.T) {
-	dir := t.TempDir()
-	writeStampedRubric(t, dir, "bouncer-rubric-test", "# Rubric\n\nSee {{.specs_dir}} for the format contract.\n")
-
-	got, err := ReadRubric(dir, "bouncer-rubric-test", "/abs/specs")
-	if err != nil {
-		t.Fatalf("ReadRubric() = %v; want nil", err)
-	}
-	if !strings.Contains(got, "/abs/specs") {
-		t.Errorf("ReadRubric() = %q; want it to contain the told specs dir", got)
-	}
-	if strings.Contains(got, "{{.") {
-		t.Errorf("ReadRubric() = %q; want no remaining {{. marker", got)
-	}
-}
-
-func TestReadRubric_StripsTheStampBanner(t *testing.T) {
-	dir := t.TempDir()
-	body := "# Rubric\n\nBe thorough about {{.specs_dir}}.\n"
-	writeStampedRubric(t, dir, "bouncer-rubric-test", body)
-
-	got, err := ReadRubric(dir, "bouncer-rubric-test", "/abs/specs")
-	if err != nil {
-		t.Fatalf("ReadRubric() = %v; want nil", err)
-	}
-	if strings.Contains(got, stencilstore.StampPrefix) {
-		t.Errorf("ReadRubric() = %q; want no stamp prefix in the result", got)
-	}
-	hash := stencilstore.BodyHash([]byte(body))
-	stampLine := stencilstore.StampPrefix + hash + stencilstore.StampSuffix
-	if strings.Contains(got, stampLine) {
-		t.Errorf("ReadRubric() = %q; want no stamp line %q in the result", got, stampLine)
-	}
-}
-
-func TestReadRubric_MarkerlessRubricRendersUnchanged(t *testing.T) {
-	dir := t.TempDir()
-	body := "# Rubric\n\nBe thorough. No markers here.\n"
-	writeStampedRubric(t, dir, "bouncer-rubric-test", body)
-
-	got, err := ReadRubric(dir, "bouncer-rubric-test", "/abs/specs")
-	if err != nil {
-		t.Fatalf("ReadRubric() = %v; want nil", err)
-	}
-	if got != body {
-		t.Errorf("ReadRubric() = %q; want exactly the stripped body %q", got, body)
-	}
-}
-
-func TestReadRubric_EmptySpecsDirIsAnError(t *testing.T) {
-	dir := t.TempDir()
-	writeStampedRubric(t, dir, "bouncer-rubric-test", "# Rubric\n\nSee {{.specs_dir}}.\n")
-
+// TestReadRubric covers the fill, the strip and the errors; "{dir}" in want stands for the
+// stencils dir the row was read from. An exact want also pins the stamp banner stripped.
+//
+//testtiming:keep pins the rubric fill and strip: both markers substituted, the stamp banner removed, a markerless rubric unchanged, and the errors for an empty specs dir or an unreadable rubric
+func TestReadRubric(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
+		rubric   string
+		body     string
 		specsDir string
+		want     string
+		wantErr  string
 	}{
-		{"Empty", ""},
-		{"WhitespaceOnly", "   "},
+		{
+			name:     "substitutes the specs dir",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nSee {{.specs_dir}} for the format contract.\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nSee /abs/specs for the format contract.\n",
+		},
+		{
+			name:     "substitutes the stencils dir",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nStay symmetric with {{.stencils_dir}}/loom/x.md.\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nStay symmetric with {dir}/loom/x.md.\n",
+		},
+		{
+			name:     "substitutes both markers",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nSpecs {{.specs_dir}}, stencils {{.stencils_dir}}.\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nSpecs /abs/specs, stencils {dir}.\n",
+		},
+		{
+			name:     "markerless rubric renders unchanged",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nBe thorough. No markers here.\n",
+			specsDir: "/abs/specs",
+			want:     "# Rubric\n\nBe thorough. No markers here.\n",
+		},
+		{
+			name:     "empty specs dir is an error",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nSee {{.specs_dir}}.\n",
+			specsDir: "",
+			wantErr:  "specs_dir",
+		},
+		{
+			name:     "whitespace-only specs dir is an error",
+			rubric:   "bouncer-rubric-test",
+			body:     "# Rubric\n\nSee {{.specs_dir}}.\n",
+			specsDir: "   ",
+			wantErr:  "specs_dir",
+		},
+		{
+			name:     "unreadable rubric is an error naming it",
+			rubric:   "bouncer-rubric-missing",
+			specsDir: "/abs/specs",
+			wantErr:  "bouncer-rubric-missing",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ReadRubric(dir, "bouncer-rubric-test", tt.specsDir)
-			if err == nil {
-				t.Fatalf("ReadRubric(specsDir=%q) = nil error; want non-nil", tt.specsDir)
+			t.Parallel()
+			dir := t.TempDir()
+			if tt.body != "" {
+				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
-			if got != "" {
-				t.Errorf("ReadRubric(specsDir=%q) = %q; want empty result on error", tt.specsDir, got)
+
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("ReadRubric() error = %q; want it to contain %q", err.Error(), tt.wantErr)
+				}
+				if got != "" {
+					t.Errorf("ReadRubric() = %q; want empty result on error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadRubric() = %v; want nil", err)
+			}
+			if want := strings.ReplaceAll(tt.want, "{dir}", dir); got != want {
+				t.Errorf("ReadRubric() = %q; want %q", got, want)
 			}
 		})
 	}
 }
 
-func TestReadRubric_UnreadableRubricIsAnError(t *testing.T) {
-	dir := t.TempDir()
-
-	got, err := ReadRubric(dir, "bouncer-rubric-missing", "/abs/specs")
-	if err == nil {
-		t.Fatalf("ReadRubric() = nil error; want non-nil")
-	}
-	if !strings.Contains(err.Error(), "bouncer-rubric-missing") {
-		t.Errorf("ReadRubric() error = %q; want it to name the rubric %q", err.Error(), "bouncer-rubric-missing")
-	}
-	if got != "" {
-		t.Errorf("ReadRubric() = %q; want empty result on error", got)
-	}
-}
-
-func TestReadRubric_SubstitutesTheStencilsDir(t *testing.T) {
-	dir := t.TempDir()
-	writeStampedRubric(t, dir, "bouncer-rubric-test", "# Rubric\n\nStay symmetric with {{.stencils_dir}}/loom/x.md.\n")
-
-	got, err := ReadRubric(dir, "bouncer-rubric-test", "/abs/specs")
-	if err != nil {
-		t.Fatalf("ReadRubric() = %v; want nil", err)
-	}
-	if !strings.Contains(got, dir+"/loom/x.md") {
-		t.Errorf("ReadRubric() = %q; want it to contain the told stencils dir %q", got, dir)
-	}
-	if strings.Contains(got, "{{.") {
-		t.Errorf("ReadRubric() = %q; want no remaining {{. marker", got)
-	}
-}
-
-func TestReadRubric_SubstitutesBothMarkers(t *testing.T) {
-	dir := t.TempDir()
-	writeStampedRubric(t, dir, "bouncer-rubric-test", "# Rubric\n\nSpecs {{.specs_dir}}, stencils {{.stencils_dir}}.\n")
-
-	got, err := ReadRubric(dir, "bouncer-rubric-test", "/abs/specs")
-	if err != nil {
-		t.Fatalf("ReadRubric() = %v; want nil", err)
-	}
-	if !strings.Contains(got, "/abs/specs") || !strings.Contains(got, dir) {
-		t.Errorf("ReadRubric() = %q; want both the specs dir and the stencils dir %q", got, dir)
-	}
-	if strings.Contains(got, "{{.") {
-		t.Errorf("ReadRubric() = %q; want no remaining {{. marker", got)
-	}
-}
-
+//testtiming:keep pins that an empty stencils dir is an error naming stencils_dir, which needs the cwd changed and so cannot join the parallel table
 func TestReadRubric_EmptyStencilsDirIsAnError(t *testing.T) {
 	// An empty stencilsDir makes the read cwd-relative, so the fixture lives in the cwd;
 	// without that the read fails and the test would pass without ever reaching the fill.

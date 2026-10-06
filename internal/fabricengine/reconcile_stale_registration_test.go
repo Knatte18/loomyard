@@ -436,6 +436,8 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 // _lyx junction belongs must be reported as "warp _lyx is not a junction" — the wording
 // checkJunctionHealth already uses for the same drift shape — not as "junction missing".
 // The loom preflight will consume this reason string after cutover.
+//
+//testtiming:keep a real directory where the _lyx junction belongs reporting "warp _lyx is not a junction"; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	t.Parallel()
 

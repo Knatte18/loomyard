@@ -248,6 +248,8 @@ func TestManifestPortability(t *testing.T) {
 // TestManifestWiredJunctionWalk proves the one property a Linux-only run would otherwise never catch:
 // a path reachable only by descending through a wired junction is recorded exactly once, under the
 // weft sibling's own path, and never a second time under the junction's path.
+//
+//testtiming:keep a path reachable only through a wired junction being recorded once under the weft sibling's path; coverage of its blocks by other tests does not show an assertion of this
 func TestManifestWiredJunctionWalk(t *testing.T) {
 	t.Parallel()
 

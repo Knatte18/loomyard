@@ -64,6 +64,7 @@ func TestParseStatPPID(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the fixed-point walk over a straight chain, a parent missing from the map, a pid re-parented to init and a self or cyclic entry; its covering tests run this code without asserting it
 func TestDescendantClosure(t *testing.T) {
 	tests := []struct {
 		name       string
