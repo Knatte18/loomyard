@@ -394,7 +394,8 @@ func readyStart(reed *fakeReed, engine *fakeEngine) {
 }
 
 // skillFakeEngine is fakeEngine plus the opt-in SkillLoader capability.
-// SkillLoadMessage types "LOAD:<a,b>" for a list, and ClassifySkillLoad answers each load turn's report from Reports in order, the last sticking once drained.
+// SkillLoadMessage types "LOAD:<a,b>" for a list,
+// and ClassifySkillLoad answers each load turn's report from Reports in order, the last sticking once drained.
 type skillFakeEngine struct {
 	*fakeEngine
 
@@ -424,8 +425,10 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
-// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text, and which plays a scripted reaction to each "LOAD:<list>" typed, counting load turns from zero:
-// a turn in Hangs never ends, one in Dies kills the strand's pane, and any other appends a turn end to the run's events file.
+// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text.
+// It plays a scripted reaction to each "LOAD:<list>" typed, counting load turns from zero:
+// a turn in Hangs never ends, one in Dies kills the strand's pane,
+// and any other appends a turn end to the run's events file.
 type skillReed struct {
 	*fakeReed
 

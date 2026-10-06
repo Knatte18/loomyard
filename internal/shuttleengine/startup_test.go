@@ -1079,7 +1079,8 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 			if !tt.wantOffset {
 				return
 			}
-			// Every load turn end lies behind the run's own read offset, so Wait never classifies one.
+			// Every load turn end lies behind the run's own read offset,
+			// so Wait never classifies one.
 			info, err := os.Stat(run.state.EventsPath)
 			if err != nil {
 				t.Fatal(err)

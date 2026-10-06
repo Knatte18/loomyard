@@ -179,7 +179,8 @@ type SessionResumer interface {
 }
 
 // SkillLoader is an optional capability beside Engine: the provider's way of loading a list of named skills into a live session in one submitted turn, and of checking that turn afterwards.
-// Runner.start requires it of an Engine whenever a spec names skills, and the orch watcher's per-tick reload uses it through Runner.LoadSkills and Runner.ClassifySkillLoad.
+// Runner.start requires it of an Engine whenever a spec names skills,
+// and the orch watcher's per-tick reload uses it through Runner.LoadSkills and Runner.ClassifySkillLoad.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never load a skill.
 type SkillLoader interface {
 	// SkillLoadMessage returns the one line that asks the model to load every skill of skills in a single turn.

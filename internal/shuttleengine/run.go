@@ -453,9 +453,11 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 // loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt:
 // it loads spec.Skills in one turn, retries the skills the model did not load once, then delivers promptLine through the verified send path.
-// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning, and an unreadable turn is confirmed unverified.
+// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning,
+// and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
-// The run's events offset ends past every load turn end, the retry's included, so Wait never reads one as the run asking.
+// The run's events offset ends past every load turn end, the retry's included,
+// so Wait never reads one as the run asking.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	guid := run.state.StrandGUID
@@ -519,7 +521,8 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 }
 
 // loadSkillTurn is one load turn: it sends the engine's load message for skills through the verified send path, then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or timeout passes.
-// ended is false on a timeout, and died is true when the strand's pane is no longer live.
+// ended is false on a timeout,
+// and died is true when the strand's pane is no longer live.
 // The run's offset moves past every event read.
 func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed

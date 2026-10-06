@@ -137,7 +137,8 @@ type Spec struct {
 	// It is caller data, not provider knowledge, and validate does not inspect it.
 	AwaitedShellPrefixes []string
 	// Skills names the provider-neutral skills shuttle loads into the fresh session, all in one turn, before it delivers the prompt.
-	// The engine realizes the list through its SkillLoader capability, and a non-empty list on an engine without one is refused at start.
+	// The engine realizes the list through its SkillLoader capability,
+	// and a non-empty list on an engine without one is refused at start.
 	// validate does not inspect it.
 	Skills []string
 	// SkillLoadTimeout bounds how long shuttle waits for one load turn to end, the first and the retry each, before skipping its skills.
