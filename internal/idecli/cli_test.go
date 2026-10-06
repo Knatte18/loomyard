@@ -15,26 +15,43 @@ import (
 	"github.com/Knatte18/loomyard/internal/ideengine"
 )
 
-// TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
-// Stays serial (no t.Parallel): it swaps the package-level ideengine.CodeLauncher below and restores
-// it in a defer, which under t.Parallel() is both a data race on a production package-level variable
-// and a restore firing while sibling tests still run.
-func TestRunCLISpawnDispatch(t *testing.T) {
+// TestRunCLI_SpawnScenario drives "lyx ide spawn" against one hub: dispatch with a stubbed launcher,
+// then the missing-slug error. Neither step depends on the other's state.
+// Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and
+// restores it in a defer, which under t.Parallel() is both a data race on a production package-level
+// variable and a restore firing while sibling tests still run.
+func TestRunCLI_SpawnScenario(t *testing.T) {
 	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.NewHub(t, ".")
 
-	// Stub ideengine.CodeLauncher so the test does not open VS Code.
-	originalLauncher := ideengine.CodeLauncher
-	defer func() { ideengine.CodeLauncher = originalLauncher }()
-	ideengine.CodeLauncher = func(dir string) error { return nil }
+	if !t.Run("dispatch", func(t *testing.T) {
+		// Stub ideengine.CodeLauncher so the test does not open VS Code.
+		originalLauncher := ideengine.CodeLauncher
+		defer func() { ideengine.CodeLauncher = originalLauncher }()
+		ideengine.CodeLauncher = func(dir string) error { return nil }
 
-	var out bytes.Buffer
-	code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn", "child"})
+		var out bytes.Buffer
+		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn", "child"})
 
-	// spawn should succeed or fail for a handler reason, not layout resolution.
-	if code != 0 && !strings.Contains(out.String(), "spawn failed") {
-		t.Fatalf("unexpected error during dispatch; output: %s", out.String())
+		// spawn should succeed or fail for a handler reason, not layout resolution.
+		if code != 0 && !strings.Contains(out.String(), "spawn failed") {
+			t.Fatalf("unexpected error during dispatch; output: %s", out.String())
+		}
+	}) {
+		return
 	}
+
+	t.Run("missing slug", func(t *testing.T) {
+		var out bytes.Buffer
+		code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn"})
+
+		if code != 1 {
+			t.Errorf("RunCLI(spawn) with no slug = %d; want 1", code)
+		}
+		if !strings.Contains(out.String(), "spawn") {
+			t.Errorf("RunCLI(spawn) output missing \"spawn\"; got: %q", out.String())
+		}
+	})
 }
 
 // TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp directory surfaces
@@ -58,21 +75,5 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	errMsg, _ := env["error"].(string)
 	if errMsg != "not a git repository" {
 		t.Errorf("RunCLI(menu) error = %q; want exactly \"not a git repository\"", errMsg)
-	}
-}
-
-// TestRunCLI_MissingSlug verifies that "lyx ide spawn" with no slug errors appropriately.
-func TestRunCLI_MissingSlug(t *testing.T) {
-	// Requires a real hub so the PersistentPreRunE can resolve layout.
-	h := hubforge.NewHub(t, ".")
-
-	var out bytes.Buffer
-	code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn"})
-
-	if code != 1 {
-		t.Errorf("RunCLI(spawn) with no slug = %d; want 1", code)
-	}
-	if !strings.Contains(out.String(), "spawn") {
-		t.Errorf("RunCLI(spawn) output missing \"spawn\"; got: %q", out.String())
 	}
 }

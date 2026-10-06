@@ -7,9 +7,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
+// TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated interactive config: the
+// settings.json keys and the four-task chain with its entry task, commands, args and presentation.
+//
+//testtiming:keep pins the whole interactive settings.json and four-task chain shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	worktreeDir := tmpDir
@@ -230,184 +235,198 @@ func assertPresentation(t *testing.T, label string, task map[string]any, wantRev
 	}
 }
 
-func TestWriteVSCodeConfigFallsBackToBareLyxName(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-
-	tasks := readTasksList(t, filepath.Join(tmpDir, ".vscode", "tasks.json"))
-	for _, raw := range tasks {
-		task := raw.(map[string]any)
-		if task["label"] == "Start Claude" {
-			continue
-		}
-		if command, ok := task["command"].(string); !ok || command != "lyx" {
-			t.Errorf("task %v command = %v; want bare name 'lyx'", task["label"], task["command"])
-		}
-	}
+// tasksFile is the decoded shape of a generated tasks.json.
+type tasksFile struct {
+	Version string           `json:"version"`
+	Tasks   []map[string]any `json:"tasks"`
 }
 
-func TestWriteVSCodeConfigFallsBackToBareClaudeName(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	if err := WriteConfig(tmpDir, ".", "test-slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainInteractive); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-
-	tasks := readTasksList(t, filepath.Join(tmpDir, ".vscode", "tasks.json"))
-	var addTask map[string]any
-	for _, raw := range tasks {
-		task := raw.(map[string]any)
-		if task["label"] == "reed add claude" {
-			addTask = task
-		}
-	}
-	if addTask == nil {
-		t.Fatalf("missing 'reed add claude' task")
-	}
-	argsRaw := addTask["args"].([]any)
-	var args []string
-	for _, a := range argsRaw {
-		args = append(args, a.(string))
-	}
-	found := false
-	for i, a := range args {
-		if a == "--cmd" && i+1 < len(args) {
-			if args[i+1] != "claude" {
-				t.Errorf("--cmd arg = %q; want bare name 'claude'", args[i+1])
-			}
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("--cmd flag not found in args %v", args)
-	}
-}
-
-// readTasksList reads and parses a generated tasks.json, returning its "tasks" array. It fails
-// the test on any I/O or JSON error, or if the file does not contain valid JSON.
-func readTasksList(t *testing.T, tasksPath string) []any {
-	t.Helper()
-	data, err := os.ReadFile(tasksPath)
-	if err != nil {
-		t.Fatalf("failed to read tasks.json: %v", err)
-	}
-	var tasks map[string]any
-	if err := json.Unmarshal(data, &tasks); err != nil {
-		t.Fatalf("tasks.json is not valid JSON: %v", err)
-	}
-	tasksList, ok := tasks["tasks"].([]any)
-	if !ok {
-		t.Fatalf("tasks.json missing tasks array")
-	}
-	return tasksList
-}
-
-func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
-	tmpDir := t.TempDir()
-	worktreeDir := tmpDir
-	relpath := "."
-	slug := "test-slug"
-	color := "#2d7d46"
-
-	// Create .vscode directory and existing settings.json
-	vscodePath := filepath.Join(worktreeDir, relpath, ".vscode")
-	if err := os.MkdirAll(vscodePath, 0o755); err != nil {
-		t.Fatalf("failed to create .vscode: %v", err)
-	}
-
-	originalSettings := map[string]any{"custom": "value"}
-	originalData, _ := json.Marshal(originalSettings)
-	settingsPath := filepath.Join(vscodePath, "settings.json")
-	if err := os.WriteFile(settingsPath, originalData, 0o644); err != nil {
-		t.Fatalf("failed to write original settings.json: %v", err)
-	}
-
-	originalTasks := map[string]any{"version": "999.0.0"}
-	originalTasksData, _ := json.Marshal(originalTasks)
-	tasksPath := filepath.Join(vscodePath, "tasks.json")
-	if err := os.WriteFile(tasksPath, originalTasksData, 0o644); err != nil {
-		t.Fatalf("failed to write original tasks.json: %v", err)
-	}
-
-	// Call WriteConfig
-	err := WriteConfig(worktreeDir, relpath, slug, color, "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive)
-	if err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-
-	settingsData, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("failed to read settings.json: %v", err)
-	}
-
-	var settings map[string]any
-	if err := json.Unmarshal(settingsData, &settings); err != nil {
-		t.Fatalf("settings.json is not valid JSON: %v", err)
-	}
-
-	if settings["custom"] != "value" {
-		t.Fatalf("settings.json was clobbered")
-	}
-
-	tasksData, err := os.ReadFile(tasksPath)
-	if err != nil {
-		t.Fatalf("failed to read tasks.json: %v", err)
-	}
-
-	var tasks map[string]any
-	if err := json.Unmarshal(tasksData, &tasks); err != nil {
-		t.Fatalf("tasks.json is not valid JSON: %v", err)
-	}
-
-	if tasks["version"] != "2.0.0" {
-		t.Fatalf("tasks.json was not overwritten with the current chain: version = %v", tasks["version"])
-	}
-	if _, ok := tasks["tasks"].([]any); !ok {
-		t.Fatalf("overwritten tasks.json missing tasks array")
-	}
-}
-
-func TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone(t *testing.T) {
-	dir := t.TempDir()
-
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
-		t.Errorf(".gitignore should not exist, stat err = %v", err)
-	}
-
-	existing := []byte("build/\n")
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
-	if string(got) != string(existing) {
-		t.Errorf(".gitignore modified: %q", got)
-	}
-}
-
-func readAttachOnlyTasks(t *testing.T, dir string) []map[string]any {
+// readTasksFile reads and decodes the tasks.json that WriteConfig wrote under dir.
+func readTasksFile(t *testing.T, dir string) tasksFile {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(dir, ".vscode", "tasks.json"))
 	if err != nil {
 		t.Fatalf("failed to read tasks.json: %v", err)
 	}
-	var tasks struct {
-		Tasks []map[string]any `json:"tasks"`
-	}
+	var tasks tasksFile
 	if err := json.Unmarshal(data, &tasks); err != nil {
 		t.Fatalf("tasks.json is not valid JSON: %v", err)
 	}
-	return tasks.Tasks
+	return tasks
 }
 
+// taskLabels returns the sorted labels of tasks.
+func taskLabels(tasks []map[string]any) []string {
+	labels := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		label, _ := task["label"].(string)
+		labels = append(labels, label)
+	}
+	slices.Sort(labels)
+	return labels
+}
+
+// TestWriteConfigFallsBackToBareNames pins that an empty lyx or claude path degrades to the bare
+// binary name in the generated tasks, for both task chains.
+func TestWriteConfigFallsBackToBareNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		chain         TaskChain
+		lyxPath       string
+		claudePath    string
+		wantCommand   string
+		wantClaudeCmd string
+		wantTaskCount int
+	}{
+		{"interactive empty lyx path", TaskChainInteractive, "", "/usr/local/bin/claude", "lyx", "", 0},
+		{"interactive empty claude path", TaskChainInteractive, "/opt/lyx/bin/lyx", "", "/opt/lyx/bin/lyx", "claude", 0},
+		{"attach-only empty lyx path", TaskChainAttachOnly, "", "", "lyx", "", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+
+			if err := WriteConfig(dir, ".", "test-slug", "#2d7d46", tt.lyxPath, tt.claudePath, tt.chain); err != nil {
+				t.Fatalf("WriteConfig failed: %v", err)
+			}
+
+			tasks := readTasksFile(t, dir).Tasks
+			if tt.wantTaskCount != 0 && len(tasks) != tt.wantTaskCount {
+				t.Fatalf("got %d tasks, want %d: %v", len(tasks), tt.wantTaskCount, tasks)
+			}
+			var addTask map[string]any
+			for _, task := range tasks {
+				switch task["label"] {
+				case "Start Claude":
+					continue
+				case "reed add claude":
+					addTask = task
+				}
+				if task["command"] != tt.wantCommand {
+					t.Errorf("task %v command = %v; want %q", task["label"], task["command"], tt.wantCommand)
+				}
+			}
+			if tt.wantClaudeCmd == "" {
+				return
+			}
+			if addTask == nil {
+				t.Fatalf("missing 'reed add claude' task")
+			}
+			args, _ := addTask["args"].([]any)
+			cmdIndex := slices.Index(args, any("--cmd"))
+			if cmdIndex < 0 || cmdIndex+1 >= len(args) {
+				t.Fatalf("--cmd flag not found in args %v", args)
+			}
+			if args[cmdIndex+1] != tt.wantClaudeCmd {
+				t.Errorf("--cmd arg = %v; want %q", args[cmdIndex+1], tt.wantClaudeCmd)
+			}
+		})
+	}
+}
+
+// TestWriteConfigKeepsSettingsAndOverwritesTasks pins that a rerun leaves an existing settings.json
+// untouched and replaces an existing tasks.json with the requested chain.
+//
+//testtiming:keep pins the untouched settings.json and the overwritten tasks.json per chain, which the gitignore test does not assert
+func TestWriteConfigKeepsSettingsAndOverwritesTasks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		chain      TaskChain
+		wantLabels []string
+	}{
+		{"interactive", TaskChainInteractive, []string{"Start Claude", "reed add claude", "reed attach", "reed up"}},
+		{"attach-only", TaskChainAttachOnly, []string{"reed attach"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			vscodePath := filepath.Join(dir, ".vscode")
+			if err := os.MkdirAll(vscodePath, 0o755); err != nil {
+				t.Fatalf("failed to create .vscode: %v", err)
+			}
+			settingsPath := filepath.Join(vscodePath, "settings.json")
+			custom := []byte(`{"custom":"value"}`)
+			if err := os.WriteFile(settingsPath, custom, 0o644); err != nil {
+				t.Fatalf("failed to write original settings.json: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(vscodePath, "tasks.json"), []byte(`{"version":"999.0.0"}`), 0o644); err != nil {
+				t.Fatalf("failed to write original tasks.json: %v", err)
+			}
+
+			if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", tt.chain); err != nil {
+				t.Fatalf("WriteConfig failed: %v", err)
+			}
+
+			got, err := os.ReadFile(settingsPath)
+			if err != nil {
+				t.Fatalf("failed to read settings.json: %v", err)
+			}
+			if string(got) != string(custom) {
+				t.Errorf("settings.json was clobbered: %q", got)
+			}
+			tasks := readTasksFile(t, dir)
+			if tasks.Version != "2.0.0" {
+				t.Errorf("tasks.json was not overwritten with the current chain: version = %v", tasks.Version)
+			}
+			if labels := taskLabels(tasks.Tasks); !slices.Equal(labels, tt.wantLabels) {
+				t.Errorf("task labels = %v; want %v", labels, tt.wantLabels)
+			}
+		})
+	}
+}
+
+// TestWriteConfigLeavesGitignoreAlone pins that WriteConfig neither creates a .gitignore nor
+// modifies an existing one, for both task chains.
+//
+//testtiming:keep pins that no .gitignore is created or modified, which its covering tests do not assert
+func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		chain      TaskChain
+		claudePath string
+	}{
+		{"interactive", TaskChainInteractive, "/usr/local/bin/claude"},
+		{"attach-only", TaskChainAttachOnly, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+
+			if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", tt.claudePath, tt.chain); err != nil {
+				t.Fatalf("WriteConfig failed: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
+				t.Errorf(".gitignore should not exist, stat err = %v", err)
+			}
+
+			existing := []byte("build/\n")
+			if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", tt.claudePath, tt.chain); err != nil {
+				t.Fatalf("WriteConfig failed: %v", err)
+			}
+			got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
+			if string(got) != string(existing) {
+				t.Errorf(".gitignore modified: %q", got)
+			}
+		})
+	}
+}
+
+// TestWriteConfigAttachOnlyWritesSingleFolderOpenTask pins the attach-only chain's single task:
+// its label, command, args, folderOpen trigger and absence of dependsOn.
+//
+//testtiming:keep pins the attach-only task's label, args, runOn and missing dependsOn, which the bare-name fallback test does not assert
 func TestWriteConfigAttachOnlyWritesSingleFolderOpenTask(t *testing.T) {
 	dir := t.TempDir()
 
@@ -415,7 +434,7 @@ func TestWriteConfigAttachOnlyWritesSingleFolderOpenTask(t *testing.T) {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
-	tasks := readAttachOnlyTasks(t, dir)
+	tasks := readTasksFile(t, dir).Tasks
 	if len(tasks) != 1 {
 		t.Fatalf("got %d tasks, want exactly 1", len(tasks))
 	}
@@ -436,74 +455,5 @@ func TestWriteConfigAttachOnlyWritesSingleFolderOpenTask(t *testing.T) {
 	}
 	if _, ok := task["dependsOn"]; ok {
 		t.Errorf("attach-only task must not carry dependsOn")
-	}
-	for _, tk := range tasks {
-		if tk["label"] == "reed up" || tk["label"] == "reed add claude" {
-			t.Errorf("unexpected task %v in attach-only chain", tk["label"])
-		}
-	}
-}
-
-func TestWriteConfigAttachOnlyEmptyLyxPathFallsBack(t *testing.T) {
-	dir := t.TempDir()
-
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "", "", TaskChainAttachOnly); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-
-	tasks := readAttachOnlyTasks(t, dir)
-	if len(tasks) != 1 || tasks[0]["command"] != "lyx" {
-		t.Fatalf("tasks = %v, want one task with command lyx", tasks)
-	}
-}
-
-func TestWriteConfigAttachOnlyOverwritesTasksButKeepsSettings(t *testing.T) {
-	dir := t.TempDir()
-
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "/usr/local/bin/claude", TaskChainInteractive); err != nil {
-		t.Fatalf("interactive WriteConfig failed: %v", err)
-	}
-	settingsPath := filepath.Join(dir, ".vscode", "settings.json")
-	custom := []byte(`{"operator":"edit"}`)
-	if err := os.WriteFile(settingsPath, custom, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
-		t.Fatalf("attach-only WriteConfig failed: %v", err)
-	}
-
-	if tasks := readAttachOnlyTasks(t, dir); len(tasks) != 1 || tasks[0]["label"] != "reed attach" {
-		t.Fatalf("tasks.json not overwritten with attach-only chain: %v", tasks)
-	}
-	got, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(custom) {
-		t.Errorf("settings.json changed: %q", got)
-	}
-}
-
-func TestWriteConfigAttachOnlyLeavesGitignoreAlone(t *testing.T) {
-	dir := t.TempDir()
-
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
-		t.Errorf(".gitignore should not exist, stat err = %v", err)
-	}
-
-	existing := []byte("build/\n")
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteConfig(dir, ".", "slug", "#2d7d46", "/opt/lyx/bin/lyx", "", TaskChainAttachOnly); err != nil {
-		t.Fatalf("WriteConfig failed: %v", err)
-	}
-	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))
-	if string(got) != string(existing) {
-		t.Errorf(".gitignore modified: %q", got)
 	}
 }

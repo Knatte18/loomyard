@@ -97,22 +97,16 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// TestDefaultLabels_ReturnsBug verifies that DefaultLabels returns exactly
-// the single-element "bug" default the automatic and manual filing paths
-// share.
-func TestDefaultLabels_ReturnsBug(t *testing.T) {
-	got := DefaultLabels()
-	if len(got) != 1 || got[0] != "bug" {
-		t.Errorf("DefaultLabels() = %v; want [\"bug\"]", got)
-	}
-}
-
-// TestDefaultLabels_ReturnsFreshSlice verifies that two successive calls
-// return slices backed by different arrays, so mutating one call's result
-// cannot corrupt the default seen by the next caller.
-func TestDefaultLabels_ReturnsFreshSlice(t *testing.T) {
+// TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default
+// the automatic and manual filing paths share, and that each call returns its own slice, so
+// mutating one call's result cannot corrupt the default seen by the next caller.
+func TestDefaultLabels(t *testing.T) {
 	first := DefaultLabels()
 	second := DefaultLabels()
+
+	if len(first) != 1 || first[0] != "bug" {
+		t.Errorf("DefaultLabels() = %v; want [\"bug\"]", first)
+	}
 
 	first[0] = "mutated"
 
@@ -121,68 +115,61 @@ func TestDefaultLabels_ReturnsFreshSlice(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_Success drives the normal successful path: the returned url and number match the
-// server's typed response,
-// and the request sent carries the expected method, path, title, body, and labels in order.
+// TestCreateIssue_Success drives the successful path with and without a body: the returned url and
+// number match the server's typed response, and the request sent carries the expected method, path,
+// title, labels in order and, only when a body was given, the "body" field.
 func TestCreateIssue_Success(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/42"
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":42}`, &captured)
-	installGitHubClient(t, server.URL)
+	tests := []struct {
+		name string
+		// body is passed to CreateIssue; nil must leave the request without a "body" field.
+		body *string
+	}{
+		{"with body", new("details")},
+		{"nil body omits the field", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured []requestCapture
+			server := newIssueServer(t, http.StatusCreated, `{"html_url":"`+issueURL+`","number":42}`, &captured)
+			installGitHubClient(t, server.URL)
 
-	body := "details"
-	url, number, err := CreateIssue("a title", &body, []string{"bug", "p1"})
-	if err != nil {
-		t.Fatalf("CreateIssue() error = %v; want nil", err)
-	}
-	if url != issueURL {
-		t.Errorf("CreateIssue() url = %q; want %q", url, issueURL)
-	}
-	if number != 42 {
-		t.Errorf("CreateIssue() number = %d; want 42", number)
-	}
+			url, number, err := CreateIssue("a title", tt.body, []string{"bug", "p1"})
+			if err != nil {
+				t.Fatalf("CreateIssue() error = %v; want nil", err)
+			}
+			if url != issueURL {
+				t.Errorf("CreateIssue() url = %q; want %q", url, issueURL)
+			}
+			if number != 42 {
+				t.Errorf("CreateIssue() number = %d; want 42", number)
+			}
 
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	got := captured[0]
-	if got.method != http.MethodPost {
-		t.Errorf("request method = %q; want %q", got.method, http.MethodPost)
-	}
-	if got.path != "/repos/Knatte18/loomyard/issues" {
-		t.Errorf("request path = %q; want %q", got.path, "/repos/Knatte18/loomyard/issues")
-	}
-	if title, _ := got.body["title"].(string); title != "a title" {
-		t.Errorf("request body title = %q; want %q", title, "a title")
-	}
-	if bodyVal, _ := got.body["body"].(string); bodyVal != "details" {
-		t.Errorf("request body \"body\" field = %q; want %q", bodyVal, "details")
-	}
-	labelsRaw, _ := got.body["labels"].([]any)
-	if len(labelsRaw) != 2 {
-		t.Fatalf("request body labels = %v; want 2 entries", labelsRaw)
-	}
-	if labelsRaw[0] != "bug" || labelsRaw[1] != "p1" {
-		t.Errorf("request body labels = %v; want [\"bug\" \"p1\"] in order", labelsRaw)
-	}
-}
-
-// TestCreateIssue_NoBodyOmitsField verifies that a nil body pointer produces a request with no
-// "body" field at all, rather than an empty string.
-func TestCreateIssue_NoBodyOmitsField(t *testing.T) {
-	var captured []requestCapture
-	server := newIssueServer(t, http.StatusCreated, `{"html_url":"https://github.com/Knatte18/loomyard/issues/1","number":1}`, &captured)
-	installGitHubClient(t, server.URL)
-
-	if _, _, err := CreateIssue("t", nil, []string{"bug"}); err != nil {
-		t.Fatalf("CreateIssue() error = %v; want nil", err)
-	}
-
-	if len(captured) != 1 {
-		t.Fatalf("request count = %d; want 1", len(captured))
-	}
-	if _, hasBody := captured[0].body["body"]; hasBody {
-		t.Errorf("request body has \"body\" field but none was provided; got %v", captured[0].body)
+			if len(captured) != 1 {
+				t.Fatalf("request count = %d; want 1", len(captured))
+			}
+			got := captured[0]
+			if got.method != http.MethodPost {
+				t.Errorf("request method = %q; want %q", got.method, http.MethodPost)
+			}
+			if got.path != "/repos/Knatte18/loomyard/issues" {
+				t.Errorf("request path = %q; want %q", got.path, "/repos/Knatte18/loomyard/issues")
+			}
+			if title, _ := got.body["title"].(string); title != "a title" {
+				t.Errorf("request body title = %q; want %q", title, "a title")
+			}
+			labelsRaw, _ := got.body["labels"].([]any)
+			if len(labelsRaw) != 2 || labelsRaw[0] != "bug" || labelsRaw[1] != "p1" {
+				t.Errorf("request body labels = %v; want [\"bug\" \"p1\"] in order", labelsRaw)
+			}
+			gotBody, hasBody := got.body["body"]
+			switch {
+			case tt.body == nil && hasBody:
+				t.Errorf("request has \"body\" field %v but none was provided", gotBody)
+			case tt.body != nil && gotBody != *tt.body:
+				t.Errorf("request body \"body\" field = %q; want %q", gotBody, *tt.body)
+			}
+		})
 	}
 }
 
