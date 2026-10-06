@@ -4,6 +4,8 @@
 // what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely
 // empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled
 // stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
+// It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and
+// OpenFabric — and that hub teardown is safe.
 
 package hubforge
 
@@ -66,6 +68,12 @@ func TestBuildBareTemplate(t *testing.T) {
 	})
 }
 
+// TestNewHub runs the factory and helper checks over one hub per anchor, "." and "backend".
+// Running at "backend" is the point of the anchored hub: a "."-only test passes even when a seeding or
+// resolution base is wrong, because there the anchored and un-anchored weft paths coincide.
+// Steps run serially in this order: the config steps come before the steps that add pairs, and the
+// fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
+// Each anchor's scenario calls t.Parallel; no step does, because they share the one hub.
 func TestNewHub(t *testing.T) {
 	t.Parallel()
 
@@ -75,72 +83,196 @@ func TestNewHub(t *testing.T) {
 
 			h := NewHub(t, anchor)
 
-			if _, err := os.Stat(h.PrimeWorktree()); err != nil {
-				t.Errorf("prime warp worktree missing at %s: %v", h.PrimeWorktree(), err)
-			}
-			if _, err := os.Stat(h.PrimeWeft()); err != nil {
-				t.Errorf("weft sibling missing at %s: %v", h.PrimeWeft(), err)
-			}
-			if _, err := os.Stat(h.BoardDir()); err != nil {
-				t.Errorf("board dir missing at %s: %v", h.BoardDir(), err)
-			}
+			steps := []struct {
+				name string
+				run  func(t *testing.T)
+			}{
+				{"IsARealHub", func(t *testing.T) {
+					assertRealHub(t, h)
 
-			primeCwd := filepath.Join(h.PrimeWorktree(), h.Anchor)
-			l, err := lyxcwd.Resolve(primeCwd)
-			if err != nil {
-				t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
-			}
-			if l.AnchorRel != anchor {
-				t.Errorf("resolved AnchorRel = %q; want %q", l.AnchorRel, anchor)
-			}
+					if _, err := os.Stat(h.PrimeWorktree()); err != nil {
+						t.Errorf("prime warp worktree missing at %s: %v", h.PrimeWorktree(), err)
+					}
+					if _, err := os.Stat(h.PrimeWeft()); err != nil {
+						t.Errorf("weft sibling missing at %s: %v", h.PrimeWeft(), err)
+					}
 
-			if _, err := os.Stat(filepath.Join(h.BoardDir(), fabricengine.WarpBindingFileName)); err != nil {
-				t.Errorf("recorded warp binding missing at %s: %v", h.BoardDir(), err)
-			}
+					primeCwd := filepath.Join(h.PrimeWorktree(), h.Anchor)
+					l, err := lyxcwd.Resolve(primeCwd)
+					if err != nil {
+						t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
+					}
+					if l.AnchorRel != anchor {
+						t.Errorf("resolved AnchorRel = %q; want %q", l.AnchorRel, anchor)
+					}
 
-			names, err := fabricengine.WiredNames(h.BoardDir())
-			if err != nil {
-				t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
+					if rooted := anchor == "."; (h.WeftBase == h.PrimeWeft()) != rooted {
+						t.Errorf("h.WeftBase = %s, h.PrimeWeft() = %s at the %q anchor; want them equal only at the root anchor", h.WeftBase, h.PrimeWeft(), anchor)
+					}
+				}},
+				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
+					// A freshly built hub already carries a materialized config file for at least one
+					// registered module without any seeding call. This is what licenses deleting a
+					// SeedConfig call rather than retargeting it, so it is not optional colour.
+					const module = "loom"
+					template, ok := configreg.Template(module)
+					if !ok {
+						t.Fatalf("configreg.Template(%q): module not registered", module)
+					}
+
+					configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
+					got, err := os.ReadFile(configPath)
+					if err != nil {
+						t.Fatalf("read %s: %v", configPath, err)
+					}
+					if len(got) == 0 {
+						t.Fatalf("%s: want non-empty content, got none", configPath)
+					}
+
+					var gotDoc, wantDoc any
+					if err := yaml.Unmarshal(got, &gotDoc); err != nil {
+						t.Fatalf("parse %s: %v", configPath, err)
+					}
+					if err := yaml.Unmarshal([]byte(template()), &wantDoc); err != nil {
+						t.Fatalf("parse %s's registered template: %v", module, err)
+					}
+					if !reflect.DeepEqual(wantDoc, gotDoc) {
+						t.Errorf("%s content = %#v; want it to match the registered %s template %#v", configPath, gotDoc, module, wantDoc)
+					}
+				}},
+				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
+					// SeedConfig returns normally when handed a seed byte-identical to what the clone
+					// already committed -- a seed that stages nothing, exactly the shape its --allow-empty
+					// commit exists to tolerate -- and a genuinely different seed still lands on disk,
+					// proving --allow-empty did not turn the helper into a no-op.
+					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
+					original, err := os.ReadFile(loomConfigPath)
+					if err != nil {
+						t.Fatalf("read already-materialised loom config %s: %v", loomConfigPath, err)
+					}
+
+					SeedConfig(t, h, map[string]string{"loom": string(original)})
+
+					afterRedundantSeed, err := os.ReadFile(loomConfigPath)
+					if err != nil {
+						t.Fatalf("read loom config after redundant seed %s: %v", loomConfigPath, err)
+					}
+					if string(afterRedundantSeed) != string(original) {
+						t.Errorf("loom config after redundant seed = %q; want unchanged %q", afterRedundantSeed, original)
+					}
+
+					const different = "different: true\n"
+					SeedConfig(t, h, map[string]string{"loom": different})
+
+					afterDifferentSeed, err := os.ReadFile(loomConfigPath)
+					if err != nil {
+						t.Fatalf("read loom config after different seed %s: %v", loomConfigPath, err)
+					}
+					if string(afterDifferentSeed) != different {
+						t.Errorf("loom config after different seed = %q; want %q", afterDifferentSeed, different)
+					}
+				}},
+				{"SeedConfigVisibleFromWarpSide", func(t *testing.T) {
+					// An override seeded with SeedConfig reads back through the warp-side _lyx junction.
+					const module = "loom"
+					const override = "hubforge-seeded-override: true\n"
+					SeedConfig(t, h, map[string]string{module: override})
+
+					configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
+					got, err := os.ReadFile(configPath)
+					if err != nil {
+						t.Fatalf("read %s: %v", configPath, err)
+					}
+					if string(got) != override {
+						t.Errorf("%s content = %q; want the seeded override %q", configPath, got, override)
+					}
+				}},
+				{"AddPairWiresPortalAndLauncher", func(t *testing.T) {
+					const slug = "px"
+					AddPair(t, h, slug)
+
+					portal := fabricengine.PortalLink(h.Location, slug)
+					if _, err := os.Stat(portal); err != nil {
+						t.Errorf("pair portal link missing at %s: %v", portal, err)
+					}
+					if got := h.PairPortalLink(slug); got != portal {
+						t.Errorf("h.PairPortalLink(%s) = %s; want %s", slug, got, portal)
+					}
+
+					launcherDir := fabricengine.LauncherDir(h.Location, slug)
+					if _, err := os.Stat(launcherDir); err != nil {
+						t.Errorf("pair launcher dir missing at %s: %v", launcherDir, err)
+					}
+					if got := h.PairLauncherDir(slug); got != launcherDir {
+						t.Errorf("h.PairLauncherDir(%s) = %s; want %s", slug, got, launcherDir)
+					}
+				}},
+				{"AddPairWith_SkipPushKeepsWeftBranchOffTheBare", func(t *testing.T) {
+					skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
+					skippedWeft := fabricengine.WeftBranchName(skipped.Branch)
+					if skipped.Pushed {
+						t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
+					}
+					if gitkit.BranchExists(t, h.WeftBare, skippedWeft) {
+						t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
+					}
+
+					pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
+					pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
+					if !pushed.Pushed || !gitkit.BranchExists(t, h.WeftBare, pushedWeft) {
+						t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.WeftBare, pushedWeft))
+					}
+				}},
+				{"OpenFabricOpensThePrimePair", func(t *testing.T) {
+					f := OpenFabric(t, h)
+
+					gotSHA, err := f.HeadSHA()
+					if err != nil {
+						t.Fatalf("HeadSHA: %v", err)
+					}
+					if want := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); gotSHA != want {
+						t.Errorf("HeadSHA = %s; want the prime warp's HEAD %s", gotSHA, want)
+					}
+					gotBranch, err := f.CurrentBranch()
+					if err != nil {
+						t.Fatalf("CurrentBranch: %v", err)
+					}
+					if want := gitkit.CurrentBranch(t, h.PrimeWorktree()); gotBranch != want {
+						t.Errorf("CurrentBranch = %q; want %q", gotBranch, want)
+					}
+				}},
+				{"SeedFabricConfig_CommitsAndLeavesBoardClean", func(t *testing.T) {
+					// SeedFabricConfig's write is visible at h.BoardDir() and leaves the board clean — the
+					// commit through fabricengine.NewBolt is what makes an uncommitted seed unsafe rather
+					// than merely untidy, since h.BoardDir() is the checkout the destruction gate's
+					// dirtiness check observes.
+					const override = "pathspec: []\nbranch_prefix: fabric-seeded\n"
+					SeedFabricConfig(t, h, override)
+
+					fabricConfigPath := configengine.ConfigFile(h.BoardDir(), "fabric")
+					got, err := os.ReadFile(fabricConfigPath)
+					if err != nil {
+						t.Fatalf("read %s: %v", fabricConfigPath, err)
+					}
+					if string(got) != override {
+						t.Errorf("%s content = %q; want the seeded override %q", fabricConfigPath, got, override)
+					}
+
+					if status := gitkit.GitStatusPorcelain(t, h.BoardDir()); status != "" {
+						t.Errorf("git status --porcelain at %s = %q; want empty after SeedFabricConfig commits", h.BoardDir(), status)
+					}
+				}},
 			}
-			for _, name := range names {
-				link := filepath.Join(h.PrimeWorktree(), h.Anchor, name)
-				isLink, err := fslink.IsLink(link)
-				if err != nil {
-					t.Errorf("fslink.IsLink(%s): %v", link, err)
-					continue
+			for _, step := range steps {
+				if !t.Run(step.name, step.run) {
+					return
 				}
-				if !isLink {
-					t.Errorf("wired junction %s: want a link, got none", link)
-				}
-			}
-
-			if _, err := os.Stat(filepath.Join(h.BoardDir(), lyxdirs.LyxDirName, "config", "fabric.yaml")); err != nil {
-				t.Errorf("repo-wide fabric.yaml missing at %s: %v", h.BoardDir(), err)
-			}
-
-			const slug = "px"
-			AddPair(t, h, slug)
-
-			portal := fabricengine.PortalLink(h.Location, slug)
-			if _, err := os.Stat(portal); err != nil {
-				t.Errorf("pair portal link missing at %s: %v", portal, err)
-			}
-			if got := h.PairPortalLink(slug); got != portal {
-				t.Errorf("h.PairPortalLink(%s) = %s; want %s", slug, got, portal)
-			}
-
-			launcherDir := fabricengine.LauncherDir(h.Location, slug)
-			if _, err := os.Stat(launcherDir); err != nil {
-				t.Errorf("pair launcher dir missing at %s: %v", launcherDir, err)
-			}
-			if got := h.PairLauncherDir(slug); got != launcherDir {
-				t.Errorf("h.PairLauncherDir(%s) = %s; want %s", slug, got, launcherDir)
 			}
 		})
 	}
 }
 
-// assertRealHub runs the shared TestNewHub_IsARealHub assertions against h: every path is sourced
+// assertRealHub runs the real-hub assertions against h: every path is sourced
 // through fabricengine's own name accessors — BoardDir, WiredNames — and lyxdirs/lyxcwd's own
 // exported names, never a hardcoded string, because a hardcoded string is precisely the invented
 // shape this whole task removes.
@@ -198,169 +330,6 @@ func assertRealHub(t *testing.T, h *Hub) {
 	warpBinding := filepath.Join(h.BoardDir(), fabricengine.WarpBindingFileName)
 	if _, err := os.Stat(warpBinding); err != nil {
 		t.Errorf("weft:main warp-URL binding missing at %s: %v", warpBinding, err)
-	}
-}
-
-func TestNewHub_IsARealHub(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, ".")
-	assertRealHub(t, h)
-
-	if h.WeftBase != h.PrimeWeft() {
-		t.Errorf("h.WeftBase = %s; want it to equal h.PrimeWeft() = %s at the %q anchor", h.WeftBase, h.PrimeWeft(), ".")
-	}
-}
-
-func TestNewHub_BackendAnchor(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, "backend")
-	assertRealHub(t, h)
-
-	if h.WeftBase == h.PrimeWeft() {
-		t.Errorf("h.WeftBase = %s; want it to diverge from h.PrimeWeft() = %s at the %q anchor", h.WeftBase, h.PrimeWeft(), "backend")
-	}
-}
-
-// TestNewHub_ConfigMaterializedWithoutSeeding asserts that a freshly built hub already carries a
-// materialized config file for at least one registered module without any seeding call.
-// This is what licenses batches 4 through 10 to delete a SeedConfig call rather than retarget it, so
-// it is not optional colour.
-func TestNewHub_ConfigMaterializedWithoutSeeding(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, ".")
-
-	const module = "loom"
-	template, ok := configreg.Template(module)
-	if !ok {
-		t.Fatalf("configreg.Template(%q): module not registered", module)
-	}
-
-	configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
-	got, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", configPath, err)
-	}
-	if len(got) == 0 {
-		t.Fatalf("%s: want non-empty content, got none", configPath)
-	}
-
-	var gotDoc, wantDoc any
-	if err := yaml.Unmarshal(got, &gotDoc); err != nil {
-		t.Fatalf("parse %s: %v", configPath, err)
-	}
-	if err := yaml.Unmarshal([]byte(template()), &wantDoc); err != nil {
-		t.Fatalf("parse %s's registered template: %v", module, err)
-	}
-	if !reflect.DeepEqual(wantDoc, gotDoc) {
-		t.Errorf("%s content = %#v; want it to match the registered %s template %#v", configPath, gotDoc, module, wantDoc)
-	}
-}
-
-// TestSeedConfig_VisibleFromWarpSide seeds an override with SeedConfig and reads it back through the
-// warp-side _lyx junction, at both anchors.
-// Running it at "backend" is the whole point: a "."-only test passes even when the seeding base is
-// wrong, because there the anchored and un-anchored weft paths coincide.
-func TestSeedConfig_VisibleFromWarpSide(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		anchor string
-	}{
-		{"Root", "."},
-		{"Backend", "backend"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := NewHub(t, tt.anchor)
-
-			const module = "loom"
-			const override = "hubforge-seeded-override: true\n"
-			SeedConfig(t, h, map[string]string{module: override})
-
-			configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
-			got, err := os.ReadFile(configPath)
-			if err != nil {
-				t.Fatalf("read %s: %v", configPath, err)
-			}
-			if string(got) != override {
-				t.Errorf("%s content = %q; want the seeded override %q", configPath, got, override)
-			}
-		})
-	}
-}
-
-// TestSeedFabricConfig_CommitsAndLeavesBoardClean asserts SeedFabricConfig's write is visible at
-// h.BoardDir() and that it leaves the board clean — the commit through fabricengine.NewBolt is what
-// makes an uncommitted seed unsafe rather than merely untidy, since h.BoardDir() is the checkout the
-// destruction gate's dirtiness check observes.
-func TestSeedFabricConfig_CommitsAndLeavesBoardClean(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, ".")
-
-	const override = "pathspec: []\nbranch_prefix: fabric-seeded\n"
-	SeedFabricConfig(t, h, override)
-
-	fabricConfigPath := configengine.ConfigFile(h.BoardDir(), "fabric")
-	got, err := os.ReadFile(fabricConfigPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", fabricConfigPath, err)
-	}
-	if string(got) != override {
-		t.Errorf("%s content = %q; want the seeded override %q", fabricConfigPath, got, override)
-	}
-
-	if status := gitkit.GitStatusPorcelain(t, h.BoardDir()); status != "" {
-		t.Errorf("git status --porcelain at %s = %q; want empty after SeedFabricConfig commits", h.BoardDir(), status)
-	}
-}
-
-func TestAddPairWith_SkipPushKeepsWeftBranchOffTheBare(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, ".")
-
-	skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
-	skippedWeft := fabricengine.WeftBranchName(skipped.Branch)
-	if skipped.Pushed {
-		t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
-	}
-	if gitkit.BranchExists(t, h.WeftBare, skippedWeft) {
-		t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
-	}
-
-	pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
-	pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
-	if !pushed.Pushed || !gitkit.BranchExists(t, h.WeftBare, pushedWeft) {
-		t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.WeftBare, pushedWeft))
-	}
-}
-
-func TestOpenFabric_OpensThePrimePair(t *testing.T) {
-	t.Parallel()
-
-	h := NewHub(t, ".")
-	f := OpenFabric(t, h)
-
-	gotSHA, err := f.HeadSHA()
-	if err != nil {
-		t.Fatalf("HeadSHA: %v", err)
-	}
-	if want := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); gotSHA != want {
-		t.Errorf("HeadSHA = %s; want the prime warp's HEAD %s", gotSHA, want)
-	}
-	gotBranch, err := f.CurrentBranch()
-	if err != nil {
-		t.Fatalf("CurrentBranch: %v", err)
-	}
-	if want := gitkit.CurrentBranch(t, h.PrimeWorktree()); gotBranch != want {
-		t.Errorf("CurrentBranch = %q; want %q", gotBranch, want)
 	}
 }
 
