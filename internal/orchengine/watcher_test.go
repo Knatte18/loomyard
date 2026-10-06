@@ -35,17 +35,20 @@ type fakeSession struct {
 	onSend     func()
 	onAlive    func()
 
-	skillUnknown map[string]bool      // Skill to whether SkillUnknown reports it.
-	autoCompact  map[string]time.Time // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
+	skillLoads  map[string]shuttleengine.SkillLoadReport // Turn-end message to the report ClassifySkillLoad answers; a missing message reports every skill loaded.
+	autoCompact map[string]time.Time                     // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
 }
 
-func (f *fakeSession) LoadSkill(_, skill string) error {
-	f.calls = append(f.calls, "skill:"+skill)
+func (f *fakeSession) LoadSkills(_ string, skills []string) error {
+	f.calls = append(f.calls, "skills:"+strings.Join(skills, ","))
 	return nil
 }
 
-func (f *fakeSession) SkillUnknown(_, skill string) (bool, error) {
-	return f.skillUnknown[skill], nil
+func (f *fakeSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
+	if report, ok := f.skillLoads[turnEnd.Message]; ok {
+		return report, nil
+	}
+	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}, nil
 }
 
 func (f *fakeSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
@@ -860,19 +863,17 @@ func (e *watchEnv) endTurn(msg string) {
 	e.tick()
 }
 
-// assertReload checks the calls after prefix are every skill in order, then a pointer naming the role file and, when note is not empty, the note.
+// reloadSkillsCall is the call that loads every one of reloadSkills in one turn.
+var reloadSkillsCall = "skills:" + strings.Join(reloadSkills, ",")
+
+// assertReload checks the calls after prefix are one skills load, then a pointer naming the role file and, when note is not empty, the note.
 func (e *watchEnv) assertReload(prefix, note string) {
 	e.t.Helper()
 	got := e.callsAfter(prefix)
-	if len(got) != len(reloadSkills)+1 {
-		e.t.Fatalf("calls after %q = %v, want %d skills and a pointer", prefix, got, len(reloadSkills))
+	if len(got) != 2 || got[0] != reloadSkillsCall {
+		e.t.Fatalf("calls after %q = %v, want one skills load and a pointer", prefix, got)
 	}
-	for i, skill := range reloadSkills {
-		if got[i] != "skill:"+skill {
-			e.t.Errorf("call %d = %q, want the skill %s", i, got[i], skill)
-		}
-	}
-	pointer := got[len(got)-1]
+	pointer := got[1]
 	if !strings.HasPrefix(pointer, "send:") || !strings.Contains(pointer, e.paths.RolePath) {
 		e.t.Errorf("pointer = %q, want it to name the role file", pointer)
 	}
@@ -888,13 +889,12 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.tick() // clearing -> resuming, first skill typed
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != 0 || st.ReloadTypedAt.IsZero() {
+	e.tick() // clearing -> resuming, skills typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || st.ReloadTypedAt.IsZero() {
 		t.Fatalf("state = %+v", st)
 	}
 	e.endTurn("t1")
-	e.endTurn("t2")
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != len(reloadSkills) {
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer {
 		t.Fatalf("state = %+v, want the pointer step", st)
 	}
 	e.s.usage["resumed"] = 300
@@ -907,22 +907,47 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 
 func TestWatcher_SkillSkipCauses(t *testing.T) {
 	t.Parallel()
+	verified := func(unknown, missing []string) shuttleengine.SkillLoadReport {
+		return shuttleengine.SkillLoadReport{Verified: true, Unknown: unknown, Missing: missing}
+	}
 	tests := []struct {
-		name     string
-		unknown  map[string]bool
-		advances []time.Duration
-		endTurns []string
-		reloaded bool // the reload completes after the turn ends, else only the second skill follows the clear
+		name      string
+		loads     map[string]shuttleengine.SkillLoadReport
+		timeout   bool     // the skills turn never ends, so its timeout passes
+		endTurns  []string // turn ends read before the pointer's
+		wantSkill []string // the skills calls after the clear
 	}{
 		{
-			name:     "unknown skill is skipped and logged",
-			unknown:  map[string]bool{"scribe:prose": true},
-			endTurns: []string{"t2", "resumed"},
-			reloaded: true,
+			name:      "unknown skill is skipped with no retry",
+			loads:     map[string]shuttleengine.SkillLoadReport{"t1": verified([]string{"scribe:prose"}, nil)},
+			endTurns:  []string{"t1"},
+			wantSkill: []string{reloadSkillsCall},
 		},
 		{
-			name:     "silent skill is skipped at the timeout",
-			advances: []time.Duration{99 * time.Second, 2 * time.Second},
+			name:      "missing skill is retried once, naming only it",
+			loads:     map[string]shuttleengine.SkillLoadReport{"t1": verified(nil, []string{"ly:board"})},
+			endTurns:  []string{"t1", "t2"},
+			wantSkill: []string{reloadSkillsCall, "skills:ly:board"},
+		},
+		{
+			name: "skill still missing after the retry is skipped",
+			loads: map[string]shuttleengine.SkillLoadReport{
+				"t1": verified(nil, []string{"ly:board"}),
+				"t2": verified(nil, []string{"ly:board"}),
+			},
+			endTurns:  []string{"t1", "t2"},
+			wantSkill: []string{reloadSkillsCall, "skills:ly:board"},
+		},
+		{
+			name:      "unverified turn goes straight to the pointer",
+			loads:     map[string]shuttleengine.SkillLoadReport{"t1": {}},
+			endTurns:  []string{"t1"},
+			wantSkill: []string{reloadSkillsCall},
+		},
+		{
+			name:      "silent skills turn is skipped at the timeout with no retry",
+			timeout:   true,
+			wantSkill: []string{reloadSkillsCall},
 		},
 	}
 	for _, tt := range tests {
@@ -930,31 +955,34 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
 			e.withSkills()
-			e.s.skillUnknown = tt.unknown
+			e.s.skillLoads = tt.loads
 			e.reachClearing()
-			e.tick() // first skill typed
-			for i, d := range tt.advances {
-				if i > 0 {
-					if st := e.state(); st.ReloadStep != 0 {
-						t.Fatalf("ReloadStep = %d before the skip", st.ReloadStep)
-					}
-				}
-				e.clock.advance(d)
-				e.tick()
-			}
-			if len(tt.advances) == 0 {
-				e.tick() // the skip lands, the next skill typed on the same tick
-			}
-			if st := e.state(); st.ReloadStep != 1 {
-				t.Fatalf("ReloadStep = %d, want the skill skipped", st.ReloadStep)
+			e.tick() // skills typed
+			if tt.timeout {
+				e.clock.advance(101 * time.Second)
+				e.tick() // the skills are skipped, the pointer typed on the same tick
 			}
 			for _, turn := range tt.endTurns {
 				e.endTurn(turn)
 			}
-			if tt.reloaded {
-				e.assertReload("clear", e.state().LastHandoff)
-			} else if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
-				t.Errorf("calls after clear = %v", got)
+			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer || len(st.ReloadRetry) != 0 {
+				t.Fatalf("state = %+v, want the pointer step with nothing left to retry", st)
+			}
+			e.endTurn("resumed")
+			got := e.callsAfter("clear")
+			if len(got) != len(tt.wantSkill)+1 {
+				t.Fatalf("calls after clear = %v, want %v and a pointer", got, tt.wantSkill)
+			}
+			for i, want := range tt.wantSkill {
+				if got[i] != want {
+					t.Errorf("call %d = %q, want %q", i, got[i], want)
+				}
+			}
+			if pointer := got[len(got)-1]; !strings.HasPrefix(pointer, "send:") {
+				t.Errorf("last call = %q, want the pointer", pointer)
+			}
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Errorf("phase = %s, want idle", st.Phase)
 			}
 		})
 	}
@@ -965,43 +993,73 @@ func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 	e.withSkills()
 	e.reachClearing()
 	e.tick()
-	e.endTurn("t1") // first skill confirmed, second typed
 	typedAt := e.state().ReloadTypedAt
 
 	e.clock.advance(50 * time.Second)
 	e.w = e.newWatcher()
 	e.s.idle = false
 	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 2 {
+	if got := e.callsAfter("clear"); len(got) != 1 {
 		t.Fatalf("typed behind a failing probe: %v", got)
 	}
 	e.s.idle = true
 	e.tick()
 	got := e.callsAfter("clear")
-	if len(got) != 3 || got[2] != "skill:ly:board" {
-		t.Fatalf("calls after clear = %v, want only the unconfirmed skill typed again", got)
+	if len(got) != 2 || got[1] != reloadSkillsCall {
+		t.Fatalf("calls after clear = %v, want the unconfirmed skills step typed again", got)
 	}
-	if st := e.state(); !st.ReloadTypedAt.Equal(typedAt) || st.ReloadStep != 1 {
+	if st := e.state(); !st.ReloadTypedAt.Equal(typedAt) || st.ReloadStep != ReloadStepSkills {
 		t.Errorf("state = %+v, want the step and its first typing time kept", st)
 	}
 }
 
-func TestWatcher_ReloadRestartKeepsSkippedSkillSkipped(t *testing.T) {
+func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
+	e := newWatchEnv(t)
+	e.withSkills()
+	e.s.skillLoads = map[string]shuttleengine.SkillLoadReport{
+		"t1": {Verified: true, Missing: []string{"ly:board"}},
+		"t2": {Verified: true, Missing: []string{"ly:board"}},
+	}
+	e.reachClearing()
+	e.tick()
+	e.endTurn("t1") // moves to the retry step, typed on the same tick
+	if st := e.state(); st.ReloadStep != ReloadStepRetry || len(st.ReloadRetry) != 1 || st.ReloadRetry[0] != "ly:board" {
+		t.Fatalf("state = %+v, want the retry step naming ly:board", st)
+	}
+
+	// A restart in the retry step re-sends only the retry, and never retries a second time.
+	e.w = e.newWatcher()
+	e.tick()
+	got := e.callsAfter("clear")
+	if len(got) != 3 || got[2] != "skills:ly:board" {
+		t.Fatalf("calls after clear = %v, want only the retry typed again", got)
+	}
+	e.endTurn("t2")
+	if st := e.state(); st.ReloadStep != ReloadStepPointer || len(st.ReloadRetry) != 0 {
+		t.Fatalf("state = %+v, want the pointer step", st)
+	}
+
+	// A restart in the pointer step starts no retry.
+	e.w = e.newWatcher()
+	e.tick()
+	for _, c := range e.callsAfter("clear") {
+		if c == "skills:ly:board" && e.s.count("skills:ly:board") > 2 {
+			t.Fatalf("a second retry was typed: %v", e.s.calls)
+		}
+	}
+}
+
+func TestWatcher_ReloadReadsAnOldStyleStepAsThePointer(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
 	e.tick()
-	e.clock.advance(101 * time.Second)
-	e.tick() // first skill timed out, second typed
+	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt = 1, time.Time{} })
 	e.w = e.newWatcher()
 	e.tick()
-	for _, c := range e.callsAfter("clear") {
-		if c == "skill:scribe:prose" && e.s.count("skill:scribe:prose") > 1 {
-			t.Fatalf("a skipped skill was typed again: %v", e.s.calls)
-		}
-	}
-	if st := e.state(); st.ReloadStep != 1 {
-		t.Errorf("ReloadStep = %d, want 1", st.ReloadStep)
+	got := e.callsAfter("clear")
+	if len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
+		t.Fatalf("calls after clear = %v, want the pointer typed after the persisted old-style step", got)
 	}
 }
 
@@ -1010,7 +1068,7 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	e.withSkills()
 	e.reachClearing()
 	e.s.idleSeq = []bool{true, false, false}
-	e.tick() // clearing probe passes, first skill typed
+	e.tick() // clearing probe passes, skills typed
 	e.s.events = append(e.s.events, stop("t1"))
 	e.tick() // confirmed, but the next probe fails
 	e.tick()
@@ -1019,7 +1077,7 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	}
 	e.s.idle = true
 	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 2 || got[1] != "skill:ly:board" {
+	if got := e.callsAfter("clear"); len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
 		t.Fatalf("calls after clear = %v", got)
 	}
 }
@@ -1038,9 +1096,8 @@ func TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer(t *testing.T) {
 		t.Errorf("role file not rendered: %v", err)
 	}
 	e.endTurn("t1")
-	e.endTurn("t2")
 	e.endTurn("resumed")
-	if got := e.s.calls; len(got) != len(reloadSkills)+1 {
+	if got := e.s.calls; len(got) != 2 || got[0] != reloadSkillsCall {
 		t.Fatalf("calls = %v", got)
 	}
 	pointer := e.s.calls[len(e.s.calls)-1]
@@ -1052,7 +1109,7 @@ func TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer(t *testing.T) {
 	}
 	e.endTurn("later") // the same boundary again: no second reload
 	e.tick()
-	if len(e.s.calls) != len(reloadSkills)+1 {
+	if len(e.s.calls) != 2 {
 		t.Errorf("a handled boundary reloaded twice: %v", e.s.calls)
 	}
 }
@@ -1085,7 +1142,7 @@ func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 	}
 	e.s.idle = true
 	e.tick()
-	if e.s.count("skill:") != 1 {
+	if e.s.count("skills:") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
 }
