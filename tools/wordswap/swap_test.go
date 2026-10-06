@@ -4,221 +4,96 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"testing"
 )
 
-// TestSwapText_CasePreservingSubstitution covers the lower/Title/UPPER forms and their
-// embedded-token equivalents.
-func TestSwapText_CasePreservingSubstitution(t *testing.T) {
+// TestSwapText covers swapText's classification of every occurrence of "host":
+//   - lower/Title/UPPER forms and their embedded-token equivalents swap with the case preserved;
+//   - a lowercase letter before the match, or a form matching no case shape, is no match at all;
+//   - a match starting uppercase swaps after a lowercase letter (the camelCase start);
+//   - host + lowercase at a token start is left byte-unchanged and reported in Ambiguous;
+//   - a -skip regexp matching an occurrence's line leaves it unchanged and reports it in Skipped,
+//     including one that claims an otherwise-AMBIGUOUS occurrence, which lets a run reach exit zero;
+//   - substitution is language-agnostic, and reverting the recorded spans always reproduces the
+//     input, including when the target word already occurs in it.
+//
+// Every row also asserts the reversibility check did not report a mismatch.
+func TestSwapText(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name  string
-		input string
-		want  string
+		name          string
+		in            string
+		skips         []*regexp.Regexp
+		want          string
+		wantAmbiguous []Occurrence
+		wantSkipped   []Occurrence
 	}{
-		{"lower", "host", "pair"},
-		{"title", "Host", "Pair"},
-		{"upper", "HOST", "PAIR"},
-		{"embedded_lower_camel", "hostBranch", "pairBranch"},
-		{"embedded_title_camel", "HostJunctions", "PairJunctions"},
-		{"embedded_upper_snake", "HOST_BRANCH", "PAIR_BRANCH"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "pair", nil)
-			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
-			}
-			if got.Out != tt.want {
-				t.Errorf("swapText(%q).Out = %q; want %q", tt.input, got.Out, tt.want)
-			}
-			if len(got.Ambiguous) != 0 {
-				t.Errorf("swapText(%q).Ambiguous = %v; want empty", tt.input, got.Ambiguous)
-			}
-			if got.Mismatch {
-				t.Errorf("swapText(%q).Mismatch = true; want false", tt.input)
-			}
-		})
-	}
-}
-
-// TestSwapText_TokenBoundaryRejection verifies that a lowercase letter immediately preceding
-// the matched form means no match at all -- not AMBIGUOUS, not swapped, not reported.
-func TestSwapText_TokenBoundaryRejection(t *testing.T) {
-	tests := []string{"ghost", "localhost", "conhost"}
-	for _, in := range tests {
-		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "pair", nil)
-			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", in, err)
-			}
-			if got.Out != in {
-				t.Errorf("swapText(%q).Out = %q; want unchanged %q", in, got.Out, in)
-			}
-			if len(got.Ambiguous) != 0 {
-				t.Errorf("swapText(%q).Ambiguous = %v; want empty", in, got.Ambiguous)
-			}
-			if len(got.Skipped) != 0 {
-				t.Errorf("swapText(%q).Skipped = %v; want empty", in, got.Skipped)
-			}
-		})
-	}
-}
-
-// TestSwapText_CamelStartAcceptance verifies that a matched form starting uppercase swaps even
-// though a lowercase letter precedes it in the surrounding text -- the camelCase start case.
-func TestSwapText_CamelStartAcceptance(t *testing.T) {
-	got, err := swapText("myHostPath", "host", "pair", nil)
-	if err != nil {
-		t.Fatalf("swapText returned error: %v", err)
-	}
-	if got.Out != "myPairPath" {
-		t.Errorf("swapText(%q).Out = %q; want %q", "myHostPath", got.Out, "myPairPath")
-	}
-}
-
-// TestSwapText_MixedCaseRejection verifies that a form matching neither the lower, Title, nor
-// UPPER shape is left unchanged and unreported.
-func TestSwapText_MixedCaseRejection(t *testing.T) {
-	for _, in := range []string{"hOst", "HoSt"} {
-		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "pair", nil)
-			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", in, err)
-			}
-			if got.Out != in {
-				t.Errorf("swapText(%q).Out = %q; want unchanged %q", in, got.Out, in)
-			}
-			if len(got.Ambiguous) != 0 {
-				t.Errorf("swapText(%q).Ambiguous = %v; want empty", in, got.Ambiguous)
-			}
-			if len(got.Skipped) != 0 {
-				t.Errorf("swapText(%q).Skipped = %v; want empty", in, got.Skipped)
-			}
-		})
-	}
-}
-
-// TestSwapText_AmbiguityClassification verifies that host + lowercase at a token start is left
-// byte-unchanged and reported in Ambiguous with the correct 1-based line.
-func TestSwapText_AmbiguityClassification(t *testing.T) {
-	tests := []string{"hostclean", "hostlayout", "hosthub", "hostname"}
-	for _, in := range tests {
-		t.Run(in, func(t *testing.T) {
-			got, err := swapText(in, "host", "pair", nil)
-			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", in, err)
-			}
-			if got.Out != in {
-				t.Errorf("swapText(%q).Out = %q; want byte-unchanged %q", in, got.Out, in)
-			}
-			if len(got.Ambiguous) != 1 {
-				t.Fatalf("swapText(%q).Ambiguous = %v; want exactly one entry", in, got.Ambiguous)
-			}
-			if got.Ambiguous[0].Line != 1 {
-				t.Errorf("swapText(%q).Ambiguous[0].Line = %d; want 1", in, got.Ambiguous[0].Line)
-			}
-			if got.Ambiguous[0].Text != in {
-				t.Errorf("swapText(%q).Ambiguous[0].Text = %q; want %q", in, got.Ambiguous[0].Text, in)
-			}
-		})
-	}
-}
-
-// TestSwapText_MultipleAndMixedOccurrencesOnOneLine verifies that several occurrences of
-// different case forms on a single line all swap in a single pass.
-func TestSwapText_MultipleAndMixedOccurrencesOnOneLine(t *testing.T) {
-	in := "hostBranch talks to HOST_BRANCH and bare host on one line"
-	want := "pairBranch talks to PAIR_BRANCH and bare pair on one line"
-	got, err := swapText(in, "host", "pair", nil)
-	if err != nil {
-		t.Fatalf("swapText returned error: %v", err)
-	}
-	if got.Out != want {
-		t.Errorf("swapText(%q).Out = %q; want %q", in, got.Out, want)
-	}
-	if len(got.Ambiguous) != 0 {
-		t.Errorf("swapText(%q).Ambiguous = %v; want empty", in, got.Ambiguous)
-	}
-}
-
-// TestSwapText_SkipBehavior verifies that a -skip regexp matching an occurrence's line leaves it
-// unchanged and reports it in Skipped rather than Ambiguous, while a non-matching occurrence on
-// another line still swaps -- including the case where a skip claims an otherwise-AMBIGUOUS
-// occurrence, which is what lets a run reach exit zero.
-func TestSwapText_SkipBehavior(t *testing.T) {
-	in := "a live pane hosting an idle agent\nplain host on this line\n"
-	skips := []*regexp.Regexp{regexp.MustCompile("pane hosting an idle agent")}
-	got, err := swapText(in, "host", "pair", skips)
-	if err != nil {
-		t.Fatalf("swapText returned error: %v", err)
-	}
-	wantOut := "a live pane hosting an idle agent\nplain pair on this line\n"
-	if got.Out != wantOut {
-		t.Errorf("swapText(...).Out = %q; want %q", got.Out, wantOut)
-	}
-	if len(got.Ambiguous) != 0 {
-		t.Errorf("swapText(...).Ambiguous = %v; want empty", got.Ambiguous)
-	}
-	if len(got.Skipped) != 1 {
-		t.Fatalf("swapText(...).Skipped = %v; want exactly one entry", got.Skipped)
-	}
-	if got.Skipped[0].Line != 1 {
-		t.Errorf("swapText(...).Skipped[0].Line = %d; want 1", got.Skipped[0].Line)
-	}
-}
-
-// TestSwapText_ReversibilityInvariant verifies that reverting the recorded substitution spans
-// reproduces the input byte-for-byte, including the critical case where the target word already
-// occurs in the input.
-func TestSwapText_ReversibilityInvariant(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"simple", "the host repo"},
-		{"target_already_present", "pair and host both appear, and Host too"},
-		{"embedded_forms", "hostBranch, HOST_BRANCH, and pairClean already present"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "pair", nil)
-			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
-			}
-			if got.Mismatch {
-				t.Errorf("swapText(%q).Mismatch = true; want false", tt.input)
-			}
-		})
-	}
-}
-
-// TestSwapText_LanguageAgnosticism verifies substitution works identically over a shell fragment
-// and a markdown fragment -- the tool has no language-specific parsing.
-func TestSwapText_LanguageAgnosticism(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
+		{name: "lower", in: "host", want: "pair"},
+		{name: "title", in: "Host", want: "Pair"},
+		{name: "upper", in: "HOST", want: "PAIR"},
+		{name: "embedded lower camel", in: "hostBranch", want: "pairBranch"},
+		{name: "embedded title camel", in: "HostJunctions", want: "PairJunctions"},
+		{name: "embedded upper snake", in: "HOST_BRANCH", want: "PAIR_BRANCH"},
+		{name: "camel start after lowercase", in: "myHostPath", want: "myPairPath"},
+		{name: "token boundary ghost", in: "ghost", want: "ghost"},
+		{name: "token boundary localhost", in: "localhost", want: "localhost"},
+		{name: "token boundary conhost", in: "conhost", want: "conhost"},
+		{name: "mixed case hOst", in: "hOst", want: "hOst"},
+		{name: "mixed case HoSt", in: "HoSt", want: "HoSt"},
+		{name: "ambiguous hostclean", in: "hostclean", want: "hostclean", wantAmbiguous: []Occurrence{{Line: 1, Text: "hostclean"}}},
+		{name: "ambiguous hostlayout", in: "hostlayout", want: "hostlayout", wantAmbiguous: []Occurrence{{Line: 1, Text: "hostlayout"}}},
+		{name: "ambiguous hosthub", in: "hosthub", want: "hosthub", wantAmbiguous: []Occurrence{{Line: 1, Text: "hosthub"}}},
+		{name: "ambiguous hostname", in: "hostname", want: "hostname", wantAmbiguous: []Occurrence{{Line: 1, Text: "hostname"}}},
 		{
-			name:  "shell",
-			input: `HOST_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
-			want:  `PAIR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
+			name: "several occurrences of different forms on one line",
+			in:   "hostBranch talks to HOST_BRANCH and bare host on one line",
+			want: "pairBranch talks to PAIR_BRANCH and bare pair on one line",
 		},
 		{
-			name:  "markdown",
-			input: "the **host repo** holds ...",
-			want:  "the **pair repo** holds ...",
+			name:        "skip claims one line, another still swaps",
+			in:          "a live pane hosting an idle agent\nplain host on this line\n",
+			skips:       []*regexp.Regexp{regexp.MustCompile("pane hosting an idle agent")},
+			want:        "a live pane hosting an idle agent\nplain pair on this line\n",
+			wantSkipped: []Occurrence{{Line: 1, Text: "a live pane hosting an idle agent"}},
 		},
+		{name: "reversible simple", in: "the host repo", want: "the pair repo"},
+		{
+			name: "reversible with target already present",
+			in:   "pair and host both appear, and Host too",
+			want: "pair and pair both appear, and Pair too",
+		},
+		{
+			name: "reversible with embedded forms",
+			in:   "hostBranch, HOST_BRANCH, and pairClean already present",
+			want: "pairBranch, PAIR_BRANCH, and pairClean already present",
+		},
+		{
+			name: "shell fragment",
+			in:   `HOST_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
+			want: `PAIR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"`,
+		},
+		{name: "markdown fragment", in: "the **host repo** holds ...", want: "the **pair repo** holds ..."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := swapText(tt.input, "host", "pair", nil)
+			t.Parallel()
+			got, err := swapText(tt.in, "host", "pair", tt.skips)
 			if err != nil {
-				t.Fatalf("swapText(%q) returned error: %v", tt.input, err)
+				t.Fatalf("swapText(%q) returned error: %v", tt.in, err)
 			}
 			if got.Out != tt.want {
-				t.Errorf("swapText(%q).Out = %q; want %q", tt.input, got.Out, tt.want)
+				t.Errorf("swapText(%q).Out = %q; want %q", tt.in, got.Out, tt.want)
+			}
+			if !slices.Equal(got.Ambiguous, tt.wantAmbiguous) {
+				t.Errorf("swapText(%q).Ambiguous = %v; want %v", tt.in, got.Ambiguous, tt.wantAmbiguous)
+			}
+			if !slices.Equal(got.Skipped, tt.wantSkipped) {
+				t.Errorf("swapText(%q).Skipped = %v; want %v", tt.in, got.Skipped, tt.wantSkipped)
+			}
+			if got.Mismatch {
+				t.Errorf("swapText(%q).Mismatch = true; want false", tt.in)
 			}
 		})
 	}
@@ -227,6 +102,8 @@ func TestSwapText_LanguageAgnosticism(t *testing.T) {
 // TestProcessFile_DryRunWritesNothing verifies that processFile with dryRun=true reports the
 // change status without writing the file.
 func TestProcessFile_DryRunWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sample.txt")
 	original := "the host repo\n"
@@ -258,6 +135,8 @@ func TestProcessFile_DryRunWritesNothing(t *testing.T) {
 // leaves the on-disk file byte-for-byte unchanged and is reported as "mismatch".
 // The failure is injected through the package-level revertSpans hook rather than by contriving
 // input, since no genuine input can fail the real reversibility check.
+// It does not call t.Parallel because it rewrites the package-level revertSpans hook; the parallel
+// tests of this package resume only after it has restored the hook.
 func TestProcessFile_MismatchLeavesFileUntouched(t *testing.T) {
 	original := revertSpans
 	t.Cleanup(func() { revertSpans = original })

@@ -558,6 +558,7 @@ func TestStencilClaims(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the exact text branchOf scopes a claim to, which TestStencilClaims cannot see because a mis-scoped claim there still passes
 func TestBranchOf(t *testing.T) {
 	text := "intro\n- `a` → one\n  more\n\n- `b` → two\n"
 	got, ok := branchOf(text, "- `a` →")
@@ -572,6 +573,7 @@ func TestBranchOf(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the exact text sectionOf scopes a claim to, including never matching a longer heading, which TestStencilClaims cannot see because a mis-scoped claim there still passes
 func TestSectionOf(t *testing.T) {
 	text := "intro\n## One\nalpha\n## Two\nbeta\n"
 	got, ok := sectionOf(text, "## One")

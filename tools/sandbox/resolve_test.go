@@ -7,9 +7,9 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -86,55 +86,46 @@ func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	}
 }
 
-// TestPrependPath_PrependsToExistingPath verifies that prependPath makes dir the first PATH
-// segment.
-func TestPrependPath_PrependsToExistingPath(t *testing.T) {
-	environ := []string{"PATH=/usr/bin:/bin", "HOME=/x"}
-	got := prependPath("/dev/bin", environ)
+// TestPrependPath verifies that prependPath makes dir the first PATH segment, leaves non-PATH env
+// vars untouched, returns environ unchanged when dir is empty, and edits a Windows-form "Path=..."
+// entry in place without appending a duplicate "PATH=" entry.
+func TestPrependPath(t *testing.T) {
+	t.Parallel()
 
-	want := fmt.Sprintf("PATH=/dev/bin%c/usr/bin:/bin", os.PathListSeparator)
-	if got[0] != want {
-		t.Errorf("prependPath() PATH entry = %q; want %q", got[0], want)
+	sep := string(os.PathListSeparator)
+	tests := []struct {
+		name    string
+		dir     string
+		environ []string
+		want    []string
+	}{
+		{
+			name:    "prepends to the existing PATH and keeps other entries",
+			dir:     "/dev/bin",
+			environ: []string{"PATH=/usr/bin:/bin", "HOME=/x"},
+			want:    []string{"PATH=/dev/bin" + sep + "/usr/bin:/bin", "HOME=/x"},
+		},
+		{
+			name:    "empty dir returns environ unchanged",
+			dir:     "",
+			environ: []string{"PATH=/usr/bin", "HOME=/x"},
+			want:    []string{"PATH=/usr/bin", "HOME=/x"},
+		},
+		{
+			name:    "Windows Path key edited in place",
+			dir:     "C:\\dev-bin",
+			environ: []string{"Path=C:\\Windows;C:\\Windows\\System32", "HOME=/x"},
+			want:    []string{"Path=C:\\dev-bin" + sep + "C:\\Windows;C:\\Windows\\System32", "HOME=/x"},
+		},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestPrependPath_PreservesNonPathEntries verifies that non-PATH env vars are left untouched.
-func TestPrependPath_PreservesNonPathEntries(t *testing.T) {
-	environ := []string{"PATH=/usr/bin", "HOME=/x"}
-	got := prependPath("/dev/bin", environ)
-
-	if got[1] != "HOME=/x" {
-		t.Errorf("prependPath() non-PATH entry = %q; want %q", got[1], "HOME=/x")
-	}
-}
-
-// TestPrependPath_EmptyDirReturnsEnvironUnchanged verifies that prependPath returns environ
-// unchanged when dir is empty.
-func TestPrependPath_EmptyDirReturnsEnvironUnchanged(t *testing.T) {
-	environ := []string{"PATH=/usr/bin", "HOME=/x"}
-	got := prependPath("", environ)
-
-	if len(got) != len(environ) {
-		t.Fatalf("prependPath(\"\", environ) length = %d; want %d", len(got), len(environ))
-	}
-	for i := range environ {
-		if got[i] != environ[i] {
-			t.Errorf("prependPath(\"\", environ)[%d] = %q; want %q", i, got[i], environ[i])
-		}
-	}
-}
-
-// TestPrependPath_WindowsPathKeyEditedInPlace verifies that a Windows-form "Path=..."
-// entry is edited in place without duplicating a "PATH=" entry.
-func TestPrependPath_WindowsPathKeyEditedInPlace(t *testing.T) {
-	environ := []string{"Path=C:\\Windows;C:\\Windows\\System32", "HOME=/x"}
-	got := prependPath("C:\\dev-bin", environ)
-
-	if len(got) != len(environ) {
-		t.Fatalf("prependPath() length = %d; want %d (no entry should be appended)", len(got), len(environ))
-	}
-	want := fmt.Sprintf("Path=C:\\dev-bin%cC:\\Windows;C:\\Windows\\System32", os.PathListSeparator)
-	if got[0] != want {
-		t.Errorf("prependPath() Path entry = %q; want %q", got[0], want)
+			got := prependPath(tt.dir, tt.environ)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("prependPath(%q, %q) = %q; want %q", tt.dir, tt.environ, got, tt.want)
+			}
+		})
 	}
 }

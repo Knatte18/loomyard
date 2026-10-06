@@ -12,13 +12,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// TestRegistry_NamesAreStableAndComplete pins Registry().Names() to the exact ordered slice: the
+// TestRegistry_NamesAndDefaults pins Registry().Names() to the exact ordered slice: the
 // order is the order `lyx stencil list` prints them in, and the names are what
 // stencilstore.RelPath derives the deployed family directory from.
-func TestRegistry_NamesAreStableAndComplete(t *testing.T) {
-	want := []string{"loom-plan-spec"}
-	got := Registry().Names()
+// It then verifies every registered name resolves to known, non-empty default bytes,
+// and that an unregistered name resolves to nil, false.
+func TestRegistry_NamesAndDefaults(t *testing.T) {
+	t.Parallel()
 
+	reg := Registry()
+
+	want := []string{"loom-plan-spec"}
+	got := reg.Names()
 	if len(got) != len(want) {
 		t.Fatalf("Registry().Names() = %v; want %v", got, want)
 	}
@@ -27,12 +32,6 @@ func TestRegistry_NamesAreStableAndComplete(t *testing.T) {
 			t.Errorf("Registry().Names()[%d] = %q; want %q", i, got[i], want[i])
 		}
 	}
-}
-
-// TestRegistry_DefaultReturnsNonEmptyBytes verifies every registered name resolves to known,
-// non-empty default bytes, and that an unregistered name resolves to nil, false.
-func TestRegistry_DefaultReturnsNonEmptyBytes(t *testing.T) {
-	reg := Registry()
 
 	for _, name := range reg.Names() {
 		def, known := reg.Default(name)

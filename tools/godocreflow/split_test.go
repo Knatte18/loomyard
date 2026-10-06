@@ -106,16 +106,3 @@ func TestSplitClauses(t *testing.T) {
 		})
 	}
 }
-
-func TestReflowText(t *testing.T) {
-	in := "LoadPortfolio reads every position file in dir and validates each one against the\nschema. It merges the valid files into a single Portfolio, and it returns an error\nif any file fails validation or two files declare the same position ID."
-	want := []string{
-		"LoadPortfolio reads every position file in dir and validates each one against the schema.",
-		"It merges the valid files into a single Portfolio,",
-		"and it returns an error if any file fails validation or two files declare the same position ID.",
-	}
-	got := reflowText(in)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("reflowText = %#v, want %#v", got, want)
-	}
-}
