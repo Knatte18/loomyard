@@ -1,286 +1,287 @@
-// set_test.go contains table-driven and individual tests for SetValues, covering unknown-key
-// rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, and the
-// partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
+// set_test.go contains table-driven tests for SetValues, covering unknown-key rejection,
+// byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key
+// preservation, list keys and open maps, and the partial-existing regression case that motivated
+// Card 1's always-mutate-the-template-tree design.
 
 package yamlengine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
 
-// TestSetValues_UnknownKeyRejectsWholeCall verifies that when any key among multiple pairs is
-// unknown, SetValues returns a non-empty Unknown and a nil Merged — no partial mutation is
-// observable, even though the other keys in the same call are valid.
-func TestSetValues_UnknownKeyRejectsWholeCall(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\n")
+const (
+	openMapSetTemplate = "name: tmpl\nlabels: {}\n"
+	preservedMarker    = "# preserved (not in current template)"
+	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
+)
 
-	result, err := SetValues(template, nil, []KV{
-		{Key: "key1", Value: "new1"},
-		{Key: "bogus", Value: "irrelevant"},
-	})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
+// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte,
+// every other key keeps its existing value or its template default, template comments and key order
+// survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set
+// whole, and a second call on the merged output reproduces it.
+func TestSetValues(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		template      string
+		existing      string
+		pairs         []KV
+		openMaps      []string
+		wantValues    map[string]string
+		wantPreserved []string
+		contains      []string
+		notContains   []string
+		inOrder       []string
+	}{
+		{
+			name:       "value with equals signs round-trips",
+			template:   "key1: default\n",
+			pairs:      []KV{{Key: "key1", Value: "a=b=c"}},
+			wantValues: map[string]string{"key1": "a=b=c"},
+		},
+		{
+			name:       "value with spaces round-trips",
+			template:   "key1: default\n",
+			pairs:      []KV{{Key: "key1", Value: "hello there world"}},
+			wantValues: map[string]string{"key1": "hello there world"},
+		},
+		{
+			name:       "multiple pairs are all applied",
+			template:   "key1: default1\nkey2: default2\nkey3: default3\n",
+			pairs:      []KV{{Key: "key1", Value: "set1"}, {Key: "key3", Value: "set3"}},
+			wantValues: map[string]string{"key1": "set1", "key3": "set3", "key2": "default2"},
+		},
+		{
+			name:       "empty existing behaves like the template",
+			template:   "key1: default1\nkey2: default2\n",
+			pairs:      []KV{{Key: "key1", Value: "set1"}},
+			wantValues: map[string]string{"key1": "set1", "key2": "default2"},
+		},
+		{
+			name:       "template comments and order survive, only the requested key changes",
+			template:   "# Key 1 comment\nkey1: template_val1\n# Key 2 comment\nkey2: template_val2\n",
+			existing:   "key2: user_val2\nkey1: user_val1\n",
+			pairs:      []KV{{Key: "key1", Value: "new_val1"}},
+			wantValues: map[string]string{"key1": "new_val1", "key2": "user_val2"},
+			contains:   []string{"# Key 1 comment", "# Key 2 comment"},
+			inOrder:    []string{"key1: ", "key2: "},
+		},
+		{
+			// The plan-review round-1 regression: a key in the template but absent from a non-empty,
+			// partial existing must still be applied rather than silently dropped.
+			name:       "partial existing does not suppress the set",
+			template:   "key1: default1\nkey2: default2\nkey3: default3\n",
+			existing:   "key1: user_val1\n",
+			pairs:      []KV{{Key: "key2", Value: "newly_set"}},
+			wantValues: map[string]string{"key1": "user_val1", "key2": "newly_set", "key3": "default3"},
+		},
+		{
+			name:          "unknown existing key is preserved after every template key",
+			template:      "key1: default1\nkey2: default2\n",
+			existing:      "key1: user_val1\nkey2: user_val2\npath: ../_board\n",
+			pairs:         []KV{{Key: "key1", Value: "new_val1"}},
+			wantValues:    map[string]string{"path": "../_board"},
+			wantPreserved: []string{"path"},
+			inOrder:       []string{"key1: ", "key2: ", "path: "},
+		},
+		{
+			name:          "unknown existing keys are preserved and reported sorted",
+			template:      "key1: default1\n",
+			existing:      "key1: user_val1\nzebra: z_val\napple: a_val\nmango: m_val\n",
+			wantValues:    map[string]string{"apple": "a_val", "mango": "m_val", "zebra": "z_val"},
+			wantPreserved: []string{"apple", "mango", "zebra"},
+		},
+		{
+			name:          "non-flat orphan is preserved whole under its top-level key",
+			template:      "key1: default1\n",
+			existing:      "key1: user_val1\nextra:\n  nested: value\n",
+			wantPreserved: []string{"extra"},
+			contains:      []string{"extra:", "nested: value"},
+		},
+		{
+			name:     "emptied list survives an unrelated set",
+			template: listKeyTemplate,
+			existing: "require_pr_to_base: []\nsquash: true\n",
+			pairs:    []KV{{Key: "squash", Value: "false"}},
+			contains: []string{"require_pr_to_base: []"},
+		},
+		{
+			name:     "lengthened list survives an unrelated set",
+			template: listKeyTemplate,
+			existing: "require_pr_to_base: [a, b]\nsquash: true\n",
+			pairs:    []KV{{Key: "squash", Value: "false"}},
+			contains: []string{"require_pr_to_base: [a, b]"},
+		},
+		{
+			name:     "list key can be set to the empty list",
+			template: listKeyTemplate,
+			pairs:    []KV{{Key: "require_pr_to_base", Value: "[]"}},
+			contains: []string{"require_pr_to_base: []"},
+		},
+		{
+			name:     "list key can be set to two elements",
+			template: listKeyTemplate,
+			pairs:    []KV{{Key: "require_pr_to_base", Value: "[main, develop]"}},
+			contains: []string{"require_pr_to_base: [main, develop]"},
+		},
+		{
+			name:     "open map adds an entry and rewrites another",
+			template: openMapSetTemplate,
+			existing: "name: mine\nlabels:\n  a: old\n",
+			pairs:    []KV{{Key: "labels.x", Value: "new x"}, {Key: "labels.a", Value: "new a"}},
+			openMaps: []string{"labels"},
+			contains: []string{"a: new a", "x: new x", "name: mine"},
+		},
+		{
+			name:        "open map on an empty template writes a block mapping",
+			template:    openMapSetTemplate,
+			pairs:       []KV{{Key: "labels.x", Value: "new x"}},
+			openMaps:    []string{"labels"},
+			contains:    []string{"  x: new x"},
+			notContains: []string{"{"},
+		},
 	}
 
-	if len(result.Unknown) != 1 || result.Unknown[0] != "bogus" {
-		t.Errorf("SetValues() Unknown = %v; want [\"bogus\"]", result.Unknown)
-	}
-	if result.Merged != nil {
-		t.Errorf("SetValues() Merged = %q; want nil (no partial mutation)", result.Merged)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := SetValues([]byte(tt.template), []byte(tt.existing), tt.pairs, tt.openMaps...)
+			if err != nil {
+				t.Fatalf("SetValues() unexpected error: %v", err)
+			}
+			if len(result.Unknown) != 0 {
+				t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
+			}
+			merged := string(result.Merged)
+			for key, want := range tt.wantValues {
+				assertMergedKeyValue(t, result, key, want)
+			}
+			if !slices.Equal(result.Preserved, tt.wantPreserved) {
+				t.Errorf("SetValues() Preserved = %v; want %v", result.Preserved, tt.wantPreserved)
+			}
+			if hasMarker := strings.Contains(merged, preservedMarker); hasMarker != (len(tt.wantPreserved) > 0) {
+				t.Errorf("SetValues() merged has preserved marker = %v with Preserved = %v; merged = %q", hasMarker, result.Preserved, merged)
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(merged, want) {
+					t.Errorf("SetValues() merged = %q; want it to contain %q", merged, want)
+				}
+			}
+			for _, unwanted := range tt.notContains {
+				if strings.Contains(merged, unwanted) {
+					t.Errorf("SetValues() merged = %q; want it not to contain %q", merged, unwanted)
+				}
+			}
+			previous := -1
+			for _, want := range tt.inOrder {
+				at := strings.Index(merged, want)
+				if at < previous {
+					t.Errorf("SetValues() merged = %q; want %q after the entry before it", merged, want)
+				}
+				previous = at
+			}
 
-// TestSetValues_ValueWithEqualsRoundTrips verifies that a value containing an '=' character is
-// preserved byte-for-byte in Merged.
-func TestSetValues_ValueWithEqualsRoundTrips(t *testing.T) {
-	template := []byte("key1: default\n")
-	const want = "a=b=c"
-
-	result, err := SetValues(template, nil, []KV{{Key: "key1", Value: want}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	assertMergedKeyValue(t, result, "key1", want)
-}
-
-// TestSetValues_ValueWithSpacesRoundTrips verifies that a value containing spaces is preserved
-// byte-for-byte in Merged.
-func TestSetValues_ValueWithSpacesRoundTrips(t *testing.T) {
-	template := []byte("key1: default\n")
-	const want = "hello there world"
-
-	result, err := SetValues(template, nil, []KV{{Key: "key1", Value: want}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	assertMergedKeyValue(t, result, "key1", want)
-}
-
-// TestSetValues_MultiplePairsAllApplied verifies that multiple valid pairs in one call are all
-// reflected in Merged.
-func TestSetValues_MultiplePairsAllApplied(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\nkey3: default3\n")
-
-	result, err := SetValues(template, nil, []KV{
-		{Key: "key1", Value: "set1"},
-		{Key: "key3", Value: "set3"},
-	})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	assertMergedKeyValue(t, result, "key1", "set1")
-	assertMergedKeyValue(t, result, "key3", "set3")
-	assertMergedKeyValue(t, result, "key2", "default2")
-}
-
-// TestSetValues_CommentsAndOrderPreserved mirrors the idempotency-style assertions in
-// TestReconcile_TemplateCommentsAndOrder: template comments and key order survive in Merged,
-// and only the requested key's value changes.
-func TestSetValues_CommentsAndOrderPreserved(t *testing.T) {
-	template := []byte("# Key 1 comment\nkey1: template_val1\n# Key 2 comment\nkey2: template_val2\n")
-	existing := []byte("key2: user_val2\nkey1: user_val1\n")
-
-	result, err := SetValues(template, existing, []KV{{Key: "key1", Value: "new_val1"}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if result.Unknown != nil {
-		t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
-	}
-
-	merged := string(result.Merged)
-	if !strings.Contains(merged, "# Key 1 comment") || !strings.Contains(merged, "# Key 2 comment") {
-		t.Errorf("SetValues() merged does not preserve template comments; got %q", merged)
-	}
-	// key1 was explicitly set to new_val1, overriding existing's user_val1.
-	assertMergedKeyValue(t, result, "key1", "new_val1")
-	// key2 was untouched by pairs, so existing's user_val2 must survive.
-	assertMergedKeyValue(t, result, "key2", "user_val2")
-
-	idx1 := strings.Index(merged, "key1")
-	idx2 := strings.Index(merged, "key2")
-	if idx1 > idx2 {
-		t.Errorf("SetValues() merged does not preserve template key order")
-	}
-}
-
-// TestSetValues_EmptyExistingBehavesLikeTemplate verifies that an empty existing behaves like
-// Reconcile's empty-existing case: Merged is equivalent to the template with the requested keys
-// set.
-func TestSetValues_EmptyExistingBehavesLikeTemplate(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\n")
-
-	result, err := SetValues(template, nil, []KV{{Key: "key1", Value: "set1"}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	assertMergedKeyValue(t, result, "key1", "set1")
-	assertMergedKeyValue(t, result, "key2", "default2")
-}
-
-// TestSetValues_PartialExistingDoesNotSuppressSet is the plan-review round-1 regression case: a
-// pairs[i].Key present in template (so it passes Known validation) but absent from a non-empty,
-// partial existing (which only has one of the template's three keys) must still be applied in
-// Merged rather than silently dropped, because the working tree is always templateNode — never a
-// bare parse of existing — so every template leaf has a real node regardless of what existing does
-// or doesn't contain.
-func TestSetValues_PartialExistingDoesNotSuppressSet(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\nkey3: default3\n")
-	// existing has only key1; key2 and key3 have no corresponding node here.
-	existing := []byte("key1: user_val1\n")
-
-	result, err := SetValues(template, existing, []KV{{Key: "key2", Value: "newly_set"}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if result.Unknown != nil {
-		t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
-	}
-	// key1's existing override must survive.
-	assertMergedKeyValue(t, result, "key1", "user_val1")
-	// key2 must be set, not silently dropped because it had no node in existing.
-	assertMergedKeyValue(t, result, "key2", "newly_set")
-	// key3 must remain the template default (untouched by both existing and pairs).
-	assertMergedKeyValue(t, result, "key3", "default3")
-}
-
-// TestSetValues_PreservesUnknownExistingKey verifies that a top-level key in existing with no
-// counterpart in the template survives verbatim in Merged, is reported in SetResult.Preserved, is
-// marked with the preserved marker comment, and is appended after every template key.
-func TestSetValues_PreservesUnknownExistingKey(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\n")
-	existing := []byte("key1: user_val1\nkey2: user_val2\npath: ../_board\n")
-
-	result, err := SetValues(template, existing, []KV{{Key: "key1", Value: "new_val1"}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if result.Unknown != nil {
-		t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
-	}
-
-	// The orphaned key's original value must survive, unmodified.
-	assertMergedKeyValue(t, result, "path", "../_board")
-
-	if len(result.Preserved) != 1 || result.Preserved[0] != "path" {
-		t.Errorf("SetValues() Preserved = %v; want [\"path\"]", result.Preserved)
-	}
-
-	merged := string(result.Merged)
-	if !strings.Contains(merged, "# preserved (not in current template)") {
-		t.Errorf("SetValues() merged missing preserved marker comment; got %q", merged)
-	}
-
-	// The preserved key must be appended after every template key.
-	idxKey1 := strings.Index(merged, "key1")
-	idxKey2 := strings.Index(merged, "key2")
-	idxPath := strings.Index(merged, "path")
-	if idxPath < idxKey1 || idxPath < idxKey2 {
-		t.Errorf("SetValues() preserved key does not appear after every template key; merged = %q", merged)
-	}
-}
-
-// TestSetValues_PreservesMultipleUnknownKeysSorted verifies that when existing has multiple
-// top-level orphan keys given in non-alphabetical order, SetResult.Preserved is sorted
-// alphabetically and every orphan survives.
-func TestSetValues_PreservesMultipleUnknownKeysSorted(t *testing.T) {
-	template := []byte("key1: default1\n")
-	existing := []byte("key1: user_val1\nzebra: z_val\napple: a_val\nmango: m_val\n")
-
-	result, err := SetValues(template, existing, nil)
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-
-	want := []string{"apple", "mango", "zebra"}
-	if len(result.Preserved) != len(want) {
-		t.Fatalf("SetValues() Preserved = %v; want %v", result.Preserved, want)
-	}
-	for i, key := range want {
-		if result.Preserved[i] != key {
-			t.Errorf("SetValues() Preserved[%d] = %q; want %q", i, result.Preserved[i], key)
-		}
-	}
-
-	assertMergedKeyValue(t, result, "apple", "a_val")
-	assertMergedKeyValue(t, result, "mango", "m_val")
-	assertMergedKeyValue(t, result, "zebra", "z_val")
-}
-
-// TestSetValues_NoPreservedWhenAllKeysKnown is an explicit regression guard for the new Preserved
-// field on the ordinary, no-orphan path: when every key in existing is already present in the
-// template, nothing is grafted.
-func TestSetValues_NoPreservedWhenAllKeysKnown(t *testing.T) {
-	template := []byte("key1: default1\nkey2: default2\n")
-	existing := []byte("key1: user_val1\nkey2: user_val2\n")
-
-	result, err := SetValues(template, existing, []KV{{Key: "key1", Value: "new_val1"}})
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-
-	if len(result.Preserved) != 0 {
-		t.Errorf("SetValues() Preserved = %v; want none", result.Preserved)
-	}
-	if strings.Contains(string(result.Merged), "# preserved (not in current template)") {
-		t.Errorf("SetValues() merged unexpectedly contains preserved marker comment; got %q", result.Merged)
+			again, err := SetValues([]byte(tt.template), result.Merged, tt.pairs, tt.openMaps...)
+			if err != nil {
+				t.Fatalf("SetValues() second call unexpected error: %v", err)
+			}
+			if string(again.Merged) != merged {
+				t.Errorf("SetValues() second call Merged = %q; want identical to first call Merged %q", again.Merged, merged)
+			}
+			if !slices.Equal(again.Preserved, result.Preserved) {
+				t.Errorf("SetValues() second call Preserved = %v; want %v", again.Preserved, result.Preserved)
+			}
+		})
 	}
 }
 
-// TestSetValues_PreservedKeyIdempotent proves that the marker-comment-set- not-appended rule makes
-// a preserving --set idempotent: calling SetValues again with existing set to the first call's
-// Merged must reproduce the same Merged bytes and the same Preserved list, with no comment growth.
-func TestSetValues_PreservedKeyIdempotent(t *testing.T) {
-	template := []byte("key1: default1\n")
-	existing := []byte("key1: user_val1\npath: ../_board\n")
-	pairs := []KV{{Key: "key1", Value: "new_val1"}}
-
-	first, err := SetValues(template, existing, pairs)
-	if err != nil {
-		t.Fatalf("SetValues() first call unexpected error: %v", err)
+// TestSetValues_UnknownKeys pins that an unknown key rejects the whole call: Unknown names it,
+// Merged is nil so no partial mutation is observable, and Known lists what was settable.
+func TestSetValues_UnknownKeys(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		template  string
+		pairs     []KV
+		openMaps  []string
+		wantKnown string
+	}{
+		{
+			name:     "valid pair next to an unknown one",
+			template: "key1: default1\nkey2: default2\n",
+			pairs:    []KV{{Key: "key1", Value: "new1"}, {Key: "bogus", Value: "irrelevant"}},
+		},
+		{
+			name:      "undeclared key next to an open map",
+			template:  openMapSetTemplate,
+			pairs:     []KV{{Key: "bogus", Value: "v"}},
+			openMaps:  []string{"labels"},
+			wantKnown: "labels.<name>",
+		},
 	}
 
-	second, err := SetValues(template, first.Merged, pairs)
-	if err != nil {
-		t.Fatalf("SetValues() second call unexpected error: %v", err)
-	}
-
-	if string(second.Merged) != string(first.Merged) {
-		t.Errorf("SetValues() second call Merged = %q; want identical to first call Merged %q", second.Merged, first.Merged)
-	}
-
-	if len(second.Preserved) != len(first.Preserved) {
-		t.Fatalf("SetValues() second call Preserved = %v; want identical to first call Preserved %v", second.Preserved, first.Preserved)
-	}
-	for i := range first.Preserved {
-		if second.Preserved[i] != first.Preserved[i] {
-			t.Errorf("SetValues() second call Preserved[%d] = %q; want %q", i, second.Preserved[i], first.Preserved[i])
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := SetValues([]byte(tt.template), nil, tt.pairs, tt.openMaps...)
+			if err != nil {
+				t.Fatalf("SetValues() unexpected error: %v", err)
+			}
+			if !slices.Equal(result.Unknown, []string{"bogus"}) {
+				t.Errorf("SetValues() Unknown = %v; want [bogus]", result.Unknown)
+			}
+			if result.Merged != nil {
+				t.Errorf("SetValues() Merged = %q; want nil (no partial mutation)", result.Merged)
+			}
+			if tt.wantKnown != "" && !slices.Contains(result.Known, tt.wantKnown) {
+				t.Errorf("SetValues() Known = %v; want it to contain %q", result.Known, tt.wantKnown)
+			}
+		})
 	}
 }
 
-// TestSetValues_PreservesNonFlatOrphanWhole verifies root-key-granularity preservation handles a
-// non-flat orphan (a nested mapping under a top-level key absent from the template) without any
-// special-case logic: the whole subtree survives verbatim,
-// and Preserved records only the top-level key name, not a flattened dotted path into the nested
-// structure.
-func TestSetValues_PreservesNonFlatOrphanWhole(t *testing.T) {
-	template := []byte("key1: default1\n")
-	existing := []byte("key1: user_val1\nextra:\n  nested: value\n")
-
-	result, err := SetValues(template, existing, nil)
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
+// TestSetValues_Refusals pins the errors SetValues returns for a value that does not fit its key.
+func TestSetValues_Refusals(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		template string
+		existing string
+		pair     KV
+		openMaps []string
+		want     []string
+	}{
+		{
+			name:     "scalar for a list key",
+			template: "require_pr_to_base: [\"main\"]\n",
+			pair:     KV{Key: "require_pr_to_base", Value: "main"},
+			want:     []string{"list key require_pr_to_base"},
+		},
+		{
+			name:     "entry into an open map that holds a list",
+			template: openMapSetTemplate,
+			existing: "labels:\n  - a\n",
+			pair:     KV{Key: "labels.x", Value: "v"},
+			openMaps: []string{"labels"},
+			want:     []string{"labels", "map of name to description"},
+		},
 	}
 
-	if len(result.Preserved) != 1 || result.Preserved[0] != "extra" {
-		t.Errorf("SetValues() Preserved = %v; want [\"extra\"]", result.Preserved)
-	}
-
-	merged := string(result.Merged)
-	if !strings.Contains(merged, "extra:") || !strings.Contains(merged, "nested: value") {
-		t.Errorf("SetValues() merged does not preserve nested orphan structure verbatim; got %q", merged)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := SetValues([]byte(tt.template), []byte(tt.existing), []KV{tt.pair}, tt.openMaps...)
+			if err == nil {
+				t.Fatal("SetValues() = nil error; want a refusal")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q; want it to contain %q", err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -308,102 +309,4 @@ func extractYAMLValue(t *testing.T, data []byte, key string) string {
 	}
 	t.Fatalf("key %q not found in merged YAML: %q", key, string(data))
 	return ""
-}
-
-// TestSetValues_ListKeys pins that a list-valued key is carried whole through an unrelated --set and
-// can itself be set whole, including to the empty list: landing.yaml's no-pull-request mode
-// (require_pr_to_base: []) used to be silently reset to the template's ["main"] by any --set.
-func TestSetValues_ListKeys(t *testing.T) {
-	template := []byte("require_pr_to_base: [\"main\"] # bases\nsquash: true\n")
-	tests := []struct {
-		name     string
-		existing string
-		pairs    []KV
-		want     string
-	}{
-		{"EmptiedListSurvivesUnrelatedSet", "require_pr_to_base: []\nsquash: true\n", []KV{{Key: "squash", Value: "false"}}, "require_pr_to_base: []"},
-		{"LengthenedListSurvivesUnrelatedSet", "require_pr_to_base: [a, b]\nsquash: true\n", []KV{{Key: "squash", Value: "false"}}, "require_pr_to_base: [a, b]"},
-		{"SetListEmpty", "", []KV{{Key: "require_pr_to_base", Value: "[]"}}, "require_pr_to_base: []"},
-		{"SetListTwoElements", "", []KV{{Key: "require_pr_to_base", Value: "[main, develop]"}}, "require_pr_to_base: [main, develop]"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := SetValues(template, []byte(tt.existing), tt.pairs)
-			if err != nil {
-				t.Fatalf("SetValues() error = %v; want nil", err)
-			}
-			if len(result.Unknown) != 0 {
-				t.Fatalf("SetValues() Unknown = %v; want none", result.Unknown)
-			}
-			if !strings.Contains(string(result.Merged), tt.want) {
-				t.Errorf("SetValues() Merged = %q; want it to contain %q", result.Merged, tt.want)
-			}
-		})
-	}
-}
-
-// TestSetValues_ListKeyRejectsNonListValue verifies a scalar value for a list key is an error, not a
-// silent overwrite.
-func TestSetValues_ListKeyRejectsNonListValue(t *testing.T) {
-	template := []byte("require_pr_to_base: [\"main\"]\n")
-	if _, err := SetValues(template, nil, []KV{{Key: "require_pr_to_base", Value: "main"}}); err == nil {
-		t.Error("SetValues() error = nil; want an error naming the list key")
-	}
-}
-
-const openMapSetTemplate = "name: tmpl\nlabels: {}\n"
-
-func TestSetValues_OpenMapAddsEntry(t *testing.T) {
-	result, err := SetValues([]byte(openMapSetTemplate), []byte("name: mine\nlabels:\n  a: old\n"),
-		[]KV{{Key: "labels.x", Value: "new x"}, {Key: "labels.a", Value: "new a"}}, "labels")
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if len(result.Unknown) != 0 {
-		t.Fatalf("Unknown = %v; want none", result.Unknown)
-	}
-	merged := string(result.Merged)
-	if !strings.Contains(merged, "a: new a") || !strings.Contains(merged, "x: new x") || !strings.Contains(merged, "name: mine") {
-		t.Errorf("merged = %q; want a rewritten, x added, name kept", merged)
-	}
-}
-
-func TestSetValues_OpenMapEmptyTemplateWritesBlock(t *testing.T) {
-	result, err := SetValues([]byte(openMapSetTemplate), nil, []KV{{Key: "labels.x", Value: "new x"}}, "labels")
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if strings.Contains(string(result.Merged), "{") {
-		t.Errorf("merged = %q; want a block mapping", result.Merged)
-	}
-	if !strings.Contains(string(result.Merged), "  x: new x") {
-		t.Errorf("merged = %q; want x under labels", result.Merged)
-	}
-}
-
-func TestSetValues_OpenMapRefusesList(t *testing.T) {
-	_, err := SetValues([]byte(openMapSetTemplate), []byte("labels:\n  - a\n"), []KV{{Key: "labels.x", Value: "v"}}, "labels")
-	if err == nil {
-		t.Fatal("SetValues() = nil error; want a refusal on a list")
-	}
-	if !strings.Contains(err.Error(), "labels") || !strings.Contains(err.Error(), "map of name to description") {
-		t.Errorf("error = %q; want it to name labels and the rewrite", err)
-	}
-}
-
-func TestSetValues_OpenMapKnownAndUndeclaredStillRefused(t *testing.T) {
-	result, err := SetValues([]byte(openMapSetTemplate), nil, []KV{{Key: "bogus", Value: "v"}}, "labels")
-	if err != nil {
-		t.Fatalf("SetValues() unexpected error: %v", err)
-	}
-	if len(result.Unknown) != 1 || result.Unknown[0] != "bogus" {
-		t.Errorf("Unknown = %v; want [bogus]", result.Unknown)
-	}
-	found := false
-	for _, key := range result.Known {
-		found = found || key == "labels.<name>"
-	}
-	if !found {
-		t.Errorf("Known = %v; want labels.<name>", result.Known)
-	}
 }

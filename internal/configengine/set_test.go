@@ -1,250 +1,144 @@
 // set_test.go — unit tests for the non-interactive Set entry point (set.go).
 //
 // Tests cover: scaffold-then-set when the config file is missing, rollback of a freshly-scaffolded
-// file on an unknown key, byte-for-byte preservation of a pre-existing file on an unknown key,
-// preservation of untouched keys when setting one key on an existing multi-key file, and end-to-end
-// reporting of Set's returned preserved-keys list for an orphaned key.
+// file on an unknown key, byte-for-byte preservation of a pre-existing file on a refused key,
+// preservation of untouched keys when setting one key on an existing multi-key file, open-map
+// entries, and end-to-end reporting of Set's returned preserved-keys list for an orphaned key.
 
 package configengine_test
 
 import (
 	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestSet_ScaffoldWhenMissingThenSet mirrors TestEdit_ScaffoldWhenMissing's fixture setup: calling
-// Set against a baseDir with no existing config file creates it from template and applies the
-// requested pairs in one call.
-func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
-	tmpDir := t.TempDir()
+// TestSet pins what Set writes: a missing file is scaffolded from the template and the pairs applied
+// in one call, other keys keep their values, an orphaned top-level key survives and is reported, and
+// a refused pair removes a file Set scaffolded or leaves a pre-existing one byte for byte unchanged.
+func TestSet(t *testing.T) {
+	t.Parallel()
+	const labelsTemplate = "name: x\nlabels:\n  bug: a bug\n"
 
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-
-	template := "key1: value1\nkey2: value2\n"
-	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "set1"}})
-	if err != nil {
-		t.Fatalf("Set() = %v; want nil", err)
-	}
-
-	path := configengine.ConfigFile(tmpDir, "testmod")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("config file not found at %s: %v", path, err)
-	}
-	if !strings.Contains(string(data), "key1: set1") {
-		t.Errorf("Set() file = %q; want key1: set1", string(data))
-	}
-	if !strings.Contains(string(data), "key2: value2") {
-		t.Errorf("Set() file = %q; want key2: value2 (untouched template default)", string(data))
-	}
-}
-
-// TestSet_UnknownKeyRemovesScaffoldedFile verifies that an unknown key against a freshly-missing
-// file removes the just-scaffolded file and returns a non-nil error mentioning the unknown key.
-func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-
-	template := "key1: value1\n"
-	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
-	if err == nil {
-		t.Fatalf("Set() = nil; want error for unknown key")
-	}
-	if !strings.Contains(err.Error(), "bogus") {
-		t.Errorf("Set() error = %v; want it to mention the unknown key", err)
-	}
-
-	path := configengine.ConfigFile(tmpDir, "testmod")
-	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-		t.Errorf("config file still exists after unknown-key rejection; should have been removed")
-	}
-}
-
-// TestSet_UnknownKeyLeavesExistingFileUnchanged verifies that an unknown key against a pre-existing
-// file leaves that file byte-for-byte unchanged and returns a non-nil error.
-func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	path := configengine.ConfigFile(tmpDir, "testmod")
-	originalContent := "key1: original_value\n"
-	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
-
-	template := "key1: default1\n"
-	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "bogus", Value: "x"}})
-	if err == nil {
-		t.Fatalf("Set() = nil; want error for unknown key")
-	}
-
-	finalBytes, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("failed to read config file: %v", readErr)
-	}
-	if string(finalBytes) != originalContent {
-		t.Errorf("Set() left file = %q; want unchanged %q", string(finalBytes), originalContent)
-	}
-}
-
-// TestSet_PreservesOtherKeysOnExistingFile verifies that setting one key on an existing multi-key
-// file preserves the other keys' values.
-func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+	tests := []struct {
+		name     string
+		state    baseState
+		existing string
+		template string
+		pairs    []yamlengine.KV
+		openMaps []string
+		// wantErr is a substring of the refusal; empty means Set must succeed.
+		wantErr       string
+		wantPreserved []string
+		contains      []string
+	}{
+		{
+			name:     "missing file is scaffolded then set",
+			state:    baseLyx,
+			template: "key1: value1\nkey2: value2\n",
+			pairs:    []yamlengine.KV{{Key: "key1", Value: "set1"}},
+			contains: []string{"key1: set1", "key2: value2"},
+		},
+		{
+			name:     "other keys keep their values",
+			state:    baseWithFile,
+			existing: "key1: original_value1\nkey2: original_value2\n",
+			template: "key1: default1\nkey2: default2\n",
+			pairs:    []yamlengine.KV{{Key: "key1", Value: "new_value1"}},
+			contains: []string{"key1: new_value1", "key2: original_value2"},
+		},
+		{
+			name:          "key absent from the template is preserved and reported",
+			state:         baseWithFile,
+			existing:      "key1: original_value1\nlegacy: keepme\n",
+			template:      "key1: default1\n",
+			pairs:         []yamlengine.KV{{Key: "key1", Value: "new_value1"}},
+			wantPreserved: []string{"legacy"},
+			contains:      []string{"key1: new_value1", "legacy: keepme"},
+		},
+		{
+			name:     "declared open map gains an entry beside the existing ones",
+			state:    baseWithFile,
+			existing: labelsTemplate,
+			template: labelsTemplate,
+			pairs:    []yamlengine.KV{{Key: "labels.x", Value: "an x"}},
+			openMaps: []string{"labels"},
+			contains: []string{"x: an x", "bug: a bug"},
+		},
+		{
+			name:     "unknown key removes the scaffolded file",
+			state:    baseLyx,
+			template: "key1: value1\n",
+			pairs:    []yamlengine.KV{{Key: "bogus", Value: "x"}},
+			wantErr:  "bogus",
+		},
+		{
+			name:     "unknown key leaves the existing file unchanged",
+			state:    baseWithFile,
+			existing: "key1: original_value\n",
+			template: "key1: default1\n",
+			pairs:    []yamlengine.KV{{Key: "bogus", Value: "x"}},
+			wantErr:  "unknown config key(s)",
+		},
+		{
+			name:     "undeclared key beside an open map is still refused",
+			state:    baseWithFile,
+			existing: labelsTemplate,
+			template: labelsTemplate,
+			pairs:    []yamlengine.KV{{Key: "bogus", Value: "x"}},
+			openMaps: []string{"labels"},
+			wantErr:  "unknown config key(s)",
+		},
+		{
+			name:     "open-map entry on a list-shaped file is refused",
+			state:    baseWithFile,
+			existing: "name: x\nlabels:\n  - bug\n",
+			template: labelsTemplate,
+			pairs:    []yamlengine.KV{{Key: "labels.x", Value: "an x"}},
+			openMaps: []string{"labels"},
+			wantErr:  "map of name to description",
+		},
 	}
 
-	path := configengine.ConfigFile(tmpDir, "testmod")
-	originalContent := "key1: original_value1\nkey2: original_value2\n"
-	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir, path := newBase(t, tt.state, "testmod", tt.existing)
 
-	template := "key1: default1\nkey2: default2\n"
-	_, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "new_value1"}})
-	if err != nil {
-		t.Fatalf("Set() = %v; want nil", err)
-	}
+			preserved, err := configengine.Set(baseDir, "testmod", tt.template, tt.pairs, tt.openMaps...)
 
-	finalBytes, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("failed to read config file: %v", readErr)
-	}
-	if !strings.Contains(string(finalBytes), "key1: new_value1") {
-		t.Errorf("Set() file = %q; want key1: new_value1", string(finalBytes))
-	}
-	if !strings.Contains(string(finalBytes), "key2: original_value2") {
-		t.Errorf("Set() file = %q; want key2: original_value2 (untouched)", string(finalBytes))
-	}
-}
-
-// TestSet_PreservesUnrecognizedExistingKeyEndToEnd verifies that a real on-disk config file
-// carrying a top-level key absent from the template survives a Set call untouched,
-// and that Set reports the preserved key name in its returned []string.
-func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	path := configengine.ConfigFile(tmpDir, "testmod")
-	originalContent := "key1: original_value1\nlegacy: keepme\n"
-	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
-
-	template := "key1: default1\n"
-	preserved, err := configengine.Set(tmpDir, "testmod", template, []yamlengine.KV{{Key: "key1", Value: "new_value1"}})
-	if err != nil {
-		t.Fatalf("Set() = %v; want nil", err)
-	}
-	if len(preserved) != 1 || preserved[0] != "legacy" {
-		t.Errorf("Set() preserved = %v; want [\"legacy\"]", preserved)
-	}
-
-	finalBytes, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("failed to read config file: %v", readErr)
-	}
-	if !strings.Contains(string(finalBytes), "legacy: keepme") {
-		t.Errorf("Set() file = %q; want legacy: keepme preserved verbatim", string(finalBytes))
-	}
-}
-
-// openMapSetTemplate holds a mapping at labels that a module may declare open.
-const openMapSetTemplate = "name: x\nlabels:\n  bug: a bug\n"
-
-// writeSetFixture creates _lyx/config/ under a fresh temp dir and writes content as the testmod config file.
-func writeSetFixture(t *testing.T, content string) (baseDir, path string) {
-	t.Helper()
-	baseDir = t.TempDir()
-	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-	path = configengine.ConfigFile(baseDir, "testmod")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write config: %v", err)
-	}
-	return baseDir, path
-}
-
-// TestSet_OpenMapAddsEntry verifies that Set with labels declared adds labels.x to a map-shaped file.
-func TestSet_OpenMapAddsEntry(t *testing.T) {
-	baseDir, path := writeSetFixture(t, openMapSetTemplate)
-
-	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "labels.x", Value: "an x"}}, "labels")
-	if err != nil {
-		t.Fatalf("Set() = %v; want nil", err)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read config: %v", err)
-	}
-	if !strings.Contains(string(data), "x: an x") || !strings.Contains(string(data), "bug: a bug") {
-		t.Errorf("Set() file = %q; want the new x entry beside bug", data)
-	}
-}
-
-// TestSet_OpenMapRefusesListShape verifies that Set refuses an open-map entry on a list-shaped file and leaves it unchanged.
-func TestSet_OpenMapRefusesListShape(t *testing.T) {
-	content := "name: x\nlabels:\n  - bug\n"
-	baseDir, path := writeSetFixture(t, content)
-
-	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "labels.x", Value: "an x"}}, "labels")
-	if err == nil {
-		t.Fatal("Set() = nil; want an error for a list at labels")
-	}
-
-	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("failed to read config: %v", readErr)
-	}
-	if string(data) != content {
-		t.Errorf("file rewritten: got %q, want %q", data, content)
-	}
-}
-
-// TestSet_OpenMapUndeclaredKeyStillRefused verifies that an undeclared nonexistent key still refuses with unknown config key(s).
-func TestSet_OpenMapUndeclaredKeyStillRefused(t *testing.T) {
-	baseDir, _ := writeSetFixture(t, openMapSetTemplate)
-
-	_, err := configengine.Set(baseDir, "testmod", openMapSetTemplate, []yamlengine.KV{{Key: "bogus", Value: "x"}}, "labels")
-	if err == nil || !strings.Contains(err.Error(), "unknown config key(s)") {
-		t.Errorf("Set() error = %v; want unknown config key(s)", err)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Set() = %v; want an error containing %q", err, tt.wantErr)
+				}
+				if tt.state == baseLyx {
+					if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+						t.Errorf("config file still exists after the refusal; want the scaffold removed")
+					}
+					return
+				}
+				assertFileUnchanged(t, path, tt.existing)
+				return
+			}
+			if err != nil {
+				t.Fatalf("Set() = %v; want nil", err)
+			}
+			if !slices.Equal(preserved, tt.wantPreserved) {
+				t.Errorf("Set() preserved = %v; want %v", preserved, tt.wantPreserved)
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatalf("config file not found at %s: %v", path, readErr)
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("Set() file = %q; want it to contain %q", data, want)
+				}
+			}
+		})
 	}
 }

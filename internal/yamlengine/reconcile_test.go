@@ -3,522 +3,250 @@
 package yamlengine
 
 import (
-	"sort"
+	"slices"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
-func TestReconcile_AddMissingKey(t *testing.T) {
-	// Template has a key; existing does not. The key should appear in added.
-	template := []byte(`
-key1: default_value
-`)
-	existing := []byte(``)
+const openMapTemplate = "name: tmpl\nlabels:\n  a: default a\n  b: default b\n"
 
-	merged, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// added should contain "key1" since it's in template but not existing
-	if len(added) != 1 || added[0] != "key1" {
-		t.Errorf("Reconcile() added = %v; want [\"key1\"]", added)
-	}
-
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want []", removed)
-	}
-
-	// merged should contain the template default
-	if !strings.Contains(string(merged), "default_value") {
-		t.Errorf("Reconcile() merged does not contain template default value")
-	}
+// sortedCopy returns a sorted copy of keys, so a comparison ignores report order.
+func sortedCopy(keys []string) []string {
+	out := slices.Clone(keys)
+	slices.Sort(out)
+	return out
 }
 
-func TestReconcile_RemoveStaleKey(t *testing.T) {
-	// Existing has a key; template does not. The key should appear in removed.
-	template := []byte(`
-key1: default
-`)
-	existing := []byte(`
-key1: user_value
-key2: stale_value
-`)
-
-	merged, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// removed should contain "key2" since it's in existing but not template
-	if len(removed) != 1 || removed[0] != "key2" {
-		t.Errorf("Reconcile() removed = %v; want [\"key2\"]", removed)
-	}
-
-	if len(added) != 0 {
-		t.Errorf("Reconcile() added = %v; want []", added)
-	}
-
-	// merged should not contain the stale key2
-	if strings.Contains(string(merged), "stale_value") {
-		t.Errorf("Reconcile() merged contains stale value")
-	}
-}
-
-func TestReconcile_PreserveUserValue(t *testing.T) {
-	// Existing has a different value than template. User value should be preserved.
-	template := []byte(`
-key1: template_default
-`)
-	existing := []byte(`
-key1: user_custom_value
-`)
-
-	merged, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	if len(added) != 0 {
-		t.Errorf("Reconcile() added = %v; want []", added)
-	}
-
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want []", removed)
-	}
-
-	// merged should contain the user's value, not the template default
-	if !strings.Contains(string(merged), "user_custom_value") {
-		t.Errorf("Reconcile() merged does not preserve user value")
-	}
-	if strings.Contains(string(merged), "template_default") && !strings.Contains(string(merged), "user_custom_value") {
-		t.Errorf("Reconcile() merged contains template default instead of user value")
-	}
-}
-
-func TestReconcile_NestedAddRemovePreserve(t *testing.T) {
-	// Test nested keys at depth >= 2
-	template := []byte(`
-level1:
-  level2:
-    kept_key: template_val1
-    added_key: template_val2
-`)
-	existing := []byte(`
-level1:
-  level2:
-    kept_key: user_val1
-    extra_key: extra_val
-`)
-
-	merged, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// added should contain "level1.level2.added_key"
-	if !stringSliceContains(added, "level1.level2.added_key") {
-		t.Errorf("Reconcile() added = %v; should contain level1.level2.added_key", added)
-	}
-
-	// removed should contain "level1.level2.extra_key"
-	if !stringSliceContains(removed, "level1.level2.extra_key") {
-		t.Errorf("Reconcile() removed = %v; should contain level1.level2.extra_key", removed)
-	}
-
-	// merged should preserve user value for kept_key
-	if !strings.Contains(string(merged), "user_val1") {
-		t.Errorf("Reconcile() merged does not preserve nested user value")
-	}
-}
-
-func TestReconcile_EmptyExisting(t *testing.T) {
-	// Empty existing should yield all template keys as added.
-	template := []byte(`
-key1: val1
-key2: val2
-`)
-	existing := []byte(``)
-
-	merged, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// added should contain all keys from template
-	if len(added) != 2 {
-		t.Errorf("Reconcile() added = %v; want 2 keys", added)
-	}
-
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want []", removed)
-	}
-
-	// merged should be equivalent to template
-	mergedStr := string(merged)
-	if !strings.Contains(mergedStr, "val1") || !strings.Contains(mergedStr, "val2") {
-		t.Errorf("Reconcile() merged does not contain template values")
-	}
-}
-
-func TestReconcile_CommentsOnlyExisting(t *testing.T) {
-	// Existing with only comments should be treated as empty.
-	template := []byte(`
-key1: val1
-`)
-	existing := []byte(`
-# This is just a comment
-# No actual config
-`)
-
-	_, added, removed, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// added should contain "key1" (treat comments-only as empty)
-	if len(added) != 1 || added[0] != "key1" {
-		t.Errorf("Reconcile() added = %v; want [\"key1\"]", added)
-	}
-
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want []", removed)
-	}
-}
-
-func TestReconcile_Idempotence(t *testing.T) {
-	// Reconcile(t, Reconcile(t, e)) should produce the same merged and empty deltas.
-	template := []byte(`
-key1: template_val1
-key2: template_val2
-`)
-	existing := []byte(`
-key1: user_val1
-key3: extra_val
-`)
-
-	// First reconciliation
-	merged1, _, _, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() first call unexpected error: %v", err)
-	}
-
-	// Second reconciliation using merged1 as the new existing
-	merged2, added2, removed2, err := Reconcile(template, merged1)
-	if err != nil {
-		t.Fatalf("Reconcile() second call unexpected error: %v", err)
-	}
-
-	// Merged results should be identical
-	if strings.TrimSpace(string(merged1)) != strings.TrimSpace(string(merged2)) {
-		t.Errorf("Reconcile() idempotence failed: merged1 != merged2")
-	}
-
-	// added2 and removed2 should be empty (idempotent)
-	if len(added2) != 0 {
-		t.Errorf("Reconcile() idempotence: added2 = %v; want []", added2)
-	}
-
-	if len(removed2) != 0 {
-		t.Errorf("Reconcile() idempotence: removed2 = %v; want []", removed2)
-	}
-}
-
-func TestReconcile_TemplateCommentsAndOrder(t *testing.T) {
-	// Template comments and key order should be preserved in merged output.
-	template := []byte(`
-# Key 1 comment
-key1: template_val1
-# Key 2 comment
-key2: template_val2
-`)
-	existing := []byte(`
-key2: user_val2
-key1: user_val1
-`)
-
-	merged, _, _, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	mergedStr := string(merged)
-
-	// Check that template comments are preserved
-	if !strings.Contains(mergedStr, "# Key 1 comment") {
-		t.Errorf("Reconcile() merged does not preserve template comments")
-	}
-
-	// Check that user values are preserved
-	if !strings.Contains(mergedStr, "user_val1") || !strings.Contains(mergedStr, "user_val2") {
-		t.Errorf("Reconcile() merged does not preserve user values")
-	}
-
-	// Rough check that key1 comes before key2 (order from template)
-	idx1 := strings.Index(mergedStr, "key1")
-	idx2 := strings.Index(mergedStr, "key2")
-	if idx1 > idx2 {
-		t.Errorf("Reconcile() merged does not preserve template key order")
-	}
-}
-
-func TestMissingKeys_TemplateOnly(t *testing.T) {
-	// Template has keys; existing is empty. MissingKeys should return all template keys.
-	template := []byte(`
-key1: val1
-key2: val2
-`)
-	existing := []byte(``)
-
-	missing, err := MissingKeys(template, existing)
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-
-	if len(missing) != 2 {
-		t.Errorf("MissingKeys() = %v; want 2 keys", missing)
-	}
-
-	if !stringSliceContains(missing, "key1") || !stringSliceContains(missing, "key2") {
-		t.Errorf("MissingKeys() = %v; want keys key1 and key2", missing)
-	}
-}
-
-func TestMissingKeys_AllPresent(t *testing.T) {
-	// All template keys present in existing. MissingKeys should return empty.
-	template := []byte(`
-key1: val1
-key2: val2
-`)
-	existing := []byte(`
-key1: user_val1
-key2: user_val2
-`)
-
-	missing, err := MissingKeys(template, existing)
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-
-	if len(missing) != 0 {
-		t.Errorf("MissingKeys() = %v; want []", missing)
-	}
-}
-
-func TestMissingKeys_EmptyValueCountsAsPresent(t *testing.T) {
-	// A key with an empty value should NOT be reported as missing.
-	template := []byte(`
-key1: template_val
-key2: default_val
-`)
-	existing := []byte(`
-key1: ""
-key2: user_val
-`)
-
-	missing, err := MissingKeys(template, existing)
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-
-	// Neither key1 nor key2 should be missing
-	if len(missing) != 0 {
-		t.Errorf("MissingKeys() = %v; want [] (empty value counts as present)", missing)
-	}
-}
-
-func TestMissingKeys_Nested(t *testing.T) {
-	// Nested keys at depth >= 2
-	template := []byte(`
-level1:
-  level2:
-    key_a: val_a
-    key_b: val_b
-`)
-	existing := []byte(`
-level1:
-  level2:
-    key_a: user_val_a
-`)
-
-	missing, err := MissingKeys(template, existing)
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-
-	if len(missing) != 1 || missing[0] != "level1.level2.key_b" {
-		t.Errorf("MissingKeys() = %v; want [\"level1.level2.key_b\"]", missing)
-	}
-}
-
-// Helper function to check if a string slice contains a specific string.
-func stringSliceContains(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
-// TestReconcile_YAMLNodePreservation verifies that YAML node structure is preserved.
-func TestReconcile_YAMLNodePreservation(t *testing.T) {
-	template := []byte(`
-key1: value1
-key2: value2
-`)
-	existing := []byte(`
-key1: custom_value
-`)
-
-	merged, _, _, err := Reconcile(template, existing)
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-
-	// Verify that merged can be unmarshalled into a valid YAML structure
-	var result map[string]interface{}
-	if err := yaml.Unmarshal(merged, &result); err != nil {
-		t.Fatalf("Cannot unmarshal merged YAML: %v", err)
-	}
-
-	if result["key1"] != "custom_value" {
-		t.Errorf("Merged YAML key1 = %v; want \"custom_value\"", result["key1"])
-	}
-
-	if result["key2"] != "value2" {
-		t.Errorf("Merged YAML key2 = %v; want \"value2\"", result["key2"])
-	}
-}
-
-// TestMissingKeys_Integration tests MissingKeys end-to-end.
-func TestMissingKeys_Integration(t *testing.T) {
+// TestReconcile pins the merge: added and removed report template-only and file-only key paths,
+// user values, template comments and template key order survive in merged, lists and open maps are
+// carried whole, and reconciling the merged output again changes nothing.
+func TestReconcile(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name     string
-		template []byte
-		existing []byte
-		want     []string
+		name        string
+		template    string
+		existing    string
+		openMaps    []string
+		wantAdded   []string
+		wantRemoved []string
+		contains    []string
+		notContains []string
+		inOrder     []string
 	}{
 		{
-			name:     "empty_existing",
-			template: []byte("key1: v1\nkey2: v2"),
-			existing: []byte(""),
-			want:     []string{"key1", "key2"},
+			name:      "missing key is added",
+			template:  "\nkey1: default_value\n",
+			existing:  "",
+			wantAdded: []string{"key1"},
+			contains:  []string{"key1: default_value"},
 		},
 		{
-			name:     "partial_overlap",
-			template: []byte("a: 1\nb: 2\nc: 3"),
-			existing: []byte("b: 20"),
-			want:     []string{"a", "c"},
+			name:        "stale key is removed",
+			template:    "\nkey1: default\n",
+			existing:    "\nkey1: user_value\nkey2: stale_value\n",
+			wantRemoved: []string{"key2"},
+			contains:    []string{"key1: user_value"},
+			notContains: []string{"stale_value"},
 		},
 		{
-			name:     "all_present",
-			template: []byte("a: 1\nb: 2"),
-			existing: []byte("a: 10\nb: 20"),
-			want:     []string{},
+			name:        "user value beats the template default",
+			template:    "\nkey1: template_default\n",
+			existing:    "\nkey1: user_custom_value\n",
+			contains:    []string{"key1: user_custom_value"},
+			notContains: []string{"template_default"},
+		},
+		{
+			name:        "nested add, remove and preserve",
+			template:    "\nlevel1:\n  level2:\n    kept_key: template_val1\n    added_key: template_val2\n",
+			existing:    "\nlevel1:\n  level2:\n    kept_key: user_val1\n    extra_key: extra_val\n",
+			wantAdded:   []string{"level1.level2.added_key"},
+			wantRemoved: []string{"level1.level2.extra_key"},
+			contains:    []string{"kept_key: user_val1"},
+		},
+		{
+			name:      "empty existing adds every template key",
+			template:  "\nkey1: val1\nkey2: val2\n",
+			existing:  "",
+			wantAdded: []string{"key1", "key2"},
+			contains:  []string{"key1: val1", "key2: val2"},
+		},
+		{
+			name:      "comments-only existing counts as empty",
+			template:  "\nkey1: val1\n",
+			existing:  "\n# This is just a comment\n# No actual config\n",
+			wantAdded: []string{"key1"},
+		},
+		{
+			name:     "template comments and key order survive",
+			template: "\n# Key 1 comment\nkey1: template_val1\n# Key 2 comment\nkey2: template_val2\n",
+			existing: "\nkey2: user_val2\nkey1: user_val1\n",
+			contains: []string{"# Key 1 comment", "# Key 2 comment", "key1: user_val1", "key2: user_val2"},
+			inOrder:  []string{"key1: user_val1", "key2: user_val2"},
+		},
+		{
+			name:      "partial existing keeps its value and adds the rest",
+			template:  "\nkey1: value1\nkey2: value2\n",
+			existing:  "\nkey1: custom_value\n",
+			wantAdded: []string{"key2"},
+			contains:  []string{"key1: custom_value", "key2: value2"},
+		},
+		{
+			name:     "emptied list is carried whole",
+			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
+			existing: "require_pr_to_base: []\nsquash: true\n",
+			contains: []string{"require_pr_to_base: []"},
+		},
+		{
+			name:     "lengthened list is carried whole",
+			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
+			existing: "require_pr_to_base: [a, b]\nsquash: true\n",
+			contains: []string{"require_pr_to_base: [a, b]"},
+		},
+		{
+			name:        "open map keeps the file's keys and adds none",
+			template:    openMapTemplate,
+			existing:    "name: mine\nlabels:\n  x: my x\n  a: my a\n",
+			openMaps:    []string{"labels"},
+			contains:    []string{"name: mine", "x: my x", "a: my a"},
+			notContains: []string{"default"},
+		},
+		{
+			name:      "open map missing is filled whole and reported as its path",
+			template:  openMapTemplate,
+			existing:  "name: mine\n",
+			openMaps:  []string{"labels"},
+			wantAdded: []string{"labels"},
+			contains:  []string{"a: default a", "b: default b"},
+		},
+		{
+			name:      "open map carries a list whole",
+			template:  openMapTemplate,
+			existing:  "labels:\n  - x\n  - y\n",
+			openMaps:  []string{"labels"},
+			wantAdded: []string{"name"},
+			contains:  []string{"- x", "- y"},
+		},
+		{
+			name:        "undeclared mapping still reports its keys",
+			template:    openMapTemplate,
+			existing:    "name: mine\nlabels:\n  x: my x\n  a: my a\n",
+			wantAdded:   []string{"labels.b"},
+			wantRemoved: []string{"labels.x"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := MissingKeys(tt.template, tt.existing)
+			t.Parallel()
+			merged, added, removed, err := Reconcile([]byte(tt.template), []byte(tt.existing), tt.openMaps...)
 			if err != nil {
-				t.Fatalf("MissingKeys() unexpected error: %v", err)
+				t.Fatalf("Reconcile() unexpected error: %v", err)
 			}
-
-			// Sort both slices for comparison
-			sort.Strings(got)
-			sort.Strings(tt.want)
-
-			if len(got) != len(tt.want) {
-				t.Errorf("MissingKeys() returned %d items; want %d", len(got), len(tt.want))
-				return
+			if !slices.Equal(sortedCopy(added), tt.wantAdded) {
+				t.Errorf("Reconcile() added = %v; want %v", added, tt.wantAdded)
 			}
-
-			for i, v := range got {
-				if v != tt.want[i] {
-					t.Errorf("MissingKeys() got %v; want %v", got, tt.want)
-					return
+			if !slices.Equal(sortedCopy(removed), tt.wantRemoved) {
+				t.Errorf("Reconcile() removed = %v; want %v", removed, tt.wantRemoved)
+			}
+			for _, want := range tt.contains {
+				if !strings.Contains(string(merged), want) {
+					t.Errorf("Reconcile() merged = %q; want it to contain %q", merged, want)
 				}
+			}
+			for _, unwanted := range tt.notContains {
+				if strings.Contains(string(merged), unwanted) {
+					t.Errorf("Reconcile() merged = %q; want it not to contain %q", merged, unwanted)
+				}
+			}
+			previous := -1
+			for _, want := range tt.inOrder {
+				at := strings.Index(string(merged), want)
+				if at < previous {
+					t.Errorf("Reconcile() merged = %q; want %q after the entry before it", merged, want)
+				}
+				previous = at
+			}
+
+			again, addedAgain, removedAgain, err := Reconcile([]byte(tt.template), merged, tt.openMaps...)
+			if err != nil {
+				t.Fatalf("Reconcile() second call unexpected error: %v", err)
+			}
+			if strings.TrimSpace(string(again)) != strings.TrimSpace(string(merged)) {
+				t.Errorf("Reconcile() is not idempotent: second merged = %q; want %q", again, merged)
+			}
+			if len(addedAgain) != 0 || len(removedAgain) != 0 {
+				t.Errorf("Reconcile() second call added = %v, removed = %v; want both empty", addedAgain, removedAgain)
 			}
 		})
 	}
 }
 
-// TestMissingKeys_SequenceLengthIsNotARequirement pins the rule that a template list is a default
-// rather than a minimum length: shortening or emptying a list-valued key is a legal configuration,
-// not a missing key. Before this, landing.yaml's documented no-pull-request mode
-// (require_pr_to_base: []) could not be loaded at all -- Load refused with
-// "missing keys: require_pr_to_base[0]" and named "lyx config reconcile" as the remedy, which
-// re-adds the template's own element and undoes the operator's edit.
-func TestMissingKeys_SequenceLengthIsNotARequirement(t *testing.T) {
+// TestMissingKeys pins which template key paths a file lacks: an empty value counts as present,
+// a list is a default rather than a minimum length, and an open map satisfies every leaf under it.
+func TestMissingKeys(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		template string
 		existing string
+		openMaps []string
 		want     []string
 	}{
+		{"empty existing", "key1: v1\nkey2: v2", "", nil, []string{"key1", "key2"}},
+		{"partial overlap", "a: 1\nb: 2\nc: 3", "b: 20", nil, []string{"a", "c"}},
+		{"all present", "a: 1\nb: 2", "a: 10\nb: 20", nil, nil},
+		{"empty value counts as present", "key1: template_val\nkey2: default_val\n", "key1: \"\"\nkey2: user_val\n", nil, nil},
 		{
-			name:     "EmptiedList",
-			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
-			existing: "require_pr_to_base: []\nsquash: true\n",
-			want:     nil,
+			"nested",
+			"level1:\n  level2:\n    key_a: val_a\n    key_b: val_b\n",
+			"level1:\n  level2:\n    key_a: user_val_a\n",
+			nil,
+			[]string{"level1.level2.key_b"},
 		},
 		{
-			name:     "ShortenedList",
-			template: "bases: [\"a\", \"b\", \"c\"]\n",
-			existing: "bases: [\"a\"]\n",
-			want:     nil,
+			"emptied list",
+			"require_pr_to_base: [\"main\"]\nsquash: true\n",
+			"require_pr_to_base: []\nsquash: true\n",
+			nil,
+			nil,
+		},
+		{"shortened list", "bases: [\"a\", \"b\", \"c\"]\n", "bases: [\"a\"]\n", nil, nil},
+		{"lengthened list", "bases: [\"a\"]\n", "bases: [\"a\", \"b\", \"c\"]\n", nil, nil},
+		{
+			"absent list key is still missing",
+			"require_pr_to_base: [\"main\"]\nsquash: true\n",
+			"squash: true\n",
+			nil,
+			[]string{"require_pr_to_base[0]"},
 		},
 		{
-			name:     "LengthenedList",
-			template: "bases: [\"a\"]\n",
-			existing: "bases: [\"a\", \"b\", \"c\"]\n",
-			want:     nil,
+			"absent scalar key is still missing",
+			"require_pr_to_base: [\"main\"]\nsquash: true\n",
+			"require_pr_to_base: []\n",
+			nil,
+			[]string{"squash"},
 		},
+		{"nested emptied list", "outer:\n  inner: [\"x\"]\n", "outer:\n  inner: []\n", nil, nil},
 		{
-			name:     "AbsentListKeyIsStillMissing",
-			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
-			existing: "squash: true\n",
-			want:     []string{"require_pr_to_base[0]"},
+			"nested absent list key is still missing",
+			"outer:\n  inner: [\"x\"]\n  other: 1\n",
+			"outer:\n  other: 1\n",
+			nil,
+			[]string{"outer.inner[0]"},
 		},
-		{
-			name:     "AbsentScalarKeyIsStillMissing",
-			template: "require_pr_to_base: [\"main\"]\nsquash: true\n",
-			existing: "require_pr_to_base: []\n",
-			want:     []string{"squash"},
-		},
-		{
-			name:     "NestedEmptiedList",
-			template: "outer:\n  inner: [\"x\"]\n",
-			existing: "outer:\n  inner: []\n",
-			want:     nil,
-		},
-		{
-			name:     "NestedAbsentListKeyIsStillMissing",
-			template: "outer:\n  inner: [\"x\"]\n  other: 1\n",
-			existing: "outer:\n  other: 1\n",
-			want:     []string{"outer.inner[0]"},
-		},
+		{"open map present satisfies the leaves under it", openMapTemplate, "name: mine\nlabels:\n  x: my x\n", []string{"labels"}, nil},
+		{"open map absent reports its leaves", openMapTemplate, "name: mine\n", []string{"labels"}, []string{"labels.a", "labels.b"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := MissingKeys([]byte(tt.template), []byte(tt.existing))
+			t.Parallel()
+			got, err := MissingKeys([]byte(tt.template), []byte(tt.existing), tt.openMaps...)
 			if err != nil {
 				t.Fatalf("MissingKeys() unexpected error: %v", err)
 			}
-			sort.Strings(got)
-			sort.Strings(tt.want)
-			if len(got) != len(tt.want) {
-				t.Fatalf("MissingKeys() = %v; want %v", got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Fatalf("MissingKeys() = %v; want %v", got, tt.want)
-				}
+			if !slices.Equal(sortedCopy(got), tt.want) {
+				t.Errorf("MissingKeys() = %v; want %v", got, tt.want)
 			}
 		})
 	}
@@ -527,6 +255,7 @@ func TestMissingKeys_SequenceLengthIsNotARequirement(t *testing.T) {
 // TestSequenceBasePath covers the split MissingKeys keys its sequence-element rule off, including
 // the shapes that must NOT be read as an element.
 func TestSequenceBasePath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		path        string
@@ -544,131 +273,11 @@ func TestSequenceBasePath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			base, isElement := sequenceBasePath(tt.path)
 			if base != tt.wantBase || isElement != tt.wantElement {
 				t.Errorf("sequenceBasePath(%q) = (%q, %v); want (%q, %v)", tt.path, base, isElement, tt.wantBase, tt.wantElement)
 			}
 		})
-	}
-}
-
-// TestReconcile_CarriesListsWhole pins that Reconcile keeps an existing list as written, whatever
-// its length, and reports none of its elements as added or removed.
-func TestReconcile_CarriesListsWhole(t *testing.T) {
-	template := []byte("require_pr_to_base: [\"main\"]\nsquash: true\n")
-	tests := []struct {
-		name     string
-		existing string
-		want     string
-	}{
-		{"Emptied", "require_pr_to_base: []\nsquash: true\n", "require_pr_to_base: []"},
-		{"Lengthened", "require_pr_to_base: [a, b]\nsquash: true\n", "require_pr_to_base: [a, b]"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			merged, added, removed, err := Reconcile(template, []byte(tt.existing))
-			if err != nil {
-				t.Fatalf("Reconcile() error = %v; want nil", err)
-			}
-			if !strings.Contains(string(merged), tt.want) {
-				t.Errorf("Reconcile() merged = %q; want it to contain %q", merged, tt.want)
-			}
-			if len(added) != 0 || len(removed) != 0 {
-				t.Errorf("Reconcile() added = %v, removed = %v; want both empty", added, removed)
-			}
-		})
-	}
-}
-
-const openMapTemplate = "name: tmpl\nlabels:\n  a: default a\n  b: default b\n"
-
-func TestReconcile_OpenMapKeepsExistingKeysAndAddsNone(t *testing.T) {
-	existing := []byte("name: mine\nlabels:\n  x: my x\n  a: my a\n")
-
-	merged, added, removed, err := Reconcile([]byte(openMapTemplate), existing, "labels")
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-	if len(added) != 0 || len(removed) != 0 {
-		t.Errorf("Reconcile() added = %v, removed = %v; want both empty", added, removed)
-	}
-	var got struct {
-		Name   string
-		Labels map[string]string
-	}
-	if err := yaml.Unmarshal(merged, &got); err != nil {
-		t.Fatalf("decode merged: %v", err)
-	}
-	if len(got.Labels) != 2 || got.Labels["x"] != "my x" || got.Labels["a"] != "my a" {
-		t.Errorf("labels = %v; want exactly existing's x and a", got.Labels)
-	}
-}
-
-func TestReconcile_OpenMapMissingIsFilledWholeAndReportedAsPath(t *testing.T) {
-	merged, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("name: mine\n"), "labels")
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-	if len(added) != 1 || added[0] != "labels" {
-		t.Errorf("Reconcile() added = %v; want [labels]", added)
-	}
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want empty", removed)
-	}
-	if !strings.Contains(string(merged), "a: default a") || !strings.Contains(string(merged), "b: default b") {
-		t.Errorf("merged = %q; want the template's labels whole", merged)
-	}
-}
-
-func TestReconcile_OpenMapCarriesListWhole(t *testing.T) {
-	merged, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("labels:\n  - x\n  - y\n"), "labels")
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-	if len(removed) != 0 {
-		t.Errorf("Reconcile() removed = %v; want empty", removed)
-	}
-	for _, path := range added {
-		if strings.HasPrefix(path, "labels") {
-			t.Errorf("Reconcile() added %q under the open map", path)
-		}
-	}
-	var got struct{ Labels []string }
-	if err := yaml.Unmarshal(merged, &got); err != nil {
-		t.Fatalf("decode merged: %v\n%s", err, merged)
-	}
-	if len(got.Labels) != 2 || got.Labels[0] != "x" || got.Labels[1] != "y" {
-		t.Errorf("labels = %v; want [x y]", got.Labels)
-	}
-}
-
-func TestReconcile_UndeclaredMappingStillReportsKeys(t *testing.T) {
-	_, added, removed, err := Reconcile([]byte(openMapTemplate), []byte("name: mine\nlabels:\n  x: my x\n  a: my a\n"))
-	if err != nil {
-		t.Fatalf("Reconcile() unexpected error: %v", err)
-	}
-	if len(added) != 1 || added[0] != "labels.b" {
-		t.Errorf("Reconcile() added = %v; want [labels.b]", added)
-	}
-	if len(removed) != 1 || removed[0] != "labels.x" {
-		t.Errorf("Reconcile() removed = %v; want [labels.x]", removed)
-	}
-}
-
-func TestMissingKeys_OpenMapPresentSatisfiesLeavesUnderIt(t *testing.T) {
-	missing, err := MissingKeys([]byte(openMapTemplate), []byte("name: mine\nlabels:\n  x: my x\n"), "labels")
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-	if len(missing) != 0 {
-		t.Errorf("MissingKeys() = %v; want empty", missing)
-	}
-
-	missing, err = MissingKeys([]byte(openMapTemplate), []byte("name: mine\n"), "labels")
-	if err != nil {
-		t.Fatalf("MissingKeys() unexpected error: %v", err)
-	}
-	if len(missing) == 0 {
-		t.Errorf("MissingKeys() = empty; want the absent open map reported")
 	}
 }

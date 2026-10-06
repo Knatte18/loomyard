@@ -20,63 +20,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
-	"gopkg.in/yaml.v3"
 )
 
-// TestLoad_HappyPath tests that all template keys present in file round-trip correctly.
-func TestLoad_HappyPath(t *testing.T) {
-	tmpDir := t.TempDir()
+// baseState is how much of a base directory's _lyx tree newBase creates.
+type baseState int
 
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
+const (
+	// baseAbsent returns a base directory that does not exist on disk.
+	baseAbsent baseState = iota
+	// baseNone creates the base directory and nothing in it: no _lyx/.
+	baseNone
+	// baseLyx creates _lyx/ alone.
+	baseLyx
+	// baseConfigDir creates _lyx/config/ with no module file.
+	baseConfigDir
+	// baseWithFile creates _lyx/config/ and writes content as the module's config file.
+	baseWithFile
+)
 
-	// Simple template with two keys
-	template := []byte("path: _board\nhome: Home.md\n")
-
-	// Write config file matching template
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: custom_path\nhome: Index.md\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	resolved, err := configengine.Load(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Unmarshal resolved bytes and verify values
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-
-	if result["path"] != "custom_path" {
-		t.Errorf("expected path %q, got %q", "custom_path", result["path"])
-	}
-	if result["home"] != "Index.md" {
-		t.Errorf("expected home %q, got %q", "Index.md", result["home"])
-	}
-}
-
-// writeConfig creates _lyx/config/ under a fresh temp dir, writes content as module's config file and returns the base dir and the file path.
-func writeConfig(t *testing.T, module, content string) (baseDir, path string) {
+// newBase builds a fresh temp base directory in the given state and returns it with the module's config file path.
+func newBase(t *testing.T, state baseState, module, content string) (baseDir, path string) {
 	t.Helper()
 	baseDir = t.TempDir()
-	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+	switch state {
+	case baseAbsent:
+		baseDir = filepath.Join(baseDir, "does-not-exist")
+	case baseLyx:
+		if err := os.Mkdir(filepath.Join(baseDir, lyxdirs.LyxDirName), 0755); err != nil {
+			t.Fatalf("failed to create _lyx: %v", err)
+		}
+	case baseConfigDir, baseWithFile:
+		if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
+			t.Fatalf("failed to create _lyx/config: %v", err)
+		}
+		if state == baseWithFile {
+			if err := os.WriteFile(configengine.ConfigFile(baseDir, module), []byte(content), 0644); err != nil {
+				t.Fatalf("failed to write %s.yaml: %v", module, err)
+			}
+		}
 	}
-	path = configengine.ConfigFile(baseDir, module)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write %s.yaml: %v", module, err)
-	}
-	return baseDir, path
+	return baseDir, configengine.ConfigFile(baseDir, module)
 }
 
 // assertFileUnchanged fails when the file at path no longer holds want.
@@ -106,186 +89,219 @@ func assertOneFillLine(t *testing.T, buf *logcapture.Buffer, module, keyPath str
 	}
 }
 
-// TestLoad_MissingKey tests that a template key the file lacks loads at its template default, the file stays byte-identical and one fill line is logged.
-func TestLoad_MissingKey(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	content := "path: custom_path\n"
-	tmpDir, yamlFile := writeConfig(t, "board", content)
-
-	resolved, err := configengine.Load(tmpDir, "board", []byte("path: _board\nhome: Home.md\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "custom_path" {
-		t.Errorf("expected path %q, got %q", "custom_path", result["path"])
-	}
-	if result["home"] != "Home.md" {
-		t.Errorf("expected home %q (template default), got %q", "Home.md", result["home"])
-	}
-	assertFileUnchanged(t, yamlFile, content)
-	assertOneFillLine(t, buf, "board", "home")
-}
-
 // openMapTemplate holds a mapping at labels that a module may declare open.
 const openMapTemplate = "name: x\nlabels:\n  bug: a bug\n  feature: a feature\n"
 
-// TestLoad_OpenMapAcceptsOwnKeys tests that a declared open map loads with keys the template lacks and without keys the template holds.
-func TestLoad_OpenMapAcceptsOwnKeys(t *testing.T) {
-	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  docs: documentation\n")
-
-	resolved, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate), "labels")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result struct {
-		Labels map[string]string `yaml:"labels"`
-	}
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if len(result.Labels) != 1 || result.Labels["docs"] != "documentation" {
-		t.Errorf("labels = %v; want only docs: documentation", result.Labels)
-	}
+// loadCase is one config file against a template, loaded by a strict or a degrading loader.
+type loadCase struct {
+	name     string
+	template string
+	content  string
+	openMaps []string
+	// env is set for the row with t.Setenv.
+	env map[string]string
+	// wantFill is the one key-path the fill line names; empty means no fill line.
+	wantFill    string
+	contains    []string
+	notContains []string
 }
 
-// TestLoad_OpenMapAcceptsList tests that a declared open map loads a list at its path, and that the same file fails without the declaration.
-func TestLoad_OpenMapAcceptsList(t *testing.T) {
-	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  - bug\n  - docs\n")
-
-	resolved, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate), "labels")
-	if err != nil {
-		t.Fatalf("unexpected error with labels declared: %v", err)
+// checkLoaded asserts a loaded config against the row: its bytes, the single fill line or none, and the file left untouched.
+func checkLoaded(t *testing.T, tc loadCase, resolved []byte, buf *logcapture.Buffer, path string) {
+	t.Helper()
+	for _, want := range tc.contains {
+		if !strings.Contains(string(resolved), want) {
+			t.Errorf("resolved = %q; want it to contain %q", resolved, want)
+		}
 	}
-	var result struct {
-		Labels []string `yaml:"labels"`
+	for _, unwanted := range tc.notContains {
+		if strings.Contains(string(resolved), unwanted) {
+			t.Errorf("resolved = %q; want it not to contain %q", resolved, unwanted)
+		}
 	}
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
+	if tc.wantFill == "" {
+		if strings.Contains(buf.String(), "filled missing keys") {
+			t.Errorf("unexpected fill line: %s", buf.String())
+		}
+	} else {
+		assertOneFillLine(t, buf, "board", tc.wantFill)
 	}
-	if len(result.Labels) != 2 || result.Labels[0] != "bug" || result.Labels[1] != "docs" {
-		t.Errorf("labels = %v; want [bug docs]", result.Labels)
-	}
-
-	if _, err := configengine.Load(tmpDir, "board", []byte(openMapTemplate)); err == nil {
-		t.Error("Load without the declaration = nil; want a shape-mismatch error")
-	}
+	assertFileUnchanged(t, path, tc.content)
 }
 
-// TestLoadOrTemplate_OpenMapAcceptsOwnKeys tests that LoadOrTemplate passes the declaration through on a present file.
-func TestLoadOrTemplate_OpenMapAcceptsOwnKeys(t *testing.T) {
-	tmpDir, _ := writeConfig(t, "board", "name: x\nlabels:\n  docs: documentation\n")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte(openMapTemplate), "labels")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(string(resolved), "docs: documentation") || strings.Contains(string(resolved), "bug:") {
-		t.Errorf("resolved = %q; want the file's labels carried whole", resolved)
-	}
-}
-
-// TestLoad_CompleteFileLogsNoFill tests that a file holding every template key logs no fill line.
-func TestLoad_CompleteFileLogsNoFill(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	tmpDir, _ := writeConfig(t, "board", "path: a\nhome: b\n")
-
-	if _, err := configengine.Load(tmpDir, "board", []byte("path: _board\nhome: Home.md\n")); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if strings.Contains(buf.String(), "filled missing keys") {
-		t.Errorf("unexpected fill line for a complete file: %s", buf.String())
-	}
-}
-
-// TestLoad_FillKeepsExtraAndEmptyValues tests that an extra file key survives beside a filled one and that a present empty string and an emptied list are kept rather than refilled.
-func TestLoad_FillKeepsExtraAndEmptyValues(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	template := []byte("name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n")
-	content := "extra_key: extra\nname: \"\"\nlabel: x\nrequire_pr_to_base: []\n"
-	tmpDir, yamlFile := writeConfig(t, "board", content)
-
-	resolved, err := configengine.Load(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]interface{}
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["extra_key"] != "extra" {
-		t.Errorf("extra_key = %v; want it kept", result["extra_key"])
-	}
-	if result["name"] != "" {
-		t.Errorf("name = %v; want the present empty string kept", result["name"])
-	}
-	if list, ok := result["require_pr_to_base"].([]interface{}); !ok || len(list) != 0 {
-		t.Errorf("require_pr_to_base = %v; want the emptied list kept", result["require_pr_to_base"])
-	}
-	if result["added"] == nil {
-		t.Errorf("added was not filled from the template")
-	}
-	assertFileUnchanged(t, yamlFile, content)
-	assertOneFillLine(t, buf, "board", "added")
-}
-
-// TestLoad_FilledEnvMarkerUnsetRefuses tests that a filled ${env:NAME} marker whose variable is unset still refuses.
-func TestLoad_FilledEnvMarkerUnsetRefuses(t *testing.T) {
-	tmpDir, _ := writeConfig(t, "board", "path: custom\n")
-
-	_, err := configengine.Load(tmpDir, "board", []byte("path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n"))
-	if err == nil {
-		t.Fatalf("expected error for a filled marker with an unset variable, got nil")
-	}
-	if !strings.Contains(err.Error(), "TEST_FILL_UNSET_VAR") {
-		t.Errorf("expected error naming the variable, got: %v", err)
-	}
-}
-
-// TestLoad_FillRefusals tests that a shape mismatch, a key missing inside a list element and unparseable YAML each refuse and name the key-path or the file.
-func TestLoad_FillRefusals(t *testing.T) {
-	tests := []struct {
-		name     string
-		template string
-		content  string
-		wantErr  []string
-	}{
+// TestLoad pins what the strict loader returns for a present file: file values beat template
+// defaults, a missing key loads at its template default with one fill line and the file untouched,
+// a present empty value or emptied list is kept, an extra key is tolerated, env markers resolve, and
+// a declared open map is carried whole.
+// It serializes its rows because they swap the process-global logger output and set env variables.
+func TestLoad(t *testing.T) {
+	tests := []loadCase{
 		{
-			name:     "null where the template holds a mapping",
-			template: "server:\n  host: localhost\n",
-			content:  "server:\n",
-			wantErr:  []string{"server"},
+			name:     "file values round-trip",
+			template: "path: _board\nhome: Home.md\n",
+			content:  "path: custom_path\nhome: Index.md\n",
+			contains: []string{"path: custom_path", "home: Index.md"},
 		},
 		{
-			name:     "mapping where the template holds a scalar",
-			template: "server: localhost\n",
-			content:  "server:\n  host: x\n",
-			wantErr:  []string{"server"},
+			name:     "missing key loads at its template default",
+			template: "path: _board\nhome: Home.md\n",
+			content:  "path: custom_path\n",
+			wantFill: "home",
+			contains: []string{"path: custom_path", "home: Home.md"},
 		},
 		{
-			name:     "key missing inside a present list element",
-			template: "items:\n  - name: a\n    size: 1\n",
-			content:  "items:\n  - name: a\n",
-			wantErr:  []string{"missing keys", "items"},
+			name:     "complete file logs no fill",
+			template: "path: _board\nhome: Home.md\n",
+			content:  "path: a\nhome: b\n",
+			contains: []string{"path: a", "home: b"},
 		},
 		{
-			name:     "unparseable file",
+			name:     "extra file key survives beside a filled one and empty values are kept",
+			template: "name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n",
+			content:  "extra_key: extra\nname: \"\"\nlabel: x\nrequire_pr_to_base: []\n",
+			wantFill: "added",
+			contains: []string{"extra_key: extra", `name: ""`, "label: x", "require_pr_to_base: []", "added: yes"},
+		},
+		{
+			name:     "extra key is tolerated",
 			template: "path: _board\n",
-			content:  "path: [unclosed\n",
-			wantErr:  []string{"board.yaml"},
+			content:  "path: custom_path\nextra_key: extra_value\n",
+			contains: []string{"path: custom_path", "extra_key: extra_value"},
+		},
+		{
+			name:     "nested keys round-trip",
+			template: "server:\n  host: localhost\n  port: '8080'\n",
+			content:  "server:\n  host: example.com\n  port: '9090'\n",
+			contains: []string{"host: example.com", "port: '9090'"},
+		},
+		{
+			name:     "required env marker resolves",
+			template: "path: ${env:TEST_CONFIG_VAR}\n",
+			content:  "path: ${env:TEST_CONFIG_VAR}\n",
+			env:      map[string]string{"TEST_CONFIG_VAR": "resolved_value"},
+			contains: []string{"path: resolved_value"},
+		},
+		{
+			name:     "optional env marker falls back to its default",
+			template: "path: ${env:TEST_OPTIONAL_VAR:-default_path}\n",
+			content:  "path: ${env:TEST_OPTIONAL_VAR:-default_path}\n",
+			contains: []string{"path: default_path"},
+		},
+		{
+			name:        "declared open map carries the file's keys and none of the template's",
+			template:    openMapTemplate,
+			content:     "name: x\nlabels:\n  docs: documentation\n",
+			openMaps:    []string{"labels"},
+			contains:    []string{"docs: documentation"},
+			notContains: []string{"bug:"},
+		},
+		{
+			name:     "declared open map accepts a list",
+			template: openMapTemplate,
+			content:  "name: x\nlabels:\n  - bug\n  - docs\n",
+			openMaps: []string{"labels"},
+			contains: []string{"- bug", "- docs"},
 		},
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tmpDir, _ := writeConfig(t, "board", tc.content)
+			buf := logcapture.CaptureVerbose(t)
+			for key, value := range tc.env {
+				t.Setenv(key, value)
+			}
+			baseDir, path := newBase(t, baseWithFile, "board", tc.content)
 
-			_, err := configengine.Load(tmpDir, "board", []byte(tc.template))
+			resolved, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			checkLoaded(t, tc, resolved, buf, path)
+		})
+	}
+}
+
+// TestLoad_Refusals pins the strict loader's refusals and the text that names the way forward:
+// an absent file points at "lyx config reconcile", a refusal reconcile cannot fix never hints at it.
+func TestLoad_Refusals(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		state      baseState
+		template   string
+		content    string
+		openMaps   []string
+		wantErr    []string
+		wantNotErr []string
+	}{
+		{
+			name:     "uninitialized base directory",
+			state:    baseNone,
+			template: "path: _board\n",
+			wantErr:  []string{"not initialized"},
+		},
+		{
+			name:     "absent config file",
+			state:    baseConfigDir,
+			template: "path: _board\n",
+			wantErr:  []string{"not found", "lyx config reconcile"},
+		},
+		{
+			name:       "null where the template holds a mapping",
+			state:      baseWithFile,
+			template:   "server:\n  host: localhost\n",
+			content:    "server:\n",
+			wantErr:    []string{"server"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+		{
+			name:       "mapping where the template holds a scalar",
+			state:      baseWithFile,
+			template:   "server: localhost\n",
+			content:    "server:\n  host: x\n",
+			wantErr:    []string{"server"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+		{
+			name:       "key missing inside a present list element",
+			state:      baseWithFile,
+			template:   "items:\n  - name: a\n    size: 1\n",
+			content:    "items:\n  - name: a\n",
+			wantErr:    []string{"missing keys", "items"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+		{
+			name:       "unparseable file",
+			state:      baseWithFile,
+			template:   "path: _board\n",
+			content:    "path: [unclosed\n",
+			wantErr:    []string{"board.yaml"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+		{
+			name:       "filled env marker whose variable is unset",
+			state:      baseWithFile,
+			template:   "path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
+			content:    "path: custom\n",
+			wantErr:    []string{"TEST_FILL_UNSET_VAR"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+		{
+			name:       "list at an undeclared open map",
+			state:      baseWithFile,
+			template:   openMapTemplate,
+			content:    "name: x\nlabels:\n  - bug\n  - docs\n",
+			wantErr:    []string{"labels"},
+			wantNotErr: []string{"lyx config reconcile"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir, _ := newBase(t, tc.state, "board", tc.content)
+
+			_, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -294,507 +310,132 @@ func TestLoad_FillRefusals(t *testing.T) {
 					t.Errorf("expected error containing %q, got: %v", want, err)
 				}
 			}
-			if strings.Contains(err.Error(), "lyx config reconcile") {
-				t.Errorf("a refusal reconcile cannot fix must not hint at it, got: %v", err)
+			for _, unwanted := range tc.wantNotErr {
+				if strings.Contains(err.Error(), unwanted) {
+					t.Errorf("a refusal reconcile cannot fix must not hint at %q, got: %v", unwanted, err)
+				}
 			}
 		})
 	}
 }
 
-// TestLoad_AbsentFile tests that missing config file returns an error.
-func TestLoad_AbsentFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories but NOT board.yaml
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	template := []byte("path: _board\n")
-
-	_, err := configengine.Load(tmpDir, "board", template)
-	if err == nil {
-		t.Fatalf("expected error for absent file, got nil")
-	}
-
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not found") {
-		t.Errorf("expected error containing 'not found', got: %v", err)
-	}
-	if !strings.Contains(errMsg, "lyx config reconcile") {
-		t.Errorf("expected error containing 'lyx config reconcile', got: %v", err)
-	}
-}
-
-// TestLoad_EnvResolution tests that ${env:NAME} values are resolved correctly.
-func TestLoad_EnvResolution(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Set environment variable
-	t.Setenv("TEST_CONFIG_VAR", "resolved_value")
-
-	// Template with an env marker
-	template := []byte("path: ${env:TEST_CONFIG_VAR}\n")
-
-	// Config file with the same env marker
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: ${env:TEST_CONFIG_VAR}\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	resolved, err := configengine.Load(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Unmarshal and verify the env var was expanded
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-
-	if result["path"] != "resolved_value" {
-		t.Errorf("expected path %q (from env), got %q", "resolved_value", result["path"])
-	}
-}
-
-// TestLoad_OptionalEnv tests that ${env:NAME:-default} uses default when var is unset.
-func TestLoad_OptionalEnv(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
+// TestLoadOrTemplate pins the degrading loader: proven absence of _lyx/, of the config file or of
+// the base directory resolves the template with env overrides honored, and a present file loads
+// exactly as the strict loader loads it.
+// It serializes its rows because they swap the process-global logger output and set env variables.
+func TestLoadOrTemplate(t *testing.T) {
+	tests := []struct {
+		loadCase
+		state baseState
+	}{
+		{
+			loadCase{name: "absent _lyx resolves the template", template: "path: _board\nhome: Home.md\n", contains: []string{"path: _board", "home: Home.md"}},
+			baseNone,
+		},
+		{
+			loadCase{name: "absent config file resolves the template", template: "path: _board\n", contains: []string{"path: _board"}},
+			baseConfigDir,
+		},
+		{
+			loadCase{name: "base directory that does not exist resolves the template", template: "path: _board\n", contains: []string{"path: _board"}},
+			baseAbsent,
+		},
+		{
+			loadCase{
+				name:     "env override reaches the template with no _lyx on disk",
+				template: "path: ${env:TEST_FALLBACK_VAR:-default_path}\n",
+				env:      map[string]string{"TEST_FALLBACK_VAR": "overridden_value"},
+				contains: []string{"path: overridden_value"},
+			},
+			baseNone,
+		},
+		{
+			loadCase{
+				name:     "present file loads like the strict loader",
+				template: "path: _board\nhome: Home.md\n",
+				content:  "path: custom_path\nhome: Index.md\n",
+				contains: []string{"path: custom_path", "home: Index.md"},
+			},
+			baseWithFile,
+		},
+		{
+			loadCase{
+				name:     "present file missing a key loads it at its template default",
+				template: "path: _board\nhome: Home.md\n",
+				content:  "path: custom_path\n",
+				wantFill: "home",
+				contains: []string{"path: custom_path", "home: Home.md"},
+			},
+			baseWithFile,
+		},
+		{
+			loadCase{name: "present empty file loads as the template", template: "path: _board\n", wantFill: "path", contains: []string{"path: _board"}},
+			baseWithFile,
+		},
+		{
+			loadCase{
+				name:     "present comments-only file loads as the template",
+				template: "path: _board\n",
+				content:  "# just a comment\n",
+				wantFill: "path",
+				contains: []string{"path: _board"},
+			},
+			baseWithFile,
+		},
+		{
+			loadCase{
+				name:        "declared open map is passed through",
+				template:    openMapTemplate,
+				content:     "name: x\nlabels:\n  docs: documentation\n",
+				openMaps:    []string{"labels"},
+				contains:    []string{"docs: documentation"},
+				notContains: []string{"bug:"},
+			},
+			baseWithFile,
+		},
 	}
 
-	// Do NOT set TEST_OPTIONAL_VAR; the default should be used
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+			for key, value := range tc.env {
+				t.Setenv(key, value)
+			}
+			baseDir, path := newBase(t, tc.state, "board", tc.content)
 
-	// Template with optional env
-	template := []byte("path: ${env:TEST_OPTIONAL_VAR:-default_path}\n")
-
-	// Config file with optional env
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: ${env:TEST_OPTIONAL_VAR:-default_path}\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	resolved, err := configengine.Load(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Unmarshal and verify the default was used
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-
-	if result["path"] != "default_path" {
-		t.Errorf("expected path %q (from default), got %q", "default_path", result["path"])
+			resolved, err := configengine.LoadOrTemplate(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.state == baseWithFile {
+				checkLoaded(t, tc.loadCase, resolved, buf, path)
+				want, err := configengine.Load(baseDir, "board", []byte(tc.template), tc.openMaps...)
+				if err != nil {
+					t.Fatalf("unexpected error from Load: %v", err)
+				}
+				if string(resolved) != string(want) {
+					t.Errorf("LoadOrTemplate result = %q; want %q (Load result)", resolved, want)
+				}
+				return
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(string(resolved), want) {
+					t.Errorf("resolved = %q; want it to contain %q", resolved, want)
+				}
+			}
+		})
 	}
 }
 
-// TestLoad_ExtraKeyTolerated tests that extra keys in the file are tolerated (no error).
-func TestLoad_ExtraKeyTolerated(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Template with one key
-	template := []byte("path: _board\n")
-
-	// Config file with extra key
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: custom_path\nextra_key: extra_value\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	resolved, err := configengine.Load(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should succeed without error
-	if resolved == nil {
-		t.Fatalf("expected resolved bytes, got nil")
-	}
-}
-
-// TestLoad_NotInitialized tests that _lyx/ absent returns the not-initialized error.
-func TestLoad_NotInitialized(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
-
-	template := []byte("path: _board\n")
-
-	_, err := configengine.Load(tmpDir, "board", template)
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil")
-	}
-
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
-	}
-}
-
-// TestLoad_NestedKeyTemplate tests that nested keys round-trip correctly.
-func TestLoad_NestedKeyTemplate(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	// Template with nested structure
-	template := []byte("server:\n  host: localhost\n  port: '8080'\n")
-
-	// Config file with nested values
-	yamlFile := configengine.ConfigFile(tmpDir, "test")
-	if err := os.WriteFile(yamlFile, []byte("server:\n  host: example.com\n  port: '9090'\n"), 0644); err != nil {
-		t.Fatalf("failed to write test.yaml: %v", err)
-	}
-
-	resolved, err := configengine.Load(tmpDir, "test", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Unmarshal nested config
-	var result map[string]interface{}
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-
-	server, ok := result["server"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected server key to be a map, got %T", result["server"])
-	}
-
-	if server["host"] != "example.com" {
-		t.Errorf("expected server.host %q, got %q", "example.com", server["host"])
-	}
-	if server["port"] != "9090" {
-		t.Errorf("expected server.port %q, got %q", "9090", server["port"])
-	}
-}
-
-// TestFindBaseDir_Present tests that FindBaseDir returns the cwd when _lyx/ exists.
-func TestFindBaseDir_Present(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create _lyx/ directory
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-
-	result, err := configengine.FindBaseDir(tmpDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if result != tmpDir {
-		t.Errorf("expected %q, got %q", tmpDir, result)
-	}
-}
-
-// TestFindBaseDir_Absent tests that FindBaseDir returns an error when _lyx/ does not exist.
-func TestFindBaseDir_Absent(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	result, err := configengine.FindBaseDir(tmpDir)
-	if err == nil {
-		t.Fatalf("expected error, got nil; result: %v", result)
-	}
-
-	if result != "" {
-		t.Errorf("expected empty string, got %q", result)
-	}
-
-	if !strings.Contains(err.Error(), "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
-	}
-}
-
-// TestFindBaseDir_Absent_SatisfiesErrNotInitialized tests that an absent _lyx/ directory's error
-// satisfies errors.Is(err, configengine.ErrNotInitialized) -- the sentinel is wrapped, not returned
-// bare -- while the rendered message still contains "not initialized", since four strict callers
-// outside this task depend on that text.
-func TestFindBaseDir_Absent_SatisfiesErrNotInitialized(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
-
-	_, err := configengine.FindBaseDir(tmpDir)
-	if err == nil {
-		t.Fatalf("expected error for absent _lyx/, got nil")
-	}
-
-	if !errors.Is(err, configengine.ErrNotInitialized) {
-		t.Errorf("expected errors.Is(err, ErrNotInitialized) to hold, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
-	}
-}
-
-// TestErrNotInitialized_NotMatchedByUnrelatedError tests that a hand-constructed, unrelated error
-// does not satisfy errors.Is(err, configengine.ErrNotInitialized).
-func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
-	unrelated := errors.New("not initialized")
-
-	if errors.Is(unrelated, configengine.ErrNotInitialized) {
-		t.Errorf("expected a hand-constructed error with the same text to NOT satisfy errors.Is against the sentinel")
-	}
-}
-
-// TestLoadOrTemplate_AbsentLyxDir tests that an absent _lyx/ directory resolves the caller-supplied
-// template instead of erroring.
-func TestLoadOrTemplate_AbsentLyxDir(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
-
-	template := []byte("path: _board\nhome: Home.md\n")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "_board" {
-		t.Errorf("expected path %q, got %q", "_board", result["path"])
-	}
-	if result["home"] != "Home.md" {
-		t.Errorf("expected home %q, got %q", "Home.md", result["home"])
-	}
-}
-
-// TestLoadOrTemplate_AbsentConfigFile tests that _lyx/ present but the module's config file absent
-// resolves the caller-supplied template instead of erroring.
-func TestLoadOrTemplate_AbsentConfigFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-	// Do NOT write board.yaml
-
-	template := []byte("path: _board\n")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "_board" {
-		t.Errorf("expected path %q, got %q", "_board", result["path"])
-	}
-}
-
-// TestLoadOrTemplate_BothPresent_MatchesLoad tests that _lyx/ and the config file both present
-// returns a result identical to configengine.Load on the same inputs, proving the fallback never
-// shadows a real file.
-func TestLoadOrTemplate_BothPresent_MatchesLoad(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(tmpDir)
-	if err := os.Mkdir(configDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx/config: %v", err)
-	}
-
-	template := []byte("path: _board\nhome: Home.md\n")
-	yamlFile := configengine.ConfigFile(tmpDir, "board")
-	if err := os.WriteFile(yamlFile, []byte("path: custom_path\nhome: Index.md\n"), 0644); err != nil {
-		t.Fatalf("failed to write board.yaml: %v", err)
-	}
-
-	wantResolved, wantErr := configengine.Load(tmpDir, "board", template)
-	if wantErr != nil {
-		t.Fatalf("unexpected error from Load: %v", wantErr)
-	}
-
-	gotResolved, gotErr := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if gotErr != nil {
-		t.Fatalf("unexpected error from LoadOrTemplate: %v", gotErr)
-	}
-
-	if string(gotResolved) != string(wantResolved) {
-		t.Errorf("LoadOrTemplate result = %q; want %q (Load result)", gotResolved, wantResolved)
-	}
-}
-
-// TestLoadOrTemplate_PresentMissingKey tests that a config file present but missing a template key loads that key at its template default, leaves the file byte-identical and logs one fill line.
-func TestLoadOrTemplate_PresentMissingKey(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	content := "path: custom_path\n"
-	tmpDir, yamlFile := writeConfig(t, "board", content)
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\nhome: Home.md\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "custom_path" || result["home"] != "Home.md" {
-		t.Errorf("resolved = %v; want path custom_path and home at its template default", result)
-	}
-	assertFileUnchanged(t, yamlFile, content)
-	assertOneFillLine(t, buf, "board", "home")
-}
-
-// TestLoadOrTemplate_PresentEmpty tests that a present but empty config file loads as the template, is left untouched and logs one fill line.
-func TestLoadOrTemplate_PresentEmpty(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	tmpDir, yamlFile := writeConfig(t, "board", "")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "_board" {
-		t.Errorf("expected path %q (template default), got %q", "_board", result["path"])
-	}
-	assertFileUnchanged(t, yamlFile, "")
-	assertOneFillLine(t, buf, "board", "path")
-}
-
-// TestLoadOrTemplate_PresentCommentsOnly tests that a present comments-only config file loads as the template, is left untouched and logs one fill line.
-func TestLoadOrTemplate_PresentCommentsOnly(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	content := "# just a comment\n"
-	tmpDir, yamlFile := writeConfig(t, "board", content)
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "_board" {
-		t.Errorf("expected path %q (template default), got %q", "_board", result["path"])
-	}
-	assertFileUnchanged(t, yamlFile, content)
-	assertOneFillLine(t, buf, "board", "path")
-}
-
-// TestLoadOrTemplate_EnvOverride tests that the fallback path honours an env override: a variable
-// referenced by an ${env:NAME:-default} marker in the template, set via t.Setenv, lands in the
-// returned bytes with no _lyx/ anywhere on disk.
-func TestLoadOrTemplate_EnvOverride(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
-
-	t.Setenv("TEST_FALLBACK_VAR", "overridden_value")
-
-	template := []byte("path: ${env:TEST_FALLBACK_VAR:-default_path}\n")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result map[string]string
-	if err := yaml.Unmarshal(resolved, &result); err != nil {
-		t.Fatalf("failed to unmarshal resolved config: %v", err)
-	}
-	if result["path"] != "overridden_value" {
-		t.Errorf("expected path %q (from env override), got %q", "overridden_value", result["path"])
-	}
-}
-
-// TestLoadOrTemplate_AbsentBaseDirAndEnv tests that the fallback path with an absent .env and an
-// absent baseDir returns no error.
-func TestLoadOrTemplate_AbsentBaseDirAndEnv(t *testing.T) {
-	// baseDir itself does not exist on disk -- not even as an empty directory -- so _lyx/ and
-	// .env are both provably absent.
-	baseDir := filepath.Join(t.TempDir(), "does-not-exist")
-
-	template := []byte("path: _board\n")
-
-	resolved, err := configengine.LoadOrTemplate(baseDir, "board", template)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resolved == nil {
-		t.Fatalf("expected resolved bytes, got nil")
-	}
-}
-
-// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate exercises the fallback tail's own error
-// wrap: with no _lyx/ on disk, a synthetic template containing a required ${env:NAME} marker whose
-// variable is unset must return a non-nil error whose message contains "config template:" and the
-// module name, and must NOT contain "config file" -- pinning the "%s config template: %w" wrap keyed
-// on module and pinning that a fallback-path error never names a config-file path that does not
+// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error
+// wrap: with no _lyx/ on disk, a template whose required ${env:NAME} marker has no variable returns
+// an error naming "config template:" and the module, and never a config-file path that does not
 // exist.
 func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
+	t.Parallel()
+	baseDir := t.TempDir()
 
-	template := []byte("path: ${env:TEST_UNSET_REQUIRED_VAR}\n")
-
-	_, err := configengine.LoadOrTemplate(tmpDir, "board", template)
+	_, err := configengine.LoadOrTemplate(baseDir, "board", []byte("path: ${env:TEST_UNSET_REQUIRED_VAR}\n"))
 	if err == nil {
 		t.Fatalf("expected error for unset required env var, got nil")
 	}
@@ -812,7 +453,10 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 // TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lyx/
 // that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to
 // the template.
+//
+//testtiming:keep pins that an _lyx/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
 func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based permission denial is not meaningful on Windows")
 	}
@@ -820,25 +464,18 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 		t.Skip("root ignores directory mode bits")
 	}
 
-	tmpDir := t.TempDir()
+	tmpDir, _ := newBase(t, baseLyx, "board", "")
 	t.Cleanup(func() {
 		if err := os.Chmod(tmpDir, 0755); err != nil {
 			t.Errorf("failed to restore tmpDir mode: %v", err)
 		}
 	})
 
-	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
-	if err := os.Mkdir(lyxDir, 0755); err != nil {
-		t.Fatalf("failed to create _lyx: %v", err)
-	}
-
 	if err := os.Chmod(tmpDir, 0o000); err != nil {
 		t.Fatalf("failed to chmod tmpDir: %v", err)
 	}
 
-	template := []byte("path: _board\n")
-
-	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", template)
+	resolved, err := configengine.LoadOrTemplate(tmpDir, "board", []byte("path: _board\n"))
 	if err == nil {
 		t.Fatalf("expected error for unstattable _lyx/, got nil")
 	}
@@ -850,86 +487,95 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 	}
 }
 
-// TestConfigDir verifies that ConfigDir joins baseDir with LyxDirName and the "config" subdirectory
-// — moved here from lyxcwd's own unit test now that configengine is the single declarer of the
-// "_lyx/config" path shape.
-func TestConfigDir(t *testing.T) {
+// TestFindBaseDir pins that a base directory holding _lyx/ is returned as is, and that one without
+// it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is
+// wrapped, not returned bare -- while its text still says "not initialized", since strict callers
+// match on that text.
+//
+//testtiming:keep pins FindBaseDir's own return value and its wrapped sentinel, which the covering Edit rows only match as text
+func TestFindBaseDir(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name  string
+		state baseState
+		want  bool
+	}{
+		{"_lyx present", baseLyx, true},
+		{"_lyx absent", baseNone, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir, _ := newBase(t, tt.state, "board", "")
 
-	baseDir := "/home/user/project"
-	got := configengine.ConfigDir(baseDir)
-	want := filepath.Join(baseDir, lyxdirs.LyxDirName, "config")
-
-	if got != want {
-		t.Errorf("ConfigDir(%q) = %q; want %q", baseDir, got, want)
+			got, err := configengine.FindBaseDir(baseDir)
+			if tt.want {
+				if err != nil || got != baseDir {
+					t.Errorf("FindBaseDir() = (%q, %v); want (%q, nil)", got, err, baseDir)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error, got nil; result: %v", got)
+			}
+			if got != "" {
+				t.Errorf("expected empty string, got %q", got)
+			}
+			if !errors.Is(err, configengine.ErrNotInitialized) {
+				t.Errorf("expected errors.Is(err, ErrNotInitialized) to hold, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), "not initialized") {
+				t.Errorf("expected error containing 'not initialized', got: %v", err)
+			}
+		})
 	}
 }
 
-// TestConfigFile verifies that ConfigFile joins ConfigDir with the module's ".yaml" filename —
-// moved here from lyxcwd's own unit test alongside TestConfigDir.
-func TestConfigFile(t *testing.T) {
+// TestErrNotInitialized_NotMatchedByUnrelatedError tests that a hand-constructed, unrelated error
+// does not satisfy errors.Is(err, configengine.ErrNotInitialized).
+//
+//testtiming:keep pins that the sentinel matches by identity and not by message text, which no covering test asserts
+func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
 	t.Parallel()
+	unrelated := errors.New("not initialized")
 
-	baseDir := "/home/user/project"
-	module := "myapp"
-	got := configengine.ConfigFile(baseDir, module)
-	want := filepath.Join(baseDir, lyxdirs.LyxDirName, "config", "myapp.yaml")
-
-	if got != want {
-		t.Errorf("ConfigFile(%q, %q) = %q; want %q", baseDir, module, got, want)
+	if errors.Is(unrelated, configengine.ErrNotInitialized) {
+		t.Errorf("expected a hand-constructed error with the same text to NOT satisfy errors.Is against the sentinel")
 	}
 }
 
-// TestStagingFile verifies that StagingFile lies under the base's .lyx dir and differs from
-// ConfigFile only in that segment.
-func TestStagingFile(t *testing.T) {
+// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and
+// ConfigFile live under LyxDirName, StagingFile lives under the .lyx counterpart, ConfigFileRel is
+// relative and in lockstep with ConfigFile, and LyxDirName is "_lyx" -- the token internal/lyxdirs
+// is the sole declarer of.
+func TestConfigPaths(t *testing.T) {
 	t.Parallel()
 
 	base := "/home/user/project"
-	got := configengine.StagingFile(base, "board")
-	want := filepath.Join(base, lyxdirs.DotLyxDirName, "config", "board.yaml")
-
-	if got != want {
-		t.Errorf("StagingFile(%q, %q) = %q; want %q", base, "board", got, want)
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"ConfigDir", configengine.ConfigDir(base), filepath.Join(base, lyxdirs.LyxDirName, "config")},
+		{"ConfigFile", configengine.ConfigFile(base, "myapp"), filepath.Join(base, lyxdirs.LyxDirName, "config", "myapp.yaml")},
+		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lyxdirs.DotLyxDirName, "config", "board.yaml")},
+		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lyxdirs.LyxDirName, "config", "loom.yaml")},
+		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lyxdirs.LyxDirName, "config", "board.yaml")},
+		{"ConfigFile is ConfigFileRel under the base", configengine.ConfigFile(base, "myapp"), filepath.Join(base, configengine.ConfigFileRel("myapp"))},
 	}
-	if got == configengine.ConfigFile(base, "board") {
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %q; want %q", tt.name, tt.got, tt.want)
+		}
+	}
+
+	if got := configengine.StagingFile(base, "board"); got == configengine.ConfigFile(base, "board") {
 		t.Errorf("StagingFile equals ConfigFile %q; want the .lyx counterpart", got)
 	}
-}
-
-// TestConfigFileRel verifies that ConfigFileRel joins LyxDirName, "config", and the module's
-// ".yaml" filename into an anchor-relative path, that the result is never absolute, and that it
-// stays in lockstep with ConfigFile so the two accessors can never drift apart.
-func TestConfigFileRel(t *testing.T) {
-	t.Parallel()
-
-	for _, module := range []string{"loom", "board"} {
-		got := configengine.ConfigFileRel(module)
-		want := filepath.Join(lyxdirs.LyxDirName, "config", module+".yaml")
-
-		if got != want {
-			t.Errorf("ConfigFileRel(%q) = %q; want %q", module, got, want)
-		}
-		if filepath.IsAbs(got) {
-			t.Errorf("ConfigFileRel(%q) = %q; want a relative path", module, got)
-		}
+	if got := configengine.ConfigFileRel("loom"); filepath.IsAbs(got) {
+		t.Errorf("ConfigFileRel(%q) = %q; want a relative path", "loom", got)
 	}
-
-	base := "/home/user/project"
-	module := "myapp"
-	got := configengine.ConfigFile(base, module)
-	want := filepath.Join(base, configengine.ConfigFileRel(module))
-	if got != want {
-		t.Errorf("ConfigFile(%q, %q) = %q; want filepath.Join(base, ConfigFileRel(module)) = %q", base, module, got, want)
-	}
-}
-
-// TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value — moved
-// here from lyxcwd's own unit test now that internal/lyxdirs is the sole declarer of the "_lyx"
-// token, per the Lyxdirs Single-Declarer Invariant.
-func TestLyxDirNameConstant(t *testing.T) {
-	t.Parallel()
-
 	if lyxdirs.LyxDirName != "_lyx" {
 		t.Errorf("LyxDirName = %q; want %q", lyxdirs.LyxDirName, "_lyx")
 	}
