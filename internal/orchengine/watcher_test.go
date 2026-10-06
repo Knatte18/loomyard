@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 type fakeClock struct{ now time.Time }
@@ -905,8 +906,8 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	}
 }
 
+// TestWatcher_SkillSkipCauses does not call t.Parallel: it asserts on the logger output, which is process-global.
 func TestWatcher_SkillSkipCauses(t *testing.T) {
-	t.Parallel()
 	verified := func(unknown, missing []string) shuttleengine.SkillLoadReport {
 		return shuttleengine.SkillLoadReport{Verified: true, Unknown: unknown, Missing: missing}
 	}
@@ -916,12 +917,16 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 		timeout   bool     // the skills turn never ends, so its timeout passes
 		endTurns  []string // turn ends read before the pointer's
 		wantSkill []string // the skills calls after the clear
+		wantSkips int      // the skill skipped warnings
+		wantLogs  []string // fragments the log must hold
 	}{
 		{
 			name:      "unknown skill is skipped with no retry",
 			loads:     map[string]shuttleengine.SkillLoadReport{"t1": verified([]string{"scribe:prose"}, nil)},
 			endTurns:  []string{"t1"},
 			wantSkill: []string{reloadSkillsCall},
+			wantSkips: 1,
+			wantLogs:  []string{"skill=scribe:prose", "cause=unknown"},
 		},
 		{
 			name:      "missing skill is retried once, naming only it",
@@ -937,22 +942,27 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			},
 			endTurns:  []string{"t1", "t2"},
 			wantSkill: []string{reloadSkillsCall, "skills:ly:board"},
+			wantSkips: 1,
+			wantLogs:  []string{"skill=ly:board", "cause=\"not loaded\""},
 		},
 		{
 			name:      "unverified turn goes straight to the pointer",
 			loads:     map[string]shuttleengine.SkillLoadReport{"t1": {}},
 			endTurns:  []string{"t1"},
 			wantSkill: []string{reloadSkillsCall},
+			wantLogs:  []string{"skill load unverified"},
 		},
 		{
 			name:      "silent skills turn is skipped at the timeout with no retry",
 			timeout:   true,
 			wantSkill: []string{reloadSkillsCall},
+			wantSkips: len(reloadSkills),
+			wantLogs:  []string{"cause=timeout"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			buf := logcapture.Capture(t)
 			e := newWatchEnv(t)
 			e.withSkills()
 			e.s.skillLoads = tt.loads
@@ -983,6 +993,14 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			}
 			if st := e.state(); st.Phase != PhaseIdle {
 				t.Errorf("phase = %s, want idle", st.Phase)
+			}
+			if got := strings.Count(buf.String(), "skill skipped"); got != tt.wantSkips {
+				t.Errorf("skill skipped warnings = %d, want %d; log:\n%s", got, tt.wantSkips, buf.String())
+			}
+			for _, want := range tt.wantLogs {
+				if !strings.Contains(buf.String(), want) {
+					t.Errorf("log lacks %q; log:\n%s", want, buf.String())
+				}
 			}
 		})
 	}
