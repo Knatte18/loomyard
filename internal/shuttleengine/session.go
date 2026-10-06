@@ -24,28 +24,9 @@ func (r *Runner) sessionCycler() (SessionCycler, error) {
 func (r *Runner) skillLoader() (SkillLoader, error) {
 	loader, ok := r.engine.(SkillLoader)
 	if !ok {
-		return nil, fmt.Errorf("shuttle: the engine does not implement the SkillLoader capability (SkillLoadMessage, ClassifySkillLoad, SkillLoadSequence, SkillUnknown, DefaultSkillLoadTimeout), so it cannot load a skill")
+		return nil, fmt.Errorf("shuttle: the engine does not implement the SkillLoader capability (SkillLoadMessage, ClassifySkillLoad, DefaultSkillLoadTimeout), so it cannot load a skill")
 	}
 	return loader, nil
-}
-
-// LoadSkill plays the provider's load choreography for skill into the live pane of the run identified by guid.
-// Like ClearSession it has no idle precondition of its own, since the caller has already probed idleness.
-func (r *Runner) LoadSkill(guid, skill string) error {
-	if r.toldErr != nil {
-		return r.toldErr
-	}
-	loader, err := r.skillLoader()
-	if err != nil {
-		return err
-	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return playInputs(r.reed, guid, loader.SkillLoadSequence(skill))
 }
 
 // LoadSkills types the provider's one-turn load message for skills into the live pane of the run identified by guid, through the verified send path.
@@ -77,28 +58,6 @@ func (r *Runner) ClassifySkillLoad(turnEnd Event, skills []string) (SkillLoadRep
 		return SkillLoadReport{}, err
 	}
 	return loader.ClassifySkillLoad(turnEnd, skills), nil
-}
-
-// SkillUnknown captures the pane of the run identified by guid and reports whether the provider shows skill as unknown.
-func (r *Runner) SkillUnknown(guid, skill string) (bool, error) {
-	if r.toldErr != nil {
-		return false, r.toldErr
-	}
-	loader, err := r.skillLoader()
-	if err != nil {
-		return false, err
-	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
-		return false, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
-	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return false, err
-	}
-	capture, err := r.reed.CapturePane(guid)
-	if err != nil {
-		return false, fmt.Errorf("shuttle: capture strand %q's pane to check skill %q: %w", guid, skill, err)
-	}
-	return loader.SkillUnknown(capture, skill), nil
 }
 
 // ReadEvents returns the events of the run identified by guid that lie past byte offset, and the offset to resume from.

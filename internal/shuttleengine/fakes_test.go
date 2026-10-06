@@ -395,7 +395,6 @@ func readyStart(reed *fakeReed, engine *fakeEngine) {
 
 // skillFakeEngine is fakeEngine plus the opt-in SkillLoader capability.
 // SkillLoadMessage types "LOAD:<a,b>" for a list, and ClassifySkillLoad answers each load turn's report from Reports in order, the last sticking once drained.
-// SkillLoadSequence types "LOAD:<skill>" and SkillUnknown matches a capture containing "NOSKILL <skill>", so a test scripts both through the reed double's pane.
 type skillFakeEngine struct {
 	*fakeEngine
 
@@ -419,14 +418,6 @@ func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport
 	report := e.Reports[min(e.classified, len(e.Reports)-1)]
 	e.classified++
 	return report
-}
-
-func (e *skillFakeEngine) SkillLoadSequence(skill string) []PaneInput {
-	return []PaneInput{{Text: "LOAD:" + skill, Submit: true}}
-}
-
-func (e *skillFakeEngine) SkillUnknown(capture, skill string) bool {
-	return strings.Contains(capture, "NOSKILL "+skill)
 }
 
 func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Timeout }

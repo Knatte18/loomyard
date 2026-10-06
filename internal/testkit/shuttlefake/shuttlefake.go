@@ -49,8 +49,6 @@ type Engine struct {
 	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
 	SkillLoadMessageFn      func(skills []string) string
 	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
-	SkillLoadSequenceFn     func(skill string) []shuttleengine.PaneInput
-	SkillUnknownFn          func(capture, skill string) bool
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
 	AuditForksIncrementalFn func(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error)
 }
@@ -136,22 +134,6 @@ func (e *Engine) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string)
 		return e.ClassifySkillLoadFn(turnEnd, skills)
 	}
 	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}
-}
-
-// SkillLoadSequence answers SkillLoadSequenceFn, else no inputs.
-func (e *Engine) SkillLoadSequence(skill string) []shuttleengine.PaneInput {
-	if e.SkillLoadSequenceFn != nil {
-		return e.SkillLoadSequenceFn(skill)
-	}
-	return nil
-}
-
-// SkillUnknown answers SkillUnknownFn, else false.
-func (e *Engine) SkillUnknown(capture, skill string) bool {
-	if e.SkillUnknownFn != nil {
-		return e.SkillUnknownFn(capture, skill)
-	}
-	return false
 }
 
 // DefaultSkillLoadTimeout answers a bound of one second.

@@ -50,15 +50,13 @@
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
 //
-// Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading as a typed `/<skill>` line, in session.go.
+// Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
-// An unknown-command notice naming the skill marks it unknown; a provider that treats the line as a plain prompt ends a turn, which confirms the load, and one that shows nothing is skipped at the skill-load timeout.
 //
-// The engine also realizes a whole skill list as one typed message with no leading slash, SkillLoadMessage, that asks the model to load each skill through the Skill tool in one turn, in list order.
+// The engine realizes a whole skill list as one typed message with no leading slash, SkillLoadMessage, that asks the model to load each skill through the Skill tool in one turn, in list order.
 // ClassifySkillLoad checks that turn from the transcript a Stop payload names, read backwards from its end:
 // the latest main-chain user entry equal to the message starts the turn, and a skill is loaded when its Skill call is answered by a successful result, unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
-// The per-skill `/<skill>` path above remains until the one-message load replaces it.
 //
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
