@@ -100,6 +100,8 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 
 // TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default the automatic and manual filing paths share, and that each call returns its own slice, so mutating one call's result cannot corrupt the default seen by the next caller.
 func TestDefaultLabels(t *testing.T) {
+	t.Parallel()
+
 	first := DefaultLabels()
 	second := DefaultLabels()
 
