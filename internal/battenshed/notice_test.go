@@ -84,6 +84,8 @@ func (h *noticeHarness) call(p shedengine.ShedProducer) {
 }
 
 func TestRenderNotice(t *testing.T) {
+	t.Parallel()
+
 	status := shedengine.Status{State: shedengine.StateFailed, Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300)}
 	line := renderNotice("task", "child left running", status, "/wt/task")
 
