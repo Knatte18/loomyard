@@ -57,16 +57,16 @@ func (s runnerSession) ClearSession(guid string) error {
 	return s.runner.ClearSession(guid)
 }
 
-// LoadSkill delegates to Runner.LoadSkill, which types the skill's slash command into the pane through tmux.
-func (s runnerSession) LoadSkill(guid, skill string) error {
-	logger.Debug("orch: load skill", "strandGUID", guid, "skill", skill)
-	return s.runner.LoadSkill(guid, skill)
+// LoadSkills delegates to Runner.LoadSkills,
+// which types the one-turn load message into the pane through tmux.
+func (s runnerSession) LoadSkills(guid string, skills []string) error {
+	logger.Debug("orch: load skills", "strandGUID", guid, "skills", skills)
+	return s.runner.LoadSkills(guid, skills)
 }
 
-// SkillUnknown delegates to Runner.SkillUnknown, which captures the pane through tmux.
-func (s runnerSession) SkillUnknown(guid, skill string) (bool, error) {
-	logger.Debug("orch: skill unknown probe", "strandGUID", guid, "skill", skill)
-	return s.runner.SkillUnknown(guid, skill)
+// ClassifySkillLoad delegates to Runner.ClassifySkillLoad.
+func (s runnerSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error) {
+	return s.runner.ClassifySkillLoad(turnEnd, skills)
 }
 
 // CompactedSince delegates to Runner.CompactedSince.

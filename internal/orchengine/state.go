@@ -87,11 +87,21 @@ type State struct {
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
-	// ReloadStep is the resuming phase's current step: an index into the skill list, or the skill count for the pointer step.
+	// ReloadStep is the resuming phase's current step: ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
 	// ReloadTypedAt is when the current step was first typed; zero while it has not been.
 	ReloadTypedAt time.Time `json:"reload_typed_at"`
+	// ReloadRetry is the skills the retry step still loads; empty outside it.
+	ReloadRetry []string `json:"reload_retry"`
 }
+
+// The resuming phase's steps, persisted in State.ReloadStep.
+// Any other persisted value, including a per-skill index written before the one-turn load, is read as the pointer step.
+const (
+	ReloadStepSkills  = 0
+	ReloadStepRetry   = -1
+	ReloadStepPointer = 1
+)
 
 // LoadState reads the persisted state, returning a zero State in phase idle when the file is absent.
 func LoadState(p Paths) (State, error) {
@@ -209,7 +219,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.CompactionBaseline = launchedAt
-	s.ReloadStep, s.ReloadTypedAt = 0, time.Time{}
+	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry = ReloadStepSkills, time.Time{}, nil
 	s.LastContextTokens, s.LastContextKnown = 0, false
 	s.ReadingTurnEnd = nil
 	if s.Phase != "" && s.Phase != PhaseIdle {
