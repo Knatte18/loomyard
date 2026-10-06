@@ -16,8 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-func TestStatuslineCmd_UseAndShort(t *testing.T) {
-	c := &reedCLI{}
+// TestStatuslineCmd builds a reedCLI whose Engine is real enough to run statuslineCmd's RunE:
+// StatusLineText dereferences e.cfg unconditionally, so a bare &reedCLI{} would panic here. An empty
+// Config.StatusLine.Template falls back to the embedded default template, and RepoName/HubPath are
+// the only two Geometry fields tokenvocab.Ctx consumes, so this renders cleanly with no filesystem
+// or process I/O.
+func TestStatuslineCmd(t *testing.T) {
+	t.Parallel()
+	c := &reedCLI{eng: reedengine.New(reedengine.Config{}, reedengine.Geometry{RepoName: "test-repo", WorktreeName: "test-worktree", HubPath: t.TempDir()})}
 	cmd := c.statuslineCmd()
 
 	if cmd.Use != "statusline" {
@@ -26,25 +32,10 @@ func TestStatuslineCmd_UseAndShort(t *testing.T) {
 	if cmd.Short == "" {
 		t.Error("statuslineCmd().Short is empty; want a non-empty short description")
 	}
-}
 
-// newStatuslineTestCLI builds a reedCLI whose Engine is real enough to run statuslineCmd's RunE:
-// StatusLineText dereferences e.cfg unconditionally, so the bare &reedCLI{} shape
-// TestStatuslineCmd_UseAndShort uses would panic here. An empty Config.StatusLine.Template falls
-// back to the embedded default template, and RepoName/HubPath are the only two Geometry fields
-// tokenvocab.Ctx consumes, so this renders cleanly with no filesystem or process I/O.
-func newStatuslineTestCLI(t *testing.T) *reedCLI {
-	t.Helper()
-	return &reedCLI{eng: reedengine.New(reedengine.Config{}, reedengine.Geometry{RepoName: "test-repo", WorktreeName: "test-worktree", HubPath: t.TempDir()})}
-}
-
-func TestStatuslineCmd_ReturnsRenderedTextOnEnvelope(t *testing.T) {
-	c := newStatuslineTestCLI(t)
-	cmd := c.statuslineCmd()
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{})
-
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("cmd.Execute() = %v; want nil", err)
 	}

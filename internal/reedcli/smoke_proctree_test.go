@@ -81,6 +81,22 @@ func linuxProcArgv(pid int) ([]string, bool) {
 	return strings.Split(trimmed, "\x00"), true
 }
 
+// linuxIsWatchdogDaemon reports whether pid is a `lyx reed watchdog` daemon, the one process an attach
+// leaves running past its harness server: it detaches into its own session and idles out on its own
+// production schedule.
+func linuxIsWatchdogDaemon(pid int) bool {
+	argv, ok := linuxProcArgv(pid)
+	if !ok {
+		return false
+	}
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "reed" && argv[i+1] == "watchdog" {
+			return true
+		}
+	}
+	return false
+}
+
 // linuxProcCwd reads pid's current working directory via the /proc/<pid>/cwd
 // symlink — trivially available on Linux, unlike Windows where reaching a
 // live process's cwd needs a PEB read via P/Invoke (see hubHolders' Windows

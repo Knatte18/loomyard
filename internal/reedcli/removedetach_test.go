@@ -53,98 +53,110 @@ func newFakeCLI(t *testing.T, f *fakeStrandOps) (*reedCLI, *[]string) {
 	return c, calls
 }
 
-func TestRemoveDetach_MarksRetiringBeforeSpawning(t *testing.T) {
-	c, calls := newFakeCLI(t, &fakeStrandOps{})
-	cmd := c.removeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--name", "driver", "--detach"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
+func TestRemoveDetach(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// spawnErr is what the detached spawn returns; nil means it succeeds.
+		spawnErr  error
+		markErrs  map[bool]error
+		wantCalls []string
+		// wantErr is empty for an ok envelope, otherwise the envelope's error must contain it.
+		wantErr string
+		// wantErrAlso must also appear in the envelope's error.
+		wantErrAlso string
+	}{
+		{
+			name:      "MarksRetiringBeforeSpawning",
+			wantCalls: []string{"resolve driver", "mark guid-driver true", "spawn guid-driver"},
+		},
+		{
+			name:      "FailedSpawnClearsTheMark",
+			spawnErr:  errors.New("no exec"),
+			wantCalls: []string{"resolve driver", "mark guid-driver true", "spawn guid-driver", "mark guid-driver false"},
+			wantErr:   "no exec",
+		},
+		{
+			name:        "FailedClearIsNamedInTheError",
+			spawnErr:    errors.New("no exec"),
+			markErrs:    map[bool]error{false: errors.New("state locked")},
+			wantCalls:   []string{"resolve driver", "mark guid-driver true", "spawn guid-driver", "mark guid-driver false"},
+			wantErr:     "no exec",
+			wantErrAlso: "state locked",
+		},
 	}
-	envelope.RequireOK(t, out.String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c, calls := newFakeCLI(t, &fakeStrandOps{markErrs: tt.markErrs})
+			c.spawnRemove = func(guid string, recursive bool) error {
+				*calls = append(*calls, "spawn "+guid)
+				return tt.spawnErr
+			}
+			cmd := c.removeCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs([]string{"--name", "driver", "--detach"})
 
-	want := []string{"resolve driver", "mark guid-driver true", "spawn guid-driver"}
-	if got := strings.Join(*calls, "|"); got != strings.Join(want, "|") {
-		t.Fatalf("calls = %v; want %v", *calls, want)
-	}
-}
-
-func TestRemoveDetach_FailedSpawnClearsTheMark(t *testing.T) {
-	c, calls := newFakeCLI(t, &fakeStrandOps{})
-	c.spawnRemove = func(guid string, recursive bool) error {
-		*calls = append(*calls, "spawn "+guid)
-		return errors.New("no exec")
-	}
-	cmd := c.removeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--name", "driver", "--detach"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	envelope.RequireErr(t, out.String(), "no exec")
-
-	want := []string{"resolve driver", "mark guid-driver true", "spawn guid-driver", "mark guid-driver false"}
-	if got := strings.Join(*calls, "|"); got != strings.Join(want, "|") {
-		t.Fatalf("calls = %v; want %v", *calls, want)
-	}
-}
-
-func TestRemoveDetach_FailedClearIsNamedInTheError(t *testing.T) {
-	c, _ := newFakeCLI(t, &fakeStrandOps{markErrs: map[bool]error{false: errors.New("state locked")}})
-	c.spawnRemove = func(string, bool) error { return errors.New("no exec") }
-	cmd := c.removeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"--name", "driver", "--detach"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	env := envelope.RequireErr(t, out.String(), "no exec")
-	if !strings.Contains(env.Error, "state locked") {
-		t.Fatalf("error = %q; want it to name the failed clear", env.Error)
-	}
-}
-
-func TestRemoveWaitPID_UnknownGUIDIsACleanNoOp(t *testing.T) {
-	old := pidAlive
-	t.Cleanup(func() { pidAlive = old })
-	pidAlive = func(int) bool { return false }
-
-	c, _ := newFakeCLI(t, &fakeStrandOps{removeErr: fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, "gone")})
-	cmd := c.removeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"gone", "--wait-pid", "4242"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	env := envelope.RequireOK(t, out.String())
-	removed, ok := env.Raw["removed"].([]any)
-	if !ok || len(removed) != 0 {
-		t.Fatalf("removed = %#v; want an empty list", env.Raw["removed"])
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if tt.wantErr == "" {
+				envelope.RequireOK(t, out.String())
+			} else {
+				env := envelope.RequireErr(t, out.String(), tt.wantErr)
+				if !strings.Contains(env.Error, tt.wantErrAlso) {
+					t.Fatalf("error = %q; want it to contain %q", env.Error, tt.wantErrAlso)
+				}
+			}
+			if got, want := strings.Join(*calls, "|"), strings.Join(tt.wantCalls, "|"); got != want {
+				t.Fatalf("calls = %v; want %v", *calls, tt.wantCalls)
+			}
+		})
 	}
 }
 
-func TestRemovePositional_UnknownGUIDStillErrors(t *testing.T) {
-	c, _ := newFakeCLI(t, &fakeStrandOps{removeErr: fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, "gone")})
-	cmd := c.removeCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"gone"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
+// TestRemove_UnknownGUID swaps the package-level pidAlive in its --wait-pid row, so it does not call t.Parallel.
+func TestRemove_UnknownGUID(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		// wantRemovedEmpty selects the ok envelope with an empty removed list over an "unknown strand" error.
+		wantRemovedEmpty bool
+	}{
+		{name: "WaitPIDIsACleanNoOp", args: []string{"gone", "--wait-pid", "4242"}, wantRemovedEmpty: true},
+		{name: "PositionalStillErrors", args: []string{"gone"}},
 	}
-	envelope.RequireErr(t, out.String(), "unknown strand")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := pidAlive
+			t.Cleanup(func() { pidAlive = old })
+			pidAlive = func(int) bool { return false }
+
+			c, _ := newFakeCLI(t, &fakeStrandOps{removeErr: fmt.Errorf("%w %q", reedengine.ErrUnknownStrand, "gone")})
+			cmd := c.removeCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs(tt.args)
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if !tt.wantRemovedEmpty {
+				envelope.RequireErr(t, out.String(), "unknown strand")
+				return
+			}
+			env := envelope.RequireOK(t, out.String())
+			removed, ok := env.Raw["removed"].([]any)
+			if !ok || len(removed) != 0 {
+				t.Fatalf("removed = %#v; want an empty list", env.Raw["removed"])
+			}
+		})
+	}
 }
 
 func TestStatus_ReportsRetiringPerStrand(t *testing.T) {
+	t.Parallel()
 	c, _ := newFakeCLI(t, &fakeStrandOps{status: reedengine.StatusResult{
 		Session: "s",
 		Strands: []reedengine.StrandStatus{

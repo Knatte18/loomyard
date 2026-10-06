@@ -15,7 +15,9 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins the appeared and departed sets for the empty, populated, partial-overlap and unchanged listings, which the live daemon scenario reaches for two at most
 func TestPlanSessionDiff(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		live         []string
@@ -64,6 +66,7 @@ func TestPlanSessionDiff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			gotAppeared, gotDeparted := planSessionDiff(tt.live, tt.known)
 			sort.Strings(gotAppeared)
 			sort.Strings(gotDeparted)
@@ -77,7 +80,9 @@ func TestPlanSessionDiff(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the idle rule for all four listing and error combinations, which the live watchdog test reaches for one
 func TestSessionsAreIdle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		names []string
@@ -112,6 +117,7 @@ func TestSessionsAreIdle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := sessionsAreIdle(tt.names, tt.err)
 			if got != tt.want {
 				t.Errorf("sessionsAreIdle(%v, %v) = %v; want %v", tt.names, tt.err, got, tt.want)
@@ -135,6 +141,7 @@ type reapCycle struct {
 }
 
 func TestPlanReapCycle(t *testing.T) {
+	t.Parallel()
 	alpha := []string{"alpha"}
 	alphaGone := map[string]bool{"alpha": true}
 	alphaPresent := map[string]bool{"alpha": false}
@@ -263,6 +270,7 @@ func TestPlanReapCycle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			counters := maps.Clone(tt.counters)
 			if counters == nil {
 				counters = map[string]int{}
@@ -285,114 +293,104 @@ func TestPlanReapCycle(t *testing.T) {
 	}
 }
 
-// worktreeRootGoneFixture builds a t.TempDir()-rooted fixture with a missing path, a plain-file
-// path, and a directory path, for worktreeRootGone/hubIsLiveDir tests.
-func worktreeRootGoneFixture(t *testing.T) (missing, plainFile, dir string) {
-	t.Helper()
-	root := t.TempDir()
-	missing = filepath.Join(root, "missing")
-	plainFile = filepath.Join(root, "plain-file")
-	if err := os.WriteFile(plainFile, []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	dir = filepath.Join(root, "a-directory")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatalf("Mkdir: %v", err)
-	}
-	return missing, plainFile, dir
-}
-
-func TestWorktreeRootGone(t *testing.T) {
-	missing, plainFile, dir := worktreeRootGoneFixture(t)
-
+// TestWorktreeRootGoneAndHubIsLiveDir drives both path predicates over the same path shapes.
+// A missing path and a plain file are gone and not live, a directory is the reverse.
+// The unreadable row pins the one case where treating an unreadable path as gone would destroy live
+// work: a stat that fails with neither a not-exist result nor success (the EACCES shape) must answer
+// false — conservative — from both predicates, and deliberately not each other's negation.
+// That row is skipped on Windows, where directory mode bits do not deny traversal this way, and
+// skipped when the test runs as uid 0, where mode bits are not enforced at all — in both cases the
+// stat would succeed and the assertion would pass for the wrong reason.
+func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
-		path string
-		want bool
+		// path builds the path under test inside the subtest's own temp directory.
+		path     func(t *testing.T, root string) string
+		wantGone bool
+		wantLive bool
 	}{
-		{"missing path is gone", missing, true},
-		{"plain file is gone", plainFile, true},
-		{"directory is not gone", dir, false},
+		{
+			name:     "missing path",
+			path:     func(t *testing.T, root string) string { return filepath.Join(root, "missing") },
+			wantGone: true,
+			wantLive: false,
+		},
+		{
+			name: "plain file",
+			path: func(t *testing.T, root string) string {
+				plainFile := filepath.Join(root, "plain-file")
+				if err := os.WriteFile(plainFile, []byte("x"), 0o644); err != nil {
+					t.Fatalf("WriteFile: %v", err)
+				}
+				return plainFile
+			},
+			wantGone: true,
+			wantLive: false,
+		},
+		{
+			name: "directory",
+			path: func(t *testing.T, root string) string {
+				dir := filepath.Join(root, "a-directory")
+				if err := os.Mkdir(dir, 0o755); err != nil {
+					t.Fatalf("Mkdir: %v", err)
+				}
+				return dir
+			},
+			wantGone: false,
+			wantLive: true,
+		},
+		{
+			name: "stat error that is not not-exist",
+			path: func(t *testing.T, root string) string {
+				if runtime.GOOS == "windows" {
+					t.Skip("directory mode bits do not deny traversal on Windows")
+				}
+				if os.Geteuid() == 0 {
+					t.Skip("mode bits are not enforced for uid 0")
+				}
+				parent := filepath.Join(root, "denied-parent")
+				if err := os.Mkdir(parent, 0o755); err != nil {
+					t.Fatalf("Mkdir: %v", err)
+				}
+				target := filepath.Join(parent, "target")
+				if err := os.Mkdir(target, 0o755); err != nil {
+					t.Fatalf("Mkdir: %v", err)
+				}
+				if err := os.Chmod(parent, 0o000); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+				t.Cleanup(func() {
+					if err := os.Chmod(parent, 0o755); err != nil {
+						t.Errorf("Chmod restore: %v", err)
+					}
+				})
+				if _, err := os.Stat(target); err == nil {
+					t.Skip("stat of target succeeded despite the denied parent mode; cannot exercise the EACCES shape here")
+				}
+				return target
+			},
+			wantGone: false,
+			wantLive: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := worktreeRootGone(tt.path); got != tt.want {
-				t.Errorf("worktreeRootGone(%q) = %v, want %v", tt.path, got, tt.want)
+			t.Parallel()
+			path := tt.path(t, t.TempDir())
+			if got := worktreeRootGone(path); got != tt.wantGone {
+				t.Errorf("worktreeRootGone(%q) = %v, want %v", path, got, tt.wantGone)
+			}
+			if got := hubIsLiveDir(path); got != tt.wantLive {
+				t.Errorf("hubIsLiveDir(%q) = %v, want %v", path, got, tt.wantLive)
 			}
 		})
-	}
-}
-
-func TestHubIsLiveDir(t *testing.T) {
-	missing, plainFile, dir := worktreeRootGoneFixture(t)
-
-	tests := []struct {
-		name string
-		path string
-		want bool
-	}{
-		{"existing directory is live", dir, true},
-		{"missing path is not live", missing, false},
-		{"plain file is not live", plainFile, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := hubIsLiveDir(tt.path); got != tt.want {
-				t.Errorf("hubIsLiveDir(%q) = %v, want %v", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth pins the one case where
-// treating an unreadable path as gone would destroy live work: a stat that fails with neither a
-// not-exist result nor success (the EACCES shape) must answer false — conservative — from both
-// predicates, and deliberately not each other's negation.
-//
-// Skipped on Windows, where directory mode bits do not deny traversal this way, and skipped when the
-// test runs as uid 0, where mode bits are not enforced at all — in both cases the stat would succeed
-// and the assertion would pass for the wrong reason.
-func TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("directory mode bits do not deny traversal on Windows")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("mode bits are not enforced for uid 0")
-	}
-
-	root := t.TempDir()
-	parent := filepath.Join(root, "denied-parent")
-	if err := os.Mkdir(parent, 0o755); err != nil {
-		t.Fatalf("Mkdir: %v", err)
-	}
-	target := filepath.Join(parent, "target")
-	if err := os.Mkdir(target, 0o755); err != nil {
-		t.Fatalf("Mkdir: %v", err)
-	}
-
-	if err := os.Chmod(parent, 0o000); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chmod(parent, 0o755); err != nil {
-			t.Errorf("Chmod restore: %v", err)
-		}
-	})
-
-	if _, err := os.Stat(target); err == nil {
-		t.Skip("stat of target succeeded despite the denied parent mode; cannot exercise the EACCES shape here")
-	}
-
-	if got := worktreeRootGone(target); got {
-		t.Errorf("worktreeRootGone(%q) = true, want false (conservative) for a stat error that is not not-exist", target)
-	}
-	if got := hubIsLiveDir(target); got {
-		t.Errorf("hubIsLiveDir(%q) = true, want false (conservative) for a stat error", target)
 	}
 }
 
 // validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
 func TestValidateWatchdogFlags(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		hubPath  string
@@ -406,6 +404,7 @@ func TestValidateWatchdogFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := validateWatchdogFlags(tt.hubPath, tt.tmuxPath)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -423,7 +422,10 @@ func TestValidateWatchdogFlags(t *testing.T) {
 // watchdogDefaultTiming guards against a test-only default silently becoming production's cadence,
 // mirroring the coverage internal/reedengine/watchloop_test.go already gives its own default-timing
 // constructor.
+//
+//testtiming:keep a guard that fires when watchdogDefaultTiming diverges from the production cadence constants, which no covering test asserts
 func TestWatchdogDefaultTiming(t *testing.T) {
+	t.Parallel()
 	got := watchdogDefaultTiming()
 	want := watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
