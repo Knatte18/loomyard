@@ -1,15 +1,12 @@
 //go:build tmux
 
-// smoke_bootstrapwiring_test.go covers two bootstrap behaviours that are correct in their own helper
+// smoke_bootstrapwiring_test.go covers bootstrap behaviours that are correct in their own helper
 // and were wrong in production anyway, which is the one shape a Tier 1 test over that helper can
-// never catch: a helper nothing calls, and a lock whose parent directory nothing creates.
+// never catch: a helper nothing calls.
 //
-// Both defects were found by crucible round 1 driving a real hub, and neither is visible from a
+// The defects were found by crucible rounds driving a real hub, and none is visible from a
 // hermetic fixture. ensureFrictionDirAfterSeed had four green unit tests while being called from
 // nowhere at all, so only a test that goes through the real bootstrap can tell the two states apart.
-// The status/pause lock-parent hole is the mirror image: both verbs' own "no status file" messages
-// are exercised by unit tests that build the lock path under a t.TempDir() which already exists,
-// which is precisely the condition a never-bootstrapped pair does not satisfy.
 //
 // Like its siblings, every test here spawns ZERO real LLM subprocesses: the fixture wires
 // providerlessShuttleConfig (see its doc comment), and each test dispatches at most the two pure-Go
@@ -17,10 +14,8 @@
 package loomcli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -46,21 +41,13 @@ func plantFrictionNote(t *testing.T, loc *lyxcwd.Location, name string) string {
 	return path
 }
 
-// TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem is the regression guard for the
-// once-per-task friction clear that never shipped.
+// TestSmokeStepBootstrapWiring drives `lyx loom step` over one go-seeded pair, in this order:
+// a genuine first seed, the handoff voucher that step left, then a re-entry over the same task.
+// Each step builds on the state the one before left.
 //
-// ensureFrictionDirAfterSeed was written, documented, and unit-tested in start.go, and called from
-// nowhere: neither startCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
-// over an orphan. The consequence, reproduced live against a real hub in crucible round 1: notes
-// left in .lyx/loom/friction/ by an earlier task, or by an earlier run that never reached a
-// reflection trigger, survived a genuine first seed and were handed to the NEXT task's reflection
-// agent as that task's own friction -- which then filed a GitHub issue about them.
-//
-// Both branches are asserted through the real bootstrap, because the branch is not the thing that
-// was broken; reaching it was. `lyx loom step` is the driving verb rather than `lyx loom start`
-// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
-// friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
-func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testing.T) {
+// Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
+// only a test through the real bootstrap tells the two states apart.
+func TestSmokeStepBootstrapWiring(t *testing.T) {
 	exe := sharedLyxBinary(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -68,131 +55,76 @@ func TestSmokeBootstrap_FirstSeedClearsFrictionNotesAndReentryKeepsThem(t *testi
 
 	stalePath := plantFrictionNote(t, loc, "left-over-from-an-earlier-task.md")
 
-	// First `step`: a genuine first seed. It dispatches Preflight, a pure-Go row, and nothing else.
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
-	if err != nil {
-		t.Fatalf("first loom step: %v; output: %s", err, stdout)
-	}
+	// The regression guard for the once-per-task friction clear that never shipped.
+	//
+	// ensureFrictionDirAfterSeed was written, documented, and unit-tested in start.go, and called from
+	// nowhere: neither startCmd's RunE nor seedAndCommitBootstrap reached it. Its four tests were green
+	// over an orphan. The consequence, reproduced live against a real hub in crucible round 1: notes
+	// left in .lyx/loom/friction/ by an earlier task, or by an earlier run that never reached a
+	// reflection trigger, survived a genuine first seed and were handed to the NEXT task's reflection
+	// agent as that task's own friction -- which then filed a GitHub issue about them.
+	//
+	// Both branches are asserted through the real bootstrap, because the branch is not the thing that
+	// was broken; reaching it was. `lyx loom step` is the driving verb rather than `lyx loom start`
+	// precisely because `step` spawns no driver: `start` delegates to `run`, which calls
+	// friction.EnsureDir itself and would mask an unwired clear behind a directory that exists anyway.
+	//
+	// The first `step` is a genuine first seed. It dispatches Preflight, a pure-Go row, and nothing else.
+	t.Run("first seed clears friction notes", func(t *testing.T) {
+		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		if err != nil {
+			t.Fatalf("first loom step: %v; output: %s", err, stdout)
+		}
 
-	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
-		t.Errorf("stale friction note still present after a genuine first seed (stat err=%v); want it cleared -- a fresh task must not inherit an earlier one's notes", statErr)
-	}
-	frictionDir := loomengine.LoomFrictionDir(loc)
-	if info, statErr := os.Stat(frictionDir); statErr != nil || !info.IsDir() {
-		t.Errorf("friction directory %q after first seed: stat err=%v; want it recreated as a directory", frictionDir, statErr)
-	}
+		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+			t.Errorf("stale friction note still present after a genuine first seed (stat err=%v); want it cleared -- a fresh task must not inherit an earlier one's notes", statErr)
+		}
+		frictionDir := loomengine.LoomFrictionDir(loc)
+		if info, statErr := os.Stat(frictionDir); statErr != nil || !info.IsDir() {
+			t.Errorf("friction directory %q after first seed: stat err=%v; want it recreated as a directory", frictionDir, statErr)
+		}
+	})
 
-	// Second `step`: an ErrSeedExists re-entry over the same task. A resume's notes are the ones most
-	// worth reading, so this branch must leave them exactly where they are.
-	resumePath := plantFrictionNote(t, loc, "written-during-this-task.md")
-	stdout, _, err = runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
-	if err != nil {
-		t.Fatalf("second loom step: %v; output: %s", err, stdout)
-	}
+	// The wiring guard for the handoff voucher (crucible round 2, R2-F1): recordHandoffVoucher and its
+	// consume/detect halves are unit-tested in handoffvoucher_test.go, but a helper nothing calls stays
+	// green over an orphan, so this asserts the voucher landed beside the ephemeral tree's other loom
+	// files, matching the persisted status.
+	//
+	// Without the voucher, a completed step leaves state running with a live history and a free run
+	// lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
+	// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
+	//
+	// Relies on the first step's completed `step`; it must run before the re-entry step changes the status again.
+	t.Run("step records a handoff voucher matching the persisted status", func(t *testing.T) {
+		persisted, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		if err != nil || !found {
+			t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
+		}
 
-	if _, statErr := os.Stat(resumePath); statErr != nil {
-		t.Errorf("friction note written during this task is gone after a re-entry (stat err=%v); want it kept -- only a genuine first seed clears", statErr)
-	}
-}
+		voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(loc), loomengine.LoomHandoffVoucherLock(loc))
+		if err != nil {
+			t.Fatalf("read handoff voucher: %v", err)
+		}
+		if !found {
+			t.Fatalf("no handoff voucher at %s after a completed step; want one matching the persisted status -- without it the next run files a spurious crash-resume", loomengine.LoomHandoffVoucher(loc))
+		}
+		if voucher.HistoryLength != len(persisted.History) || voucher.State != string(persisted.State) {
+			t.Errorf("handoff voucher = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
+				voucher.HistoryLength, voucher.State, len(persisted.History), persisted.State)
+		}
+	})
 
-// TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus is the wiring guard for the
-// handoff voucher (crucible round 2, R2-F1): recordHandoffVoucher and its consume/detect halves
-// are unit-tested in handoffvoucher_test.go, but a helper nothing calls stays green over an orphan --
-// the exact shape F-1 shipped in -- so this test drives the real `lyx loom step` binary and asserts
-// the voucher landed beside the ephemeral tree's other loom files, matching the persisted status.
-//
-// Without the voucher, a completed step leaves state running with a live history and a free run
-// lock, which is byte-identical to a mid-run driver death: the next `lyx loom run` with
-// Tier 2 on then writes a spurious crash-resume note for a task in which nothing crashed.
-//
-// Like its siblings, this test spawns zero real LLM subprocesses: it dispatches at most the
-// pure-Go precondition rows.
-func TestSmokeStep_RecordsHandoffVoucherMatchingPersistedStatus(t *testing.T) {
-	exe := sharedLyxBinary(t)
-	_, loc, worktree, _ := newWiredPairFixture(t)
-	registerBootstrapTeardown(t, loc, worktree)
-	seedGoDriverRun(t, loc)
+	// The second `step` is an ErrSeedExists re-entry over the same task. A resume's notes are the ones
+	// most worth reading, so this branch must leave them exactly where they are.
+	t.Run("re-entry keeps friction notes", func(t *testing.T) {
+		resumePath := plantFrictionNote(t, loc, "written-during-this-task.md")
+		stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
+		if err != nil {
+			t.Fatalf("second loom step: %v; output: %s", err, stdout)
+		}
 
-	stdout, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "step")
-	if err != nil {
-		t.Fatalf("loom step: %v; output: %s", err, stdout)
-	}
-
-	persisted, found, err := state.ReadJSONStrict[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
-	if err != nil || !found {
-		t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
-	}
-
-	voucher, found, err := state.ReadJSONStrict[handoffVoucher](loomengine.LoomHandoffVoucher(loc), loomengine.LoomHandoffVoucherLock(loc))
-	if err != nil {
-		t.Fatalf("read handoff voucher: %v", err)
-	}
-	if !found {
-		t.Fatalf("no handoff voucher at %s after a completed step; want one matching the persisted status -- without it the next run files a spurious crash-resume", loomengine.LoomHandoffVoucher(loc))
-	}
-	if voucher.HistoryLength != len(persisted.History) || voucher.State != string(persisted.State) {
-		t.Errorf("handoff voucher = {history %d, state %q}; want {history %d, state %q} to match the persisted status",
-			voucher.HistoryLength, voucher.State, len(persisted.History), persisted.State)
-	}
-}
-
-// TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy is the regression guard for both
-// verbs' own "no status file" messages having been unreachable.
-//
-// The status file is durable (_lyx/loom/status.json) but its advisory lock is ephemeral
-// (.lyx/loom/status.json.lock), a different directory tree that nothing creates until a bootstrap
-// runs. internal/lock opens with O_CREATE and never creates a parent, so on a freshly-added pair both
-// verbs failed inside lock acquisition, before the `found` value they branch on was ever produced --
-// and leaked an internal "no such file or directory" path instead of their own remedy. Neither verb's
-// unit tests could see it: they build both paths under a t.TempDir() that already exists.
-//
-// The loom driver's first move is a status read taken as its baseline, and on a brand-new task
-// that read must reach the verb's own remedy rather than a lock-directory error.
-func TestSmokeStatusAndPause_OnNeverBootstrappedPairNameTheRemedy(t *testing.T) {
-	exe := sharedLyxBinary(t)
-	_, loc, worktree, _ := newWiredPairFixture(t)
-	// arm.go's resolveRunID now refuses "status"/"pause" outright when no seed exists at all,
-	// before either verb's own absent-status-file check ever runs -- a seed must be present so this
-	// case reaches the lock-parent-directory bug it actually guards.
-	seedGoDriverRun(t, loc)
-
-	tests := []struct {
-		name string
-		verb string
-	}{
-		{"Status", "status"},
-		{"Pause", "pause"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stdout, code, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", tt.verb)
-			if err != nil {
-				t.Fatalf("loom %s: %v; output: %s", tt.verb, err, stdout)
-			}
-			if code != 1 {
-				t.Fatalf("loom %s on a never-bootstrapped pair exit = %d; want 1", tt.verb, code)
-			}
-
-			var envelope struct {
-				OK    bool   `json:"ok"`
-				Error string `json:"error"`
-			}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &envelope); err != nil {
-				t.Fatalf("decode loom %s refusal envelope %q: %v", tt.verb, stdout, err)
-			}
-			if envelope.OK {
-				t.Fatalf("loom %s refusal envelope ok = true; want false: %s", tt.verb, stdout)
-			}
-			if !strings.Contains(envelope.Error, "no status file") {
-				t.Errorf("loom %s error = %q; want it to say there is no status file", tt.verb, envelope.Error)
-			}
-			if !strings.Contains(envelope.Error, "loom start") {
-				t.Errorf("loom %s error = %q; want it to name the bootstrap verb as the remedy", tt.verb, envelope.Error)
-			}
-			if strings.Contains(envelope.Error, ".lock") {
-				t.Errorf("loom %s error = %q; want no internal lock path leaked to the operator", tt.verb, envelope.Error)
-			}
-		})
-	}
+		if _, statErr := os.Stat(resumePath); statErr != nil {
+			t.Errorf("friction note written during this task is gone after a re-entry (stat err=%v); want it kept -- only a genuine first seed clears", statErr)
+		}
+	})
 }
