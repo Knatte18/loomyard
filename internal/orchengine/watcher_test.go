@@ -1050,18 +1050,31 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 	}
 }
 
-func TestWatcher_ReloadReadsAnOldStyleStepAsThePointer(t *testing.T) {
+func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 	t.Parallel()
-	e := newWatchEnv(t)
-	e.withSkills()
-	e.reachClearing()
-	e.tick()
-	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt = 1, time.Time{} })
-	e.w = e.newWatcher()
-	e.tick()
-	got := e.callsAfter("clear")
-	if len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
-		t.Fatalf("calls after clear = %v, want the pointer typed after the persisted old-style step", got)
+	tests := []struct {
+		name  string
+		step  int
+		retry []string
+	}{
+		{name: "old per-skill index past the skills step", step: 1},
+		{name: "retry step with an empty retry list", step: ReloadStepRetry},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			e.reachClearing()
+			e.tick()
+			e.setState(func(st *State) { st.ReloadStep, st.ReloadRetry, st.ReloadTypedAt = tt.step, tt.retry, time.Time{} })
+			e.w = e.newWatcher()
+			e.tick()
+			got := e.callsAfter("clear")
+			if len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
+				t.Fatalf("calls after clear = %v, want the pointer typed after the persisted step", got)
+			}
+		})
 	}
 }
 
