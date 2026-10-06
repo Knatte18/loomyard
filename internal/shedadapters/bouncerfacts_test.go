@@ -119,18 +119,6 @@ func TestComputeRoundFacts_CountsAndRecurringKeys(t *testing.T) {
 	}
 }
 
-func TestComputeRoundFacts_NoRecurringKeysSaysSo(t *testing.T) {
-	dir := t.TempDir()
-	writeFactsReview(t, dir, 1)
-	writeFactsReview(t, dir, 2)
-	writeFactsLedger(t, dir, 1, "solo:open:[1]")
-
-	out := string(renderRoundFacts(computeRoundFacts(dir, 2, reportName)))
-	if !strings.Contains(out, "No ledger key recurs across rounds.") {
-		t.Errorf("render = %q; want the no-recurring-keys line", out)
-	}
-}
-
 func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityMedium, ""})
@@ -166,28 +154,46 @@ func TestComputeRoundFacts_MissingReviewIsAParseErrorRow(t *testing.T) {
 	}
 }
 
-func TestComputeRoundFacts_MediumDesignCountsAsGating(t *testing.T) {
-	dir := t.TempDir()
-	writeFactsReview(t, dir, 1,
-		factsFinding{burlerengine.SeverityMedium, "design"},
-		factsFinding{burlerengine.SeverityMedium, "design"})
+//testtiming:keep pins the gating rule of the round facts: MEDIUM design findings are gating, a BLOCKING scope finding is counted but not gating
+func TestComputeRoundFacts_GatingRule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		findings     []factsFinding
+		wantBlocking int
+		wantGating   int
+	}{
+		{
+			name: "MEDIUM design findings count as gating",
+			findings: []factsFinding{
+				{burlerengine.SeverityMedium, "design"},
+				{burlerengine.SeverityMedium, "design"},
+			},
+			wantGating: 2,
+		},
+		{
+			name:         "a BLOCKING scope finding is not gating",
+			findings:     []factsFinding{{burlerengine.SeverityBlocking, "scope"}},
+			wantBlocking: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeFactsReview(t, dir, 1, tt.findings...)
 
-	facts := computeRoundFacts(dir, 1, reportName)
-	if facts.Rows[0].Gating != 2 {
-		t.Errorf("round 1 gating = %d; want 2 for MEDIUM design findings", facts.Rows[0].Gating)
+			row := computeRoundFacts(dir, 1, reportName).Rows[0]
+			if row.Severity[burlerengine.SeverityBlocking] != tt.wantBlocking || row.Gating != tt.wantGating {
+				t.Errorf("round 1 row = %+v; want BLOCKING %d and gating %d", row, tt.wantBlocking, tt.wantGating)
+			}
+		})
 	}
 }
 
-func TestComputeRoundFacts_BlockingScopeIsNotGating(t *testing.T) {
-	dir := t.TempDir()
-	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityBlocking, "scope"})
-
-	row := computeRoundFacts(dir, 1, reportName).Rows[0]
-	if row.Severity[burlerengine.SeverityBlocking] != 1 || row.Gating != 0 {
-		t.Errorf("round 1 row = %+v; want BLOCKING 1 and gating 0 for a scope finding", row)
-	}
-}
-
+// TestWriteRoundFacts_IsDeterministic also pins the line a render without a recurring ledger key carries.
+//
+//testtiming:keep pins that two writes of the facts file are byte-identical and the no-recurring-key line, which the judge-call tests do not assert
 func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityMedium, "design"})
@@ -201,6 +207,9 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile first = %v; want nil", err)
 	}
+	if !strings.Contains(string(first), "No ledger key recurs across rounds.") {
+		t.Errorf("facts file = %q; want the no-recurring-keys line", first)
+	}
 	if err := writeRoundFacts(dir, 2, reportName); err != nil {
 		t.Fatalf("writeRoundFacts second = %v; want nil", err)
 	}
@@ -213,6 +222,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the facts file's name and that it is an input the judge reads, not an output a stale-output archive would move
 func TestFactsPath_IsNotAJudgeOutput(t *testing.T) {
 	dir := t.TempDir()
 	want := factsPath(dir, 3)

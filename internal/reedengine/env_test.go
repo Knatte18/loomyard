@@ -3,63 +3,56 @@
 
 package reedengine
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
+//testtiming:keep pins CleanClaudeEnv stripping exactly CLAUDECODE and the CLAUDE_CODE_ keys, reporting them in environ order and leaving other keys and an unaffected environ as they were; its covering tests run this code without asserting it
 func TestCleanClaudeEnv(t *testing.T) {
-	environ := []string{
-		"CLAUDECODE=1",
-		"CLAUDE_CODE_SESSION_ID=abc",
-		"CLAUDE_CODE_CHILD_SESSION=1",
-		"CLAUDE_CODE_ENTRYPOINT=x",
-		"CLAUDE_CODE_SSE_PORT=9",
-		"HOME=/home/user",
-		"PATH=/usr/bin",
-		"MY_VAR=ok",
+	tests := []struct {
+		name         string
+		environ      []string
+		wantClean    []string
+		wantStripped []string
+	}{
+		{
+			name: "StripsClaudeKeysInEnvironOrder",
+			environ: []string{
+				"CLAUDECODE=1",
+				"CLAUDE_CODE_SESSION_ID=abc",
+				"CLAUDE_CODE_CHILD_SESSION=1",
+				"CLAUDE_CODE_ENTRYPOINT=x",
+				"CLAUDE_CODE_SSE_PORT=9",
+				"HOME=/home/user",
+				"PATH=/usr/bin",
+				"MY_VAR=ok",
+			},
+			wantClean: []string{"HOME=/home/user", "PATH=/usr/bin", "MY_VAR=ok"},
+			wantStripped: []string{
+				"CLAUDECODE",
+				"CLAUDE_CODE_SESSION_ID",
+				"CLAUDE_CODE_CHILD_SESSION",
+				"CLAUDE_CODE_ENTRYPOINT",
+				"CLAUDE_CODE_SSE_PORT",
+			},
+		},
+		{
+			name:      "NoClaudeKeysUnchanged",
+			environ:   []string{"HOME=/home/user", "PATH=/usr/bin"},
+			wantClean: []string{"HOME=/home/user", "PATH=/usr/bin"},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clean, stripped := CleanClaudeEnv(tt.environ)
 
-	clean, stripped := CleanClaudeEnv(environ)
-
-	wantClean := []string{"HOME=/home/user", "PATH=/usr/bin", "MY_VAR=ok"}
-	if len(clean) != len(wantClean) {
-		t.Fatalf("clean = %v, want %v", clean, wantClean)
-	}
-	for i := range wantClean {
-		if clean[i] != wantClean[i] {
-			t.Errorf("clean[%d] = %q, want %q", i, clean[i], wantClean[i])
-		}
-	}
-
-	wantStripped := []string{
-		"CLAUDECODE",
-		"CLAUDE_CODE_SESSION_ID",
-		"CLAUDE_CODE_CHILD_SESSION",
-		"CLAUDE_CODE_ENTRYPOINT",
-		"CLAUDE_CODE_SSE_PORT",
-	}
-	if len(stripped) != len(wantStripped) {
-		t.Fatalf("stripped = %v, want %v", stripped, wantStripped)
-	}
-	for i := range wantStripped {
-		if stripped[i] != wantStripped[i] {
-			t.Errorf("stripped[%d] = %q, want %q", i, stripped[i], wantStripped[i])
-		}
-	}
-}
-
-func TestCleanClaudeEnv_NoClaudeKeysUnchanged(t *testing.T) {
-	environ := []string{"HOME=/home/user", "PATH=/usr/bin"}
-
-	clean, stripped := CleanClaudeEnv(environ)
-
-	if len(stripped) != 0 {
-		t.Errorf("stripped = %v, want empty", stripped)
-	}
-	if len(clean) != len(environ) {
-		t.Fatalf("clean = %v, want %v", clean, environ)
-	}
-	for i := range environ {
-		if clean[i] != environ[i] {
-			t.Errorf("clean[%d] = %q, want %q", i, clean[i], environ[i])
-		}
+			if !slices.Equal(clean, tt.wantClean) {
+				t.Errorf("clean = %v, want %v", clean, tt.wantClean)
+			}
+			if !slices.Equal(stripped, tt.wantStripped) {
+				t.Errorf("stripped = %v, want %v", stripped, tt.wantStripped)
+			}
+		})
 	}
 }

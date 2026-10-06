@@ -44,6 +44,8 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 // real wildcard-stage commit, with the exact message passed through verbatim — no Warp-SHA trailer,
 // unlike Fabric.CommitWeft, since commitWeftAt's caller (_board's weft:main checkout) has no
 // corresponding warp branch to trailer against.
+//
+//testtiming:keep commitWeftAt committing an untracked file with the message passed through verbatim and no Warp-SHA trailer; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -75,6 +77,8 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 // TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a true no-op — committed=false,
 // err=nil — when the worktree has nothing new to stage, called twice in a row with no changes in
 // between.
+//
+//testtiming:keep commitWeftAt reporting committed=false with a nil error twice on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +103,8 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 // TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short circuits before any
 // git is spawned: the return is exactly ("", false, nil), and a dirty untracked file is left
 // completely untouched.
+//
+//testtiming:keep opts.SkipGit short-circuiting commitWeftAt to ("", false, nil) before git spawns, leaving a dirty file untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {
 	t.Parallel()
 

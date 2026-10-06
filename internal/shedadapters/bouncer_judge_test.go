@@ -97,57 +97,67 @@ func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool
 	return shuttle
 }
 
-func TestBouncer_JudgeCall_SkillAndParentDirective(t *testing.T) {
-	for _, tt := range []struct {
-		name       string
-		parentName string
-		wantPrompt string
-	}{
-		{"WithParent", "hub:parent", "`hub:parent`"},
-		{"NoParent", "", "No parent is recorded"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-			fx := newBouncerFixture(t, withShuttle(shuttle))
-			fx.Config.ParentName = tt.parentName
-			b, cfg := fx.Build()
-			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-			shedfake.CallOK(t, b)
-
-			if !strings.Contains(shuttle.GotSpec.Prompt, tt.wantPrompt) {
-				t.Errorf("judge prompt does not contain %q", tt.wantPrompt)
-			}
-			if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
-				t.Errorf("judge spec.Skills = %v; want [scribe:prose]", got)
-			}
-		})
-	}
-}
-
-// TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir asserts the judge call's composed prompt --
-// where the rubric is interpolated as a marker VALUE, never run through the fill itself -- contains
-// the told specs directory and carries no literal "{{.specs_dir}}" marker. A rubric-bytes-only
-// assertion could not catch this: the marker lives inside the rubric value, invisible to a check
-// that never renders it into the surrounding template.
-func TestBouncer_JudgeCall_ComposedPromptStatesSpecsDir(t *testing.T) {
+// TestBouncer_PromptComposition covers what both the seed and the judge call put into the spec they
+// spawn: the parent directive, the one skill, and the composed prompt's told specs directory --
+// where the rubric is interpolated as a marker VALUE, never run through the fill itself, so the
+// {{.specs_dir}} marker inside the rubric value is invisible to a rubric-bytes-only assertion
+// and only a check of the composed prompt can catch a literal marker surviving.
+func TestBouncer_PromptComposition(t *testing.T) {
 	specsDir := t.TempDir()
 	if !filepath.IsAbs(specsDir) {
 		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
 	}
-
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withSpecsMarker(specsDir), withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-	shedfake.CallOK(t, b)
-
-	prompt := shuttle.GotSpec.Prompt
-	if !strings.Contains(prompt, specsDir) {
-		t.Errorf("judge call composed prompt does not contain the told specs directory %q", specsDir)
+	tests := []struct {
+		name       string
+		parentName string
+		withSpecs  bool
+		wantPrompt string
+	}{
+		{name: "with a parent", parentName: "hub:parent", wantPrompt: "`hub:parent`"},
+		{name: "with no parent", wantPrompt: "No parent is recorded"},
+		{name: "with a told specs directory", withSpecs: true, wantPrompt: specsDir},
 	}
-	if strings.Contains(prompt, "{{.specs_dir}}") {
-		t.Error("judge call composed prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered")
+	for _, role := range []string{"seed", "judge"} {
+		for _, tt := range tests {
+			t.Run(role+" "+tt.name, func(t *testing.T) {
+				var shuttle *shedfake.Shuttle
+				if role == "judge" {
+					shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+				} else {
+					shuttle = &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+					shuttle.DuringRun = func() {
+						path := shuttle.GotSpec.OutputFiles[0]
+						content := "---\nround: 1\nexclude_lenses: []\nfocus: []\n---\n"
+						if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+							t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+						}
+					}
+				}
+				opts := []bouncerFixtureOpt{withShuttle(shuttle)}
+				if tt.withSpecs {
+					opts = append(opts, withSpecsMarker(specsDir))
+				}
+				fx := newBouncerFixture(t, opts...)
+				fx.Config.ParentName = tt.parentName
+				b, cfg := fx.Build()
+				if role == "judge" {
+					layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+				}
+
+				shedfake.CallOK(t, b)
+
+				prompt := shuttle.GotSpec.Prompt
+				if !strings.Contains(prompt, tt.wantPrompt) {
+					t.Errorf("%s prompt does not contain %q", role, tt.wantPrompt)
+				}
+				if strings.Contains(prompt, "{{.specs_dir}}") {
+					t.Errorf("%s prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered", role)
+				}
+				if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
+					t.Errorf("%s spec.Skills = %v; want [scribe:prose]", role, got)
+				}
+			})
+		}
 	}
 }
 
@@ -221,97 +231,60 @@ func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
 	}
 }
 
-func TestBouncer_JudgeCall_Approved(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+// TestBouncer_JudgeCall_Verdicts covers the judge call's outcome for each verdict it writes: the
+// ledger as pointer, the three declared outputs, and the next round's focus file, which is
+// declared and written whatever the verdict. A converged judge's focus file carries no targeting.
+//
+//testtiming:keep pins the judge call's outcome and ledger pointer per verdict, the three declared outputs and the well-formed empty next-round focus file
+func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
+	tests := []struct {
+		name        string
+		verdict     string
+		wantOutcome shedengine.Outcome
+	}{
+		{"CONVERGED is Done", "CONVERGED", shedengine.Done},
+		{"CONTINUE is Stuck", "CONTINUE", shedengine.Stuck},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := judgeFakeShuttle(1, bouncerVerdictContent(tt.verdict), bouncerLedgerContent(1), true)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-	}
-	if _, err := os.Stat(ptr.Path); err != nil {
-		t.Errorf("os.Stat(reported pointer %q) = %v; want nil", ptr.Path, err)
-	}
+			ptr := shedfake.RequireOutcome(t, b, tt.wantOutcome)
+			wantPointer := ledgerPath(cfg.RunDir, 1)
+			if ptr.Path != wantPointer {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+			}
 
-	if len(shuttle.GotSpec.OutputFiles) != 3 {
-		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
-	}
+			if len(shuttle.GotSpec.OutputFiles) != 3 {
+				t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
+			}
+			for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("os.Stat(%q) = %v; want nil (all three files exist)", path, err)
+				}
+			}
 
-	nextFocus := focusPath(cfg.RunDir, 2)
-	raw, err := os.ReadFile(nextFocus)
-	if err != nil {
-		t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
-	}
-	parsed, err := parseFocus(raw)
-	if err != nil {
-		t.Fatalf("parseFocus(...) error = %v; want nil", err)
-	}
-	if len(parsed.ExcludeLenses) != 0 {
-		t.Errorf("parsed focus ExcludeLenses = %v; want empty", parsed.ExcludeLenses)
-	}
-	if len(parsed.Focus) != 0 {
-		t.Errorf("parsed focus Focus = %v; want empty", parsed.Focus)
+			raw, err := os.ReadFile(focusPath(cfg.RunDir, 2))
+			if err != nil {
+				t.Fatalf("ReadFile(round-2-focus.md) = %v; want nil", err)
+			}
+			parsed, err := parseFocus(raw)
+			if err != nil {
+				t.Fatalf("parseFocus(...) error = %v; want nil", err)
+			}
+			if len(parsed.ExcludeLenses) != 0 {
+				t.Errorf("parsed focus ExcludeLenses = %v; want empty", parsed.ExcludeLenses)
+			}
+			if len(parsed.Focus) != 0 {
+				t.Errorf("parsed focus Focus = %v; want empty", parsed.Focus)
+			}
+		})
 	}
 }
 
-func TestBouncer_JudgeCall_Blocking(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Stuck)
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-	}
-
-	if len(shuttle.GotSpec.OutputFiles) != 3 {
-		t.Errorf("recorded Spec.OutputFiles has %d entries; want 3", len(shuttle.GotSpec.OutputFiles))
-	}
-
-	for _, path := range []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1), focusPath(cfg.RunDir, 2)} {
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("os.Stat(%q) = %v; want nil (all three files exist)", path, err)
-		}
-	}
-}
-
-func TestBouncer_JudgeCall_RoundThree_UsesRoundTwoLedger(t *testing.T) {
-	shuttle := judgeFakeShuttle(3, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(3), true)
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
-		{round: 1, report: bouncerReport(1)},
-		{round: 2, report: bouncerReport(2)},
-		{round: 3, report: bouncerReport(3)},
-	})
-	// Ledgers for rounds 1 and 2 already exist on disk (a fully judged round 1 and round 2).
-	if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {
-		t.Fatalf("WriteFile(round-1 ledger) = %v; want nil", err)
-	}
-	if err := os.WriteFile(ledgerPath(cfg.RunDir, 2), []byte(bouncerLedgerContent(2)), 0o644); err != nil {
-		t.Fatalf("WriteFile(round-2 ledger) = %v; want nil", err)
-	}
-	if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
-		t.Fatalf("WriteFile(round-1 verdict) = %v; want nil", err)
-	}
-	if err := os.WriteFile(verdictPath(cfg.RunDir, 2), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
-		t.Fatalf("WriteFile(round-2 verdict) = %v; want nil", err)
-	}
-
-	shedfake.RequireOutcome(t, b, shedengine.Done)
-
-	wantReport := filepath.Join(cfg.RunDir, cfg.ReportName(3))
-	if !strings.Contains(shuttle.GotSpec.Prompt, wantReport) {
-		t.Errorf("recorded Spec.Prompt does not contain round 3's report path %q", wantReport)
-	}
-	wantPrevLedger := ledgerPath(cfg.RunDir, 2)
-	if !strings.Contains(shuttle.GotSpec.Prompt, wantPrevLedger) {
-		t.Errorf("recorded Spec.Prompt does not contain round 2's ledger path %q (previous_ledger)", wantPrevLedger)
-	}
-}
-
+//testtiming:keep pins the judge prompt's inputs: the facts and review paths, never the artifacts or the fixer report, and the two guard sentences
 func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
@@ -355,68 +328,76 @@ func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
 	}
 }
 
-func TestBouncer_JudgeCall_ReviewWithoutClassStillSpawnsJudge(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONTINUE"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	// bouncerReport carries no findings with a class; the facts render a parse-error row instead.
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-	shedfake.RequireOutcome(t, b, shedengine.Stuck)
-
-	if !shuttle.Called {
-		t.Error("the judge was not spawned for a round-1 review the facts could not parse; want it spawned")
-	}
-}
-
+// TestBouncer_JudgeCall_PreviousLedgerHandling covers the previous ledger the judge prompt names:
+// round N's judge reads round N-1's ledger when it parses, and the literal "(none)" when it is
+// malformed or absent. The judged round's own report path is named alongside.
 func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
-	t.Run("ValidPriorLedger", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(2, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(2), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
-			{round: 1, report: bouncerReport(1)},
-			{round: 2, report: bouncerReport(2)},
+	tests := []struct {
+		name string
+		// round is the round being judged; rounds below it are laid out with a report, and with a
+		// CONTINUE verdict and the ledger body in priorLedger.
+		round       int
+		priorLedger func(round int) string
+		// wantLedgerRound is the round whose ledger path the prompt names; zero wants "(none)".
+		wantLedgerRound int
+	}{
+		{
+			name:            "a valid prior ledger is named",
+			round:           2,
+			priorLedger:     bouncerLedgerContent,
+			wantLedgerRound: 1,
+		},
+		{
+			name:            "round three names round two's ledger",
+			round:           3,
+			priorLedger:     bouncerLedgerContent,
+			wantLedgerRound: 2,
+		},
+		{
+			name:        "a malformed prior ledger reads as none",
+			round:       2,
+			priorLedger: func(int) string { return "not frontmatter at all" },
+		},
+		{
+			name:  "no prior ledger reads as none",
+			round: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shuttle := judgeFakeShuttle(tt.round, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(tt.round), true)
+			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
+			var fixtures []bouncerJudgeFixture
+			for round := 1; round <= tt.round; round++ {
+				fixtures = append(fixtures, bouncerJudgeFixture{round: round, report: bouncerReport(round)})
+			}
+			layoutBouncerRun(t, cfg, fixtures)
+			for round := 1; round < tt.round; round++ {
+				if err := os.WriteFile(ledgerPath(cfg.RunDir, round), []byte(tt.priorLedger(round)), 0o644); err != nil {
+					t.Fatalf("WriteFile(round-%d ledger) = %v; want nil", round, err)
+				}
+				if err := os.WriteFile(verdictPath(cfg.RunDir, round), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
+					t.Fatalf("WriteFile(round-%d verdict) = %v; want nil", round, err)
+				}
+			}
+
+			shedfake.RequireOutcome(t, b, shedengine.Done)
+
+			prompt := shuttle.GotSpec.Prompt
+			if wantReport := filepath.Join(cfg.RunDir, cfg.ReportName(tt.round)); !strings.Contains(prompt, wantReport) {
+				t.Errorf("recorded Spec.Prompt does not contain round %d's report path %q", tt.round, wantReport)
+			}
+			if tt.wantLedgerRound == 0 {
+				if !strings.Contains(prompt, "(none)") {
+					t.Error("recorded Spec.Prompt does not contain the (none) literal for the previous ledger")
+				}
+				return
+			}
+			if want := ledgerPath(cfg.RunDir, tt.wantLedgerRound); !strings.Contains(prompt, want) {
+				t.Errorf("recorded Spec.Prompt does not contain round %d's ledger path %q (previous_ledger)", tt.wantLedgerRound, want)
+			}
 		})
-		if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {
-			t.Fatalf("WriteFile(round-1 ledger) = %v; want nil", err)
-		}
-		if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONTINUE")), 0o644); err != nil {
-			t.Fatalf("WriteFile(round-1 verdict) = %v; want nil", err)
-		}
-
-		shedfake.CallOK(t, b)
-		wantPrevLedger := ledgerPath(cfg.RunDir, 1)
-		if !strings.Contains(shuttle.GotSpec.Prompt, wantPrevLedger) {
-			t.Errorf("recorded Spec.Prompt does not contain the valid prior ledger's absolute path %q", wantPrevLedger)
-		}
-	})
-
-	t.Run("MalformedPriorLedger", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(2, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(2), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
-			{round: 1, report: bouncerReport(1)},
-			{round: 2, report: bouncerReport(2)},
-		})
-		if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte("not frontmatter at all"), 0o644); err != nil {
-			t.Fatalf("WriteFile(round-1 ledger) = %v; want nil", err)
-		}
-
-		shedfake.RequireOutcome(t, b, shedengine.Done)
-		if !strings.Contains(shuttle.GotSpec.Prompt, "(none)") {
-			t.Error("recorded Spec.Prompt does not contain the (none) literal for a malformed prior ledger")
-		}
-	})
-
-	t.Run("NoPriorLedger", func(t *testing.T) {
-		shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-		shedfake.CallOK(t, b)
-		if !strings.Contains(shuttle.GotSpec.Prompt, "(none)") {
-			t.Error("recorded Spec.Prompt does not contain the (none) literal when no prior ledger exists")
-		}
-	})
+	}
 }
 
 // bouncerJudgeTestClock is the fixed instant newBouncerFixture resolves cfg.Now to, so
@@ -574,6 +555,21 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 		},
 	}
 
+	// A non-completion outcome that wrote nothing is one the harvest cannot rescue.
+	for _, oc := range []shuttleengine.Outcome{shuttleengine.OutcomeAsking, shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
+		tests = append(tests, struct {
+			name         string
+			buildBouncer func(t *testing.T) (*Bouncer, BouncerConfig)
+		}{
+			name: "NonCompletionOutcome_" + string(oc),
+			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
+				b, cfg := newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: oc}})).Build()
+				layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+				return b, cfg
+			},
+		})
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logBuf := logcapture.Capture(t)
@@ -588,28 +584,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 	}
 }
 
-func TestBouncer_JudgeCall_NonCompletionOutcomesHarvestCannotRescue(t *testing.T) {
-	outcomes := []shuttleengine.Outcome{
-		shuttleengine.OutcomeAsking,
-		shuttleengine.OutcomeDied,
-		shuttleengine.OutcomeTimeout,
-	}
-	for _, oc := range outcomes {
-		t.Run(string(oc), func(t *testing.T) {
-			logBuf := logcapture.Capture(t)
-			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: oc}}
-			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-			outcome, ptr, err := b.Call(context.Background())
-			assertJudgeDegraded(t, outcome, ptr, err)
-			if logBuf.String() == "" {
-				t.Error("Call() did not log a warning on a degraded path")
-			}
-		})
-	}
-}
-
+//testtiming:keep pins that the harvest is keyed on judged(N): a written verdict settles the round whatever the run reported, and a non-completion with nothing written degrades
 func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	t.Run("NonCompletionOutcome_CONTINUE", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
@@ -660,60 +635,55 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	})
 }
 
+// TestBouncer_JudgeCall_DebrisIsNotJudged covers stale or half-written judge outputs standing in
+// the run dir before the spawn: they are never mistaken for judged(N), they are archived
+// byte-identical beside the original on the way in, and the spawn recreates each path.
+//
+//testtiming:keep pins that stale or half-written judge outputs are archived byte-identical before the spawn and never mistaken for a judged round
 func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 	tests := []struct {
-		name          string
-		layoutDebris  func(t *testing.T, cfg BouncerConfig)
-		archivedPaths func(cfg BouncerConfig) []string
+		name string
+		// debris maps each path standing in the run dir before the call to its content.
+		debris func(cfg BouncerConfig) map[string]string
 	}{
 		{
 			name: "VerdictPresentLedgerAbsent",
-			layoutDebris: func(t *testing.T, cfg BouncerConfig) {
-				if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONVERGED")), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris verdict) = %v; want nil", err)
-				}
-			},
-			archivedPaths: func(cfg BouncerConfig) []string {
-				return []string{verdictPath(cfg.RunDir, 1)}
+			debris: func(cfg BouncerConfig) map[string]string {
+				return map[string]string{verdictPath(cfg.RunDir, 1): bouncerVerdictContent("CONVERGED")}
 			},
 		},
 		{
 			name: "LedgerPresentVerdictAbsent",
-			layoutDebris: func(t *testing.T, cfg BouncerConfig) {
-				if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris ledger) = %v; want nil", err)
-				}
-			},
-			archivedPaths: func(cfg BouncerConfig) []string {
-				return []string{ledgerPath(cfg.RunDir, 1)}
+			debris: func(cfg BouncerConfig) map[string]string {
+				return map[string]string{ledgerPath(cfg.RunDir, 1): bouncerLedgerContent(1)}
 			},
 		},
 		{
 			name: "BothPresentVerdictUnparseable",
-			layoutDebris: func(t *testing.T, cfg BouncerConfig) {
-				if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte("garbage, not frontmatter"), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris verdict) = %v; want nil", err)
+			debris: func(cfg BouncerConfig) map[string]string {
+				return map[string]string{
+					verdictPath(cfg.RunDir, 1): "garbage, not frontmatter",
+					ledgerPath(cfg.RunDir, 1):  bouncerLedgerContent(1),
 				}
-				if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(bouncerLedgerContent(1)), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris ledger) = %v; want nil", err)
-				}
-			},
-			archivedPaths: func(cfg BouncerConfig) []string {
-				return []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1)}
 			},
 		},
 		{
 			name: "BothPresentLedgerUnparseable",
-			layoutDebris: func(t *testing.T, cfg BouncerConfig) {
-				if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(bouncerVerdictContent("CONVERGED")), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris verdict) = %v; want nil", err)
-				}
-				if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte("garbage, not frontmatter"), 0o644); err != nil {
-					t.Fatalf("WriteFile(debris ledger) = %v; want nil", err)
+			debris: func(cfg BouncerConfig) map[string]string {
+				return map[string]string{
+					verdictPath(cfg.RunDir, 1): bouncerVerdictContent("CONVERGED"),
+					ledgerPath(cfg.RunDir, 1):  "garbage, not frontmatter",
 				}
 			},
-			archivedPaths: func(cfg BouncerConfig) []string {
-				return []string{verdictPath(cfg.RunDir, 1), ledgerPath(cfg.RunDir, 1)}
+		},
+		{
+			name: "AllThreeOutputsStale",
+			debris: func(cfg BouncerConfig) map[string]string {
+				return map[string]string{
+					verdictPath(cfg.RunDir, 1): "garbage, not frontmatter (stale verdict)",
+					ledgerPath(cfg.RunDir, 1):  "garbage, not frontmatter (stale ledger)",
+					focusPath(cfg.RunDir, 2):   "garbage, not frontmatter (stale focus)",
+				}
 			},
 		},
 	}
@@ -723,66 +693,34 @@ func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
 			shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 			b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-			tt.layoutDebris(t, cfg)
+			debris := tt.debris(cfg)
+			for path, content := range debris {
+				if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+					t.Fatalf("WriteFile(debris %q) = %v; want nil", path, err)
+				}
+			}
 
-			shedfake.CallOK(t, b)
+			ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
 			if !shuttle.Called {
 				t.Error("Call() did not invoke the shuttle seam; debris must not be mistaken for judged(N)")
 			}
+			if wantPointer := ledgerPath(cfg.RunDir, 1); ptr.Path != wantPointer {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
+			}
 
-			for _, debrisPath := range tt.archivedPaths(cfg) {
+			for debrisPath, content := range debris {
 				archived := archivedSiblingPath(debrisPath, bouncerJudgeTestClock)
-				if _, err := os.Stat(archived); err != nil {
-					t.Errorf("os.Stat(archived sibling %q) = %v; want nil (debris archived on the way in)", archived, err)
+				got, err := os.ReadFile(archived)
+				if err != nil {
+					t.Fatalf("ReadFile(archived sibling %q) = %v; want nil (debris archived on the way in)", archived, err)
+				}
+				if string(got) != content {
+					t.Errorf("archived sibling %q content = %q; want %q (byte-identical to what stood there before)", archived, got, content)
 				}
 				if _, err := os.Stat(debrisPath); err != nil {
 					t.Errorf("os.Stat(%q) = %v; want nil (debris path recreated by the spawn)", debrisPath, err)
 				}
 			}
 		})
-	}
-}
-
-func TestBouncer_JudgeCall_StaleOutputsArchivedBeforeSpawn(t *testing.T) {
-	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
-
-	staleVerdict := "garbage, not frontmatter (stale verdict)"
-	staleLedger := "garbage, not frontmatter (stale ledger)"
-	staleFocus := "garbage, not frontmatter (stale focus)"
-	if err := os.WriteFile(verdictPath(cfg.RunDir, 1), []byte(staleVerdict), 0o644); err != nil {
-		t.Fatalf("WriteFile(stale verdict) = %v; want nil", err)
-	}
-	if err := os.WriteFile(ledgerPath(cfg.RunDir, 1), []byte(staleLedger), 0o644); err != nil {
-		t.Fatalf("WriteFile(stale ledger) = %v; want nil", err)
-	}
-	if err := os.WriteFile(focusPath(cfg.RunDir, 2), []byte(staleFocus), 0o644); err != nil {
-		t.Fatalf("WriteFile(stale focus) = %v; want nil", err)
-	}
-
-	ptr := shedfake.RequireOutcome(t, b, shedengine.Done)
-	wantPointer := ledgerPath(cfg.RunDir, 1)
-	if ptr.Path != wantPointer {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
-	}
-
-	tests := []struct {
-		original string
-		want     string
-	}{
-		{verdictPath(cfg.RunDir, 1), staleVerdict},
-		{ledgerPath(cfg.RunDir, 1), staleLedger},
-		{focusPath(cfg.RunDir, 2), staleFocus},
-	}
-	for _, tt := range tests {
-		archived := archivedSiblingPath(tt.original, bouncerJudgeTestClock)
-		got, err := os.ReadFile(archived)
-		if err != nil {
-			t.Fatalf("ReadFile(archived sibling %q) = %v; want nil", archived, err)
-		}
-		if string(got) != tt.want {
-			t.Errorf("archived sibling %q content = %q; want %q (byte-identical to what stood there before)", archived, got, tt.want)
-		}
 	}
 }

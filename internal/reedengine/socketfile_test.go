@@ -20,6 +20,7 @@ func listenUnixSocket(t *testing.T, dir, key string, unlinkOnClose bool) *net.Un
 	return l
 }
 
+//testtiming:keep pins the post-kill socket removal waiting out the grace period: a stale socket file is removed and one a live listener still answers on stays with no error; its covering tests run this code without asserting it
 func TestRemoveSocketFileOnceGone(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {

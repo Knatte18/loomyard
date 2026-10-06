@@ -383,6 +383,8 @@ func TestGateParity_PlanGate(t *testing.T) {
 // positional are both accepted, and two are refused. Command() builds the whole cobra tree with no
 // I/O of its own, and (*cobra.Command).Find is a pure tree traversal, so this test spawns no
 // process and stays Tier 1.
+//
+//testtiming:keep pins run, step, status, pause and goto each accepting zero or one positional run-id and refusing two; its covering test builds the tree without asserting argument counts
 func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
 	root := Command()
 

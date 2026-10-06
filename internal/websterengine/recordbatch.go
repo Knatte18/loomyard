@@ -299,18 +299,18 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.
-	if err := refuseMidMerge(deps.Geom.WorktreeRoot); err != nil {
+	if err := refuseMidMerge(deps.Geom.git(), deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	}
 
-	if isDirty, err := dirty(deps.Geom.WorktreeRoot); err != nil {
+	if isDirty, err := deps.Geom.git().Dirty(deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	} else if isDirty {
 		warnings = append(warnings, fmt.Sprintf("worktree is dirty after batch %s's own commits (uncommitted or untracked changes remain)", polledID))
 	}
 
 	// Cross-check report's head_sha against the worktree's actual HEAD, tolerating a parent merge-in.
-	moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath, deps.ParentBranch)
+	moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath, deps.ParentBranch)
 	if err != nil {
 		return nil, err
 	}
@@ -510,6 +510,7 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 		Slug:           slug,
 		ReportsDir:     deps.Geom.ReportsDir,
 		WorktreeRoot:   deps.Geom.WorktreeRoot,
+		Git:            deps.Geom.Git,
 		HeadSHA:        headSHA,
 		Reasons:        reasons,
 		SuspectPaths:   suspects,
@@ -584,7 +585,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
 	// cannot confirm any handle bound and reports bind-count-mismatch for every card that declared
 	// one — an unconfirmed Create is exactly a not-done card.
-	delta, deltaErr := planglyph.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
+	delta, deltaErr := in.Geom.git().Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
 	if deltaErr != nil && !errors.Is(deltaErr, planglyph.ErrQuarryUnavailable) {
 		return nil, deltaErr
 	}

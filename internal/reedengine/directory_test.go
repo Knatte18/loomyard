@@ -21,7 +21,7 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 		{ID: "%2", Title: "hand-set"},
 		{ID: "%3", Title: "tc:tslug:dead", Dead: true},
 	}
-	e, _ := newRepairTestEngine(t, strands, live)
+	e, fake := newRepairTestEngine(t, strands, live)
 
 	got, err := e.Directory()
 	if err != nil {
@@ -36,35 +36,17 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Directory rows:\n got %+v\nwant %+v", got, want)
 	}
-}
-
-func TestDirectory_DoesNotRepairOrPersist(t *testing.T) {
-	t.Parallel()
-
-	strands := []Strand{{GUID: "g1", Name: "tc:tslug:worker", PaneID: "%1"}}
-	e, fake := newRepairTestEngine(t, strands, []LivePane{{ID: "%1", Title: "drifted"}})
-
-	if _, err := e.Directory(); err != nil {
-		t.Fatalf("Directory: %v", err)
-	}
+	// The drifted title of g2 is reported, never repaired.
 	if n := fake.Count("select-pane"); n != 0 {
 		t.Errorf("Directory issued %d select-pane calls; want none", n)
 	}
-}
 
-func TestDirectoryRows_ColdSessionIsAllDormant(t *testing.T) {
-	t.Parallel()
-
-	strands := []Strand{
-		{GUID: "g1", Name: "tc:tslug:worker", Worktree: "tslug", PaneID: "%1"},
-		{GUID: "g2", Name: "tc:tslug:unbound", Worktree: "tslug"},
+	// A cold session has no live panes: every row is dormant.
+	wantCold := make([]DirectoryRow, len(strands))
+	for i, s := range strands {
+		wantCold[i] = DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID}
 	}
-	got := directoryRows(strands, nil)
-	want := []DirectoryRow{
-		{Name: "tc:tslug:worker", GUID: "g1", Worktree: "tslug", PaneID: "%1"},
-		{Name: "tc:tslug:unbound", GUID: "g2", Worktree: "tslug"},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("cold rows:\n got %+v\nwant %+v", got, want)
+	if gotCold := directoryRows(strands, nil); !reflect.DeepEqual(gotCold, wantCold) {
+		t.Errorf("cold rows:\n got %+v\nwant %+v", gotCold, wantCold)
 	}
 }

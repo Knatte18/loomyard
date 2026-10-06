@@ -21,15 +21,50 @@ func wiredNamesFromConfig(cfg Config) []string {
 	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
 }
 
-// TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory asserts that the wired
-// name-set always contains `_lyx`, even for a Config whose Pathspec names neither structural
-// directory: `_lyx` arrives structurally, not from config, so an empty or unrelated pathspec cannot
-// remove it.
-func TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory(t *testing.T) {
+// TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory covers the name-sets for a
+// Config whose Pathspec names neither structural directory:
+// the wired name-set always contains `_lyx`, which arrives structurally, not from config, so an empty
+// or unrelated pathspec cannot remove it;
+// the pathspec/commit-routing set always contains `_lyx` but never `.lyx`, since `.lyx` reaching it
+// would let a caller's classifyPaths/Commit call route never-committed content into the weft-side
+// commit;
+// the wired name-set does contain `.lyx` (structuralNeverCommittedDirs folded in) while the
+// routing set still never does, the one assertion that pins the deliberate asymmetry between the two
+// sets;
+// `.lyx` is refused as a worktree slug even when the caller-supplied junctionNames argument is
+// empty, the refusal coming from IsReservedHubName's own structuralNeverCommittedDirs union and not
+// from whatever a particular config happens to wire;
+// and slugReservedNames contains lyxdirs.DotLyxDirName exactly once, sourced from
+// structuralNeverCommittedDirs, proving the removal of hubSlugReservedNames() was
+// behaviour-preserving: the refusal holds identically on both sides of that fold.
+//
+//testtiming:keep _lyx always wired and routed, .lyx wired but never routed, .lyx refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
+func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testing.T) {
 	cfg := Config{Pathspec: "_extra"}
-	got := wiredNamesFromConfig(cfg)
-	if !containsName(got, "_lyx") {
-		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, got, "_lyx")
+
+	wired := wiredNamesFromConfig(cfg)
+	if !containsName(wired, "_lyx") {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, "_lyx")
+	}
+	if !containsName(wired, ".lyx") {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, ".lyx")
+	}
+
+	routing := pathspecNames(cfg)
+	if !containsName(routing, "_lyx") {
+		t.Errorf("pathspecNames(%+v) = %v; want it to contain %q", cfg, routing, "_lyx")
+	}
+	if containsName(routing, ".lyx") {
+		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lyx")
+	}
+
+	if !IsReservedHubName(".lyx", nil) {
+		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lyx")
+	}
+
+	slugReserved := slugReservedNames(cfg)
+	if count := countName(slugReserved, lyxdirs.DotLyxDirName); count != 1 {
+		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, slugReserved, lyxdirs.DotLyxDirName, count)
 	}
 }
 
@@ -46,6 +81,8 @@ func TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory(t 
 // limitation this models: reconcile keeps a `pathspec:` key already present in a worktree's
 // fabric.yaml and never widens it, so an already-deployed repo stays on its existing value forever
 // and only a fresh clone picks up the new empty template default.
+//
+//testtiming:keep a deployed "_lyx _pattern" pathspec yielding exactly one _lyx in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
 func TestDeployedLyxPathspec_YieldsNoDuplicateLyx(t *testing.T) {
 	cfg := Config{Pathspec: "_lyx _pattern"}
 
@@ -65,53 +102,11 @@ func TestDeployedLyxPathspec_YieldsNoDuplicateLyx(t *testing.T) {
 	}
 }
 
-// TestPathspecNames_ContainsLyxButNeverDotLyx asserts that the pathspec/commit-routing set always
-// contains `_lyx` but never `.lyx`, for a Config naming neither structural directory: `.lyx` reaching
-// this set would let a caller's classifyPaths/Commit call route never-committed content into the
-// weft-side commit.
-func TestPathspecNames_ContainsLyxButNeverDotLyx(t *testing.T) {
-	cfg := Config{Pathspec: "_extra"}
-	got := pathspecNames(cfg)
-	if !containsName(got, "_lyx") {
-		t.Errorf("pathspecNames(%+v) = %v; want it to contain %q", cfg, got, "_lyx")
-	}
-	if containsName(got, ".lyx") {
-		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, got, ".lyx")
-	}
-}
-
-// TestWiredNames_ContainsDotLyxWhilePathspecNamesNeverDoes asserts the deliberate asymmetry batch 8
-// introduces: the wired name-set now contains `.lyx` (structuralNeverCommittedDirs folded in), while
-// the pathspec/commit-routing set still never does — the one assertion that pins the difference
-// between the two sets is exactly structuralNeverCommittedDirs, for a Config naming neither
-// structural directory.
-func TestWiredNames_ContainsDotLyxWhilePathspecNamesNeverDoes(t *testing.T) {
-	cfg := Config{Pathspec: "_extra"}
-
-	wired := wiredNamesFromConfig(cfg)
-	if !containsName(wired, ".lyx") {
-		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, ".lyx")
-	}
-
-	routing := pathspecNames(cfg)
-	if containsName(routing, ".lyx") {
-		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lyx")
-	}
-}
-
-// TestIsReservedHubName_RefusesDotLyxAsAWorktreeSlug asserts that `.lyx` is refused as a worktree
-// slug even when the caller-supplied junctionNames argument is empty — the refusal must come from
-// IsReservedHubName's own structuralNeverCommittedDirs union, not from whatever a particular config
-// happens to wire.
-func TestIsReservedHubName_RefusesDotLyxAsAWorktreeSlug(t *testing.T) {
-	if !IsReservedHubName(".lyx", nil) {
-		t.Errorf("IsReservedHubName(%q, nil) = false; want true", ".lyx")
-	}
-}
-
 // TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens asserts that HubReservedNames()
 // — the junction-wiring block set scanOnDiskJunctionNames relies on to see `.lyx` at all — still
 // returns exactly the three hub-structural tokens, with `.lyx` absent.
+//
+//testtiming:keep HubReservedNames returning exactly the three hub tokens without .lyx; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *testing.T) {
 	want := []string{BoardDirName, portalsDirName, launchersDirName}
 	got := HubReservedNames()
@@ -120,18 +115,6 @@ func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *test
 	}
 	if containsName(got, ".lyx") {
 		t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", got, ".lyx")
-	}
-}
-
-// TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold asserts that
-// slugReservedNames(Config{Pathspec: "_extra"}) contains lyxdirs.DotLyxDirName exactly once, sourced
-// from structuralNeverCommittedDirs, proving the removal of hubSlugReservedNames() is
-// behaviour-preserving: the refusal must hold identically on both sides of that fold.
-func TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold(t *testing.T) {
-	cfg := Config{Pathspec: "_extra"}
-	got := slugReservedNames(cfg)
-	if count := countName(got, lyxdirs.DotLyxDirName); count != 1 {
-		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, got, lyxdirs.DotLyxDirName, count)
 	}
 }
 

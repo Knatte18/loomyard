@@ -34,6 +34,8 @@ import (
 // This is the proof that a future raddle/board append (one extra pathspec token) is wired with no
 // fabric/lyxcwd code change: a caller sourcing an extended pathspec would pass its names exactly
 // this way.
+//
+//testtiming:keep WireJunctions and UnwireJunctions wiring exactly the name set they are given, including names outside the default pathspec; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +98,8 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 // drift.go:69-72) before the junction loop; hubforge.NewHub's CloneAndWire already checks the weft
 // primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
 // build by hand — no explicit checkout is needed here.
+//
+//testtiming:keep a redundant narrow pathspec reading healthy; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 

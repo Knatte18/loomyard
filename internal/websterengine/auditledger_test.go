@@ -1,12 +1,10 @@
-// auditledger_test.go covers the audit ledger's once-per-identity rule, the parent/fork identity split, ordering of RecordedAuditWarnings, and the state.json round trip of the ledger fields.
+// auditledger_test.go covers the audit ledger's once-per-identity rule, the parent/fork identity split, ordering of RecordedAuditWarnings, and the pathless-finding refusal.
 // Plain t.TempDir() files only — Test Tier Purity Invariant.
 
 package websterengine
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -32,6 +30,7 @@ func TestRecordBatchWarning_RepeatAddsNothing(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins a parent finding's identity carrying its session, so one key under two sessions is two findings, and a fork finding's identity being its bare key; no RecordBatch test records one parent key under two sessions
 func TestFindingIdentity_ParentKeyPerSession(t *testing.T) {
 	t.Parallel()
 	parent := AuditViolation{Key: "parent:named-spawn:1"}
@@ -49,21 +48,7 @@ func TestFindingIdentity_ParentKeyPerSession(t *testing.T) {
 	}
 }
 
-func TestRecordFailedFinding_DispositionsWithoutWarning(t *testing.T) {
-	t.Parallel()
-	st := &State{}
-	recordFailedFinding(st, "id-1")
-	if !isDispositioned(st, "id-1") {
-		t.Error("isDispositioned = false after recordFailedFinding")
-	}
-	if st.AuditDispositions["id-1"] != dispositionFailed {
-		t.Errorf("disposition = %q; want %q", st.AuditDispositions["id-1"], dispositionFailed)
-	}
-	if len(st.AuditWarnings) != 0 {
-		t.Errorf("AuditWarnings = %v; want none", st.AuditWarnings)
-	}
-}
-
+//testtiming:keep pins the order of recorded warnings: batch warnings in batch-list order, not batch number, then run-level warnings last; the covering tests record a single batch
 func TestRecordedAuditWarnings_BatchesThenRunLevel(t *testing.T) {
 	t.Parallel()
 	st := &State{Batches: map[int]*BatchState{1: {}, 3: {}}}
@@ -82,44 +67,6 @@ func TestRecordedAuditWarnings_BatchesThenRunLevel(t *testing.T) {
 	}
 	if got := RecordedAuditWarnings(st, batches); !reflect.DeepEqual(got, want) {
 		t.Errorf("RecordedAuditWarnings = %v; want %v", got, want)
-	}
-}
-
-func TestAuditLedger_StateRoundTrip(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	websterDir, scratchDir := filepath.Join(root, "w"), filepath.Join(root, "s")
-
-	want := &State{
-		RunGUID:           "g",
-		Batches:           map[int]*BatchState{1: {Slug: "one", AuditWarnings: []AuditWarning{{Identity: "i", Class: "c", Detail: "d"}}}},
-		AuditDispositions: map[string]string{"i": dispositionWarned},
-		AuditWarnings:     []AuditWarning{{Identity: "r", Class: "c", Detail: "d"}},
-	}
-	if err := SaveState(websterDir, scratchDir, want); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-	got, err := LoadState(websterDir, scratchDir)
-	if err != nil {
-		t.Fatalf("LoadState: %v", err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("round trip = %+v; want %+v", got, want)
-	}
-
-	legacy := filepath.Join(root, "legacy")
-	if err := os.MkdirAll(legacy, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, stateFileName), []byte(`{"runGuid":"g","planFingerprint":"p","currentBatch":0,"batches":{"1":{"slug":"one","startSha":"x","kind":"fork","spawnedAt":"t","terminal":false,"status":""}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	old, err := LoadState(legacy, filepath.Join(root, "legacy-scratch"))
-	if err != nil {
-		t.Fatalf("LoadState legacy: %v", err)
-	}
-	if old.AuditDispositions != nil || old.AuditWarnings != nil || old.Batches[1].AuditWarnings != nil {
-		t.Errorf("legacy state decoded ledger fields non-nil: %+v", old)
 	}
 }
 

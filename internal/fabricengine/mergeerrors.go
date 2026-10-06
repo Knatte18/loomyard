@@ -22,7 +22,7 @@ import (
 // package for mergeReason* constants rather than this file alone — and no member may name a side,
 // carry a path, or imply an order.
 // That this file is the set's only home is itself enforced, by
-// TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile: a member declared beside its consuming
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock: a member declared beside its consuming
 // guard in mergeguards.go would otherwise escape the pinned map and every assertion it drives.
 // Membership is earned by being an *aggregatable precondition* — one of several reasons a single
 // *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate

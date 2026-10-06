@@ -28,6 +28,8 @@ import (
 // TestMustUseLLMDriverArm asserts the go driver value and an empty driver value both select the
 // detached-spawn (go) arm, and the llm value selects the strand launch -- the two-value switch step
 // 5 branches on, with the go driver as both the default and the zero-config answer.
+//
+//testtiming:keep pins the go and empty driver values selecting the detached-spawn arm and the llm value the strand launch; its covering test runs the llm arm without asserting the switch
 func TestMustUseLLMDriverArm(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -116,78 +118,94 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 	}
 }
 
-// TestStartLLMDriverArm_ComposesAndStarts drives the llm arm through the two seams with a fake
-// starter: no corpse to remove (driverStrandNone), and the started spec carries the composed prompt,
-// report path, and the driver strand's own name.
-func TestStartLLMDriverArm_ComposesAndStarts(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	probe := &fakeDriverPaneProbeForArm{}
-	c := newTestLLMArmReceiver(t, starter, probe)
+// TestStartLLMDriverArm drives the llm arm through the two seams with a fake starter and probe.
+//
+//testtiming:keep pins the llm arm composing the started spec and addressing the run by slug, removing a dead corpse before the start, and propagating a starter or corpse-removal error without reaching the starter; the covering tests drive the arm through the whole bootstrap without asserting the spec
+func TestStartLLMDriverArm(t *testing.T) {
+	// With no corpse to remove (driverStrandNone) the started spec carries the composed prompt, report
+	// path and the driver strand's own name; the literal "self" never reaches the prompt, because the
+	// arm resolves it to the worktree slug for both the prompt and the report path.
+	t.Run("no corpse composes the spec, addresses the run by slug and starts", func(t *testing.T) {
+		starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+		probe := &fakeDriverPaneProbeForArm{}
+		c := newTestLLMArmReceiver(t, starter, probe)
 
-	handle, err := c.startLLMDriverArm(driverStrandNone, "", "self")
-	if err != nil {
-		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
-	}
-	if !starter.called {
-		t.Fatal("startLLMDriverArm() did not call the driverStarter seam")
-	}
-	if probe.removeCalled {
-		t.Error("startLLMDriverArm() called RemoveDriverStrand with no corpse to remove (driverStrandNone); want it untouched")
-	}
-	if starter.gotSpec.NameOverride != driverStrandDisplayName {
-		t.Errorf("started spec.NameOverride = %q; want %q", starter.gotSpec.NameOverride, driverStrandDisplayName)
-	}
-	if len(starter.gotSpec.OutputFiles) != 1 {
-		t.Fatalf("started spec.OutputFiles = %v; want a single-entry slice", starter.gotSpec.OutputFiles)
-	}
-	if handle.StrandGUID() != "g-new" {
-		t.Errorf("startLLMDriverArm() handle.StrandGUID() = %q; want %q", handle.StrandGUID(), "g-new")
-	}
-}
+		handle, err := c.startLLMDriverArm(driverStrandNone, "", shedrun.SelfRunID)
+		if err != nil {
+			t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
+		}
+		if !starter.called {
+			t.Fatal("startLLMDriverArm() did not call the driverStarter seam")
+		}
+		if probe.removeCalled {
+			t.Error("startLLMDriverArm() called RemoveDriverStrand with no corpse to remove (driverStrandNone); want it untouched")
+		}
+		if starter.gotSpec.NameOverride != driverStrandDisplayName {
+			t.Errorf("started spec.NameOverride = %q; want %q", starter.gotSpec.NameOverride, driverStrandDisplayName)
+		}
+		if len(starter.gotSpec.OutputFiles) != 1 {
+			t.Fatalf("started spec.OutputFiles = %v; want a single-entry slice", starter.gotSpec.OutputFiles)
+		}
+		if handle.StrandGUID() != "g-new" {
+			t.Errorf("startLLMDriverArm() handle.StrandGUID() = %q; want %q", handle.StrandGUID(), "g-new")
+		}
+		prompt := starter.gotSpec.Prompt
+		if !strings.Contains(prompt, "run `pair`") {
+			t.Errorf("prompt = %q; want it to name the slug run-id \"pair\"", prompt)
+		}
+		if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
+			t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
+		}
+		if !strings.Contains(prompt, "lyx reed remove --name driver --detach") {
+			t.Errorf("prompt = %q; want the teardown command", prompt)
+		}
+	})
 
-// TestStartLLMDriverArm_AddressesRunBySlug asserts the literal "self" never reaches the prompt: the
-// arm resolves it to the worktree slug for both the prompt and the report path.
-func TestStartLLMDriverArm_AddressesRunBySlug(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	c := newTestLLMArmReceiver(t, starter, &fakeDriverPaneProbeForArm{})
+	// A relaunch that started first and removed second would leave two strands under one name,
+	// which reed's add has no upsert semantics to reconcile.
+	t.Run("a dead corpse is removed before the start", func(t *testing.T) {
+		var order []string
+		probe := &fakeDriverPaneProbeForArm{order: &order}
+		starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
+		c := newTestLLMArmReceiver(t, orderingStarter{starter: starter, order: &order}, probe)
 
-	if _, err := c.startLLMDriverArm(driverStrandNone, "", shedrun.SelfRunID); err != nil {
-		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
-	}
-	prompt := starter.gotSpec.Prompt
-	if !strings.Contains(prompt, "run `pair`") {
-		t.Errorf("prompt = %q; want it to name the slug run-id \"pair\"", prompt)
-	}
-	if strings.Contains(prompt, `"self"`) || strings.Contains(prompt, string(filepath.Separator)+"self"+string(filepath.Separator)) {
-		t.Errorf("prompt = %q; want no literal self run-id or report path segment", prompt)
-	}
-	if !strings.Contains(prompt, "lyx reed remove --name driver --detach") {
-		t.Errorf("prompt = %q; want the teardown command", prompt)
-	}
-}
+		if _, err := c.startLLMDriverArm(driverStrandDead, "g-dead", "self"); err != nil {
+			t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
+		}
+		if !probe.removeCalled {
+			t.Fatal("startLLMDriverArm() did not remove the dead driver strand")
+		}
+		if probe.removeGUID != "g-dead" {
+			t.Errorf("RemoveDriverStrand called with guid %q; want %q", probe.removeGUID, "g-dead")
+		}
+		if len(order) != 2 || order[0] != "remove" || order[1] != "start" {
+			t.Errorf("call order = %v; want [remove start]", order)
+		}
+	})
 
-// TestStartLLMDriverArm_RemovesCorpseBeforeStart asserts the corpse removal happens before the run
-// start when the strand action is dead: a relaunch that started first and removed second would leave
-// two strands under one name, which reed's add has no upsert semantics to reconcile.
-func TestStartLLMDriverArm_RemovesCorpseBeforeStart(t *testing.T) {
-	var order []string
-	probe := &fakeDriverPaneProbeForArm{order: &order}
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	// Wrap starter.StartDriver to also record ordering, via a thin adapter.
-	c := newTestLLMArmReceiver(t, orderingStarter{starter: starter, order: &order}, probe)
+	t.Run("the starter error propagates", func(t *testing.T) {
+		wantErr := errors.New("start failed")
+		c := newTestLLMArmReceiver(t, &fakeDriverStarter{startErr: wantErr}, &fakeDriverPaneProbeForArm{})
 
-	if _, err := c.startLLMDriverArm(driverStrandDead, "g-dead", "self"); err != nil {
-		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
-	}
-	if !probe.removeCalled {
-		t.Fatal("startLLMDriverArm() did not remove the dead driver strand")
-	}
-	if probe.removeGUID != "g-dead" {
-		t.Errorf("RemoveDriverStrand called with guid %q; want %q", probe.removeGUID, "g-dead")
-	}
-	if len(order) != 2 || order[0] != "remove" || order[1] != "start" {
-		t.Errorf("call order = %v; want [remove start]", order)
-	}
+		_, err := c.startLLMDriverArm(driverStrandNone, "", "self")
+		if !errors.Is(err, wantErr) {
+			t.Errorf("startLLMDriverArm() error = %v; want %v", err, wantErr)
+		}
+	})
+
+	t.Run("a corpse-removal error propagates and never reaches the starter", func(t *testing.T) {
+		wantErr := errors.New("remove failed")
+		starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new"}}
+		c := newTestLLMArmReceiver(t, starter, &fakeDriverPaneProbeForArm{removeErr: wantErr})
+
+		_, err := c.startLLMDriverArm(driverStrandDead, "g-dead", "self")
+		if !errors.Is(err, wantErr) {
+			t.Errorf("startLLMDriverArm() error = %v; want %v", err, wantErr)
+		}
+		if starter.called {
+			t.Error("startLLMDriverArm() called the starter seam despite the corpse removal failing")
+		}
+	})
 }
 
 // orderingStarter wraps a fakeDriverStarter and additionally appends to a shared order slice, so a
@@ -200,52 +218,6 @@ type orderingStarter struct {
 func (o orderingStarter) StartDriver(spec shuttleengine.Spec) (driverHandle, error) {
 	*o.order = append(*o.order, "start")
 	return o.starter.StartDriver(spec)
-}
-
-// TestStartLLMDriverArm_NoCorpseRemovalWhenActionNone asserts the corpse removal does not happen at
-// all when the strand action is none -- nothing to remove, and removing when there is no dead strand
-// present is a bug in the other direction.
-func TestStartLLMDriverArm_NoCorpseRemovalWhenActionNone(t *testing.T) {
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	probe := &fakeDriverPaneProbeForArm{}
-	c := newTestLLMArmReceiver(t, starter, probe)
-
-	if _, err := c.startLLMDriverArm(driverStrandNone, "", "self"); err != nil {
-		t.Fatalf("startLLMDriverArm() error = %v; want nil", err)
-	}
-	if probe.removeCalled {
-		t.Error("startLLMDriverArm() called RemoveDriverStrand when the strand action was none; want it untouched")
-	}
-}
-
-// TestStartLLMDriverArm_StarterErrorPropagates asserts the starter seam's error propagates.
-func TestStartLLMDriverArm_StarterErrorPropagates(t *testing.T) {
-	wantErr := errors.New("start failed")
-	starter := &fakeDriverStarter{startErr: wantErr}
-	probe := &fakeDriverPaneProbeForArm{}
-	c := newTestLLMArmReceiver(t, starter, probe)
-
-	_, err := c.startLLMDriverArm(driverStrandNone, "", "self")
-	if !errors.Is(err, wantErr) {
-		t.Errorf("startLLMDriverArm() error = %v; want %v", err, wantErr)
-	}
-}
-
-// TestStartLLMDriverArm_RemoveCorpseErrorPropagates asserts a corpse-removal failure propagates and
-// never reaches the starter seam.
-func TestStartLLMDriverArm_RemoveCorpseErrorPropagates(t *testing.T) {
-	wantErr := errors.New("remove failed")
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new"}}
-	probe := &fakeDriverPaneProbeForArm{removeErr: wantErr}
-	c := newTestLLMArmReceiver(t, starter, probe)
-
-	_, err := c.startLLMDriverArm(driverStrandDead, "g-dead", "self")
-	if !errors.Is(err, wantErr) {
-		t.Errorf("startLLMDriverArm() error = %v; want %v", err, wantErr)
-	}
-	if starter.called {
-		t.Error("startLLMDriverArm() called the starter seam despite the corpse removal failing")
-	}
 }
 
 // fakeDriverPaneProbeFull is a fully configurable driverPaneProbe stub for driving
@@ -347,71 +319,103 @@ func assertBootstrapLockReleased(t *testing.T, path string) {
 // runDriverSpawnAndWait's signature.
 func noopLockHeld() (bool, error) { return false, nil }
 
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure covers failure site
-// 1 of 5: the driver-settings resolution.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnDriverSettingsResolutionFailure(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-	c.cfg.Driver = "bad spec with a space" // modelspec.Parse rejects whitespace
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (driver-settings resolution must fail)")
-	}
-	if starter.called {
-		t.Error("runDriverSpawnAndWait() reached the starter seam despite a driver-settings resolution failure")
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
-}
-
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure covers failure site 2 of 5: the
-// strand read.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnStrandReadFailure(t *testing.T) {
-	wantErr := errors.New("strand read failed")
-	starter := &fakeDriverStarter{}
-	probe := &fakeDriverPaneProbeFull{strandsFn: func() ([]reedengine.StrandStatus, error) { return nil, wantErr }}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the strand read must fail)")
-	}
-	if starter.called {
-		t.Error("runDriverSpawnAndWait() reached the starter seam despite a strand-read failure")
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
-}
-
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure covers failure site 3 of 5: the
-// corpse removal. It also pins that the corpse removal happens before the run start when the strand
-// action is dead: the starter seam must never be reached when the corpse removal itself fails.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnCorpseRemovalFailure(t *testing.T) {
-	wantErr := errors.New("remove failed")
+// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure asserts every failure site of the llm arm
+// returns false and releases the bootstrap lock: a leaked lock wedges every later start in the
+// worktree and is invisible until the second invocation, so each site is checked individually.
+func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 	deadStrand := func() ([]reedengine.StrandStatus, error) {
 		return []reedengine.StrandStatus{{GUID: "g-dead", Name: driverStrandDisplayName, Live: false}}, nil
 	}
-	starter := &fakeDriverStarter{}
-	probe := &fakeDriverPaneProbeFull{strandsFn: deadStrand, removeErr: wantErr}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
+	tests := []struct {
+		name string
+		// strands, removeErr and startErr configure the probe and starter seams; a nil strands answers no strands.
+		strands   func() ([]reedengine.StrandStatus, error)
+		removeErr error
+		startErr  error
+		// mutate breaks the receiver, or the disk it works on, before the call.
+		mutate            func(t *testing.T, c *loomCLI)
+		wantRemoveCalled  bool
+		wantStarterCalled bool
+		wantOutput        string
+	}{
+		{
+			// modelspec.Parse rejects whitespace.
+			name:   "driver settings resolution",
+			mutate: func(_ *testing.T, c *loomCLI) { c.cfg.Driver = "bad spec with a space" },
+		},
+		{
+			name:    "strand read",
+			strands: func() ([]reedengine.StrandStatus, error) { return nil, errors.New("strand read failed") },
+		},
+		{
+			// The corpse removal happens before the run start when the strand action is dead, so the
+			// starter must never be reached when the removal itself fails.
+			name:             "corpse removal",
+			strands:          deadStrand,
+			removeErr:        errors.New("remove failed"),
+			wantRemoveCalled: true,
+		},
+		{
+			// A plain FILE at the path the report's parent directory (shedrun.DriveReportsDir) must
+			// occupy makes os.MkdirAll there fail with "not a directory".
+			name: "report directory mkdir",
+			mutate: func(t *testing.T, c *loomCLI) {
+				scratchDir := shedrun.DriveReportsDir(c.location, c.runID)
+				if err := os.MkdirAll(filepath.Dir(scratchDir), 0o755); err != nil {
+					t.Fatalf("mkdir scratch dir's parent: %v", err)
+				}
+				if err := os.WriteFile(scratchDir, []byte("blocker"), 0o644); err != nil {
+					t.Fatalf("write blocker file at %q: %v", scratchDir, err)
+				}
+			},
+		},
+		{
+			name:              "run start",
+			startErr:          errors.New("start failed"),
+			wantStarterCalled: true,
+		},
+		{
+			// StartDriver blocks through shuttle's startup probe and returns the not-ready error
+			// directly, so a not-ready provider surfaces as an ordinary starter-seam error that the
+			// failed-start refusal reports on the envelope unchanged.
+			name:              "not-ready start",
+			startErr:          errors.New("shuttle: start: the provider never became ready (run dir /run/dir, strand g-run)"),
+			wantStarterCalled: true,
+			wantOutput:        "shuttle: start: the provider never became ready (run dir /run/dir, strand g-run)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			strands := tt.strands
+			if strands == nil {
+				strands = noStrands
+			}
+			starter := &fakeDriverStarter{startErr: tt.startErr}
+			probe := &fakeDriverPaneProbeFull{strandsFn: strands, removeErr: tt.removeErr}
+			c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
+			if tt.mutate != nil {
+				tt.mutate(t, c)
+			}
 
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
+			bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
+			var out bytes.Buffer
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the corpse removal must fail)")
+			if ok {
+				t.Error("runDriverSpawnAndWait() = true; want false")
+			}
+			if probe.removeCalled != tt.wantRemoveCalled {
+				t.Errorf("corpse removal attempted = %v; want %v", probe.removeCalled, tt.wantRemoveCalled)
+			}
+			if starter.called != tt.wantStarterCalled {
+				t.Errorf("starter seam reached = %v; want %v", starter.called, tt.wantStarterCalled)
+			}
+			if !strings.Contains(out.String(), tt.wantOutput) {
+				t.Errorf("envelope output = %q; want it to contain %q", out.String(), tt.wantOutput)
+			}
+			assertBootstrapLockReleased(t, bootstrapLockPath)
+		})
 	}
-	if !probe.removeCalled {
-		t.Error("runDriverSpawnAndWait() never attempted the corpse removal")
-	}
-	if starter.called {
-		t.Error("runDriverSpawnAndWait() reached the starter seam despite the corpse removal failing -- a relaunch that starts before removing would leave two strands under one name")
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
 }
 
 // TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced pins that a live driver strand marked retiring is removed by guid before a fresh driver starts, rather than adopted.
@@ -439,109 +443,14 @@ func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testin
 	}
 }
 
-// TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced pins that a live driver strand without the retiring mark keeps today's handling: no removal and no spawn.
-func TestRunDriverSpawnAndWait_LiveUnmarkedDriverIsNeitherRemovedNorReplaced(t *testing.T) {
-	live := func() ([]reedengine.StrandStatus, error) {
-		return []reedengine.StrandStatus{{GUID: "g-live", Name: driverStrandDisplayName, PaneID: "%0", Live: true}}, nil
-	}
-	probe := &fakeDriverPaneProbeFull{strandsFn: live}
-	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-	defer func() { _ = bootstrapLock.Release() }()
-
-	if !ok {
-		t.Fatal("runDriverSpawnAndWait() = false; want true")
-	}
-	if probe.removeCalled {
-		t.Error("runDriverSpawnAndWait() removed a live driver strand that is not marked retiring")
-	}
-	if starter.called {
-		t.Error("runDriverSpawnAndWait() spawned a driver over a live unmarked strand")
-	}
-}
-
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure covers failure site 4 of 5:
-// the report directory's mkdir-all.
-// It forces the failure by pre-creating a plain FILE at the exact path the report's parent directory (shedrun.DriveReportsDir) must occupy, so os.MkdirAll there fails with "not a directory".
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnReportDirMkdirFailure(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-
-	scratchDir := shedrun.DriveReportsDir(c.location, c.runID)
-	if err := os.MkdirAll(filepath.Dir(scratchDir), 0o755); err != nil {
-		t.Fatalf("mkdir scratch dir's parent: %v", err)
-	}
-	if err := os.WriteFile(scratchDir, []byte("blocker"), 0o644); err != nil {
-		t.Fatalf("write blocker file at %q: %v", scratchDir, err)
-	}
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the report directory's mkdir-all must fail)")
-	}
-	if starter.called {
-		t.Error("runDriverSpawnAndWait() reached the starter seam despite the report directory's mkdir-all failing")
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
-}
-
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure covers failure site 5 of 5: the run
-// start, an ordinary starter-seam error unrelated to readiness.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnRunStartFailure(t *testing.T) {
-	wantErr := errors.New("start failed")
-	starter := &fakeDriverStarter{startErr: wantErr}
-	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the run start must fail)")
-	}
-	if !starter.called {
-		t.Error("runDriverSpawnAndWait() never reached the starter seam")
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
-}
-
-// TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart covers failure site 5 of 5's other
-// shape: StartDriver itself now blocks through shuttle's startup probe and returns the not-ready
-// error directly, so a not-ready provider surfaces here as an ordinary starter-seam error rather than
-// through a separate readiness step. startErr's message is shaped the way shuttle's own not-ready
-// error is worded -- naming a run dir and a strand guid -- and runDriverSpawnAndWait's existing
-// failed-start refusal path reports it on the envelope unchanged.
-func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnNotReadyStart(t *testing.T) {
-	wantErr := errors.New("shuttle: start: the provider never became ready (run dir /run/dir, strand g-run)")
-	starter := &fakeDriverStarter{startErr: wantErr}
-	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
-	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
-
-	bootstrapLock := acquireTestBootstrapLock(t, bootstrapLockPath)
-	var out bytes.Buffer
-	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if ok {
-		t.Error("runDriverSpawnAndWait() = true; want false (the not-ready start must fail)")
-	}
-	if !strings.Contains(out.String(), wantErr.Error()) {
-		t.Errorf("envelope output = %q; want it to contain %q", out.String(), wantErr.Error())
-	}
-	assertBootstrapLockReleased(t, bootstrapLockPath)
-}
-
 // TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake asserts the run-lock handshake is
 // not reached on the llm arm: the test's own lock-held seam carries a counter, and a successful
 // llm-arm run through this function must leave that counter at zero. This is the assertion pinning
 // the deliberate asymmetry between the two arms -- a later refactor that "unifies" them into a shared
 // helper reaching the handshake fails here rather than silently reintroducing the race the handshake
 // decision exists to avoid.
+//
+//testtiming:keep pins the llm arm never consulting the go arm's run-lock handshake, the deliberate asymmetry between the arms that a later unifying refactor would break; the covering test counts no handshake calls
 func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testing.T) {
 	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir"}}
 	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
@@ -645,6 +554,7 @@ func TestRunDriverSpawnAndWait_SpawnVouchesForTheResume(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins a live parked driver being resumed with one line, its marker removed, no handoff voucher written and no refusal recorded, without spawning; the covering tests assert the refusal and spawn paths
 func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T) {
 	starter := &fakeDriverStarter{}
 	sender := &fakeDriverSender{}
@@ -677,26 +587,6 @@ func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T)
 	_ = bootstrapLock.Release()
 }
 
-func TestRunDriverSpawnAndWait_LiveDriverWithoutMarkerSendsNothing(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	sender := &fakeDriverSender{}
-	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
-	if err := os.Remove(marker); err != nil {
-		t.Fatalf("remove marker: %v", err)
-	}
-
-	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &bytes.Buffer{}, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if !ok {
-		t.Fatal("runDriverSpawnAndWait() = false; want true")
-	}
-	if len(sender.texts) != 0 || starter.called {
-		t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
-	}
-	_ = bootstrapLock.Release()
-}
-
 // writeTestRunState persists a status file in state st at the receiver's status path.
 func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 	t.Helper()
@@ -705,21 +595,53 @@ func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 	}
 }
 
-func TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably(t *testing.T) {
-	for _, st := range []shedengine.State{shedengine.StateAwaiting, shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed} {
-		t.Run(string(st), func(t *testing.T) {
+// TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, is neither removed, replaced nor sent to:
+// over a run with no status or a running run the call is a no-op that succeeds, and over a run handed back to the driver it refuses retryably until the driver parks.
+func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
+	tests := []struct {
+		name string
+		// runState is the persisted run state; empty writes no status file.
+		runState    shedengine.State
+		wantRefusal bool
+	}{
+		{name: "no status file"},
+		{name: "running run is a no-op", runState: shedengine.StateRunning},
+		{name: "awaiting run refuses retryably", runState: shedengine.StateAwaiting, wantRefusal: true},
+		{name: "blocked run refuses retryably", runState: shedengine.StateBlocked, wantRefusal: true},
+		{name: "paused run refuses retryably", runState: shedengine.StatePaused, wantRefusal: true},
+		{name: "failed run refuses retryably", runState: shedengine.StateFailed, wantRefusal: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			starter := &fakeDriverStarter{}
 			sender := &fakeDriverSender{}
-			c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+			probe := &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}
+			c, lockPath, marker := newResumeBranchReceiver(t, starter, probe, sender)
 			if err := os.Remove(marker); err != nil {
 				t.Fatalf("remove marker: %v", err)
 			}
-			writeTestRunState(t, c, st)
+			if tt.runState != "" {
+				c.frictionDir = t.TempDir()
+				writeTestRunState(t, c, tt.runState)
+			}
 
 			var out bytes.Buffer
 			bootstrapLock := acquireTestBootstrapLock(t, lockPath)
 			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
 
+			if len(sender.texts) != 0 || starter.called || probe.removeCalled {
+				t.Errorf("sent %d line(s), starter called = %v, strand removed = %v; want none", len(sender.texts), starter.called, probe.removeCalled)
+			}
+			if _, found := voucherOnDisk(t, c); found {
+				t.Error("the live-strand call wrote a handoff voucher")
+			}
+			if !tt.wantRefusal {
+				if !ok || out.Len() != 0 {
+					t.Errorf("runDriverSpawnAndWait() = %v, output %q; want true and no output", ok, out.String())
+				}
+				_ = bootstrapLock.Release()
+				return
+			}
 			if ok {
 				t.Fatal("runDriverSpawnAndWait() = true; want a refusal while the driver has not parked")
 			}
@@ -739,40 +661,12 @@ func TestRunDriverSpawnAndWait_LiveUnparkedDriverAtHandBackRefusesRetryably(t *t
 					t.Errorf("error = %q; want substring %q", envelope.Error, want)
 				}
 			}
-			if len(sender.texts) != 0 || starter.called {
-				t.Errorf("sent %d line(s), starter called = %v; want neither", len(sender.texts), starter.called)
-			}
 			assertBootstrapLockReleased(t, lockPath)
 		})
 	}
 }
 
-func TestRunDriverSpawnAndWait_LiveDriverOverRunningRunIsANoOp(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	sender := &fakeDriverSender{}
-	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
-	if err := os.Remove(marker); err != nil {
-		t.Fatalf("remove marker: %v", err)
-	}
-	c.frictionDir = t.TempDir()
-	writeTestRunState(t, c, shedengine.StateRunning)
-
-	var out bytes.Buffer
-	bootstrapLock := acquireTestBootstrapLock(t, lockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bootstrapLock, noopLockHeld)
-
-	if !ok {
-		t.Fatalf("runDriverSpawnAndWait() = false; want true (output %q)", out.String())
-	}
-	if out.Len() != 0 || len(sender.texts) != 0 || starter.called {
-		t.Errorf("output %q, sent %d line(s), starter called = %v; want none", out.String(), len(sender.texts), starter.called)
-	}
-	if _, found := voucherOnDisk(t, c); found {
-		t.Error("the live-strand no-op wrote a handoff voucher")
-	}
-	_ = bootstrapLock.Release()
-}
-
+//testtiming:keep pins a dead driver strand with a stale park marker removing the marker and spawning a fresh driver with no resume line sent; the covering tests neither park a marker nor assert its removal
 func TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns(t *testing.T) {
 	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
 	sender := &fakeDriverSender{}

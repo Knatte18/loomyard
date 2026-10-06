@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -29,7 +28,27 @@ import (
 // answers that with a stderr line and exit 0, which no reed probe can tell apart from a slow boot.
 var socketUnsafeChars = regexp.MustCompile(`[:/\\ ]`)
 
-func TestServerName_Deterministic(t *testing.T) {
+// TestServerName runs the properties ServerName promises, each a named step below:
+// determinism, socket-safe characters (a hub at the filesystem root included), a bounded length for a long hub basename,
+// distinct keys for distinct hubs, and the readable prefix plus 8-hex hash shape.
+func TestServerName(t *testing.T) {
+	steps := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{"IsDeterministic", serverNameIsDeterministic},
+		{"SocketSafe", serverNameSocketSafe},
+		{"SocketSafeForAHubAtTheFilesystemRoot", serverNameSocketSafeForAHubAtTheFilesystemRoot},
+		{"BoundedForALongHubBasename", serverNameBoundedForALongHubBasename},
+		{"DistinctForDistinctHubsSharingBasename", serverNameDistinctForDistinctHubsSharingBasename},
+		{"HasHubBasenameAndPrefix", serverNameHasHubBasenameAndPrefix},
+	}
+	for _, step := range steps {
+		t.Run(step.name, step.run)
+	}
+}
+
+func serverNameIsDeterministic(t *testing.T) {
 	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got1 := ServerName(hub)
 	got2 := ServerName(hub)
@@ -38,7 +57,7 @@ func TestServerName_Deterministic(t *testing.T) {
 	}
 }
 
-func TestServerName_SocketSafe(t *testing.T) {
+func serverNameSocketSafe(t *testing.T) {
 	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got := ServerName(hub)
 	if socketUnsafeChars.MatchString(got) {
@@ -46,13 +65,13 @@ func TestServerName_SocketSafe(t *testing.T) {
 	}
 }
 
-// TestServerName_SocketSafeForAHubAtTheFilesystemRoot is the regression guard for the R2 review's
+// serverNameSocketSafeForAHubAtTheFilesystemRoot is the regression guard for the R2 review's
 // R2-F3: a git worktree one level under the filesystem root — a container's /workspace or /app —
 // resolves its hub to "/", and filepath.Base("/") is "/", so ServerName used to emit a key
 // containing a path separator that tmux cannot create a socket for (and does not report as a
 // failure). The hash half is asserted intact alongside, since substitution must not change hub
 // identity.
-func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
+func serverNameSocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	root := string(filepath.Separator)
 
 	got := ServerName(root)
@@ -64,14 +83,14 @@ func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	}
 }
 
-// TestServerName_BoundedForALongHubBasename is the regression guard for the R4 review's R4-F2: the
+// serverNameBoundedForALongHubBasename is the regression guard for the R4 review's R4-F2: the
 // readable half of the key was unbounded, so a long hub directory name produced a -L key whose
 // socket path could not fit sockaddr_un's 108-byte sun_path. Measured live on tmux 3.6 with the
 // default "/tmp/tmux-<uid>/": a 92-byte key works, a 93-byte one fails "(File name too long)" on
 // every invocation and the hub cannot be booted at all.
 // Two distinct long-named hubs are asserted apart alongside the bound, since truncation must not
 // change hub identity any more than the separator substitution above does.
-func TestServerName_BoundedForALongHubBasename(t *testing.T) {
+func serverNameBoundedForALongHubBasename(t *testing.T) {
 	longBase := strings.Repeat("h", 200) + "-LYXHUB"
 	parent := t.TempDir()
 
@@ -92,6 +111,7 @@ func TestServerName_BoundedForALongHubBasename(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the readable half of the socket key being cut at a rune boundary: under or at the limit untouched, a straddling rune dropped whole, zero keeps nothing, always valid UTF-8; its covering tests run this code without asserting it
 func TestTruncateAtRuneBoundary(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -122,7 +142,7 @@ func TestTruncateAtRuneBoundary(t *testing.T) {
 	}
 }
 
-func TestServerName_DistinctForDistinctHubsSharingBasename(t *testing.T) {
+func serverNameDistinctForDistinctHubsSharingBasename(t *testing.T) {
 	base := "loomyard-LYXHUB"
 	hubA := filepath.Join(t.TempDir(), "a", base)
 	hubB := filepath.Join(t.TempDir(), "b", base)
@@ -134,7 +154,7 @@ func TestServerName_DistinctForDistinctHubsSharingBasename(t *testing.T) {
 	}
 }
 
-func TestServerName_HasHubBasenameAndPrefix(t *testing.T) {
+func serverNameHasHubBasenameAndPrefix(t *testing.T) {
 	hub := filepath.Join(t.TempDir(), "loomyard-LYXHUB")
 	got := ServerName(hub)
 	want := "lyx-loomyard-LYXHUB-"
@@ -153,6 +173,7 @@ func TestServerName_HasHubBasenameAndPrefix(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins SessionName deriving the session name as the worktree's basename; its covering tests run this code without asserting it
 func TestSessionName_IsWorktreeBasename(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "internal-reed")
 	got := SessionName(worktree)
@@ -240,50 +261,29 @@ func TestSanitizeSessionName(t *testing.T) {
 		{"colon is substituted", "svc:v2", "svc_v2"},
 		{"backslash is substituted", `bs\slash`, "bs_slash"},
 		{"control character is substituted", "svc\tv3", "svc_v3"},
+		{"newline is substituted", "svc\nv3", "svc_v3"},
+		{"escape is substituted", "svc\x1bv3", "svc_v3"},
 		{"DEL is substituted", "svc\x7fv3", "svc_v3"},
 		{"invalid UTF-8 byte is substituted one byte at a time", "svc-\xffv3", "svc-_v3"},
 		{"empty stays empty", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SanitizeSessionName(tt.input); got != tt.want {
+			got := SanitizeSessionName(tt.input)
+			if got != tt.want {
 				t.Errorf("SanitizeSessionName(%q) = %q; want %q", tt.input, got, tt.want)
 			}
-		})
-	}
-}
-
-// TestSanitizeSessionName_OutputAlwaysPassesValidation binds the sanitizer to the validator that
-// declares the rule, which is the whole reason SanitizeSessionName lives in this package: any
-// character class validateToldTmuxIdentity learns to refuse must already be one SanitizeSessionName
-// substitutes, and this case fails the moment the two disagree.
-// A "-<hash8>" suffix is appended exactly as standalonegeom.ReedGeometry appends it, so the assertion
-// is made against the string reed is actually told.
-func TestSanitizeSessionName_OutputAlwaysPassesValidation(t *testing.T) {
-	inputs := []string{
-		"my.repo",
-		"app.test.git",
-		"svc:v2",
-		`bs\slash`,
-		"svc\tv3",
-		"svc\nv3",
-		"svc\x1bv3",
-		"svc\x7fv3",
-		"svc-\xffv3",
-		"svc-åäö-⚙",
-		"two words",
-		"",
-	}
-	for _, input := range inputs {
-		t.Run(strconv.Quote(input), func(t *testing.T) {
+			// The sanitizer is bound to the validator that declares the rule, which is the whole reason SanitizeSessionName lives in this package:
+			// any character class validateToldTmuxIdentity learns to refuse must already be one SanitizeSessionName substitutes.
+			// A "-<hash8>" suffix is appended exactly as standalonegeom.ReedGeometry appends it, so the assertion is made against the string reed is actually told.
 			geom := Geometry{
 				SocketKey:    "lyx-deadbeef",
-				SessionName:  SanitizeSessionName(input) + "-deadbeef",
-				WorktreeRoot: filepath.Join("targets", input),
+				SessionName:  got + "-deadbeef",
+				WorktreeRoot: filepath.Join("targets", tt.input),
 				HubPath:      "state",
 			}
 			if err := validateToldTmuxIdentity(geom); err != nil {
-				t.Errorf("validateToldTmuxIdentity(SessionName=%q) error = %v; want nil after sanitization of %q", geom.SessionName, err, input)
+				t.Errorf("validateToldTmuxIdentity(SessionName=%q) error = %v; want nil after sanitization of %q", geom.SessionName, err, tt.input)
 			}
 		})
 	}
@@ -514,223 +514,163 @@ func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T)
 	}
 }
 
-// TestWithOpLock_RefusesARewrittenSessionNameBeforeTouchingTmux asserts the refusal lands at the op
-// boundary, ahead of every tmux round trip and every directory creation — the property that keeps a
-// bad identity from creating substrate reed cannot address.
-// newTestEngine's tmux/shell paths deliberately do not exist, so any op that DID reach tmux would
-// fail with an exec error naming that path; asserting the error is the identity refusal instead is
-// what pins the ordering.
-func TestWithOpLock_RefusesARewrittenSessionNameBeforeTouchingTmux(t *testing.T) {
-	e := newTestEngine(t)
-	e.geom.SessionName = "svc.v2"
+// TestWithOpLock_ToldGeometry pins that withOpLock and withTryOpLock judge the told geometry at the op boundary,
+// before every tmux round trip and every directory creation, so a bad identity creates no substrate reed cannot address.
+// newTestEngine's tmux/shell paths deliberately do not exist, so an op that DID reach tmux would fail with an exec error naming that path;
+// asserting the error is the told-geometry refusal instead is what pins the ordering.
+// A rewritten session name is refused naming it.
+// A worktree root that vanished, is a regular file or is the standalone non-existent target shape is refused with errWorktreeRootGone and nothing is created,
+// withTryOpLock as its own row so a regression that fixes only one of the two lock helpers fails;
+// the vanished-path message mentions --target-dir while the not-a-directory message carries no rename remedy, since nothing was renamed.
+// A worktree root that exists with a different anchor path not created yet (the standalone first-run shape, which fails if a later change re-gates the predicate on AnchorPath),
+// and the hub first-run shape, succeed and create the anchor's .lyx directory.
+func TestWithOpLock_ToldGeometry(t *testing.T) {
+	tests := []struct {
+		name         string
+		try          bool
+		setup        func(t *testing.T, e *Engine) (mustNotExist []string)
+		wantErr      bool
+		wantSentinel bool
+		wantText     []string
+		notText      []string
+	}{
+		{
+			name: "RefusesARewrittenSessionName",
+			setup: func(t *testing.T, e *Engine) []string {
+				e.geom.SessionName = "svc.v2"
+				return nil
+			},
+			wantErr:  true,
+			wantText: []string{"svc.v2"},
+		},
+		{
+			name: "RefusesAVanishedWorktreeRoot",
+			setup: func(t *testing.T, e *Engine) []string {
+				vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
+				e.geom.WorktreeRoot = vanished
+				return []string{vanished, e.geom.AnchorPath, e.stateDir()}
+			},
+			wantErr:      true,
+			wantSentinel: true,
+		},
+		{
+			name: "TryLockRefusesAVanishedWorktreeRoot",
+			try:  true,
+			setup: func(t *testing.T, e *Engine) []string {
+				vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
+				e.geom.WorktreeRoot = vanished
+				return []string{vanished, e.geom.AnchorPath, e.stateDir()}
+			},
+			wantErr:      true,
+			wantSentinel: true,
+		},
+		{
+			name: "RefusesAWorktreeRootThatIsARegularFile",
+			setup: func(t *testing.T, e *Engine) []string {
+				regularFile := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "worktree-is-a-file")
+				if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
+					t.Fatalf("WriteFile: %v", err)
+				}
+				e.geom.WorktreeRoot = regularFile
+				return nil
+			},
+			wantErr:      true,
+			wantSentinel: true,
+			notText:      []string{"renamed", "--target-dir"},
+		},
+		{
+			name: "RefusesTheStandaloneNonExistentTargetShape",
+			setup: func(t *testing.T, e *Engine) []string {
+				parent := filepath.Dir(e.geom.WorktreeRoot)
+				e.geom.WorktreeRoot = filepath.Join(parent, "does-not-exist-target")
+				e.geom.AnchorPath = filepath.Join(parent, "does-not-exist-anchor")
+				return []string{e.geom.WorktreeRoot, e.geom.AnchorPath}
+			},
+			wantErr:      true,
+			wantSentinel: true,
+			wantText:     []string{"--target-dir"},
+		},
+		{
+			name: "SucceedsForTheStandaloneFirstRunShape",
+			setup: func(t *testing.T, e *Engine) []string {
+				if e.geom.AnchorPath == e.geom.WorktreeRoot {
+					t.Fatalf("fixture assumption violated: AnchorPath %q must differ from WorktreeRoot %q", e.geom.AnchorPath, e.geom.WorktreeRoot)
+				}
+				if fileExists(e.geom.AnchorPath) {
+					t.Fatalf("fixture assumption violated: AnchorPath %q must not exist yet", e.geom.AnchorPath)
+				}
+				return nil
+			},
+		},
+		{
+			name: "SucceedsForTheHubFirstRunShape",
+			setup: func(t *testing.T, e *Engine) []string {
+				e.geom.AnchorPath = e.geom.WorktreeRoot
+				if fileExists(e.stateDir()) {
+					t.Fatalf("fixture assumption violated: .lyx %q must not exist yet", e.stateDir())
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			mustNotExist := tt.setup(t, e)
 
-	ran := false
-	err := e.withOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("withOpLock with a rewritten session name = nil; want a refusal")
-	}
-	if ran {
-		t.Errorf("withOpLock ran the operation body despite an unusable told session name")
-	}
-	if !strings.Contains(err.Error(), "svc.v2") {
-		t.Errorf("withOpLock error = %q; want it to name the offending session name", err)
-	}
-	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
-		t.Errorf("withOpLock created the lock file %q despite refusing the told geometry", got)
-	}
-}
+			ran := false
+			body := func() error {
+				ran = true
+				return nil
+			}
+			var acquired bool
+			var err error
+			if tt.try {
+				acquired, err = e.withTryOpLock(body)
+			} else {
+				err = e.withOpLock(body)
+			}
 
-// TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState is the regression guard for this
-// task: a told WorktreeRoot that names a directory that does not exist is refused before any
-// substrate is created, mirroring
-// TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState's shape.
-func TestWithOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState(t *testing.T) {
-	e := newTestEngine(t)
-	vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
-	e.geom.WorktreeRoot = vanished
-
-	ran := false
-	err := e.withOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("withOpLock with a vanished told worktree root = nil; want a refusal")
-	}
-	if !errors.Is(err, errWorktreeRootGone) {
-		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
-	}
-	if ran {
-		t.Errorf("withOpLock ran the operation body despite a vanished told worktree root")
-	}
-	if fileExists(vanished) {
-		t.Errorf("withOpLock created the worktree root %q despite refusing the told geometry", vanished)
-	}
-	if fileExists(e.geom.AnchorPath) {
-		t.Errorf("withOpLock created the anchor path %q despite refusing the told geometry", e.geom.AnchorPath)
-	}
-	if fileExists(e.stateDir()) {
-		t.Errorf("withOpLock created the .lyx state directory %q despite refusing the told geometry", e.stateDir())
-	}
-	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
-		t.Errorf("withOpLock created the lock file %q despite refusing the told geometry", got)
-	}
-}
-
-// TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState is withTryOpLock's own copy of
-// the guard above, written as its own separate test rather than a shared subtest so a regression
-// that fixes only one of the two lock helpers fails here.
-func TestWithTryOpLock_RefusesAVanishedWorktreeRootBeforeCreatingState(t *testing.T) {
-	e := newTestEngine(t)
-	vanished := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "renamed-away")
-	e.geom.WorktreeRoot = vanished
-
-	ran := false
-	acquired, err := e.withTryOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("withTryOpLock with a vanished told worktree root = (%v, nil); want a refusal", acquired)
-	}
-	if acquired {
-		t.Errorf("withTryOpLock() acquired = true, want false (told-geometry refusal)")
-	}
-	if !errors.Is(err, errWorktreeRootGone) {
-		t.Errorf("withTryOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
-	}
-	if ran {
-		t.Errorf("withTryOpLock ran the operation body despite a vanished told worktree root")
-	}
-	if fileExists(vanished) {
-		t.Errorf("withTryOpLock created the worktree root %q despite refusing the told geometry", vanished)
-	}
-	if fileExists(e.geom.AnchorPath) {
-		t.Errorf("withTryOpLock created the anchor path %q despite refusing the told geometry", e.geom.AnchorPath)
-	}
-	if fileExists(e.stateDir()) {
-		t.Errorf("withTryOpLock created the .lyx state directory %q despite refusing the told geometry", e.stateDir())
-	}
-	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
-		t.Errorf("withTryOpLock created the lock file %q despite refusing the told geometry", got)
-	}
-}
-
-// TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile pins the not-a-directory message, distinct
-// from the vanished-path one: a told WorktreeRoot naming an existing regular file is refused with a
-// message carrying no rename remedy, since nothing was renamed.
-func TestWithOpLock_RefusesAWorktreeRootThatIsARegularFile(t *testing.T) {
-	e := newTestEngine(t)
-	regularFile := filepath.Join(filepath.Dir(e.geom.WorktreeRoot), "worktree-is-a-file")
-	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	e.geom.WorktreeRoot = regularFile
-
-	err := e.withOpLock(func() error {
-		t.Fatal("withOpLock ran the operation body despite a told worktree root that is a regular file")
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("withOpLock with a told worktree root that is a regular file = nil; want a refusal")
-	}
-	if !errors.Is(err, errWorktreeRootGone) {
-		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
-	}
-	if strings.Contains(err.Error(), "renamed") || strings.Contains(err.Error(), "--target-dir") {
-		t.Errorf("withOpLock error = %q; want the not-a-directory message, carrying no rename remedy", err)
-	}
-}
-
-// TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape is the regression guard on the intended
-// standalone behaviour change (Shared Decision the-standalone-refusal-is-an-intended-behaviour-change):
-// a WorktreeRoot that does not exist AND an AnchorPath that is a different, also non-existent path
-// (what a standalone `--target-dir` naming a directory that does not exist produces) is refused with
-// the vanished-path message, and neither path is created.
-func TestWithOpLock_RefusesTheStandaloneNonExistentTargetShape(t *testing.T) {
-	e := newTestEngine(t)
-	parent := filepath.Dir(e.geom.WorktreeRoot)
-	vanishedTarget := filepath.Join(parent, "does-not-exist-target")
-	vanishedAnchor := filepath.Join(parent, "does-not-exist-anchor")
-	e.geom.WorktreeRoot = vanishedTarget
-	e.geom.AnchorPath = vanishedAnchor
-
-	err := e.withOpLock(func() error {
-		t.Fatal("withOpLock ran the operation body despite the standalone non-existent-target shape")
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("withOpLock with the standalone non-existent-target shape = nil; want a refusal")
-	}
-	if !errors.Is(err, errWorktreeRootGone) {
-		t.Errorf("withOpLock error = %v; want it to match errWorktreeRootGone via errors.Is", err)
-	}
-	if !strings.Contains(err.Error(), "--target-dir") {
-		t.Errorf("withOpLock error = %q; want the vanished-path message mentioning --target-dir", err)
-	}
-	if fileExists(vanishedTarget) {
-		t.Errorf("withOpLock created the worktree root %q despite refusing the told geometry", vanishedTarget)
-	}
-	if fileExists(vanishedAnchor) {
-		t.Errorf("withOpLock created the anchor path %q despite refusing the told geometry", vanishedAnchor)
-	}
-}
-
-// TestWithOpLock_SucceedsForTheStandaloneFirstRunShape pins the other half of that same Shared
-// Decision: a WorktreeRoot that exists as a directory with a DIFFERENT AnchorPath that does not
-// exist yet — newTestEngine's own fixture as of card 2 — must still SUCCEED and create the anchor's
-// .lyx directory. This is the test that fails if a later change re-gates the predicate on
-// AnchorPath instead of WorktreeRoot.
-func TestWithOpLock_SucceedsForTheStandaloneFirstRunShape(t *testing.T) {
-	e := newTestEngine(t)
-	if e.geom.AnchorPath == e.geom.WorktreeRoot {
-		t.Fatalf("fixture assumption violated: AnchorPath %q must differ from WorktreeRoot %q", e.geom.AnchorPath, e.geom.WorktreeRoot)
-	}
-	if fileExists(e.geom.AnchorPath) {
-		t.Fatalf("fixture assumption violated: AnchorPath %q must not exist yet", e.geom.AnchorPath)
-	}
-
-	ran := false
-	err := e.withOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("withOpLock with the standalone first-run shape: %v", err)
-	}
-	if !ran {
-		t.Errorf("withOpLock did not run the operation body")
-	}
-	if !fileExists(e.stateDir()) {
-		t.Errorf("withOpLock did not create the anchor's .lyx directory %q", e.stateDir())
-	}
-}
-
-// TestWithOpLock_SucceedsForTheHubFirstRunShape pins the hub-mode first-run shape: WorktreeRoot
-// exists, AnchorPath equals it, and no .lyx exists yet. The operation must succeed and create .lyx.
-func TestWithOpLock_SucceedsForTheHubFirstRunShape(t *testing.T) {
-	e := newTestEngine(t)
-	e.geom.AnchorPath = e.geom.WorktreeRoot
-	if fileExists(e.stateDir()) {
-		t.Fatalf("fixture assumption violated: .lyx %q must not exist yet", e.stateDir())
-	}
-
-	ran := false
-	err := e.withOpLock(func() error {
-		ran = true
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("withOpLock with the hub first-run shape: %v", err)
-	}
-	if !ran {
-		t.Errorf("withOpLock did not run the operation body")
-	}
-	if !fileExists(e.stateDir()) {
-		t.Errorf("withOpLock did not create .lyx %q", e.stateDir())
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("withOpLock: %v", err)
+				}
+				if !ran {
+					t.Errorf("withOpLock did not run the operation body")
+				}
+				if !fileExists(e.stateDir()) {
+					t.Errorf("withOpLock did not create the anchor's .lyx directory %q", e.stateDir())
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("lock helper = nil error, want a refusal")
+			}
+			if tt.try && acquired {
+				t.Errorf("withTryOpLock() acquired = true, want false (told-geometry refusal)")
+			}
+			if ran {
+				t.Errorf("lock helper ran the operation body despite an unusable told geometry")
+			}
+			if got := errors.Is(err, errWorktreeRootGone); got != tt.wantSentinel {
+				t.Errorf("errors.Is(err, errWorktreeRootGone) = %v for %v; want %v", got, err, tt.wantSentinel)
+			}
+			for _, want := range tt.wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q; want it to contain %q", err, want)
+				}
+			}
+			for _, not := range tt.notText {
+				if strings.Contains(err.Error(), not) {
+					t.Errorf("error = %q; want it to not contain %q", err, not)
+				}
+			}
+			for _, path := range append(mustNotExist, filepath.Join(e.stateDir(), reedLockFileName)) {
+				if fileExists(path) {
+					t.Errorf("lock helper created %q despite refusing the told geometry", path)
+				}
+			}
+		})
 	}
 }
 

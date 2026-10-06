@@ -23,6 +23,7 @@ func handoffVoucherPaths(t *testing.T) (string, string) {
 	return filepath.Join(dir, "handoff-voucher.json"), filepath.Join(dir, "handoff-voucher.json.lock")
 }
 
+//testtiming:keep pins the voucher matching only on an equal history length and state, a grown history, a changed state or an absent voucher not matching, and the voucher being deleted on every read; the observe-entry test covers only the matching, one-shot case
 func TestConsumeHandoffVoucher(t *testing.T) {
 	tests := []struct {
 		name            string

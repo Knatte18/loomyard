@@ -483,6 +483,8 @@ func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
 // TestUnwire_PreservesUserSymlinkAtAnchor is the Unwire half of
 // TestReconcile_PreservesUserSymlinkAtAnchor: Unwire enumerates the same on-disk scan, so a
 // hand-authored symlink must survive a full deactivation too.
+//
+//testtiming:keep Unwire leaving a hand-authored symlink at the anchor in place; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	t.Parallel()
 

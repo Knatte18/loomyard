@@ -92,34 +92,46 @@ func passedResult() verifytree.Result {
 	return verifytree.Result{Status: verifytree.StatusPassed}
 }
 
-func TestVerifyGate_NonDoneOutcomePassesWithoutVerifying(t *testing.T) {
-	for _, outcome := range []string{outcomeStuck, outcomePaused} {
-		f := &gateFake{outcome: outcome, command: "go test ./...", dirty: []string{"x.go"}}
-		gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+// TestVerifyGate_PassesWithoutVerifying proves the gate passes without running the verify when the
+// outcome is stuck or paused (even over a dirty tree), when the plan has no verify section, and when
+// outcome.yaml is unreadable, leaving that file to the run's own mapping.
+func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
+	t.Parallel()
 
-		res, err := gate()
-		if err != nil || !res.Passed {
-			t.Fatalf("gate() under outcome %q = %+v, %v; want a pass", outcome, res, err)
-		}
-		if f.verifyCalls != 0 {
-			t.Errorf("verify ran %d time(s) under outcome %q; want none", f.verifyCalls, outcome)
-		}
+	tests := []struct {
+		name string
+		fake gateFake
+		// outcomeErr makes the outcome seam fail.
+		outcomeErr error
+	}{
+		{name: "a stuck outcome", fake: gateFake{outcome: outcomeStuck, command: "go test ./...", dirty: []string{"x.go"}}},
+		{name: "a paused outcome", fake: gateFake{outcome: outcomePaused, command: "go test ./...", dirty: []string{"x.go"}}},
+		{name: "no verify section", fake: gateFake{outcome: outcomeDone}},
+		{name: "an unreadable outcome", fake: gateFake{command: "go test ./...", results: []verifytree.Result{failedResult()}}, outcomeErr: errors.New("no outcome.yaml")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := tt.fake
+			s := f.seams()
+			if tt.outcomeErr != nil {
+				s.outcome = func() (string, error) { return "", tt.outcomeErr }
+			}
+			gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, s)
+
+			res, err := gate()
+			if err != nil || !res.Passed {
+				t.Fatalf("gate() = %+v, %v; want a pass", res, err)
+			}
+			if f.verifyCalls != 0 {
+				t.Errorf("verify ran %d time(s); want none", f.verifyCalls)
+			}
+		})
 	}
 }
 
-func TestVerifyGate_NoVerifySectionPasses(t *testing.T) {
-	f := &gateFake{outcome: outcomeDone}
-	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
-
-	res, err := gate()
-	if err != nil || !res.Passed {
-		t.Fatalf("gate() = %+v, %v; want a pass for a plan with no verify section", res, err)
-	}
-	if f.verifyCalls != 0 {
-		t.Errorf("verify ran %d time(s); want none", f.verifyCalls)
-	}
-}
-
+//testtiming:keep pins the rerun's flaky note naming the failing package and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
 func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	f := &gateFake{
 		outcome: outcomeDone,
@@ -147,6 +159,7 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the failure report's attempt, cap, failures, card hint, fix commits and log path, and the findings naming them; the run-level verify-gate test observes only the failure
 func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	reports := t.TempDir()
 	f := &gateFake{
@@ -194,7 +207,15 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	}
 }
 
-func TestVerifyGate_DirtyFailureRecordsPreFixHead(t *testing.T) {
+// TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures: a dirty tree
+// fails without verifying or checking fix commits and reports the dirty paths, the pre-fix head is
+// recorded once per closure and overwritten by a new closure, and the first clean pass checks fix
+// commits from the recorded head and clears the record.
+//
+//testtiming:keep pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
+func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
+	t.Parallel()
+
 	reports := t.TempDir()
 	f := &gateFake{
 		outcome: outcomeDone,
@@ -203,17 +224,18 @@ func TestVerifyGate_DirtyFailureRecordsPreFixHead(t *testing.T) {
 		dirty:   []string{"loose.go"},
 		results: []verifytree.Result{passedResult()},
 	}
-	gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, f.seams())
+	gate := newVerifyGate(reports, 5, &VerifyGateNotes{}, f.seams())
 
-	res, err := gate()
-	if err != nil || res.Passed {
-		t.Fatalf("gate() on a dirty tree = %+v, %v; want a failure", res, err)
+	for i := 0; i < 2; i++ {
+		if res, err := gate(); err != nil || res.Passed {
+			t.Fatalf("gate() on a dirty tree = %+v, %v; want a failure", res, err)
+		}
 	}
 	if f.verifyCalls != 0 {
 		t.Errorf("verify ran %d time(s) on a dirty tree; want none", f.verifyCalls)
 	}
 	if len(f.rejectionBases) != 0 {
-		t.Fatalf("commit check ran %v before any pre-fix head was recorded; want none", f.rejectionBases)
+		t.Fatalf("commit check ran %v before any pass; want none", f.rejectionBases)
 	}
 	report, err := readVerifyGateReport(VerifyGateReportPath(reports))
 	if err != nil {
@@ -221,31 +243,6 @@ func TestVerifyGate_DirtyFailureRecordsPreFixHead(t *testing.T) {
 	}
 	if want := []string{"loose.go"}; !reflect.DeepEqual(report.Dirty, want) {
 		t.Errorf("report dirty = %v; want %v", report.Dirty, want)
-	}
-
-	f.dirty = nil
-	if res, err := gate(); err != nil || !res.Passed {
-		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
-	}
-	if want := []string{"head0"}; !reflect.DeepEqual(f.rejectionBases, want) {
-		t.Errorf("commit check bases = %v; want the recorded pre-fix head %v", f.rejectionBases, want)
-	}
-}
-
-func TestVerifyGate_PreFixHeadPersistence(t *testing.T) {
-	f := &gateFake{
-		outcome: outcomeDone,
-		command: "go test ./...",
-		head:    "head0",
-		dirty:   []string{"loose.go"},
-		results: []verifytree.Result{passedResult()},
-	}
-	gate := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
-
-	for i := 0; i < 2; i++ {
-		if res, err := gate(); err != nil || res.Passed {
-			t.Fatalf("gate() on a dirty tree = %+v, %v; want a failure", res, err)
-		}
 	}
 	if want := []string{"head0"}; !reflect.DeepEqual(f.recorded, want) {
 		t.Errorf("recorded heads after two failures = %v; want %v once", f.recorded, want)
@@ -267,6 +264,9 @@ func TestVerifyGate_PreFixHeadPersistence(t *testing.T) {
 	if res, err := second(); err != nil || !res.Passed {
 		t.Fatalf("gate() after the tree was cleaned = %+v, %v; want a pass", res, err)
 	}
+	if want := []string{"head1"}; !reflect.DeepEqual(f.rejectionBases, want) {
+		t.Errorf("commit check bases = %v; want the recorded pre-fix head %v", f.rejectionBases, want)
+	}
 	if f.cleared != 1 {
 		t.Errorf("clearPreFix ran %d time(s) on a pass; want 1", f.cleared)
 	}
@@ -287,6 +287,7 @@ func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins a rejected fix commit failing the gate terminally without verifying, its findings naming the commit, the reason and the pre-fix head and never telling Merriam to move HEAD; the covering merge test runs against real git and checks only the terminal failure
 func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 	f := &gateFake{
 		outcome:   outcomeDone,
@@ -314,31 +315,11 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 			t.Errorf("findings = %q; want %q in it", res.Findings, want)
 		}
 	}
-	if f.verifyCalls != 0 {
-		t.Errorf("verify ran %d time(s) after a rejected fix commit; want none", f.verifyCalls)
-	}
-}
-
-func TestVerifyGate_RejectedFixCommitFindingsDoNotTellMerriamToMoveHead(t *testing.T) {
-	f := &gateFake{
-		outcome:   outcomeDone,
-		command:   "go test ./...",
-		head:      "head0",
-		dirty:     []string{"loose.go"},
-		rejection: [2]string{"mergeabc", "it merged a commit that is not on the run's parent branch"},
-		results:   []verifytree.Result{passedResult()},
-	}
-	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
-	if _, err := gate(); err != nil {
-		t.Fatalf("first gate() error = %v", err)
-	}
-	f.dirty = nil
-	res, err := gate()
-	if err != nil {
-		t.Fatalf("second gate() error = %v", err)
-	}
 	if strings.Contains(strings.ToLower(res.Findings), "move head") {
 		t.Errorf("findings = %q; want no instruction to move HEAD", res.Findings)
+	}
+	if f.verifyCalls != 0 {
+		t.Errorf("verify ran %d time(s) after a rejected fix commit; want none", f.verifyCalls)
 	}
 }
 
@@ -352,20 +333,6 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 		if !strings.HasSuffix(got, tc.want) || strings.Contains(got, "\n") {
 			t.Errorf("verifyGateStuckReason(%q) = %q; want one line ending %q", tc.reentry, got, tc.want)
 		}
-	}
-}
-
-func TestVerifyGate_UnreadableOutcomePassesWithoutVerifying(t *testing.T) {
-	f := &gateFake{command: "go test ./...", results: []verifytree.Result{failedResult()}}
-	s := f.seams()
-	s.outcome = func() (string, error) { return "", errors.New("no outcome.yaml") }
-	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, s)
-
-	if res, err := gate(); err != nil || !res.Passed {
-		t.Fatalf("gate() = %+v, %v; want a pass, leaving the unreadable file to the run's own mapping", res, err)
-	}
-	if f.verifyCalls != 0 {
-		t.Errorf("verify ran %d time(s); want none", f.verifyCalls)
 	}
 }
 

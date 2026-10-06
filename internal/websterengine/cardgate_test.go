@@ -77,6 +77,7 @@ func TestCardGateCommand(t *testing.T) {
 	})
 }
 
+//testtiming:keep pins the per-card gate line shape re-rooted onto the plan display and the bare build-and-test gate of a card with no Go target; the begin-batch prompt test checks one card's command
 func TestRenderCardGates_OneLinePerCard(t *testing.T) {
 	cards := []planparser.Card{
 		gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#"}}),

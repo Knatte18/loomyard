@@ -44,6 +44,8 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 // paragraph, keeping the git subject clean.
 // Joining instead would fold the trailer into the subject paragraph and pollute `git log --oneline`
 // for every such commit (the round fable-r1 regression).
+//
+//testtiming:keep a single-line message, even one shaped like a trailer, getting its Warp-SHA trailer in a new paragraph; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -84,41 +86,28 @@ func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 	}
 }
 
-// TestParseWarpSHATrailer_Absent asserts that parsing a message with no Warp-SHA trailer reports
-// ok=false.
-func TestParseWarpSHATrailer_Absent(t *testing.T) {
-	message := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>"
-	sha, ok := parseWarpSHATrailer(message)
-	if ok {
-		t.Errorf("parseWarpSHATrailer(%q) = (%q, true); want ok=false", message, sha)
+// TestParseWarpSHATrailer covers a message with no Warp-SHA trailer (ok=false), several Warp-SHA
+// trailer lines (the last wins) and whitespace around the trailer line and its value (tolerated).
+//
+//testtiming:keep parseWarpSHATrailer returning ok=false when absent, the last trailer winning, and whitespace being tolerated; coverage of its blocks by other tests does not show an assertion of this
+func TestParseWarpSHATrailer(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		wantSHA string
+		wantOK  bool
+	}{
+		{"absent", "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>", "", false},
+		{"multiple_trailers_last_wins", "raddle: sync module docs\n\nWarp-SHA: first000\nWarp-SHA: second111", "second111", true},
+		{"tolerant_of_surrounding_whitespace", "raddle: sync module docs\n\n  Warp-SHA:   abc123   ", "abc123", true},
 	}
-}
-
-// TestParseWarpSHATrailer_MultipleTrailersLastWins asserts that when a message carries more than
-// one Warp-SHA trailer line, the last one wins.
-func TestParseWarpSHATrailer_MultipleTrailersLastWins(t *testing.T) {
-	message := "raddle: sync module docs\n\nWarp-SHA: first000\nWarp-SHA: second111"
-
-	gotSHA, ok := parseWarpSHATrailer(message)
-	if !ok {
-		t.Fatalf("parseWarpSHATrailer(%q) ok = false; want true", message)
-	}
-	if gotSHA != "second111" {
-		t.Errorf("parseWarpSHATrailer(%q) = %q; want %q", message, gotSHA, "second111")
-	}
-}
-
-// TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace asserts that leading/trailing whitespace
-// around the trailer line and its value does not prevent extraction.
-func TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace(t *testing.T) {
-	message := "raddle: sync module docs\n\n  Warp-SHA:   abc123   "
-
-	gotSHA, ok := parseWarpSHATrailer(message)
-	if !ok {
-		t.Fatalf("parseWarpSHATrailer(%q) ok = false; want true", message)
-	}
-	if gotSHA != "abc123" {
-		t.Errorf("parseWarpSHATrailer(%q) = %q; want %q", message, gotSHA, "abc123")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSHA, ok := parseWarpSHATrailer(tt.message)
+			if ok != tt.wantOK || gotSHA != tt.wantSHA {
+				t.Errorf("parseWarpSHATrailer(%q) = (%q, %v); want (%q, %v)", tt.message, gotSHA, ok, tt.wantSHA, tt.wantOK)
+			}
+		})
 	}
 }
 
@@ -143,43 +132,48 @@ func parseSnapshotTags(message string) []string {
 	return tags
 }
 
-// TestAppendSnapshotTrailers_SingleTag asserts that a single tag appends one Snapshot: line in a
-// new trailer-block paragraph.
-func TestAppendSnapshotTrailers_SingleTag(t *testing.T) {
-	message := "weft sync"
-	want := "weft sync\n\nSnapshot: build-42"
-
-	got, err := appendSnapshotTrailers(message, []string{"build-42"})
-	if err != nil {
-		t.Fatalf("appendSnapshotTrailers(%q, [build-42]) unexpected error: %v", message, err)
+// TestAppendSnapshotTrailers_Tags covers a single tag (one Snapshot: line in a new trailer-block
+// paragraph), several tags (one line per tag, all in the same trailer block, parsing back in order)
+// and an empty tags slice (message returned unchanged with a nil error).
+func TestAppendSnapshotTrailers_Tags(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		tags    []string
+		want    string
+	}{
+		{"single_tag", "weft sync", []string{"build-42"}, "weft sync\n\nSnapshot: build-42"},
+		{
+			"multiple_tags",
+			"weft sync",
+			[]string{"build-42", "release-1.0", "nightly"},
+			"weft sync\n\nSnapshot: build-42\nSnapshot: release-1.0\nSnapshot: nightly",
+		},
+		{"empty_tags_leave_message_unchanged", "weft sync\n\nWarp-SHA: abc123", nil, "weft sync\n\nWarp-SHA: abc123"},
 	}
-	if got != want {
-		t.Errorf("appendSnapshotTrailers(%q, [build-42]) = %q; want %q", message, got, want)
-	}
-}
-
-// TestAppendSnapshotTrailers_MultipleTags asserts that multiple tags each get their own Snapshot:
-// line, one per tag, all inside the same trailer block.
-func TestAppendSnapshotTrailers_MultipleTags(t *testing.T) {
-	message := "weft sync"
-	tags := []string{"build-42", "release-1.0", "nightly"}
-	want := "weft sync\n\nSnapshot: build-42\nSnapshot: release-1.0\nSnapshot: nightly"
-
-	got, err := appendSnapshotTrailers(message, tags)
-	if err != nil {
-		t.Fatalf("appendSnapshotTrailers(%q, %v) unexpected error: %v", message, tags, err)
-	}
-	if got != want {
-		t.Errorf("appendSnapshotTrailers(%q, %v) = %q; want %q", message, tags, got, want)
-	}
-	if gotTags := parseSnapshotTags(got); !reflect.DeepEqual(gotTags, tags) {
-		t.Errorf("parseSnapshotTags(%q) = %v; want %v", got, gotTags, tags)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := appendSnapshotTrailers(tt.message, tt.tags)
+			if err != nil {
+				t.Fatalf("appendSnapshotTrailers(%q, %v) unexpected error: %v", tt.message, tt.tags, err)
+			}
+			if got != tt.want {
+				t.Errorf("appendSnapshotTrailers(%q, %v) = %q; want %q", tt.message, tt.tags, got, tt.want)
+			}
+			if len(tt.tags) > 0 {
+				if gotTags := parseSnapshotTags(got); !reflect.DeepEqual(gotTags, tt.tags) {
+					t.Errorf("parseSnapshotTags(%q) = %v; want %v", got, gotTags, tt.tags)
+				}
+			}
+		})
 	}
 }
 
 // TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer asserts that Snapshot trailers appended
 // after a Warp-SHA trailer already appended by the caller join the same trailer block,
 // and that both parse back independently.
+//
+//testtiming:keep Snapshot trailers joining an existing Warp-SHA trailer block and both parsing back; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 	message := "weft sync"
 	withWarpSHA := appendWarpSHATrailer(message, "abc123")
@@ -203,63 +197,42 @@ func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged asserts that an empty tags slice
-// returns message unchanged with a nil error.
-func TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged(t *testing.T) {
-	message := "weft sync\n\nWarp-SHA: abc123"
-
-	got, err := appendSnapshotTrailers(message, nil)
-	if err != nil {
-		t.Fatalf("appendSnapshotTrailers(%q, nil) unexpected error: %v", message, err)
-	}
-	if got != message {
-		t.Errorf("appendSnapshotTrailers(%q, nil) = %q; want unchanged %q", message, got, message)
-	}
-}
-
 // TestAppendSnapshotTrailers_RejectsInvalidTags asserts that a tag containing a newline, carriage
 // return, colon, or any other out-of-charset character is rejected, and that rejection happens
 // before anything is written (the returned message is empty on error).
+// A valid tag preceding an invalid one fails the whole call too: a caller must never end up with a
+// partial trailer block.
+//
+//testtiming:keep out-of-charset tags, and a valid tag before an invalid one, being rejected with *ErrInvalidSnapshotTag and an empty message; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
 	tests := []struct {
-		name string
-		tag  string
+		name       string
+		tags       []string
+		wantBadTag string
 	}{
-		{"newline", "build\n42"},
-		{"carriage_return", "build\r42"},
-		{"colon", "build:42"},
-		{"out_of_charset_space", "build 42"},
-		{"out_of_charset_slash", "build/42"},
+		{"newline", []string{"build\n42"}, "build\n42"},
+		{"carriage_return", []string{"build\r42"}, "build\r42"},
+		{"colon", []string{"build:42"}, "build:42"},
+		{"out_of_charset_space", []string{"build 42"}, "build 42"},
+		{"out_of_charset_slash", []string{"build/42"}, "build/42"},
+		{"valid_tag_before_invalid_tag", []string{"build-42", "bad:tag"}, "bad:tag"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := appendSnapshotTrailers("weft sync", []string{tt.tag})
+			got, err := appendSnapshotTrailers("weft sync", tt.tags)
 			if err == nil {
-				t.Fatalf("appendSnapshotTrailers(%q, [%q]) err = nil; want error", "weft sync", tt.tag)
+				t.Fatalf("appendSnapshotTrailers(%q, %q) err = nil; want error", "weft sync", tt.tags)
 			}
 			if got != "" {
-				t.Errorf("appendSnapshotTrailers(%q, [%q]) message = %q; want empty on error", "weft sync", tt.tag, got)
+				t.Errorf("appendSnapshotTrailers(%q, %q) message = %q; want empty on error", "weft sync", tt.tags, got)
 			}
 			var invalidTagErr *ErrInvalidSnapshotTag
 			if !errors.As(err, &invalidTagErr) {
-				t.Fatalf("appendSnapshotTrailers(%q, [%q]) error = %v; want *ErrInvalidSnapshotTag", "weft sync", tt.tag, err)
+				t.Fatalf("appendSnapshotTrailers(%q, %q) error = %v; want *ErrInvalidSnapshotTag", "weft sync", tt.tags, err)
 			}
-			if invalidTagErr.Tag != tt.tag {
-				t.Errorf("ErrInvalidSnapshotTag.Tag = %q; want %q", invalidTagErr.Tag, tt.tag)
+			if invalidTagErr.Tag != tt.wantBadTag {
+				t.Errorf("ErrInvalidSnapshotTag.Tag = %q; want %q", invalidTagErr.Tag, tt.wantBadTag)
 			}
 		})
-	}
-}
-
-// TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList asserts that when a valid tag
-// precedes an invalid one in the list, the whole call fails with no message written -- a caller
-// must never end up with a partial trailer block.
-func TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList(t *testing.T) {
-	got, err := appendSnapshotTrailers("weft sync", []string{"build-42", "bad:tag"})
-	if err == nil {
-		t.Fatal("appendSnapshotTrailers with a trailing invalid tag err = nil; want error")
-	}
-	if got != "" {
-		t.Errorf("appendSnapshotTrailers with a trailing invalid tag message = %q; want empty on error", got)
 	}
 }

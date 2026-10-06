@@ -187,6 +187,8 @@ func TestLauncherScript(t *testing.T) {
 // tier 1 suites use to avoid a real hub. The menu launcher is pre-seeded at menuLauncherPath(l) so
 // writeLaunchers' never-clobber early return fires before it ever reaches PrimeName(l), which a
 // hand-built Location cannot satisfy.
+//
+//testtiming:keep the run launcher keeping its "run"+ext filename and a content that invokes "loom start"; coverage of its blocks by other tests does not show an assertion of this
 func TestWriteLaunchers_RunScriptContentAndFilename(t *testing.T) {
 	t.Parallel()
 

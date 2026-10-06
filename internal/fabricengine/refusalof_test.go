@@ -86,6 +86,8 @@ func TestRefusalOf(t *testing.T) {
 // this package's own live-state harness's duplicate copy (batch 7, the livestate_-prefixed package
 // fabricengine_test files) and destructiveRefusal.Error()'s composed message both depend on them
 // staying byte-identical.
+//
+//testtiming:keep the three Check constants' exact spellings the live-state harness copy and the refusal message depend on; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_RendersThreeSpellings(t *testing.T) {
 	tests := []struct {
 		name string
@@ -109,6 +111,8 @@ func TestCheck_RendersThreeSpellings(t *testing.T) {
 // the rule that Check must never grow a CheckForce constant: force is consulted only inside
 // checkPathDirtiness, where it makes the dirtiness check PASS rather than fail, so a refusal can
 // never be attributed to it. A refusal always carries one of exactly these three checks.
+//
+//testtiming:keep Check having exactly three members and no force check; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_HasNoFourthMemberForForce(t *testing.T) {
 	all := []Check{CheckContainment, CheckOwnership, CheckDirtiness}
 	if len(all) != 3 {

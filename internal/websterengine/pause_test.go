@@ -15,77 +15,81 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-func TestPause_RequestObserveClearCycle(t *testing.T) {
+func TestPause(t *testing.T) {
 	t.Parallel()
 
-	base := t.TempDir()
-	websterDir := filepath.Join(base, "_lyx", "webster")
-	scratchDir := filepath.Join(base, ".lyx", "webster")
+	t.Run("request, observe and clear cycle", func(t *testing.T) {
+		t.Parallel()
 
-	if websterengine.PauseRequested(scratchDir) {
-		t.Fatalf("PauseRequested() = true before any RequestPause; want false")
-	}
+		base := t.TempDir()
+		websterDir := filepath.Join(base, "_lyx", "webster")
+		scratchDir := filepath.Join(base, ".lyx", "webster")
 
-	if err := websterengine.RequestPause(scratchDir); err != nil {
-		t.Fatalf("RequestPause() error = %v; want nil", err)
-	}
-	if !websterengine.PauseRequested(scratchDir) {
-		t.Errorf("PauseRequested() = false after RequestPause; want true")
-	}
+		if websterengine.PauseRequested(scratchDir) {
+			t.Fatalf("PauseRequested() = true before any RequestPause; want false")
+		}
 
-	wantPath := filepath.Join(scratchDir, "pause")
-	if _, err := os.Stat(wantPath); err != nil {
-		t.Errorf("pause flag file not found at %q: %v", wantPath, err)
-	}
-	if _, err := os.Stat(filepath.Join(websterDir, "pause")); err == nil {
-		t.Errorf("pause flag file found in durable dir %q; want it only in the scratch dir", websterDir)
-	}
+		if err := websterengine.RequestPause(scratchDir); err != nil {
+			t.Fatalf("RequestPause() error = %v; want nil", err)
+		}
+		if !websterengine.PauseRequested(scratchDir) {
+			t.Errorf("PauseRequested() = false after RequestPause; want true")
+		}
 
-	if err := websterengine.ClearPause(scratchDir); err != nil {
-		t.Fatalf("ClearPause() error = %v; want nil", err)
-	}
-	if websterengine.PauseRequested(scratchDir) {
-		t.Errorf("PauseRequested() = true after ClearPause; want false")
-	}
-}
+		wantPath := filepath.Join(scratchDir, "pause")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Errorf("pause flag file not found at %q: %v", wantPath, err)
+		}
+		if _, err := os.Stat(filepath.Join(websterDir, "pause")); err == nil {
+			t.Errorf("pause flag file found in durable dir %q; want it only in the scratch dir", websterDir)
+		}
 
-func TestPause_RequestIsIdempotent(t *testing.T) {
-	t.Parallel()
+		if err := websterengine.ClearPause(scratchDir); err != nil {
+			t.Fatalf("ClearPause() error = %v; want nil", err)
+		}
+		if websterengine.PauseRequested(scratchDir) {
+			t.Errorf("PauseRequested() = true after ClearPause; want false")
+		}
+	})
 
-	scratchDir := t.TempDir()
+	t.Run("a repeated request is idempotent", func(t *testing.T) {
+		t.Parallel()
 
-	if err := websterengine.RequestPause(scratchDir); err != nil {
-		t.Fatalf("first RequestPause() error = %v; want nil", err)
-	}
-	if err := websterengine.RequestPause(scratchDir); err != nil {
-		t.Fatalf("second RequestPause() error = %v; want nil", err)
-	}
-	if !websterengine.PauseRequested(scratchDir) {
-		t.Errorf("PauseRequested() = false after two RequestPause calls; want true")
-	}
-}
+		scratchDir := t.TempDir()
 
-func TestPause_ClearIsIdempotent(t *testing.T) {
-	t.Parallel()
+		if err := websterengine.RequestPause(scratchDir); err != nil {
+			t.Fatalf("first RequestPause() error = %v; want nil", err)
+		}
+		if err := websterengine.RequestPause(scratchDir); err != nil {
+			t.Fatalf("second RequestPause() error = %v; want nil", err)
+		}
+		if !websterengine.PauseRequested(scratchDir) {
+			t.Errorf("PauseRequested() = false after two RequestPause calls; want true")
+		}
+	})
 
-	scratchDir := t.TempDir()
+	t.Run("a repeated clear is idempotent", func(t *testing.T) {
+		t.Parallel()
 
-	// ClearPause against a scratch dir that never saw a RequestPause call at
-	// all — the entry-clear rule must be safe to call unconditionally on a
-	// fresh run.
-	if err := websterengine.ClearPause(scratchDir); err != nil {
-		t.Fatalf("ClearPause() on a never-paused dir error = %v; want nil", err)
-	}
+		scratchDir := t.TempDir()
 
-	if err := websterengine.RequestPause(scratchDir); err != nil {
-		t.Fatalf("RequestPause() error = %v; want nil", err)
-	}
-	if err := websterengine.ClearPause(scratchDir); err != nil {
-		t.Fatalf("first ClearPause() error = %v; want nil", err)
-	}
-	// A second consecutive clear must still succeed — this is exactly the
-	// entry-then-terminal double-clear pattern Run performs.
-	if err := websterengine.ClearPause(scratchDir); err != nil {
-		t.Fatalf("second ClearPause() error = %v; want nil", err)
-	}
+		// ClearPause against a scratch dir that never saw a RequestPause call at
+		// all — the entry-clear rule must be safe to call unconditionally on a
+		// fresh run.
+		if err := websterengine.ClearPause(scratchDir); err != nil {
+			t.Fatalf("ClearPause() on a never-paused dir error = %v; want nil", err)
+		}
+
+		if err := websterengine.RequestPause(scratchDir); err != nil {
+			t.Fatalf("RequestPause() error = %v; want nil", err)
+		}
+		if err := websterengine.ClearPause(scratchDir); err != nil {
+			t.Fatalf("first ClearPause() error = %v; want nil", err)
+		}
+		// A second consecutive clear must still succeed — this is exactly the
+		// entry-then-terminal double-clear pattern Run performs.
+		if err := websterengine.ClearPause(scratchDir); err != nil {
+			t.Fatalf("second ClearPause() error = %v; want nil", err)
+		}
+	})
 }

@@ -12,20 +12,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-func TestLoadState_AbsentFileReturnsNilNil(t *testing.T) {
-	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
-
-	got, err := LoadState(dotLyxDir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != nil {
-		t.Errorf("LoadState(absent) = %+v, want nil", got)
-	}
-}
-
+// TestSaveState_ThenLoadState_RoundTrips pins that LoadState answers (nil, nil) for an absent file and returns what SaveState wrote.
+//
+//testtiming:keep pins LoadState answering (nil, nil) for an absent file and returning every field SaveState wrote, strand records included; its covering tests run this code without asserting it
 func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
+	absent, err := LoadState(dotLyxDir)
+	if err != nil || absent != nil {
+		t.Fatalf("LoadState(absent) = (%+v, %v), want (nil, nil)", absent, err)
+	}
 
 	want := &ReedState{
 		Socket:      "lyx-loomyard-LYXHUB-abcd1234",
@@ -86,23 +81,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 	}
 }
 
-func TestLoadState_CorruptFileErrors(t *testing.T) {
-	dotLyxDir := filepath.Join(t.TempDir(), ".lyx")
-	if err := SaveState(dotLyxDir, &ReedState{Socket: "s"}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	// Corrupt the file directly, bypassing the lock-protected write path.
-	path := filepath.Join(dotLyxDir, reedStateFileName)
-	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
-		t.Fatalf("corrupt file: %v", err)
-	}
-
-	if _, err := LoadState(dotLyxDir); err == nil {
-		t.Error("LoadState(corrupt) = nil error, want error")
-	}
-}
-
+//testtiming:keep pins toRenderStrands mapping every strand field and marking Live only for panes in the set, without filtering; its covering tests run this code without asserting it
 func TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet(t *testing.T) {
 	strands := []Strand{
 		{GUID: "g1", Parent: "", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
@@ -147,6 +126,7 @@ func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
 		{name: "garbage bytes", content: "\x00\x00\x00\x00"},
 		{name: "a bare null document", content: "null"},
 		{name: "a bare null document with surrounding whitespace", content: "  null\n"},
+		{name: "not json", content: "not json"},
 	}
 
 	for _, tt := range tests {

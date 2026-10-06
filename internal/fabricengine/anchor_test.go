@@ -18,101 +18,52 @@ func mapReachable(reachableSHAs map[string]bool) func(string) (bool, error) {
 	}
 }
 
-// TestReachableAnchor_NewestReachable covers the common case: the newest entry is itself reachable.
-func TestReachableAnchor_NewestReachable(t *testing.T) {
-	entries := []corrEntry{
+// TestReachableAnchor covers the walk's outcomes: the newest entry reachable, the nearest-older
+// entry one and several steps back, no surviving anchor and an empty index.
+//
+//testtiming:keep the reachableAnchor walk's outcomes (newest, nearest-older one and several steps back, none, empty index); coverage of its blocks by other tests does not show an assertion of this
+func TestReachableAnchor(t *testing.T) {
+	t.Parallel()
+
+	threeEntries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
 		{WarpSHA: "w2", WeftSHA: "f2", WarpSeq: 2},
 		{WarpSHA: "w3", WeftSHA: "f3", WarpSeq: 3},
 	}
-	reachable := mapReachable(map[string]bool{"w1": true, "w2": true, "w3": true})
+	fourEntries := append(append([]corrEntry{}, threeEntries...), corrEntry{WarpSHA: "w4", WeftSHA: "f4", WarpSeq: 4})
 
-	got, found, err := reachableAnchor(entries, reachable)
-	if err != nil {
-		t.Fatalf("reachableAnchor() error = %v", err)
+	tests := []struct {
+		name      string
+		entries   []corrEntry
+		reachable map[string]bool
+		wantFound bool
+		wantSHA   string
+	}{
+		{"newest reachable", threeEntries, map[string]bool{"w1": true, "w2": true, "w3": true}, true, "w3"},
+		{"single back", threeEntries, map[string]bool{"w1": true, "w2": true, "w3": false}, true, "w2"},
+		{"multi back", fourEntries, map[string]bool{"w1": true, "w2": false, "w3": false, "w4": false}, true, "w1"},
+		{"none reachable", threeEntries[:2], map[string]bool{"w1": false, "w2": false}, false, ""},
+		{"empty slice", nil, nil, false, ""},
 	}
-	if !found {
-		t.Fatalf("reachableAnchor() found = false; want true")
-	}
-	if got.WarpSHA != "w3" {
-		t.Errorf("reachableAnchor() = %+v; want the newest entry w3", got)
-	}
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestReachableAnchor_SingleBack covers the nearest-older case one step back.
-func TestReachableAnchor_SingleBack(t *testing.T) {
-	entries := []corrEntry{
-		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
-		{WarpSHA: "w2", WeftSHA: "f2", WarpSeq: 2},
-		{WarpSHA: "w3", WeftSHA: "f3", WarpSeq: 3},
-	}
-	reachable := mapReachable(map[string]bool{"w1": true, "w2": true, "w3": false})
-
-	got, found, err := reachableAnchor(entries, reachable)
-	if err != nil {
-		t.Fatalf("reachableAnchor() error = %v", err)
-	}
-	if !found {
-		t.Fatalf("reachableAnchor() found = false; want true")
-	}
-	if got.WarpSHA != "w2" {
-		t.Errorf("reachableAnchor() = %+v; want the nearest-older reachable entry w2", got)
-	}
-}
-
-// TestReachableAnchor_MultiBack covers the nearest-older case several steps back.
-func TestReachableAnchor_MultiBack(t *testing.T) {
-	entries := []corrEntry{
-		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
-		{WarpSHA: "w2", WeftSHA: "f2", WarpSeq: 2},
-		{WarpSHA: "w3", WeftSHA: "f3", WarpSeq: 3},
-		{WarpSHA: "w4", WeftSHA: "f4", WarpSeq: 4},
-	}
-	reachable := mapReachable(map[string]bool{"w1": true, "w2": false, "w3": false, "w4": false})
-
-	got, found, err := reachableAnchor(entries, reachable)
-	if err != nil {
-		t.Fatalf("reachableAnchor() error = %v", err)
-	}
-	if !found {
-		t.Fatalf("reachableAnchor() found = false; want true")
-	}
-	if got.WarpSHA != "w1" {
-		t.Errorf("reachableAnchor() = %+v; want the oldest surviving entry w1", got)
-	}
-}
-
-// TestReachableAnchor_NoneReachable covers the no-surviving-anchor case.
-func TestReachableAnchor_NoneReachable(t *testing.T) {
-	entries := []corrEntry{
-		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
-		{WarpSHA: "w2", WeftSHA: "f2", WarpSeq: 2},
-	}
-	reachable := mapReachable(map[string]bool{"w1": false, "w2": false})
-
-	got, found, err := reachableAnchor(entries, reachable)
-	if err != nil {
-		t.Fatalf("reachableAnchor() error = %v", err)
-	}
-	if found {
-		t.Errorf("reachableAnchor() found = true; want false")
-	}
-	if got != (corrEntry{}) {
-		t.Errorf("reachableAnchor() entry = %+v; want zero value", got)
-	}
-}
-
-// TestReachableAnchor_EmptySlice covers the empty-index case.
-func TestReachableAnchor_EmptySlice(t *testing.T) {
-	got, found, err := reachableAnchor(nil, mapReachable(nil))
-	if err != nil {
-		t.Fatalf("reachableAnchor() error = %v", err)
-	}
-	if found {
-		t.Errorf("reachableAnchor() found = true; want false")
-	}
-	if got != (corrEntry{}) {
-		t.Errorf("reachableAnchor() entry = %+v; want zero value", got)
+			got, found, err := reachableAnchor(tc.entries, mapReachable(tc.reachable))
+			if err != nil {
+				t.Fatalf("reachableAnchor() error = %v", err)
+			}
+			if found != tc.wantFound {
+				t.Fatalf("reachableAnchor() found = %v; want %v", found, tc.wantFound)
+			}
+			if tc.wantFound {
+				if got.WarpSHA != tc.wantSHA {
+					t.Errorf("reachableAnchor() = %+v; want entry %s", got, tc.wantSHA)
+				}
+			} else if got != (corrEntry{}) {
+				t.Errorf("reachableAnchor() entry = %+v; want zero value", got)
+			}
+		})
 	}
 }
 

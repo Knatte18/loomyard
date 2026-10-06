@@ -46,69 +46,110 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 	}
 }
 
-// TestMergeState_SaveLoadRoundtripPreservesEveryField covers the save->load roundtrip, asserting
-// the record lands at <weft gitdir>/fabric-merge.json and is invisible to git status on both
-// sides.
-func TestMergeState_SaveLoadRoundtripPreservesEveryField(t *testing.T) {
+// TestMergeState_Record drives the on-disk merge-state record through one pair, in this order:
+// with no record ever saved, loadMergeState reports not-found and mergeRecordExists reports false;
+// the save->load roundtrip preserves every field, the record lands at <weft gitdir>/fabric-merge.json
+// and is invisible to git status on both sides;
+// and deleteMergeState removes a saved record and tolerates a second call against an already-absent
+// one.
+// The steps run serially on one fixture, each starting from the record state the step before left.
+func TestMergeState_Record(t *testing.T) {
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
 
-	want := fabricengine.MergeStateForTest{
-		Verb:          "merge-in",
-		Source:        "some-branch",
-		Squash:        true,
-		Message:       "a merge message",
-		WarpStart:     "warpstartsha",
-		WeftStart:     "weftstartsha",
-		WarpSource:    "warpsourcesha",
-		WeftSource:    "weftsourcesha",
-		WarpOutcome:   "staged",
-		WeftOutcome:   "conflicted",
-		WarpCommitted: "warpcommittedsha",
-		WeftCommitted: "weftcommittedsha",
-		StartedAt:     time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-	}
+	t.Run("absent record", func(t *testing.T) {
+		_, found, err := fabricengine.LoadMergeStateForTest(f)
+		if err != nil {
+			t.Fatalf("LoadMergeStateForTest() error = %v", err)
+		}
+		if found {
+			t.Error("LoadMergeStateForTest() found = true; want false with no record ever saved")
+		}
 
-	// "EveryField" is only true if want actually populates every field with a non-zero value: a
-	// field added to the record and left out of want here would roundtrip zero-to-zero and pass,
-	// which is the test staying green while the property it names goes unchecked.
-	assertNoZeroFields(t, "want", want)
+		exists, err := fabricengine.MergeRecordExistsForTest(f)
+		if err != nil {
+			t.Fatalf("MergeRecordExistsForTest() error = %v", err)
+		}
+		if exists {
+			t.Error("MergeRecordExistsForTest() = true; want false with no record ever saved")
+		}
+	})
 
-	if err := fabricengine.SaveMergeStateForTest(f, want); err != nil {
-		t.Fatalf("SaveMergeStateForTest() error = %v", err)
-	}
+	t.Run("save and load roundtrip preserves every field", func(t *testing.T) {
+		want := fabricengine.MergeStateForTest{
+			Verb:          "merge-in",
+			Source:        "some-branch",
+			Squash:        true,
+			Message:       "a merge message",
+			WarpStart:     "warpstartsha",
+			WeftStart:     "weftstartsha",
+			WarpSource:    "warpsourcesha",
+			WeftSource:    "weftsourcesha",
+			WarpOutcome:   "staged",
+			WeftOutcome:   "conflicted",
+			WarpCommitted: "warpcommittedsha",
+			WeftCommitted: "weftcommittedsha",
+			StartedAt:     time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		}
 
-	got, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil {
-		t.Fatalf("LoadMergeStateForTest() error = %v", err)
-	}
-	if !found {
-		t.Fatal("LoadMergeStateForTest() found = false; want true after save")
-	}
-	if !got.StartedAt.Equal(want.StartedAt) {
-		t.Errorf("LoadMergeStateForTest().StartedAt = %v; want %v", got.StartedAt, want.StartedAt)
-	}
-	got.StartedAt = want.StartedAt // time.Time equality via == is unreliable across encode/decode; compared above.
-	if got != want {
-		t.Errorf("LoadMergeStateForTest() = %+v; want %+v", got, want)
-	}
+		// "EveryField" is only true if want actually populates every field with a non-zero value: a
+		// field added to the record and left out of want here would roundtrip zero-to-zero and pass,
+		// which is the test staying green while the property it names goes unchecked.
+		assertNoZeroFields(t, "want", want)
 
-	path, err := fabricengine.MergeStatePathForTest(f)
-	if err != nil {
-		t.Fatalf("MergeStatePathForTest() error = %v", err)
-	}
-	weftGitDir, err := fabricengine.WeftGitDirForTest(f)
-	if err != nil {
-		t.Fatalf("WeftGitDirForTest() error = %v", err)
-	}
-	wantPath := filepath.Join(weftGitDir, "fabric-merge.json")
-	if path != wantPath {
-		t.Errorf("MergeStatePathForTest() = %q; want %q", path, wantPath)
-	}
+		if err := fabricengine.SaveMergeStateForTest(f, want); err != nil {
+			t.Fatalf("SaveMergeStateForTest() error = %v", err)
+		}
 
-	assertMergeStateFileInvisibleToGit(t, "warp", h.PrimeWorktree())
-	assertMergeStateFileInvisibleToGit(t, "weft", h.PrimeWeft())
+		got, found, err := fabricengine.LoadMergeStateForTest(f)
+		if err != nil {
+			t.Fatalf("LoadMergeStateForTest() error = %v", err)
+		}
+		if !found {
+			t.Fatal("LoadMergeStateForTest() found = false; want true after save")
+		}
+		if !got.StartedAt.Equal(want.StartedAt) {
+			t.Errorf("LoadMergeStateForTest().StartedAt = %v; want %v", got.StartedAt, want.StartedAt)
+		}
+		got.StartedAt = want.StartedAt // time.Time equality via == is unreliable across encode/decode; compared above.
+		if got != want {
+			t.Errorf("LoadMergeStateForTest() = %+v; want %+v", got, want)
+		}
+
+		path, err := fabricengine.MergeStatePathForTest(f)
+		if err != nil {
+			t.Fatalf("MergeStatePathForTest() error = %v", err)
+		}
+		weftGitDir, err := fabricengine.WeftGitDirForTest(f)
+		if err != nil {
+			t.Fatalf("WeftGitDirForTest() error = %v", err)
+		}
+		wantPath := filepath.Join(weftGitDir, "fabric-merge.json")
+		if path != wantPath {
+			t.Errorf("MergeStatePathForTest() = %q; want %q", path, wantPath)
+		}
+
+		assertMergeStateFileInvisibleToGit(t, "warp", h.PrimeWorktree())
+		assertMergeStateFileInvisibleToGit(t, "weft", h.PrimeWeft())
+	})
+
+	t.Run("delete removes the record and tolerates a second call", func(t *testing.T) {
+		if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{Verb: "merge", Source: "x"}); err != nil {
+			t.Fatalf("SaveMergeStateForTest() error = %v", err)
+		}
+
+		if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
+			t.Fatalf("DeleteMergeStateForTest() first call error = %v", err)
+		}
+		if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
+			t.Fatalf("MergeRecordExistsForTest() after delete = (%v, %v); want (false, nil)", exists, err)
+		}
+
+		if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
+			t.Fatalf("DeleteMergeStateForTest() second call (already absent) error = %v; want nil (tolerates absence)", err)
+		}
+	})
 }
 
 // assertMergeStateFileInvisibleToGit fails the test if `git status --porcelain` in dir mentions
@@ -122,53 +163,6 @@ func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 	out := gitkit.GitStatusPorcelain(t, dir)
 	if strings.Contains(out, "fabric-merge.json") {
 		t.Errorf("git status --porcelain in %s worktree %s = %q; want no mention of fabric-merge.json (the merge-state record must be invisible to git)", label, dir, out)
-	}
-}
-
-// TestMergeState_AbsentRecord covers the no-record case: loadMergeState reports not-found and
-// mergeRecordExists reports false.
-func TestMergeState_AbsentRecord(t *testing.T) {
-	t.Parallel()
-
-	f, _ := newMergeStateFixture(t)
-
-	_, found, err := fabricengine.LoadMergeStateForTest(f)
-	if err != nil {
-		t.Fatalf("LoadMergeStateForTest() error = %v", err)
-	}
-	if found {
-		t.Error("LoadMergeStateForTest() found = true; want false with no record ever saved")
-	}
-
-	exists, err := fabricengine.MergeRecordExistsForTest(f)
-	if err != nil {
-		t.Fatalf("MergeRecordExistsForTest() error = %v", err)
-	}
-	if exists {
-		t.Error("MergeRecordExistsForTest() = true; want false with no record ever saved")
-	}
-}
-
-// TestMergeState_DeleteRemovesAndToleratesSecondCall covers deleteMergeState removing a saved
-// record and tolerating a second call against an already-absent one.
-func TestMergeState_DeleteRemovesAndToleratesSecondCall(t *testing.T) {
-	t.Parallel()
-
-	f, _ := newMergeStateFixture(t)
-
-	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{Verb: "merge", Source: "x"}); err != nil {
-		t.Fatalf("SaveMergeStateForTest() error = %v", err)
-	}
-
-	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
-		t.Fatalf("DeleteMergeStateForTest() first call error = %v", err)
-	}
-	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
-		t.Fatalf("MergeRecordExistsForTest() after delete = (%v, %v); want (false, nil)", exists, err)
-	}
-
-	if err := fabricengine.DeleteMergeStateForTest(f); err != nil {
-		t.Fatalf("DeleteMergeStateForTest() second call (already absent) error = %v; want nil (tolerates absence)", err)
 	}
 }
 
@@ -256,114 +250,104 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wan
 	}
 }
 
-// TestMergeState_ResetMergeSides_WarpSideConflicted covers the abort/self-abort reset with the warp
-// side left dirty by a real conflicted MergeStart: warp HEAD restores to the captured pre-merge SHA,
-// the warp worktree ends clean, MergeHeadPresent is false on the warp, and the record carries
-// exactly one KindWorktreeReset entry. The weft side was never dirtied by this fixture, so it stays
-// exactly as it started — trivially true whether or not a weft reset ever ran, but stated because
-// the weft is no longer a reset target regardless.
-func TestMergeState_ResetMergeSides_WarpSideConflicted(t *testing.T) {
+// TestMergeState_ResetMergeSides drives resetMergeSides through one pair, in this order:
+// with the warp side left dirty by a real conflicted MergeStart (the abort/self-abort reset), warp
+// HEAD restores to the captured pre-merge SHA, the warp worktree ends clean, MergeHeadPresent is
+// false on the warp, and the record carries exactly one KindWorktreeReset entry — the weft side was
+// never dirtied by this fixture, so it stays exactly as it started, trivially true whether or not a
+// weft reset ever ran, but stated because the weft is no longer a reset target regardless;
+// against the hub's prime warp worktree with nothing to reset, the ownership gate admits it — the
+// sole worktree resetMergeSides now ever resets, the weft having been dropped as a reset target
+// entirely;
+// and with the weft side, rather than the warp side, left dirty by a real conflicted MergeStart, the
+// warp-only reset restores the warp HEAD alone and the weft's conflicted merge state is left exactly
+// as it was — MERGE_HEAD still present, conflict markers still on disk — per
+// abort-does-not-reset-weft.
+// The steps run serially on one fixture, in this order: the weft step leaves its conflict in place,
+// so it runs last.
+func TestMergeState_ResetMergeSides(t *testing.T) {
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
 	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
 
-	warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftStartSHA := fabricengine.CurrentSHAForTest(t, weftPath)
+	t.Run("warp side conflicted", func(t *testing.T) {
+		warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+		weftStartSHA := fabricengine.CurrentSHAForTest(t, weftPath)
 
-	driveConflictedMergeStart(t, warpPath, fabricengine.WarpForTest(f))
+		driveConflictedMergeStart(t, warpPath, fabricengine.WarpForTest(f))
 
-	rec := fabricengine.NewMutations(h.Path)
-	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA); err != nil {
-		t.Fatalf("ResetMergeSidesForTest() error = %v", err)
-	}
+		rec := fabricengine.NewMutations(h.Path)
+		if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA); err != nil {
+			t.Fatalf("ResetMergeSidesForTest() error = %v", err)
+		}
 
-	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
-		t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftStartSHA {
-		t.Errorf("weft HEAD after reset = %q; want unchanged %q — the weft was never dirtied and is never a reset target", got, weftStartSHA)
-	}
-	if out := gitkit.GitStatusPorcelain(t, warpPath); out != "" {
-		t.Errorf("warp git status --porcelain after reset = %q; want clean", out)
-	}
-	assertMergeStateFileInvisibleToGit(t, "weft", weftPath)
+		if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
+			t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
+		}
+		if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftStartSHA {
+			t.Errorf("weft HEAD after reset = %q; want unchanged %q — the weft was never dirtied and is never a reset target", got, weftStartSHA)
+		}
+		if out := gitkit.GitStatusPorcelain(t, warpPath); out != "" {
+			t.Errorf("warp git status --porcelain after reset = %q; want clean", out)
+		}
+		assertMergeStateFileInvisibleToGit(t, "weft", weftPath)
 
-	if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
-		t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
-	}
-	if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || present {
-		t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
-	}
+		if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
+			t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+		}
+		if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || present {
+			t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+		}
 
-	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA)
-}
+		wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA)
+	})
 
-// TestMergeState_ResetMergeSides_WeftSideConflicted covers the same call when the weft side, rather
-// than the warp side, is the one left dirty by a real conflicted MergeStart: the warp-only reset
-// restores the warp HEAD alone, and the weft's conflicted merge state is left exactly as it was —
-// MERGE_HEAD still present, conflict markers still on disk — since the weft is not a reset target,
-// per abort-does-not-reset-weft.
-func TestMergeState_ResetMergeSides_WeftSideConflicted(t *testing.T) {
-	t.Parallel()
+	t.Run("prime warp worktree is admitted by the ownership gate", func(t *testing.T) {
+		warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
 
-	f, h := newMergeStateFixture(t)
-	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
+		rec := fabricengine.NewMutations(h.Path)
+		if err := fabricengine.ResetMergeSidesForTest(f, rec, warpSHA); err != nil {
+			t.Fatalf("ResetMergeSidesForTest() against the prime pair error = %v; want the ownership gate to admit the prime warp worktree", err)
+		}
 
-	warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+		wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpSHA)
+	})
 
-	driveConflictedMergeStart(t, weftPath, fabricengine.WeftForTest(f))
+	t.Run("weft side conflicted is left untouched", func(t *testing.T) {
+		warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
 
-	// Captured AFTER driveConflictedMergeStart, not before: that helper commits real content onto
-	// the checked-out branch before running MergeStart, so the weft's pre-reset HEAD has already
-	// moved off its pre-fixture SHA — the reset's job is to leave it exactly where the conflict
-	// left it, not to restore some earlier point.
-	weftBeforeReset := fabricengine.CurrentSHAForTest(t, weftPath)
+		driveConflictedMergeStart(t, weftPath, fabricengine.WeftForTest(f))
 
-	rec := fabricengine.NewMutations(h.Path)
-	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA); err != nil {
-		t.Fatalf("ResetMergeSidesForTest() error = %v", err)
-	}
+		// Captured AFTER driveConflictedMergeStart, not before: that helper commits real content onto
+		// the checked-out branch before running MergeStart, so the weft's pre-reset HEAD has already
+		// moved off its pre-fixture SHA — the reset's job is to leave it exactly where the conflict
+		// left it, not to restore some earlier point.
+		weftBeforeReset := fabricengine.CurrentSHAForTest(t, weftPath)
 
-	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
-		t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftBeforeReset {
-		t.Errorf("weft HEAD after reset = %q; want unchanged %q — the weft is not a reset target", got, weftBeforeReset)
-	}
-	// The reset must leave the weft's conflict exactly as driveConflictedMergeStart left it.
-	if out := gitkit.GitStatusPorcelain(t, weftPath); !strings.Contains(out, "conflict-target.txt") {
-		t.Errorf("weft git status --porcelain after reset = %q; want it to still mention conflict-target.txt — the weft is not a reset target", out)
-	}
+		rec := fabricengine.NewMutations(h.Path)
+		if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA); err != nil {
+			t.Fatalf("ResetMergeSidesForTest() error = %v", err)
+		}
 
-	if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
-		t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
-	}
-	if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || !present {
-		t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (true, nil) — the weft's conflicted merge state is not a reset target", present, err)
-	}
+		if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
+			t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
+		}
+		if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftBeforeReset {
+			t.Errorf("weft HEAD after reset = %q; want unchanged %q — the weft is not a reset target", got, weftBeforeReset)
+		}
+		// The reset must leave the weft's conflict exactly as driveConflictedMergeStart left it.
+		if out := gitkit.GitStatusPorcelain(t, weftPath); !strings.Contains(out, "conflict-target.txt") {
+			t.Errorf("weft git status --porcelain after reset = %q; want it to still mention conflict-target.txt — the weft is not a reset target", out)
+		}
 
-	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA)
-}
+		if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
+			t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+		}
+		if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || !present {
+			t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (true, nil) — the weft's conflicted merge state is not a reset target", present, err)
+		}
 
-// TestMergeState_ResetMergeSides_WarpOnly drives resetMergeSides against the hub's prime warp
-// worktree, asserting the ownership gate admits it — the sole worktree resetMergeSides now ever
-// resets. It was TestMergeState_ResetMergeSides_PrimePairBothSidesAdmitted, which exercised
-// ownedWeftCheckout's admission of the weft primary (hubforge.NewHub's clone, a main worktree of its
-// own repo, unlike an AddPair linked worktree); with the weft dropped as a reset target entirely,
-// ownedWeftCheckout is gone and there is no weft-side admission left to pin.
-func TestMergeState_ResetMergeSides_WarpOnly(t *testing.T) {
-	t.Parallel()
-
-	f, h := newMergeStateFixture(t)
-	warpPath := h.PrimeWorktree()
-
-	warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-
-	rec := fabricengine.NewMutations(h.Path)
-	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpSHA); err != nil {
-		t.Fatalf("ResetMergeSidesForTest() against the prime pair error = %v; want the ownership gate to admit the prime warp worktree", err)
-	}
-
-	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpSHA)
+		wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA)
+	})
 }

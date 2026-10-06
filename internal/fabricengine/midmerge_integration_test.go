@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+//testtiming:keep a clean pair reporting no mid-merge state; coverage of its blocks by other tests does not show an assertion of this
 func TestMidMerge_CleanPair_None(t *testing.T) {
 	t.Parallel()
 

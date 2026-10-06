@@ -36,6 +36,8 @@ const pathspecMissMarker = "did not match any files"
 // pathspec matching nothing produces an error whose message still carries git's own
 // "did not match any files" text by the time gitrepo.StageAndCommit returns it — the text
 // commitWeftLocked's tolerance matches on.
+//
+//testtiming:keep git's "did not match any files" text surviving gitrepo.StageAndCommit's error chain, which the pathspec tolerance matches on; coverage of its blocks by other tests does not show an assertion of this
 func TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain(t *testing.T) {
 	t.Parallel()
 

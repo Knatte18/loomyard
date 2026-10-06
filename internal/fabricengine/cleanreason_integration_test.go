@@ -17,15 +17,28 @@ import (
 )
 
 // TestClean_ReasonWording exercises the three shapes fabricengine.Clean can report a reason for.
+// The steps share one hub and run in order: each step leaves the hub with neither side dirty, so the
+// next one starts from a clean pair.
 func TestClean_ReasonWording(t *testing.T) {
-	t.Run("CodeSideOnly", func(t *testing.T) {
-		t.Parallel()
+	t.Parallel()
 
-		h := hubforge.NewHub(t, ".")
-		untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked warp file: %v", err)
+	h := hubforge.NewHub(t, ".")
+	warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
+	weftUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
+
+	// dirty writes an untracked file at each path and removes it when the step ends.
+	dirty := func(t *testing.T, paths ...string) {
+		t.Helper()
+		for _, path := range paths {
+			if err := os.WriteFile(path, []byte("new"), 0o644); err != nil {
+				t.Fatalf("write untracked file %s: %v", path, err)
+			}
+			t.Cleanup(func() { _ = os.Remove(path) })
 		}
+	}
+
+	t.Run("CodeSideOnly", func(t *testing.T) {
+		dirty(t, warpUntracked)
 
 		ok, reason, err := fabricengine.Clean(h.Location)
 		if err != nil {
@@ -41,13 +54,7 @@ func TestClean_ReasonWording(t *testing.T) {
 	})
 
 	t.Run("StateSideOnly", func(t *testing.T) {
-		t.Parallel()
-
-		h := hubforge.NewHub(t, ".")
-		untracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
-		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked weft file: %v", err)
-		}
+		dirty(t, weftUntracked)
 
 		ok, reason, err := fabricengine.Clean(h.Location)
 		if err != nil {
@@ -63,17 +70,7 @@ func TestClean_ReasonWording(t *testing.T) {
 	})
 
 	t.Run("Both", func(t *testing.T) {
-		t.Parallel()
-
-		h := hubforge.NewHub(t, ".")
-		warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-		if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked warp file: %v", err)
-		}
-		weftUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
-		if err := os.WriteFile(weftUntracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked weft file: %v", err)
-		}
+		dirty(t, warpUntracked, weftUntracked)
 
 		ok, reason, err := fabricengine.Clean(h.Location)
 		if err != nil {

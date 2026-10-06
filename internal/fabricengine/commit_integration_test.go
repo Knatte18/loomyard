@@ -842,6 +842,8 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 // exported entry point, not just an internal dispatch target — inherits commitWeftLocked's
 // empty-commit rule as its own contract: called directly (not via Fabric.Commit) with a pathspec
 // matching nothing and one snapshot tag, it lands the empty commit.
+//
+//testtiming:keep CommitWeft called directly with a pathspec matching nothing and one tag landing the empty commit as its own contract; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
 	t.Parallel()
 

@@ -25,6 +25,7 @@ func askingCandidate(offset *int64, eventsSize int64) attachCandidate {
 	}
 }
 
+//testtiming:keep pins the three asking re-entry verdicts at the unit level, including no events since the recorded offset and no recorded offset, which the end-to-end attach test never reaches
 func TestDispositionCandidate_AskingReentry(t *testing.T) {
 	ten := int64(10)
 	strands := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}
@@ -47,6 +48,7 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that the candidate scan records each events file's size, which the end-to-end attach test observes only through its one growth case
 func TestCollectAttachCandidates_RecordsEventsSize(t *testing.T) {
 	runRoot := t.TempDir()
 	outputFile := filepath.Join(runRoot, "out.md")
