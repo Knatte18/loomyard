@@ -8,6 +8,7 @@
 // recordingResolver in its resolver field -- bypassing NewPublish's own resolver construction, which
 // always builds a real *mergeresolve.Resolver. On that path the told session-runner value (Shuttle)
 // is never driven, since the resolver's own behaviour is covered by its own tier in batch 3.
+// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
@@ -180,131 +181,161 @@ func requireReason(t *testing.T, ptr shedengine.OutputPointer) string {
 
 // --- NewPublish construction ---
 
-func TestNewPublish_RejectsNilOpenFabric(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return nil }
-	if _, err := NewPublish(deps); err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.OpenFabric")
+func TestNewPublish_Refusals(t *testing.T) {
+	nilFabric := func() (*fabricengine.Fabric, error) { return nil, nil }
+	noPush := func() error { return nil }
+	tests := []struct {
+		name     string
+		mutate   func(*Deps)
+		wantName string
+	}{
+		{"nil OpenFabric", func(d *Deps) { d.PushBranch = noPush }, "Deps.OpenFabric"},
+		{"nil PushBranch", func(d *Deps) { d.OpenFabric = nilFabric }, "Deps.PushBranch"},
+		{"empty DescriptionPath", func(d *Deps) { d.OpenFabric, d.PushBranch, d.DescriptionPath = nilFabric, noPush, "" }, "Deps.DescriptionPath"},
+		// OpenFabric returns a typed-nil *fabricengine.Fabric: mergeresolve.New checks its Fabric field
+		// for a nil interface, which a typed-nil pointer does not satisfy, so this case reaches the
+		// Shuttle check without ever invoking a method on the fabric handle.
+		{"nil Shuttle", func(d *Deps) { d.OpenFabric, d.PushBranch, d.Shuttle = nilFabric, noPush, nil }, "Shuttle"},
 	}
-}
-
-func TestNewPublish_RejectsNilPushBranch(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
-	if _, err := NewPublish(deps); err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.PushBranch")
-	}
-}
-
-func TestNewPublish_RejectsEmptyDescriptionPath(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
-	deps.PushBranch = func() error { return nil }
-	deps.DescriptionPath = ""
-	if _, err := NewPublish(deps); err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.DescriptionPath")
-	}
-}
-
-// TestNewPublish_RejectsNilShuttle asserts the constructor rejects a Deps whose told session-runner
-// seam is nil, with a distinct error naming that field. deps.OpenFabric returns a typed-nil
-// *fabricengine.Fabric: mergeresolve.New checks its Fabric field for a nil interface, which a
-// typed-nil pointer does not satisfy, so this test reaches the Shuttle check without ever invoking a
-// method on the fabric handle.
-func TestNewPublish_RejectsNilShuttle(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return nil, nil }
-	deps.PushBranch = func() error { return nil }
-	deps.Shuttle = nil
-
-	_, err := NewPublish(deps)
-	if err == nil {
-		t.Fatal("NewPublish() error = nil; want an error naming Deps.Shuttle")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			tt.mutate(&deps)
+			if _, err := NewPublish(deps); err == nil || !strings.Contains(err.Error(), tt.wantName) {
+				t.Fatalf("NewPublish() error = %v; want an error naming %s", err, tt.wantName)
+			}
+		})
 	}
 }
 
 // --- Call behaviour ---
 
-func TestPublish_ParentBranchNotInBaseList_Done(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.Config.RequirePRToBase = []string{"other-base"}
-	res := &recordingResolver{}
-	p := &Publish{deps: deps, resolver: res}
+// TestPublish_NoPullRequestRequired_DoneWithoutMergeIn pins that a parent branch outside the require-PR list ends Done
+// with no merge-in, whether or not the push is skipped.
+//
+//testtiming:keep pins that the resolver is never called when no pull request is required, which its covering tests do not assert
+func TestPublish_NoPullRequestRequired_DoneWithoutMergeIn(t *testing.T) {
+	tests := []struct {
+		name        string
+		pushSkipped bool
+	}{
+		{"parent branch not in the base list", false},
+		{"push skipped", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.Config.RequirePRToBase = []string{"other-base"}
+			deps.PushSkipped = tt.pushSkipped
+			res := &recordingResolver{}
+			p := &Publish{deps: deps, resolver: res}
 
-	shedfake.RequireOutcome(t, p, shedengine.Done)
-	if res.called {
-		t.Error("resolver.Resolve was called; want no merge-in when no pull request is required")
+			shedfake.RequireOutcome(t, p, shedengine.Done)
+			if res.called {
+				t.Error("resolver.Resolve was called; want no merge-in when no pull request is required")
+			}
+		})
 	}
 }
 
-func TestPublish_PushSkipped_NoPRRequired_Done(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.Config.RequirePRToBase = []string{"other-base"}
-	deps.PushSkipped = true
-	res := &recordingResolver{}
-	p := &Publish{deps: deps, resolver: res}
-
-	shedfake.RequireOutcome(t, p, shedengine.Done)
-}
-
-func TestPublish_PushSkipped_PRRequired_StuckBeforeMergeInAndPush(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushSkipped = true
-	pushed := false
-	deps.PushBranch = func() error { pushed = true; return nil }
-	res := &recordingResolver{}
-	p := &Publish{deps: deps, resolver: res}
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if res.called {
-		t.Error("resolver.Resolve was called; want push-skipped to refuse before merge-in")
+// TestPublish_StuckBeforePullRequest pins each way Publish stops Stuck before it reaches a pull request:
+// the reason it surfaces, how far it got (merge-in, push), and that no stuck-reason file is written.
+func TestPublish_StuckBeforePullRequest(t *testing.T) {
+	resolved := mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}
+	tests := []struct {
+		name               string
+		mutate             func(*Deps)
+		pushErr            error
+		resolved           mergeresolve.Result
+		wantInReason       string
+		wantResolverCalled bool
+		wantPushCalled     bool
+	}{
+		{
+			name:         "push skipped while a pull request is required refuses before merge-in and push",
+			mutate:       func(d *Deps) { d.PushSkipped = true },
+			resolved:     resolved,
+			wantInReason: "push skipped",
+		},
+		{
+			name:               "merge-in stuck surfaces the resolver's reason",
+			resolved:           mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "merge-in could not be resolved"},
+			wantInReason:       "merge-in could not be resolved",
+			wantResolverCalled: true,
+		},
+		{
+			name:               "push failure",
+			pushErr:            errors.New("boom"),
+			resolved:           resolved,
+			wantInReason:       "push failed: boom",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:               "push rejected has its own reason",
+			pushErr:            gitrepo.ErrPushRejected,
+			resolved:           resolved,
+			wantInReason:       "push rejected by the remote",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:               "empty origin URL",
+			mutate:             func(d *Deps) { d.OriginURL = "" },
+			resolved:           resolved,
+			wantInReason:       "origin URL unusable",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:               "origin URL that is not a URL",
+			mutate:             func(d *Deps) { d.OriginURL = "not-a-url" },
+			resolved:           resolved,
+			wantInReason:       "origin URL unusable",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:               "origin on a host that is not GitHub",
+			mutate:             func(d *Deps) { d.OriginURL = "https://gitlab.com/acme/proj.git" },
+			resolved:           resolved,
+			wantInReason:       "origin URL unusable",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
 	}
-	if pushed {
-		t.Error("PushBranch was called; want push-skipped to refuse before the push closure")
-	}
-	requireReason(t, ptr)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			pushed := false
+			deps.PushBranch = func() error { pushed = true; return tt.pushErr }
+			if tt.mutate != nil {
+				tt.mutate(&deps)
+			}
+			res := &recordingResolver{result: tt.resolved}
+			p := &Publish{deps: deps, resolver: res}
 
-func TestPublish_MergeInStuck(t *testing.T) {
-	deps := newTestDeps(t)
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "merge-in could not be resolved"}}
-	p := &Publish{deps: deps, resolver: res}
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if res.gotSource != deps.ParentBranch {
-		t.Errorf("resolver.Resolve source = %q; want %q", res.gotSource, deps.ParentBranch)
-	}
-	got := requireReason(t, ptr)
-	if got != "merge-in could not be resolved" {
-		t.Errorf("reason = %q; want the resolver's own reason", got)
-	}
-}
-
-func TestPublish_PushFails_NoGitHubCall(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return errors.New("boom") }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	requireReason(t, ptr)
-}
-
-func TestPublish_PushRejected_DistinctReason(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return gitrepo.ErrPushRejected }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-	rejectedReason := runAndGetReason(t, p)
-
-	deps2 := newTestDeps(t)
-	deps2.PushBranch = func() error { return errors.New("generic failure") }
-	res2 := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p2 := &Publish{deps: deps2, resolver: res2}
-	genericReason := runAndGetReason(t, p2)
-
-	if rejectedReason == genericReason {
-		t.Errorf("rejected-push reason %q equals generic-push-failure reason %q; want distinct", rejectedReason, genericReason)
+			got := runAndGetReason(t, p)
+			if !strings.Contains(got, tt.wantInReason) {
+				t.Errorf("reason = %q; want it to carry %q", got, tt.wantInReason)
+			}
+			if res.called != tt.wantResolverCalled {
+				t.Errorf("resolver called = %v; want %v", res.called, tt.wantResolverCalled)
+			}
+			if res.called && res.gotSource != deps.ParentBranch {
+				t.Errorf("resolver.Resolve source = %q; want %q", res.gotSource, deps.ParentBranch)
+			}
+			if pushed != tt.wantPushCalled {
+				t.Errorf("PushBranch called = %v; want %v", pushed, tt.wantPushCalled)
+			}
+			matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(matches) != 0 {
+				t.Errorf("stuck-reason files = %v; want none", matches)
+			}
+		})
 	}
 }
 
@@ -314,112 +345,94 @@ func runAndGetReason(t *testing.T, p *Publish) string {
 	return requireReason(t, ptr)
 }
 
-func TestPublish_OriginURLUnusable_NoGitHubCall(t *testing.T) {
-	tests := []string{"", "not-a-url", "https://gitlab.com/acme/proj.git"}
-	for _, originURL := range tests {
-		t.Run(originURL, func(t *testing.T) {
+// TestPublish_GitHubFailures pins that each GitHub failure site ends with its usual verdict -- Stuck for a client the factory
+// cannot build or a non-transient API error, a classified transient error for a 5xx -- and that the site's logger.Warn line
+// carries the action and cause field keys, plus owner and repo wherever a request was made.
+// The cases that fail through the API are the ones reason-classification itself is exercised for, in TestPublishGitHubErrorReason_ClassifiesDistinctly.
+func TestPublish_GitHubFailures(t *testing.T) {
+	tests := []struct {
+		name          string
+		clientFails   bool
+		setup         func(s *publishGitHubServer)
+		wantTransient bool
+		wantFields    []string
+	}{
+		{name: "client unavailable", clientFails: true, wantFields: []string{"WARN", "action=", "cause="}},
+		{
+			name: "query rejected", wantFields: []string{"WARN", "action=", "owner=", "repo=", "cause="},
+			setup: func(s *publishGitHubServer) {
+				s.listStatus = http.StatusUnprocessableEntity
+				s.listBody = `{"message":"server exploded"}`
+			},
+		},
+		{
+			name: "create rejected", wantFields: []string{"WARN", "action=", "owner=", "repo=", "cause="},
+			setup: func(s *publishGitHubServer) {
+				s.createStatus = http.StatusUnprocessableEntity
+				s.createBody = `{"message":"server exploded"}`
+			},
+		},
+		{
+			name: "query 503", wantTransient: true, wantFields: []string{"WARN", "action=", "owner=", "repo=", "cause="},
+			setup: func(s *publishGitHubServer) {
+				s.listStatus = http.StatusServiceUnavailable
+				s.listBody = `{"message":"unavailable"}`
+			},
+		},
+		{
+			name: "create 502", wantTransient: true, wantFields: []string{"WARN", "action=", "owner=", "repo=", "cause="},
+			setup: func(s *publishGitHubServer) {
+				s.createStatus = http.StatusBadGateway
+				s.createBody = `{"message":"bad gateway"}`
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
-			deps.OriginURL = originURL
-			deps.PushBranch = func() error { return nil }
+			writeSummary(t, deps.DescriptionPath, "Title", "Body.")
+			var order []string
+			deps.PushBranch = func() error { order = append(order, "push"); return nil }
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			p := &Publish{deps: deps, resolver: res}
+			if tt.clientFails {
+				installFailingGitHubClientFactory(t, errors.New("boom"))
+			} else {
+				srv := newPublishGitHubServer(t, &order)
+				tt.setup(srv)
+				srv.install(t)
+			}
+			buf := logcapture.Capture(t)
 
-			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			requireReason(t, ptr)
+			if tt.wantTransient {
+				_, _, err := p.Call(context.Background())
+				if err == nil {
+					t.Fatal("Call() error = nil; want a transient error")
+				}
+				if got := shedtransient.Class(err); got != shedengine.TransientGitHubAPI {
+					t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitHubAPI)
+				}
+			} else {
+				runAndGetReason(t, p)
+			}
+
+			logged := buf.String()
+			for _, field := range tt.wantFields {
+				if !strings.Contains(logged, field) {
+					t.Errorf("log output = %q; want %s", logged, field)
+				}
+			}
 		})
 	}
 }
 
-// TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause covers the NewGitHubClient factory
-// failure site: Call must still reach its usual stuck verdict, and the site's own logger.Warn line
-// must carry the action and cause field keys.
-func TestPublish_GitHubClientUnavailable_WarnsWithActionAndCause(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
+// TestPublish_NoExistingPR_CreatesAndLogsOnce pins the create path: push, then list, then create, with the change
+// description as title and body, and the one GitHub write landing in the durable trace exactly once carrying the created pull request's number.
+// It never runs in parallel: the sink override is package-level state.
+func TestPublish_NoExistingPR_CreatesAndLogsOnce(t *testing.T) {
+	logger.SetDurableSinkDir(t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 
-	installFailingGitHubClientFactory(t, errors.New("boom"))
-	buf := logcapture.Capture(t)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	requireReason(t, ptr)
-
-	logged := buf.String()
-	if !strings.Contains(logged, "WARN") {
-		t.Errorf("log output = %q; want a WARN line", logged)
-	}
-	for _, field := range []string{"action=", "cause="} {
-		if !strings.Contains(logged, field) {
-			t.Errorf("log output = %q; want a %s field", logged, field)
-		}
-	}
-}
-
-// TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause covers the
-// client.PullRequests.List failure site: Call must still reach its usual stuck verdict, driven by
-// publishGitHubErrorReason, and the site's own logger.Warn line must carry action, owner, repo, and
-// cause -- the reason-classification behaviour itself stays covered by
-// TestPublishGitHubErrorReason_ClassifiesDistinctly, unchanged here.
-func TestPublish_QueryExistingPRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
-	deps := newTestDeps(t)
-	var order []string
-	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	srv := newPublishGitHubServer(t, &order)
-	srv.listStatus = http.StatusUnprocessableEntity
-	srv.listBody = `{"message":"server exploded"}`
-	srv.install(t)
-	buf := logcapture.Capture(t)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	requireReason(t, ptr)
-
-	logged := buf.String()
-	if !strings.Contains(logged, "WARN") {
-		t.Errorf("log output = %q; want a WARN line", logged)
-	}
-	for _, field := range []string{"action=", "owner=", "repo=", "cause="} {
-		if !strings.Contains(logged, field) {
-			t.Errorf("log output = %q; want a %s field", logged, field)
-		}
-	}
-}
-
-// TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause covers the
-// client.PullRequests.Create failure site: Call must still reach its usual stuck verdict, and the
-// site's own logger.Warn line must carry action, owner, repo, and cause.
-func TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause(t *testing.T) {
-	deps := newTestDeps(t)
-	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
-	var order []string
-	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	srv := newPublishGitHubServer(t, &order)
-	srv.createStatus = http.StatusUnprocessableEntity
-	srv.createBody = `{"message":"server exploded"}`
-	srv.install(t)
-	buf := logcapture.Capture(t)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	requireReason(t, ptr)
-
-	logged := buf.String()
-	if !strings.Contains(logged, "WARN") {
-		t.Errorf("log output = %q; want a WARN line", logged)
-	}
-	for _, field := range []string{"action=", "owner=", "repo=", "cause="} {
-		if !strings.Contains(logged, field) {
-			t.Errorf("log output = %q; want a %s field", logged, field)
-		}
-	}
-}
-
-func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 	deps := newTestDeps(t)
 	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
 	var order []string
@@ -432,16 +445,9 @@ func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 
-	wantOrder := []string{"push", "list", "create"}
-	if len(order) != len(wantOrder) {
-		t.Fatalf("call order = %v; want %v", order, wantOrder)
+	if got, want := strings.Join(order, ","), "push,list,create"; got != want {
+		t.Errorf("call order = %q; want %q", got, want)
 	}
-	for i := range wantOrder {
-		if order[i] != wantOrder[i] {
-			t.Errorf("call order = %v; want %v", order, wantOrder)
-		}
-	}
-
 	if len(srv.createdBodies) != 1 {
 		t.Fatalf("created pull requests = %d; want 1", len(srv.createdBodies))
 	}
@@ -452,68 +458,42 @@ func TestPublish_NoExistingPR_CreatesAndReportsDone(t *testing.T) {
 	if got["body"] != "\nMy PR body.\n" {
 		t.Errorf("created PR body = %v; want %q", got["body"], "\nMy PR body.\n")
 	}
-}
 
-// openPRPublish runs Publish against a server listing one open pull request with the given title and body, and a change description of "New Title" / "New body.".
-func openPRPublish(t *testing.T, prTitle, prBody string) (shedengine.Outcome, error, *publishGitHubServer) {
-	t.Helper()
-	deps := newTestDeps(t)
-	writeSummary(t, deps.DescriptionPath, "New Title", "New body.")
-	var order []string
-	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	srv := newPublishGitHubServer(t, &order)
-	// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
-	// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
-	// to the same nil field either way.
-	list, err := json.Marshal([]map[string]any{{"number": 7, "state": "open", "title": prTitle, "body": prBody}})
+	data, err := os.ReadFile(logger.TraceFile())
 	if err != nil {
-		t.Fatalf("marshal list body: %v", err)
+		t.Fatalf("read trace file: %v", err)
 	}
-	srv.listBody = string(list)
-	srv.install(t)
-
-	outcome, _, err := p.Call(context.Background())
-	return outcome, err, srv
-}
-
-func TestPublish_OpenPR_DifferingDescription_EditsAndDone(t *testing.T) {
-	outcome, err, srv := openPRPublish(t, "Old Title", "Old body.")
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	var created []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, `msg="landingshed: pull request created"`) {
+			created = append(created, line)
+		}
 	}
-	if len(srv.createdBodies) != 0 {
-		t.Errorf("created pull requests = %d; want 0 (an open PR already exists)", len(srv.createdBodies))
+	if len(created) != 1 {
+		t.Fatalf("pull request created records = %d; want 1\n%s", len(created), data)
 	}
-	if len(srv.editedBodies) != 1 {
-		t.Fatalf("edit requests = %d; want 1", len(srv.editedBodies))
-	}
-	got := srv.editedBodies[0]
-	if got["title"] != "New Title" || got["body"] != "\nNew body.\n" {
-		t.Errorf("edit request = %v; want the new title and body", got)
+	if !strings.Contains(created[0], "number=1") {
+		t.Errorf("record = %q; want number=1", created[0])
 	}
 }
 
-func TestPublish_OpenPR_MatchingDescription_NoEditAndDone(t *testing.T) {
-	outcome, err, srv := openPRPublish(t, "New Title", "\nNew body.\n")
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-	if len(srv.createdBodies) != 0 || len(srv.editedBodies) != 0 {
-		t.Errorf("created = %d, edited = %d; want 0 and 0", len(srv.createdBodies), len(srv.editedBodies))
-	}
-}
-
-func TestPublish_OpenPR_EditFailure_TransientErrorOrStuck(t *testing.T) {
+// TestPublish_OpenPullRequest pins what Publish does when an open pull request already exists: it edits the
+// title and body only when they differ from the change description, never creates, and treats a 5xx edit
+// failure as a classified transient error but any other as Stuck.
+func TestPublish_OpenPullRequest(t *testing.T) {
 	tests := []struct {
-		name      string
-		status    int
-		wantClass shedengine.TransientClass
+		name       string
+		prTitle    string
+		prBody     string
+		editStatus int
+		wantEdits  int
+		wantOut    shedengine.Outcome
+		wantClass  shedengine.TransientClass
 	}{
-		{"502 is an error", http.StatusBadGateway, shedengine.TransientGitHubAPI},
-		{"422 stays Stuck", http.StatusUnprocessableEntity, ""},
+		{"differing description is edited", "Old Title", "Old body.", http.StatusOK, 1, shedengine.Done, ""},
+		{"matching description is left alone", "New Title", "\nNew body.\n", http.StatusOK, 0, shedengine.Done, ""},
+		{"502 edit failure is an error", "Old", "Old", http.StatusBadGateway, 1, "", shedengine.TransientGitHubAPI},
+		{"422 edit failure stays Stuck", "Old", "Old", http.StatusUnprocessableEntity, 1, shedengine.Stuck, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -524,65 +504,81 @@ func TestPublish_OpenPR_EditFailure_TransientErrorOrStuck(t *testing.T) {
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			p := &Publish{deps: deps, resolver: res}
 			srv := newPublishGitHubServer(t, &order)
-			srv.listBody = `[{"number":7,"state":"open","title":"Old","body":"Old"}]`
-			srv.editStatus = tt.status
-			srv.editBody = `{"message":"nope"}`
+			// No "merged"/"merged_at" key at all: the real List Pull Requests endpoint never sets "merged"
+			// on an open PR and reports "merged_at": null (crucible round 3, F-R3-1) -- an absent key decodes
+			// to the same nil field either way.
+			list, err := json.Marshal([]map[string]any{{"number": 7, "state": "open", "title": tt.prTitle, "body": tt.prBody}})
+			if err != nil {
+				t.Fatalf("marshal list body: %v", err)
+			}
+			srv.listBody = string(list)
+			srv.editStatus = tt.editStatus
+			if tt.editStatus != http.StatusOK {
+				srv.editBody = `{"message":"nope"}`
+			}
 			srv.install(t)
 
 			outcome, ptr, err := p.Call(context.Background())
-			if tt.wantClass == "" {
-				if err != nil || outcome != shedengine.Stuck {
-					t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			switch {
+			case tt.wantClass != "":
+				if got := shedtransient.Class(err); got != tt.wantClass {
+					t.Errorf("Class(err) = %q; want %q (err = %v)", got, tt.wantClass, err)
 				}
+			case err != nil || outcome != tt.wantOut:
+				t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, tt.wantOut)
+			case tt.wantOut == shedengine.Stuck:
 				requireReason(t, ptr)
-				return
 			}
-			if got := shedtransient.Class(err); got != tt.wantClass {
-				t.Errorf("Class(err) = %q; want %q (err = %v)", got, tt.wantClass, err)
+			if len(srv.createdBodies) != 0 {
+				t.Errorf("created pull requests = %d; want 0 (an open PR already exists)", len(srv.createdBodies))
+			}
+			if len(srv.editedBodies) != tt.wantEdits {
+				t.Fatalf("edit requests = %d; want %d", len(srv.editedBodies), tt.wantEdits)
+			}
+			if tt.wantEdits == 1 {
+				got := srv.editedBodies[0]
+				if got["title"] != "New Title" || got["body"] != "\nNew body.\n" {
+					t.Errorf("edit request = %v; want the new title and body", got)
+				}
 			}
 		})
 	}
 }
 
-// TestPublish_ClosedAndMergedPR_Done pins the fix for crucible round 3's F-R3-1: GitHub's List Pull
-// Requests endpoint never populates the "merged" boolean on any item it returns (confirmed live
-// against a real merged PR -- `gh api ".../pulls?state=all&..."` reports "merged":null even for a
-// genuinely merged PR, while only the single-PR Get endpoint reports "merged":true), so Publish must
-// read "merged_at" instead. This mock's shape is deliberately the REAL List response shape -- no
-// "merged" key at all, only "merged_at" -- specifically so this test cannot again pass against a
-// mock shape the real API would never produce.
-func TestPublish_ClosedAndMergedPR_Done(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
+// TestPublish_ExistingClosedPullRequest pins the verdict for a closed pull request: a merged one is Done, found
+// through "merged_at" because GitHub's List Pull Requests endpoint never populates the "merged" boolean on any item
+// (confirmed live against a real merged PR -- only the single-PR Get endpoint reports "merged":true, crucible round 3's F-R3-1);
+// an unmerged one is Stuck with a reason naming the closure, ending with the pull request's URL when it carries one.
+// The list bodies are deliberately the real List response shape, so a mock the real API would never produce cannot pass here.
+func TestPublish_ExistingClosedPullRequest(t *testing.T) {
+	const prURL = "https://github.com/owner/repo/pull/7"
+	tests := []struct {
+		name       string
+		listBody   string
+		wantOut    shedengine.Outcome
+		wantReason string
+	}{
+		{"merged", `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`, shedengine.Done, ""},
+		{"unmerged without a URL", `[{"number":7,"state":"closed"}]`, shedengine.Stuck, "the pull request was closed without being merged"},
+		{"unmerged with a URL", `[{"number":7,"state":"closed","html_url":"` + prURL + `"}]`, shedengine.Stuck, "the pull request was closed without being merged: " + prURL},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.PushBranch = func() error { return nil }
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			p := &Publish{deps: deps, resolver: res}
 
-	var order []string
-	srv := newPublishGitHubServer(t, &order)
-	srv.listBody = `[{"number":7,"state":"closed","merged_at":"2026-09-13T16:49:32Z"}]`
-	srv.install(t)
+			var order []string
+			srv := newPublishGitHubServer(t, &order)
+			srv.listBody = tt.listBody
+			srv.install(t)
 
-	shedfake.RequireOutcome(t, p, shedengine.Done)
-}
-
-func TestPublish_ClosedAndUnmergedPR_StuckNamesClosure(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	var order []string
-	srv := newPublishGitHubServer(t, &order)
-	// No "merged_at": a genuinely closed-and-not-merged PR carries neither "merged" nor "merged_at"
-	// on the real List endpoint.
-	srv.listBody = `[{"number":7,"state":"closed"}]`
-	srv.install(t)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	closedUnmergedReason := requireReason(t, ptr)
-
-	if !strings.Contains(closedUnmergedReason, "closed without being merged") {
-		t.Errorf("closed-unmerged reason %q; want it to say the pull request was closed without being merged", closedUnmergedReason)
+			ptr := shedfake.RequireOutcome(t, p, tt.wantOut)
+			if tt.wantOut == shedengine.Stuck && ptr.Reason != tt.wantReason {
+				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+		})
 	}
 }
 
@@ -640,106 +636,6 @@ func TestPublishGitHubErrorReason_ClassifiesDistinctly(t *testing.T) {
 	}
 }
 
-// TestPublish_CreatedPRLogsInfo asserts the one GitHub write lands in the durable trace exactly
-// once, carrying the created pull request's number. It never runs in parallel: the sink override
-// is package-level state.
-func TestPublish_CreatedPRLogsInfo(t *testing.T) {
-	logger.SetDurableSinkDir(t.TempDir())
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-
-	deps := newTestDeps(t)
-	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
-	var order []string
-	deps.PushBranch = func() error { order = append(order, "push"); return nil }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	srv := newPublishGitHubServer(t, &order)
-	srv.install(t)
-
-	shedfake.CallOK(t, p)
-
-	data, err := os.ReadFile(logger.TraceFile())
-	if err != nil {
-		t.Fatalf("read trace file: %v", err)
-	}
-	var created []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.Contains(line, `msg="landingshed: pull request created"`) {
-			created = append(created, line)
-		}
-	}
-	if len(created) != 1 {
-		t.Fatalf("pull request created records = %d; want 1\n%s", len(created), data)
-	}
-	if !strings.Contains(created[0], "number=1") {
-		t.Errorf("record = %q; want number=1", created[0])
-	}
-}
-
-// publishReasonFor runs one Publish against a fake GitHub server with the given list and create
-// bodies and returns the stuck reason it returned.
-func publishReasonFor(t *testing.T, listBody, createBody string) string {
-	t.Helper()
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return nil }
-	writeSummary(t, deps.DescriptionPath, "My PR Title", "My PR body.")
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	var order []string
-	srv := newPublishGitHubServer(t, &order)
-	srv.listBody = listBody
-	if createBody != "" {
-		srv.createBody = createBody
-	}
-	srv.install(t)
-	return runAndGetReason(t, p)
-}
-
-func TestPublish_PRStateReasons_EndWithURL(t *testing.T) {
-	const url = "https://github.com/owner/repo/pull/7"
-	tests := []struct {
-		name       string
-		listBody   string
-		createBody string
-		want       string
-	}{
-		{"closed unmerged", `[{"number":7,"state":"closed","html_url":"` + url + `"}]`, "", "the pull request was closed without being merged: " + url},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := publishReasonFor(t, tt.listBody, tt.createBody)
-			if got != tt.want {
-				t.Errorf("reason = %q; want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPublish_PRStateReason_NoURL_IsBareText(t *testing.T) {
-	got := publishReasonFor(t, `[{"number":7,"state":"closed"}]`, "")
-	if got != "the pull request was closed without being merged" {
-		t.Errorf("reason = %q; want the bare text with no suffix", got)
-	}
-}
-
-func TestPublish_StuckWritesNoReasonFile(t *testing.T) {
-	deps := newTestDeps(t)
-	deps.PushBranch = func() error { return errors.New("boom") }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-	runAndGetReason(t, p)
-
-	matches, err := filepath.Glob(filepath.Join(deps.ScratchDir, "*-stuck.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("stuck-reason files = %v; want none", matches)
-	}
-}
-
 func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
 	var got url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -770,8 +666,6 @@ func TestFindPullRequest_QueryParametersAndEmptyList(t *testing.T) {
 	}
 }
 
-// --- transient failures are errors, not verdicts ---
-
 // transportPushErr is the error a push returns when the remote is unreachable: a *gitexec.GitError whose stderr shedtransient classifies as git-transport.
 func transportPushErr() error {
 	return fmt.Errorf("gitrepo: git push: %w", &gitexec.GitError{
@@ -781,82 +675,50 @@ func transportPushErr() error {
 	})
 }
 
-func TestPublish_TransportPushFailure_ReturnsClassifiedErrorNoGitHubCall(t *testing.T) {
-	deps := newTestDeps(t)
-	var order []string
-	deps.PushBranch = func() error { return transportPushErr() }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-	srv := newPublishGitHubServer(t, &order)
-	srv.install(t)
-
-	_, _, err := p.Call(context.Background())
-	if err == nil {
-		t.Fatal("Call() error = nil; want a transient error")
-	}
-	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
-		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
-	}
-	if len(order) != 0 {
-		t.Errorf("GitHub calls = %v; want none", order)
-	}
-}
-
-func TestPublish_TransportPushFailure_CancelledContextIsCancellationNotTransient(t *testing.T) {
-	deps := newTestDeps(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	deps.PushBranch = func() error { cancel(); return transportPushErr() }
-	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	p := &Publish{deps: deps, resolver: res}
-
-	_, _, err := p.Call(ctx)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Call() error = %v; want it to wrap context.Canceled", err)
-	}
-	if got := shedtransient.Class(err); got != "" {
-		t.Errorf("Class(err) = %q; want empty", got)
-	}
-}
-
-func TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn(t *testing.T) {
+func TestPublish_TransportPushFailure(t *testing.T) {
 	tests := []struct {
-		name  string
-		setup func(s *publishGitHubServer)
+		name string
+		// cancelDuringPush cancels the context inside the push, so the transport failure arrives with the run already cancelled.
+		cancelDuringPush bool
 	}{
-		{"query 503", func(s *publishGitHubServer) {
-			s.listStatus = http.StatusServiceUnavailable
-			s.listBody = `{"message":"unavailable"}`
-		}},
-		{"create 502", func(s *publishGitHubServer) {
-			s.createStatus = http.StatusBadGateway
-			s.createBody = `{"message":"bad gateway"}`
-		}},
+		{"is a classified transient error and reaches no GitHub", false},
+		{"under a cancelled context is cancellation, not transient", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
-			writeSummary(t, deps.DescriptionPath, "Title", "Body.")
 			var order []string
-			deps.PushBranch = func() error { order = append(order, "push"); return nil }
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			deps.PushBranch = func() error {
+				if tt.cancelDuringPush {
+					cancel()
+				}
+				return transportPushErr()
+			}
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			p := &Publish{deps: deps, resolver: res}
 			srv := newPublishGitHubServer(t, &order)
-			tt.setup(srv)
 			srv.install(t)
-			buf := logcapture.Capture(t)
 
-			_, _, err := p.Call(context.Background())
+			_, _, err := p.Call(ctx)
+			if tt.cancelDuringPush {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("Call() error = %v; want it to wrap context.Canceled", err)
+				}
+				if got := shedtransient.Class(err); got != "" {
+					t.Errorf("Class(err) = %q; want empty", got)
+				}
+				return
+			}
 			if err == nil {
 				t.Fatal("Call() error = nil; want a transient error")
 			}
-			if got := shedtransient.Class(err); got != shedengine.TransientGitHubAPI {
-				t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitHubAPI)
+			if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
+				t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
 			}
-			logged := buf.String()
-			for _, field := range []string{"WARN", "action=", "owner=", "repo=", "cause="} {
-				if !strings.Contains(logged, field) {
-					t.Errorf("log output = %q; want %s", logged, field)
-				}
+			if len(order) != 0 {
+				t.Errorf("GitHub calls = %v; want none", order)
 			}
 		})
 	}

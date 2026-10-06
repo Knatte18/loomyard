@@ -1,5 +1,6 @@
 // finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeInStep wires them around every parent merge-in,
 // against fake verifytree seams, a scripted resolver and the package's fake merger.
+// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
@@ -83,20 +84,40 @@ func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 	}
 }
 
-func TestFinalizeVerify_Pass(t *testing.T) {
-	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
-	shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
-	if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
-		t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))
+// TestFinalizeVerify_Lands pins that a passing verify and one the verified-tree record skips each let the landing proceed:
+// the merge and the push run once, the verify is asked once at site Finalize and the three clean-tree checks are made.
+//
+//testtiming:keep pins the verify call count, the Finalize site label and the clean-tree check count on the landing path, which its covering tests do not assert
+func TestFinalizeVerify_Lands(t *testing.T) {
+	tests := []struct {
+		name            string
+		alreadyUpToDate bool
+		result          verifytree.Result
+	}{
+		{"pass", false, verifytree.Result{Status: verifytree.StatusPassed}},
+		{"verified tree skips", true, verifytree.Result{Status: verifytree.StatusSkipped}},
 	}
-	if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Finalize" {
-		t.Errorf("verify calls = %d, site = %+v; want 1 call at site Finalize", fx.gate.fake.verifyCalls, fx.gate.fake.site)
-	}
-	if fx.gate.fake.dirtyCalls != finalizeChecksPerMergeIn {
-		t.Errorf("clean-tree checks = %d; want %d", fx.gate.fake.dirtyCalls, finalizeChecksPerMergeIn)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(tt.alreadyUpToDate)})
+			fx.gate.fake.result = tt.result
+			shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
+			if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
+				t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))
+			}
+			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Finalize" {
+				t.Errorf("verify calls = %d, site = %+v; want 1 call at site Finalize", fx.gate.fake.verifyCalls, fx.gate.fake.site)
+			}
+			if fx.gate.fake.dirtyCalls != finalizeChecksPerMergeIn {
+				t.Errorf("clean-tree checks = %d; want %d", fx.gate.fake.dirtyCalls, finalizeChecksPerMergeIn)
+			}
+		})
 	}
 }
 
+// TestFinalizeVerify_Fail pins that a failed verify ends Stuck with a reason naming the exit code and the log, and lands nothing.
+//
+//testtiming:keep pins the reason naming the exit code and the log path, which TestFinalizeVerify_DirtyTreeHalts and the retry cases do not assert
 func TestFinalizeVerify_Fail(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
 	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
@@ -105,16 +126,6 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 		t.Errorf("reason %q lacks the exit code or the log path", reason)
 	}
 	fx.requireNotLanded(t)
-}
-
-// TestFinalizeVerify_VerifiedTreeSkipsAndLands pins that a verify the record skips still lets the landing proceed.
-func TestFinalizeVerify_VerifiedTreeSkipsAndLands(t *testing.T) {
-	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(true)})
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusSkipped}
-	shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
-	if len(fx.merger.calls) != 1 {
-		t.Errorf("merge calls = %d; want 1", len(fx.merger.calls))
-	}
 }
 
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,
@@ -154,36 +165,53 @@ func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 	}
 }
 
-// TestFinalizeVerify_RetryMergeInRunsGateAgain pins that the merge-in-required retry's second merge-in is verified too:
-// the first verify passes, the second fails, and nothing lands.
-func TestFinalizeVerify_RetryMergeInRunsGateAgain(t *testing.T) {
-	res := &scriptedResolver{results: []mergeresolve.Result{resolved(false), resolved(false)}}
-	fx := newFinalizeVerifyFixture(t, res, mergeCallResult{err: &fabricengine.ErrMergeInRequired{}})
-	fx.gate.fake.onVerify = func() {
-		if fx.gate.fake.verifyCalls == 2 {
-			fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
-		}
+// TestFinalizeVerify_RetryMergeInIsBracketedAgain pins that the merge-in-required retry's second merge-in is verified
+// and clean-checked like the first: a second verify that fails, or a dirty tree after the retry's merge-in, ends Stuck
+// and nothing lands.
+func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(fx *finalizeVerifyFixture)
+		check func(t *testing.T, fx *finalizeVerifyFixture, reason string)
+	}{
+		{
+			name: "second verify fails",
+			setup: func(fx *finalizeVerifyFixture) {
+				fx.gate.fake.onVerify = func() {
+					if fx.gate.fake.verifyCalls == 2 {
+						fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+					}
+				}
+			},
+			check: func(t *testing.T, fx *finalizeVerifyFixture, _ string) {
+				if fx.gate.fake.verifyCalls != 2 {
+					t.Errorf("verify calls = %d; want 2", fx.gate.fake.verifyCalls)
+				}
+			},
+		},
+		{
+			name: "retry's clean-tree checks run again",
+			setup: func(fx *finalizeVerifyFixture) {
+				fx.gate.fake.dirtyAt(finalizeChecksPerMergeIn+finalizeCleanAfterMergeIn, "retry-stray.txt")
+			},
+			check: func(t *testing.T, _ *finalizeVerifyFixture, reason string) {
+				if !strings.Contains(reason, "retry-stray.txt") || !strings.Contains(reason, "after the merge-in") {
+					t.Errorf("reason %q lacks the retry's dirty path or point", reason)
+				}
+			},
+		},
 	}
-	shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck)
-	if fx.gate.fake.verifyCalls != 2 {
-		t.Errorf("verify calls = %d; want 2", fx.gate.fake.verifyCalls)
-	}
-	if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 0 || fx.markedDone != 0 {
-		t.Errorf("merge calls = %d, push calls = %d, marked done = %d; want 1, 0, 0", len(fx.merger.calls), len(fx.merger.pushCalls), fx.markedDone)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := &scriptedResolver{results: []mergeresolve.Result{resolved(false), resolved(false)}}
+			fx := newFinalizeVerifyFixture(t, res, mergeCallResult{err: &fabricengine.ErrMergeInRequired{}})
+			tt.setup(fx)
 
-// TestFinalizeVerify_RetryMergeInRunsCleanChecksAgain pins that the retry merge-in is bracketed by the same three clean-tree checks.
-func TestFinalizeVerify_RetryMergeInRunsCleanChecksAgain(t *testing.T) {
-	res := &scriptedResolver{results: []mergeresolve.Result{resolved(false), resolved(false)}}
-	fx := newFinalizeVerifyFixture(t, res, mergeCallResult{err: &fabricengine.ErrMergeInRequired{}})
-	fx.gate.fake.dirtyAt(finalizeChecksPerMergeIn+finalizeCleanAfterMergeIn, "retry-stray.txt")
-
-	reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
-	if !strings.Contains(reason, "retry-stray.txt") || !strings.Contains(reason, "after the merge-in") {
-		t.Errorf("reason %q lacks the retry's dirty path or point", reason)
-	}
-	if res.calls != 2 || len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 0 || fx.markedDone != 0 {
-		t.Errorf("resolver calls = %d, merge calls = %d, push calls = %d, marked done = %d; want 2, 1, 0, 0", res.calls, len(fx.merger.calls), len(fx.merger.pushCalls), fx.markedDone)
+			reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
+			tt.check(t, fx, reason)
+			if res.calls != 2 || len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 0 || fx.markedDone != 0 {
+				t.Errorf("resolver calls = %d, merge calls = %d, push calls = %d, marked done = %d; want 2, 1, 0, 0", res.calls, len(fx.merger.calls), len(fx.merger.pushCalls), fx.markedDone)
+			}
+		})
 	}
 }
