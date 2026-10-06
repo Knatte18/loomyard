@@ -901,7 +901,7 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e.s.usage["resumed"] = 300
 	e.endTurn("resumed")
 	e.assertReload("clear", e.state().LastHandoff)
-	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 300 || st.ReloadStep != 0 {
+	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 300 || st.ReloadStep != ReloadStepSkills {
 		t.Errorf("state = %+v", st)
 	}
 }
