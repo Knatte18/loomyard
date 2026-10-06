@@ -219,7 +219,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.CompactionBaseline = launchedAt
-	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry = 0, time.Time{}, nil
+	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry = ReloadStepSkills, time.Time{}, nil
 	s.LastContextTokens, s.LastContextKnown = 0, false
 	s.ReadingTurnEnd = nil
 	if s.Phase != "" && s.Phase != PhaseIdle {

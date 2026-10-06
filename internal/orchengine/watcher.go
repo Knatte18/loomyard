@@ -273,7 +273,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
-	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = 0, time.Time{}, nil
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = ReloadStepSkills, time.Time{}, nil
 	st.Stuck = ""
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
