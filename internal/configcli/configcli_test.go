@@ -201,8 +201,11 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 		// wantErr are substrings of the envelope's error field; wantErrExact is its whole text.
 		wantErr      []string
 		wantErrExact string
+		// viaProcessCwd runs the row through RunCLI, which reads the process cwd, instead of RunCLIIn.
+		viaProcessCwd bool
 	}{
 		{name: "bare config prints help", args: []string{}, wantCode: 0, wantHelp: true},
+		{name: "bare config through the process-cwd seam prints help", args: []string{}, wantCode: 0, wantHelp: true, viaProcessCwd: true},
 		{
 			name:     "unknown argument names itself and the way forward",
 			args:     []string{"bogus"},
@@ -227,7 +230,12 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var out bytes.Buffer
-			code := RunCLIIn(t.TempDir(), &out, tt.args)
+			var code int
+			if tt.viaProcessCwd {
+				code = RunCLI(&out, tt.args)
+			} else {
+				code = RunCLIIn(t.TempDir(), &out, tt.args)
+			}
 
 			if code != tt.wantCode {
 				t.Fatalf("lyx config %v = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())

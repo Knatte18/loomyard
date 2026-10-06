@@ -224,6 +224,20 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 	if err := WriteSeed(l, "other-run", second); err != nil {
 		t.Errorf("WriteSeed() under a different run-id = %v; want nil", err)
 	}
+
+	// Params alone disagree: a different count of pairs, then a different value for the same key.
+	withSlug := Seed{Recipe: RecipeLoom, Driver: DriverGo, Params: map[string]string{"slug": "a"}}
+	if err := WriteSeed(l, "params-run", withSlug); err != nil {
+		t.Fatalf("WriteSeed() with params error = %v; want nil", err)
+	}
+	for name, incoming := range map[string]Seed{
+		"fewer params":  {Recipe: RecipeLoom, Driver: DriverGo},
+		"changed value": {Recipe: RecipeLoom, Driver: DriverGo, Params: map[string]string{"slug": "b"}},
+	} {
+		if err := WriteSeed(l, "params-run", incoming); !errors.Is(err, ErrDisagreeingSeed) {
+			t.Errorf("WriteSeed() with %s error = %v; want it to wrap ErrDisagreeingSeed", name, err)
+		}
+	}
 }
 
 func TestList(t *testing.T) {

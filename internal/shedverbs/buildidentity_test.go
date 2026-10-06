@@ -4,6 +4,7 @@ package shedverbs
 
 import "testing"
 
+//testtiming:keep pins the flipped modified flag and the empty-revision rows that never report a change, which its covering test does not
 func TestBinaryChanged(t *testing.T) {
 	tests := []struct {
 		name              string

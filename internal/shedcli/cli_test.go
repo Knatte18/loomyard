@@ -180,6 +180,8 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 }
 
 // TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto pins that the goto admission sentence sits on goto's help alone.
+//
+//testtiming:keep pins that the goto admission sentence sits on goto's help alone, which its covering test does not
 func TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto(t *testing.T) {
 	const rule = "goto moves a halted run only back"
 	if !strings.Contains(shedVerbTexts.Goto.Long, rule) {
