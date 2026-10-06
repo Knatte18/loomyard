@@ -24,40 +24,50 @@ func writeModelsYAML(t *testing.T, baseDir, contents string) {
 	}
 }
 
-func TestLoadRegistry_AbsentFileYieldsBuiltins(t *testing.T) {
-	baseDir := t.TempDir()
-
-	got, err := LoadRegistry(baseDir)
-	if err != nil {
-		t.Fatalf("LoadRegistry(absent) returned unexpected error: %v", err)
+// TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the four built-in aliases,
+// each with its own name as model and no defaults.
+func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		contents string // empty means no models.yaml at all
+	}{
+		{"absent file", ""},
+		{"comments only", "# comments only, no entries\n"},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if tt.contents != "" {
+				writeModelsYAML(t, baseDir, tt.contents)
+			}
 
-	want := builtins()
-	if len(got) != len(want) {
-		t.Fatalf("LoadRegistry(absent) has %d entries; want %d", len(got), len(want))
-	}
-	for alias, wantEntry := range want {
-		gotEntry, ok := got[alias]
-		if !ok || gotEntry.Engine != wantEntry.Engine || gotEntry.Model != wantEntry.Model || len(gotEntry.Defaults) != 0 {
-			t.Errorf("LoadRegistry(absent)[%q] = %+v; want %+v", alias, gotEntry, wantEntry)
-		}
-	}
-}
+			got, err := LoadRegistry(baseDir)
+			if err != nil {
+				t.Fatalf("LoadRegistry(%s) returned unexpected error: %v", tt.name, err)
+			}
 
-func TestLoadRegistry_EmptyFileYieldsBuiltins(t *testing.T) {
-	baseDir := t.TempDir()
-	writeModelsYAML(t, baseDir, "# comments only, no entries\n")
-
-	got, err := LoadRegistry(baseDir)
-	if err != nil {
-		t.Fatalf("LoadRegistry(comments-only) returned unexpected error: %v", err)
-	}
-	if len(got) != len(builtins()) {
-		t.Fatalf("LoadRegistry(comments-only) has %d entries; want %d (builtins unchanged)", len(got), len(builtins()))
+			aliases := []string{"sonnet", "opus", "haiku", "fable"}
+			if len(got) != len(aliases) {
+				t.Fatalf("LoadRegistry(%s) has %d entries; want %d", tt.name, len(got), len(aliases))
+			}
+			for _, alias := range aliases {
+				gotEntry, ok := got[alias]
+				if !ok {
+					t.Errorf("LoadRegistry(%s) missing alias %q", tt.name, alias)
+					continue
+				}
+				if gotEntry.Engine != "claude" || gotEntry.Model != alias || len(gotEntry.Defaults) != 0 {
+					t.Errorf("LoadRegistry(%s)[%q] = %+v; want engine claude, model %q, no defaults", tt.name, alias, gotEntry, alias)
+				}
+			}
+		})
 	}
 }
 
 func TestLoadRegistry_FileExtends(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 	writeModelsYAML(t, baseDir, `
 zephyr:
@@ -88,6 +98,7 @@ zephyr:
 }
 
 func TestLoadRegistry_FileOverridesWholeEntry(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 	writeModelsYAML(t, baseDir, `
 sonnet:
@@ -112,6 +123,7 @@ sonnet:
 }
 
 func TestLoadRegistry_RejectsInvalidEntries(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		contents   string
@@ -171,6 +183,7 @@ sonnet:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			baseDir := t.TempDir()
 			writeModelsYAML(t, baseDir, tt.contents)
 

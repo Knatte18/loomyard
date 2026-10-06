@@ -26,159 +26,236 @@ func writePatternFile(t *testing.T, root, content string) {
 }
 
 // newTestStencilsDir returns a seeded stencils directory.
-// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner, a raw fixture would make the banner-strip test (see TestDirective_StripsBanner) vacuous and let a missing strip pass green.
+// Seeding runs `stencilstore.Reconcile`, so the files carry the real leading banner, a raw fixture would make the banner-strip check in TestDirective_PerRole vacuous and let a missing strip pass green.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 	return stencilkit.Seed(t)
 }
 
-// TestDirective_ActiveWithFile covers the common active case — PATTERN.md present as a regular file
-// — for all three roles.
-func TestDirective_ActiveWithFile(t *testing.T) {
+// TestDirective_PerRole covers all five roles against an active PATTERN.md whose overview is deliberately malformed, since format violations are the checker's job, not Directive's.
+// Each role's directive is non-empty, carries the overview verbatim, begins with its own "##" heading (so an inactive render leaves no orphan heading behind), and holds no leftover banner:
+// stencilstore.Read does not strip a leading banner and the value never passes through stencil.Fill's banner strip, so Directive itself must strip it, and the seeded fixture's real banner makes that check bite.
+// The directive points at the literal relative background directory, never an interpolated absolute path or `_lyx/`, and equals the embedded default with its banner stripped and its overview marker filled.
+// That last check is a cheap tripwire against a stencil file drifting from the embedded default, not proof a relocation was faithful.
+// The five directives are pairwise distinct.
+// Against a stencils directory that carries none of the pattern stencils, each role fails loud with a non-nil error naming its missing stencil.
+// The role subtests run serially so the parent can compare their texts.
+func TestDirective_PerRole(t *testing.T) {
+	t.Parallel()
+	overview := "# PATTERN\n\n- PATTERN-one: a rule\nnot a bullet {{.x}} <!-- stray -->\n"
 	root := t.TempDir()
-	writePatternFile(t, root, "# PATTERN\n\nsome constraints\n")
+	writePatternFile(t, root, overview)
 	stencilsDir := newTestStencilsDir(t)
+	emptyStencilsDir := t.TempDir()
 
 	tests := []struct {
-		name string
-		role Role
+		name            string
+		role            Role
+		embeddedDefault []byte
+		stencil         string
 	}{
-		{"Implementer", RoleImplementer},
-		{"ReviewFix", RoleReviewFix},
-		{"Orchestrator", RoleOrchestrator},
-		{"Designer", RoleDesigner},
-		{"Judge", RoleJudge},
+		{"Implementer", RoleImplementer, stencils.PatternDirectiveImplementer, implementerDirectiveStencil},
+		{"ReviewFix", RoleReviewFix, stencils.PatternDirectiveReviewFix, reviewFixDirectiveStencil},
+		{"Orchestrator", RoleOrchestrator, stencils.PatternDirectiveOrchestrator, orchestratorDirectiveStencil},
+		{"Designer", RoleDesigner, stencils.PatternDirectiveDesigner, designerDirectiveStencil},
+		{"Judge", RoleJudge, stencils.PatternDirectiveJudge, judgeDirectiveStencil},
 	}
+	texts := make(map[string]string, len(tests))
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}
-			if got == "" {
-				t.Errorf("Directive(active, %v) = \"\"; want non-empty", tt.role)
+			texts[tt.name] = got
+			if !strings.Contains(got, overview) {
+				t.Errorf("Directive(%v) = %q; want it to contain the overview verbatim %q", tt.role, got, overview)
+			}
+			if !strings.HasPrefix(got, "## ") {
+				t.Errorf("Directive(%v) = %q; want it to begin with its own \"##\" heading, not a leading banner", tt.role, got)
+			}
+			if strings.Contains(strings.Replace(got, overview, "", 1), "<!--") {
+				t.Errorf("Directive(%v) = %q; want no leftover \"<!--\" banner content", tt.role, got)
+			}
+			if !strings.Contains(got, "under pattern/ ") || !strings.Contains(got, patternDirName+"/") {
+				t.Errorf("Directive(%v) = %q; want the literal background pointer %q", tt.role, got, patternDirName+"/")
+			}
+			if strings.Contains(got, "_lyx/") {
+				t.Errorf("Directive(%v) = %q; want no _lyx/ pointer", tt.role, got)
+			}
+			filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(tt.embeddedDefault))), map[string]string{"pattern_overview": overview})
+			if err != nil {
+				t.Fatalf("Fill(embedded default, %v) = _, %v; want nil error", tt.role, err)
+			}
+			if want := string(filled); got != want {
+				t.Errorf("Directive(%v) = %q; want %q (the embedded default, banner stripped and overview filled)", tt.role, got, want)
+			}
+
+			got, err = Directive(root, emptyStencilsDir, tt.role)
+			if err == nil {
+				t.Fatalf("Directive(active, %v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
+			}
+			if !strings.Contains(err.Error(), tt.stencil) {
+				t.Errorf("Directive(active, %v, empty stencilsDir) error = %q; want it to name the missing stencil %q", tt.role, err.Error(), tt.stencil)
 			}
 		})
 	}
+
+	for i, a := range tests {
+		for _, b := range tests[i+1:] {
+			if texts[a.name] != "" && texts[a.name] == texts[b.name] {
+				t.Errorf("%s and %s render identical directive text", a.name, b.name)
+			}
+		}
+	}
 }
 
-// TestDirective_InactiveWithoutFile covers the two ordinary inactive cases: an unrelated stray
-// directory present without PATTERN.md,
-// and neither present at all.
-func TestDirective_InactiveWithoutFile(t *testing.T) {
+// TestDirective_RendersNothing pins every case that renders no directive and reads no stencil, asserted by pointing stencilsDir at a path that does not exist:
+// a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline),
+// PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path),
+// an empty root, and an unknown or zero Role even when PATTERN is active.
+// An eager-read refactor that would break the engines' inactive-PATTERN fixtures fails here first, locally.
+func TestDirective_RendersNothing(t *testing.T) {
+	t.Parallel()
+	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
+
 	tests := []struct {
-		name  string
-		setup func(t *testing.T, root string)
+		name string
+		// setup prepares a fresh root and returns the root to pass to Directive.
+		setup func(t *testing.T, root string) string
+		role  Role
 	}{
 		{
 			name: "DirPresentFileAbsent",
-			setup: func(t *testing.T, root string) {
-				t.Helper()
+			setup: func(t *testing.T, root string) string {
 				if err := os.MkdirAll(filepath.Join(root, "stray_dir"), 0o755); err != nil {
 					t.Fatalf("MkdirAll = %v", err)
 				}
+				return root
 			},
+			role: RoleImplementer,
 		},
 		{
 			name:  "NeitherPresent",
-			setup: func(t *testing.T, root string) {},
+			setup: func(t *testing.T, root string) string { return root },
+			role:  RoleImplementer,
+		},
+		{
+			name: "EmptyFile",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, "")
+				return root
+			},
+			role: RoleImplementer,
+		},
+		{
+			name: "WhitespaceFile",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, " \n\t\r\n  \n")
+				return root
+			},
+			role: RoleImplementer,
+		},
+		{
+			name: "PatternFileAsDirectory",
+			setup: func(t *testing.T, root string) string {
+				if err := os.MkdirAll(filepath.Join(root, "PATTERN.md"), 0o755); err != nil {
+					t.Fatalf("MkdirAll(PATTERN.md) = %v", err)
+				}
+				return root
+			},
+			role: RoleImplementer,
+		},
+		{
+			name: "SubdirectoryOfRoot",
+			setup: func(t *testing.T, root string) string {
+				sub := filepath.Join(root, "sub", "dir")
+				if err := os.MkdirAll(sub, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v", sub, err)
+				}
+				writePatternFile(t, root, "content")
+				return sub
+			},
+			role: RoleImplementer,
+		},
+		{
+			name:  "EmptyRoot",
+			setup: func(t *testing.T, root string) string { return "" },
+			role:  RoleImplementer,
+		},
+		{
+			name: "ZeroRole",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, "content")
+				return root
+			},
+			role: Role(0),
+		},
+		{
+			name: "OutOfRangeRole",
+			setup: func(t *testing.T, root string) string {
+				writePatternFile(t, root, "content")
+				return root
+			},
+			role: Role(99),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := tt.setup(t, t.TempDir())
+
+			got, err := Directive(root, missingStencilsDir, tt.role)
+			if err != nil {
+				t.Fatalf("Directive(%s, %v) = _, %v; want nil error", tt.name, tt.role, err)
+			}
+			if got != "" {
+				t.Errorf("Directive(%s, %v) = %q; want \"\"", tt.name, tt.role, got)
+			}
+		})
+	}
+}
+
+// TestDirective_FilesystemFailuresAreErrors pins that a stat error that is not os.IsNotExist, and a read failure on an existing file, are errors, not an inactive PATTERN.
+// Both are simulated through the package-level statFile and readFile seams, because a real permission failure is not portable:
+// it depends on the OS and on whether the test process runs elevated (as root in a container POSIX permission bits are not enforced), and Windows has no equivalent lever at all.
+// The seams are process-global, so this test stays serial.
+func TestDirective_FilesystemFailuresAreErrors(t *testing.T) {
+	permissionDenied := func(op, name string) error {
+		return &os.PathError{Op: op, Path: name, Err: errors.New("permission denied")}
+	}
+	tests := []struct {
+		name string
+		swap func(t *testing.T)
+	}{
+		{
+			name: "NonNotExistStatError",
+			swap: func(t *testing.T) {
+				original := statFile
+				statFile = func(name string) (os.FileInfo, error) { return nil, permissionDenied("stat", name) }
+				t.Cleanup(func() { statFile = original })
+			},
+		},
+		{
+			name: "UnreadablePatternFile",
+			swap: func(t *testing.T) {
+				original := readFile
+				readFile = func(name string) ([]byte, error) { return nil, permissionDenied("read", name) }
+				t.Cleanup(func() { readFile = original })
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
-			tt.setup(t, root)
-			got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
-			if err != nil {
-				t.Fatalf("Directive(%s, RoleImplementer) = _, %v; want nil error", tt.name, err)
-			}
-			if got != "" {
-				t.Errorf("Directive(%s, RoleImplementer) = %q; want \"\"", tt.name, got)
-			}
-		})
-	}
-}
-
-// TestDirective_WhitespaceOnlyPatternFileIsInactive pins the inactive rule for content: an empty
-// file and a whitespace-only one both render nothing, since neither carries an overview to inline.
-func TestDirective_WhitespaceOnlyPatternFileIsInactive(t *testing.T) {
-	tests := []struct {
-		name    string
-		content string
-	}{
-		{"Empty", ""},
-		{"Whitespace", " \n\t\r\n  \n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			writePatternFile(t, root, tt.content)
+			writePatternFile(t, root, "content")
+			tt.swap(t)
 
 			got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
-			if err != nil {
-				t.Fatalf("Directive(%s PATTERN.md) = _, %v; want nil error", tt.name, err)
-			}
-			if got != "" {
-				t.Errorf("Directive(%s PATTERN.md) = %q; want \"\"", tt.name, got)
+			if err == nil {
+				t.Fatalf("Directive(%s) = %q, nil; want a non-nil error", tt.name, got)
 			}
 		})
-	}
-}
-
-// TestDirective_OverviewInlinedVerbatim pins that the file's content reaches every role's directive
-// unchanged, malformed content included: format violations are the checker's job, not Directive's.
-func TestDirective_OverviewInlinedVerbatim(t *testing.T) {
-	overview := "# PATTERN\n\n- PATTERN-one: a rule\nnot a bullet {{.x}} <!-- stray -->\n"
-	root := t.TempDir()
-	writePatternFile(t, root, overview)
-	stencilsDir := newTestStencilsDir(t)
-
-	for name, role := range map[string]Role{"Implementer": RoleImplementer, "ReviewFix": RoleReviewFix, "Orchestrator": RoleOrchestrator, "Designer": RoleDesigner, "Judge": RoleJudge} {
-		t.Run(name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, role)
-			if err != nil {
-				t.Fatalf("Directive(%v) = _, %v; want nil error", role, err)
-			}
-			if !strings.Contains(got, overview) {
-				t.Errorf("Directive(%v) = %q; want it to contain the overview verbatim %q", role, got, overview)
-			}
-		})
-	}
-}
-
-// TestDirective_UnreadablePatternFileIsError pins that a read failure on an existing file is an
-// error, simulated through the readFile seam because a real permission failure is not portable.
-func TestDirective_UnreadablePatternFileIsError(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-
-	original := readFile
-	readFile = func(name string) ([]byte, error) {
-		return nil, &os.PathError{Op: "read", Path: name, Err: errors.New("permission denied")}
-	}
-	t.Cleanup(func() { readFile = original })
-
-	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
-	if err == nil {
-		t.Fatalf("Directive(unreadable PATTERN.md) = %q, nil; want a non-nil error", got)
-	}
-}
-
-// TestDirective_PatternFileAsDirectoryIsInactive pins the "PATTERN.md as a directory counts as
-// inactive" edge rule: a directory in that place is not a readable index.
-func TestDirective_PatternFileAsDirectoryIsInactive(t *testing.T) {
-	root := t.TempDir()
-	patternFileAsDir := filepath.Join(root, "PATTERN.md")
-	if err := os.MkdirAll(patternFileAsDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v", patternFileAsDir, err)
-	}
-
-	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
-	if err != nil {
-		t.Fatalf("Directive(PATTERN.md as directory) = _, %v; want nil error", err)
-	}
-	if got != "" {
-		t.Errorf("Directive(PATTERN.md as directory) = %q; want \"\"", got)
 	}
 }
 
@@ -189,6 +266,7 @@ func TestDirective_PatternFileAsDirectoryIsInactive(t *testing.T) {
 // The return-value assertion alone would be insufficient: an inactive PATTERN returns the same
 // ("", nil) pair, so only the absence of the stat distinguishes the guard from a cwd-dependent
 // lookalike.
+// The stat seam is process-global, so this test stays serial.
 func TestDirective_EmptyRoot(t *testing.T) {
 	statAttempted := false
 	original := statFile
@@ -207,335 +285,5 @@ func TestDirective_EmptyRoot(t *testing.T) {
 	}
 	if statAttempted {
 		t.Error("Directive(\"\", RoleImplementer) attempted a stat; want no read attempted at all")
-	}
-}
-
-// TestDirective_UnknownRole pins the documented unknown/zero Role behaviour: no directive text,
-// even when PATTERN is active.
-func TestDirective_UnknownRole(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	stencilsDir := newTestStencilsDir(t)
-
-	tests := []struct {
-		name string
-		role Role
-	}{
-		{"ZeroRole", Role(0)},
-		{"OutOfRangeRole", Role(99)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, tt.role)
-			if err != nil {
-				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
-			}
-			if got != "" {
-				t.Errorf("Directive(active, %v) = %q; want \"\"", tt.role, got)
-			}
-		})
-	}
-}
-
-// TestDirective_VariantsArePairwiseDistinct pins that the three role variants never collapse into
-// the same text,
-// and that each carries the literal relative background pointer "pattern/" — never an interpolated
-// absolute path, which would make the value vary per worktree.
-func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	stencilsDir := newTestStencilsDir(t)
-
-	implementerText, err := Directive(root, stencilsDir, RoleImplementer)
-	if err != nil {
-		t.Fatalf("Directive(active, RoleImplementer) = _, %v; want nil error", err)
-	}
-	reviewFixText, err := Directive(root, stencilsDir, RoleReviewFix)
-	if err != nil {
-		t.Fatalf("Directive(active, RoleReviewFix) = _, %v; want nil error", err)
-	}
-	orchestratorText, err := Directive(root, stencilsDir, RoleOrchestrator)
-	if err != nil {
-		t.Fatalf("Directive(active, RoleOrchestrator) = _, %v; want nil error", err)
-	}
-
-	designerText, err := Directive(root, stencilsDir, RoleDesigner)
-	if err != nil {
-		t.Fatalf("Directive(active, RoleDesigner) = _, %v; want nil error", err)
-	}
-
-	judgeText, err := Directive(root, stencilsDir, RoleJudge)
-	if err != nil {
-		t.Fatalf("Directive(active, RoleJudge) = _, %v; want nil error", err)
-	}
-
-	variants := map[Role]string{
-		RoleImplementer:  implementerText,
-		RoleReviewFix:    reviewFixText,
-		RoleOrchestrator: orchestratorText,
-		RoleDesigner:     designerText,
-		RoleJudge:        judgeText,
-	}
-	for role, text := range variants {
-		if !strings.Contains(text, "under pattern/ ") {
-			t.Errorf("Directive(%v) does not contain the literal background pointer pattern/: %q", role, text)
-		}
-		if strings.Contains(text, "_lyx/") {
-			t.Errorf("Directive(%v) still names _lyx/: %q", role, text)
-		}
-		if !strings.Contains(text, patternDirName+"/") {
-			t.Errorf("Directive(%v) does not carry patternDirName %q as its pointer: %q", role, patternDirName, text)
-		}
-	}
-
-	if variants[RoleImplementer] == variants[RoleReviewFix] {
-		t.Error("RoleImplementer and RoleReviewFix render identical directive text")
-	}
-	if variants[RoleImplementer] == variants[RoleOrchestrator] {
-		t.Error("RoleImplementer and RoleOrchestrator render identical directive text")
-	}
-	if variants[RoleReviewFix] == variants[RoleOrchestrator] {
-		t.Error("RoleReviewFix and RoleOrchestrator render identical directive text")
-	}
-	if variants[RoleDesigner] == variants[RoleImplementer] {
-		t.Error("RoleDesigner and RoleImplementer render identical directive text")
-	}
-	if variants[RoleDesigner] == variants[RoleReviewFix] {
-		t.Error("RoleDesigner and RoleReviewFix render identical directive text")
-	}
-	if variants[RoleDesigner] == variants[RoleOrchestrator] {
-		t.Error("RoleDesigner and RoleOrchestrator render identical directive text")
-	}
-	for _, other := range []Role{RoleImplementer, RoleReviewFix, RoleOrchestrator, RoleDesigner} {
-		if variants[RoleJudge] == variants[other] {
-			t.Errorf("RoleJudge and role %v render identical directive text", other)
-		}
-	}
-}
-
-// TestDirective_VariantsBeginWithOwnHeading pins that each variant carries its own "##" heading
-// inline, so an inactive render leaves no orphan heading behind in the surrounding prompt template.
-func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	stencilsDir := newTestStencilsDir(t)
-
-	tests := []struct {
-		name string
-		role Role
-	}{
-		{"Implementer", RoleImplementer},
-		{"ReviewFix", RoleReviewFix},
-		{"Orchestrator", RoleOrchestrator},
-		{"Designer", RoleDesigner},
-		{"Judge", RoleJudge},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, tt.role)
-			if err != nil {
-				t.Fatalf("Directive(%v) = _, %v; want nil error", tt.role, err)
-			}
-			if !strings.HasPrefix(got, "## ") {
-				t.Errorf("Directive(%v) does not begin with its own \"##\" heading: %q", tt.role, got)
-			}
-		})
-	}
-}
-
-// TestDirective_ReadsOnlyTheGivenRoot is the regression guard for the root the overview is read
-// from: Directive reads <root>/PATTERN.md and nothing else, so a subdirectory of the root, such as a
-// subpath anchor, never finds the overview planted at the root.
-// Callers therefore pass the repository's worktree root, never the anchor path.
-func TestDirective_ReadsOnlyTheGivenRoot(t *testing.T) {
-	root := t.TempDir()
-	sub := filepath.Join(root, "sub", "dir")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v", sub, err)
-	}
-	stencilsDir := newTestStencilsDir(t)
-	writePatternFile(t, root, "content")
-
-	got, err := Directive(sub, stencilsDir, RoleImplementer)
-	if err != nil {
-		t.Fatalf("Directive(sub) = _, %v; want nil error", err)
-	}
-	if got != "" {
-		t.Errorf("Directive(sub) found the root-planted PATTERN.md; got %q, want \"\"", got)
-	}
-
-	got, err = Directive(root, stencilsDir, RoleImplementer)
-	if err != nil {
-		t.Fatalf("Directive(root) = _, %v; want nil error", err)
-	}
-	if got == "" {
-		t.Error("Directive(root) did not find PATTERN.md planted at the root")
-	}
-}
-
-// TestDirective_NonNotExistStatErrorIsError pins the stat edge rule: a stat error that is not
-// os.IsNotExist (a permission or I/O failure) is an error, not an inactive PATTERN.
-// This is simulated through the package-level statFile seam rather than a real unreadable-directory
-// trick, because an actual permission-denied stat error is not portable — it depends on the OS and
-// on whether the test process runs elevated (e.g.
-// as root in a container, where POSIX permission bits are not enforced), and Windows has no
-// equivalent lever at all.
-func TestDirective_NonNotExistStatErrorIsError(t *testing.T) {
-	root := t.TempDir()
-
-	original := statFile
-	statFile = func(name string) (os.FileInfo, error) {
-		return nil, &os.PathError{Op: "stat", Path: name, Err: errors.New("permission denied")}
-	}
-	t.Cleanup(func() { statFile = original })
-
-	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
-	if err == nil {
-		t.Fatalf("Directive() with a non-IsNotExist stat error = %q, nil; want a non-nil error", got)
-	}
-}
-
-// TestDirective_LazyRead pins the read as lazy: on every inactive path Directive returns ("", nil)
-// without ever touching stencilsDir, so an eager-read refactor that would break burlerengine's,
-// websterengine's, and loomengine's inactive-PATTERN fixtures fails here first, locally, before it
-// ever reaches those packages' own tests.
-func TestDirective_LazyRead(t *testing.T) {
-	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
-
-	t.Run("PATTERN inactive, stencilsDir does not exist", func(t *testing.T) {
-		root := t.TempDir()
-		got, err := Directive(root, missingStencilsDir, RoleImplementer)
-		if err != nil {
-			t.Fatalf("Directive(inactive, missing stencilsDir) = _, %v; want nil error", err)
-		}
-		if got != "" {
-			t.Errorf("Directive(inactive, missing stencilsDir) = %q; want \"\"", got)
-		}
-	})
-
-	t.Run("empty root, stencilsDir does not exist", func(t *testing.T) {
-		got, err := Directive("", missingStencilsDir, RoleImplementer)
-		if err != nil {
-			t.Fatalf("Directive(\"\", missing stencilsDir) = _, %v; want nil error", err)
-		}
-		if got != "" {
-			t.Errorf("Directive(\"\", missing stencilsDir) = %q; want \"\"", got)
-		}
-	})
-}
-
-// TestDirective_MissingStencilErrors pins the fail-loud posture on a read failure: PATTERN active,
-// plus a stencilsDir that exists but carries none of the three pattern stencils, returns a non-nil
-// error naming the missing stencil, for every role. See
-// TestDiscussionSpec_Refuses in internal/loomengine/discussion_test.go for the
-// same shape's precedent.
-func TestDirective_MissingStencilErrors(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	emptyStencilsDir := t.TempDir()
-
-	tests := []struct {
-		name    string
-		role    Role
-		stencil string
-	}{
-		{"Implementer", RoleImplementer, implementerDirectiveStencil},
-		{"ReviewFix", RoleReviewFix, reviewFixDirectiveStencil},
-		{"Orchestrator", RoleOrchestrator, orchestratorDirectiveStencil},
-		{"Designer", RoleDesigner, designerDirectiveStencil},
-		{"Judge", RoleJudge, judgeDirectiveStencil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, emptyStencilsDir, tt.role)
-			if err == nil {
-				t.Fatalf("Directive(active, %v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
-			}
-			if !strings.Contains(err.Error(), tt.stencil) {
-				t.Errorf("Directive(active, %v, empty stencilsDir) error = %q; want it to name the missing stencil %q", tt.role, err.Error(), tt.stencil)
-			}
-		})
-	}
-}
-
-// TestDirective_StripsBanner is the regression guard for the correctness bug that would otherwise
-// ship: stencilstore.Read does not strip a leading banner, and Directive's returned value never
-// passes through stencil.Fill (which is the only other place a banner strip could happen), so
-// Directive itself must be the one that strips it. Directive against newTestStencilsDir(t) — whose
-// files carry a realistic leading banner including a `lyx-stencil:` stamp line, because that helper
-// writes them through stencilstore.ApplyStamp — must return text beginning at the `## ` heading and
-// containing no `<!--` anywhere, for every role.
-func TestDirective_StripsBanner(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	stencilsDir := newTestStencilsDir(t)
-
-	tests := []struct {
-		name string
-		role Role
-	}{
-		{"Implementer", RoleImplementer},
-		{"ReviewFix", RoleReviewFix},
-		{"Orchestrator", RoleOrchestrator},
-		{"Designer", RoleDesigner},
-		{"Judge", RoleJudge},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, tt.role)
-			if err != nil {
-				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
-			}
-			if !strings.HasPrefix(got, "## ") {
-				t.Errorf("Directive(active, %v) = %q; want it to begin with its own \"##\" heading, not a leading banner", tt.role, got)
-			}
-			if strings.Contains(got, "<!--") {
-				t.Errorf("Directive(active, %v) = %q; want no leftover \"<!--\" banner content", tt.role, got)
-			}
-		})
-	}
-}
-
-// TestDirective_StrippedBodyMatchesEmbeddedDefault asserts each role's returned text equals
-// that default with its banner stripped and its overview marker filled — never
-// whole-file byte equality against the on-disk fixture (which carries a banner and a stamp the
-// return value never does) and never equality against the raw embedded default (which still carries
-// its own banner).
-//
-// This is a cheap tripwire against a future edit to a stencil file drifting from the embedded
-// default, not proof the relocation was faithful — with the constants deleted it effectively
-// compares the stencil against itself. What actually pins the relocation is
-// TestDirective_VariantsArePairwiseDistinct, TestDirective_VariantsBeginWithOwnHeading, and loom's
-// own end-to-end PATTERN-active ordering assertion.
-func TestDirective_StrippedBodyMatchesEmbeddedDefault(t *testing.T) {
-	root := t.TempDir()
-	writePatternFile(t, root, "content")
-	stencilsDir := newTestStencilsDir(t)
-
-	tests := []struct {
-		name            string
-		role            Role
-		embeddedDefault []byte
-	}{
-		{"Implementer", RoleImplementer, stencils.PatternDirectiveImplementer},
-		{"ReviewFix", RoleReviewFix, stencils.PatternDirectiveReviewFix},
-		{"Orchestrator", RoleOrchestrator, stencils.PatternDirectiveOrchestrator},
-		{"Designer", RoleDesigner, stencils.PatternDirectiveDesigner},
-		{"Judge", RoleJudge, stencils.PatternDirectiveJudge},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(root, stencilsDir, tt.role)
-			if err != nil {
-				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
-			}
-			filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(tt.embeddedDefault))), map[string]string{"pattern_overview": "content"})
-			if err != nil {
-				t.Fatalf("Fill(embedded default, %v) = _, %v; want nil error", tt.role, err)
-			}
-			if want := string(filled); got != want {
-				t.Errorf("Directive(active, %v) = %q; want %q (the embedded default, banner stripped and overview filled)", tt.role, got, want)
-			}
-		})
 	}
 }
