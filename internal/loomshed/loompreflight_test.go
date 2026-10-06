@@ -67,18 +67,6 @@ func TestLoomPreflight_Call_CoherentSeedReportsDone(t *testing.T) {
 	shedfake.RequireOutcome(t, p, shedengine.Done)
 }
 
-func TestLoomPreflight_Call_IncoherentSeedReportsStuck(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "status.json.lock")
-	// currentProducer is left at NamePreflight, which does not match the row's own told expected
-	// name (NameLoomPreflight) -- an incoherent seed.
-	writeLoomPreflightFixture(t, statusPath, statusLockPath, NamePreflight)
-
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-}
-
 func TestLoomPreflight_Call_LockParentUncreatableReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
@@ -119,7 +107,7 @@ func TestLoomPreflight_Call_StuckReasonNamesTheFailures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CheckSeed() error = %v", err)
 		}
-		_, pointer := shedfake.CallOK(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath))
+		pointer := shedfake.RequireOutcome(t, NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath), shedengine.Stuck)
 		return pointer.Reason, "seed is not a coherent fresh start: " + formatSeedFailures(report)
 	}
 

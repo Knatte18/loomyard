@@ -39,7 +39,7 @@ a Linux number that is *slower* (e.g. the 130 s boardtest below) signals a genui
 | 1+2 | `internal/shuttleengine` | `TestRunDirRoot_AbsoluteUsedVerbatim`, `TestSpec_Validate_AbsoluteOutputFilesPassThroughVerbatim` | A — Windows-only test assertion | ✅ FIXED — passes |
 | 2 | `internal/warpengine` | `TestStatus_LyxPollutionDetected` | **B2 — junction≠symlink (deep)** | ✅ FIXED — passes |
 | 2 | `internal/warpengine` | `TestPrune_DoubleRemovalFailureNoStderrLeak` | A — Windows-FS-semantics test | ✅ FIXED — passes |
-| 2 | `internal/reedcli` | `TestRunCLI_AddNotUp_FriendlyError`, `TestRunCLI_RemoveNotUp_FriendlyError` | B3 — env + robustness | ✅ FIXED — passes |
+| 2 | `internal/reedcli` | `TestRunCLI_ColdHub/AddNotUp_SelfHealsAndSucceeds`, `TestRunCLI_ColdHub/RemoveNotUp_FriendlyError` | B3 — env + robustness | ✅ FIXED — passes |
 | 1 | `internal/boardengine/boardtest` | `TestConcurrentReadsDuringUpserts` (**passes**, but **130 s**) | **C — perf pathology** | ✅ FIXED — 0.02s |
 
 Tier 2 is a superset of Tier 1, so it re-hits the three Tier-1 packages and adds `warpengine` + `reedcli`.

@@ -46,6 +46,8 @@ func skillLoadViolations(body string) []string {
 }
 
 // TestStencils_NoSkillLoadInstructions fails for every registered stencil whose agent-facing body tells an agent to load a skill or names the Skill tool.
+//
+//testtiming:keep pins PATTERN-role-skills-typed's ban on a stencil telling an agent to load a skill or naming the Skill tool, a guard that fires which no other test asserts
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	t.Parallel()
 
@@ -62,6 +64,8 @@ func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 }
 
 // TestSkillLoadViolations_SyntheticRows proves the scan fails on a stencil that breaks the rule and passes on one that does not.
+//
+//testtiming:keep proves the skill-load scan fires on a stencil that breaks the rule and stays quiet on a bare pointer, which the scan over the real stencils cannot show while those stencils comply
 func TestSkillLoadViolations_SyntheticRows(t *testing.T) {
 	t.Parallel()
 

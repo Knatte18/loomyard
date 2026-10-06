@@ -15,6 +15,8 @@ import (
 )
 
 // TestDriverStencil_ShowsOneBareStepCall pins the invocation shape: a fenced block whose only line is the bare step call, no cd-subshell form for `lyx` calls, and the two envelope keys a driver reads named.
+//
+//testtiming:keep pins the stencil's bare step-call shape and the two envelope keys it names, which the recipe-blindness scan never reads
 func TestDriverStencil_ShowsOneBareStepCall(t *testing.T) {
 	t.Parallel()
 

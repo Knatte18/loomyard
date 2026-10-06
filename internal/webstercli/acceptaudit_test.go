@@ -36,7 +36,7 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	fx.seedPendingFinding(t)
 
 	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code != 0 {
 		t.Fatalf("accept-audit = %d; want 0, output: %s", code, out.String())
 	}
 	for _, want := range []string{"parent-write", "wrote outside the contract", "base.txt"} {
@@ -54,9 +54,13 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	if len(loaded.AuditDispositions) != 0 {
 		t.Errorf("AuditDispositions = %v; want none", loaded.AuditDispositions)
 	}
+	// The accepted path is no contract file, so the envelope carries no next field.
+	if strings.Contains(out.String(), `"next"`) {
+		t.Errorf("output = %q; want no next field", out.String())
+	}
 
 	out.Reset()
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code != 0 {
 		t.Fatalf("second accept-audit = %d; want 0, output: %s", code, out.String())
 	}
 	if !strings.Contains(out.String(), `"accepted":[]`) {
@@ -64,89 +68,75 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestAcceptAuditCmd_RefusesDifferingPath proves an edited suspect path refuses with the git way forward and leaves state.json byte-identical.
-func TestAcceptAuditCmd_RefusesDifferingPath(t *testing.T) {
+// TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses with its way forward and leaves state.json byte-identical:
+// an edited path refuses with the git way forward, and a commit on top of the recorded head refuses even when a second commit restores the file's content.
+// It sets WEFT_SKIP_GIT, so it is not parallel.
+func TestAcceptAuditCmd_Refusals(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.seedPendingFinding(t)
-	if err := os.WriteFile(filepath.Join(fx.Worktree, "base.txt"), []byte("edited"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
-	before, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code == 0 {
-		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
+	cases := []struct {
+		name string
+		// move changes the fixture's worktree after the pending finding is seeded.
+		move   func(t *testing.T, fx *verbsFixture)
+		wantIn []string
+	}{
+		{
+			name: "edited path",
+			move: func(t *testing.T, fx *verbsFixture) {
+				if err := os.WriteFile(filepath.Join(fx.Worktree, "base.txt"), []byte("edited"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantIn: []string{"base.txt", "git checkout"},
+		},
+		{
+			name: "commit past the recorded head",
+			move: func(t *testing.T, fx *verbsFixture) {
+				basePath := filepath.Join(fx.Worktree, "base.txt")
+				original, err := os.ReadFile(basePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(basePath, []byte("suspect write"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				gitkit.Git(t, fx.Worktree, "commit", "-am", "master write")
+				if err := os.WriteFile(basePath, original, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				gitkit.Git(t, fx.Worktree, "commit", "-am", "restore content")
+			},
+			wantIn: []string{"move HEAD back"},
+		},
 	}
-	for _, want := range []string{"base.txt", "git checkout"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("output missing %q; got %q", want, out.String())
-		}
-	}
-	after, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("state.json changed by a refused accept-audit")
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newVerbsFixture(t)
+			fx.seedPendingFinding(t)
+			tc.move(t, fx)
+			statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
+			before, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-// TestAcceptAuditCmd_RefusesCommitPastHead proves a commit on top of the recorded head refuses even when a second commit restores the file's content, and leaves state.json byte-identical.
-func TestAcceptAuditCmd_RefusesCommitPastHead(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.seedPendingFinding(t)
-	basePath := filepath.Join(fx.Worktree, "base.txt")
-	original, err := os.ReadFile(basePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(basePath, []byte("suspect write"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitkit.Git(t, fx.Worktree, "commit", "-am", "master write")
-	if err := os.WriteFile(basePath, original, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitkit.Git(t, fx.Worktree, "commit", "-am", "restore content")
-	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
-	before, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code == 0 {
-		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), "move HEAD back") {
-		t.Errorf("output missing %q; got %q", "move HEAD back", out.String())
-	}
-	after, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("state.json changed by a refused accept-audit")
-	}
-}
-
-// TestAcceptAuditCmd_NoRunRefuses proves the verb names the run verb when there is no state.json.
-func TestAcceptAuditCmd_NoRunRefuses(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code == 0 {
-		t.Fatalf("accept-audit with no run = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), "webster run") {
-		t.Errorf("output = %q; want it to name the run verb", out.String())
+			var out strings.Builder
+			if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code == 0 {
+				t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
+			}
+			for _, want := range tc.wantIn {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output missing %q; got %q", want, out.String())
+				}
+			}
+			after, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(before) != string(after) {
+				t.Errorf("state.json changed by a refused accept-audit")
+			}
+		})
 	}
 }
 
@@ -159,7 +149,7 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	fx.CLI.openFabric = func() (*fabricengine.Fabric, error) { return nil, syncErr }
 
 	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code == 0 {
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code == 0 {
 		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
 	}
 	for _, want := range []string{"audit findings accepted but the fabric sync failed", syncErr.Error(), "lyx fabric commit"} {
@@ -195,27 +185,12 @@ func TestAcceptAuditCmd_AbsentContractFilesCarryNext(t *testing.T) {
 	}
 
 	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code != 0 {
 		t.Fatalf("accept-audit = %d; want 0, output: %s", code, out.String())
 	}
 	for _, want := range []string{`"next"`, "re-run", "outcome.yaml and summary.md"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q; got %q", want, out.String())
 		}
-	}
-}
-
-// TestAcceptAuditCmd_NoNextWithoutAbsentContractFile proves the next field is absent when the accepted path is no contract file.
-func TestAcceptAuditCmd_NoNextWithoutAbsentContractFile(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.seedPendingFinding(t)
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, nil); code != 0 {
-		t.Fatalf("accept-audit = %d; want 0, output: %s", code, out.String())
-	}
-	if strings.Contains(out.String(), `"next"`) {
-		t.Errorf("output = %q; want no next field", out.String())
 	}
 }

@@ -14,6 +14,8 @@ import (
 )
 
 func TestPathGuard(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		path    string
@@ -31,6 +33,8 @@ func TestPathGuard(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := fsx.PathGuard(tt.path)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("PathGuard(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
@@ -40,6 +44,8 @@ func TestPathGuard(t *testing.T) {
 }
 
 func TestAtomicWrite(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	t.Run("creates file with correct content", func(t *testing.T) {
@@ -95,29 +101,13 @@ func TestAtomicWrite(t *testing.T) {
 	})
 }
 
+//testtiming:keep pins the exported byte writer's absolute-path, binary-data and overwrite contract, which AtomicWrite's string subtests reach only through delegation
 func TestAtomicWriteBytes(t *testing.T) {
-	t.Run("writes raw bytes to absolute path", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		absPath := filepath.Join(tmpDir, "f.json")
-		data := []byte(`{"key": "value"}`)
+	t.Parallel()
 
-		if err := fsx.AtomicWriteBytes(absPath, data); err != nil {
-			t.Fatalf("AtomicWriteBytes failed: %v", err)
-		}
-
-		got, err := os.ReadFile(absPath)
-		if err != nil {
-			t.Fatalf("ReadFile failed: %v", err)
-		}
-		if string(got) != string(data) {
-			t.Errorf("content = %q, want %q", string(got), string(data))
-		}
-	})
-
-	t.Run("creates missing parent directories", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		absPath := filepath.Join(tmpDir, "deep/nested/f.bin")
-		data := []byte{0x01, 0x02, 0x03}
+	t.Run("writes binary data creating missing parent directories", func(t *testing.T) {
+		absPath := filepath.Join(t.TempDir(), "deep/nested/f.bin")
+		data := []byte{0x00, 0x01, 0x02, 0xff}
 
 		if err := fsx.AtomicWriteBytes(absPath, data); err != nil {
 			t.Fatalf("AtomicWriteBytes failed: %v", err)
@@ -133,18 +123,12 @@ func TestAtomicWriteBytes(t *testing.T) {
 	})
 
 	t.Run("overwrites existing file", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		absPath := filepath.Join(tmpDir, "overwrite.txt")
+		absPath := filepath.Join(t.TempDir(), "overwrite.txt")
 
-		// Write initial content
-		initialData := []byte("initial")
-		if err := fsx.AtomicWriteBytes(absPath, initialData); err != nil {
+		if err := fsx.AtomicWriteBytes(absPath, []byte("initial")); err != nil {
 			t.Fatalf("first AtomicWriteBytes failed: %v", err)
 		}
-
-		// Overwrite with new content
-		newData := []byte("overwritten")
-		if err := fsx.AtomicWriteBytes(absPath, newData); err != nil {
+		if err := fsx.AtomicWriteBytes(absPath, []byte("overwritten")); err != nil {
 			t.Fatalf("second AtomicWriteBytes failed: %v", err)
 		}
 
@@ -152,28 +136,8 @@ func TestAtomicWriteBytes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile failed: %v", err)
 		}
-		if string(got) != string(newData) {
-			t.Errorf("content = %q, want %q", string(got), string(newData))
-		}
-	})
-
-	t.Run("leaves no temp file in target dir", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		absPath := filepath.Join(tmpDir, "target.txt")
-
-		if err := fsx.AtomicWriteBytes(absPath, []byte("content")); err != nil {
-			t.Fatalf("AtomicWriteBytes failed: %v", err)
-		}
-
-		entries, err := os.ReadDir(tmpDir)
-		if err != nil {
-			t.Fatalf("ReadDir failed: %v", err)
-		}
-
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".tmp-") {
-				t.Errorf("found temp file: %s", entry.Name())
-			}
+		if string(got) != "overwritten" {
+			t.Errorf("content = %q, want %q", string(got), "overwritten")
 		}
 	})
 }

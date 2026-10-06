@@ -1,5 +1,5 @@
-// publish_verify_test.go covers the clean-tree checks and the post-merge verify gate as Publish.Call wires them around the parent merge-in and before the push,
-// against fake verifytree seams and the package's fake resolver.
+// publish_verify_test.go covers the clean-tree checks and the post-merge verify gate as Publish.Call wires them around the parent merge-in and before the push, against fake verifytree seams and the package's fake resolver.
+// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
@@ -63,67 +63,72 @@ func failOnGitHubClient(t *testing.T) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-func TestPublishVerify_Pass(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	outcome, _, err := fx.call(t)
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+// TestPublishVerify_Proceeds pins that a passing verify, one the verified-tree record skips and one after a no-op merge-in each let the push run, with the verify asked once at site Publish -- the producer asks after a no-op merge-in too, leaving the skip decision to the record -- and the three clean-tree checks made.
+func TestPublishVerify_Proceeds(t *testing.T) {
+	tests := []struct {
+		name            string
+		alreadyUpToDate bool
+		result          verifytree.Result
+	}{
+		{"pass", false, verifytree.Result{Status: verifytree.StatusPassed}},
+		{"verified tree skips", true, verifytree.Result{Status: verifytree.StatusSkipped}},
+		{"no-op merge-in", true, verifytree.Result{Status: verifytree.StatusPassed}},
 	}
-	if !fx.pushed {
-		t.Error("push did not run")
-	}
-	if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Publish" {
-		t.Errorf("verify calls=%d site=%+v; want 1 call at site Publish", fx.gate.fake.verifyCalls, fx.gate.fake.site)
-	}
-	if fx.gate.fake.dirtyCalls != 3 {
-		t.Errorf("clean-tree checks = %d; want 3", fx.gate.fake.dirtyCalls)
-	}
-}
-
-// TestPublishVerify_VerifiedTreeSkipsAndProceeds pins that a verify the record skips still lets the push run.
-func TestPublishVerify_VerifiedTreeSkipsAndProceeds(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", true)
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusSkipped}
-	outcome, _, err := fx.call(t)
-	if err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-	if !fx.pushed {
-		t.Error("push did not run")
-	}
-}
-
-// TestPublishVerify_VerifyRunsOnEveryMergeIn pins that the producer asks verify after a no-op merge-in too,
-// leaving the skip decision to the verified-tree record.
-func TestPublishVerify_VerifyRunsOnEveryMergeIn(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", true)
-	if _, _, err := fx.call(t); err != nil {
-		t.Fatal(err)
-	}
-	if fx.gate.fake.verifyCalls != 1 {
-		t.Errorf("verify calls = %d; want 1", fx.gate.fake.verifyCalls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newPublishVerifyFixture(t, "go test ./...", tt.alreadyUpToDate)
+			fx.gate.fake.result = tt.result
+			outcome, _, err := fx.call(t)
+			if err != nil || outcome != shedengine.Done {
+				t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+			}
+			if !fx.pushed {
+				t.Error("push did not run")
+			}
+			if fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site.Label != "Publish" {
+				t.Errorf("verify calls=%d site=%+v; want 1 call at site Publish", fx.gate.fake.verifyCalls, fx.gate.fake.site)
+			}
+			if fx.gate.fake.dirtyCalls != 3 {
+				t.Errorf("clean-tree checks = %d; want 3", fx.gate.fake.dirtyCalls)
+			}
+		})
 	}
 }
 
-func TestPublishVerify_Fail(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3}
-	failOnGitHubClient(t)
+// TestPublishVerify_HaltsOnVerifyResult pins that a failed verify, a verify that could not start and a verify that reports a dirty tree each end Stuck with a reason naming the cause, before anything is pushed and before GitHub is reached.
+func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		result     verifytree.Result
+		wantInReas []string
+	}{
+		{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3}, []string{`"main"`, "exit code 3", "{Log}"}},
+		{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}, []string{"late.txt"}},
+		{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}, []string{"no shell"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newPublishVerifyFixture(t, "go test ./...", false)
+			fx.gate.fake.result = tt.result
+			failOnGitHubClient(t)
 
-	outcome, reason, err := fx.call(t)
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-	}
-	for _, want := range []string{`"main"`, "exit code 3", fx.gate.paths.Log} {
-		if !strings.Contains(reason, want) {
-			t.Errorf("reason %q lacks %q", reason, want)
-		}
-	}
-	if fx.pushed {
-		t.Error("push ran after a failed verify")
-	}
-	if fx.gate.fake.dirtyCalls != 2 {
-		t.Errorf("clean-tree checks = %d; want 2, the check after the verify never running", fx.gate.fake.dirtyCalls)
+			outcome, reason, err := fx.call(t)
+			if err != nil || outcome != shedengine.Stuck {
+				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			}
+			for _, want := range tt.wantInReas {
+				want = strings.ReplaceAll(want, "{Log}", fx.gate.paths.Log)
+				if !strings.Contains(reason, want) {
+					t.Errorf("reason %q lacks %q", reason, want)
+				}
+			}
+			if fx.pushed {
+				t.Error("push ran after a halted verify")
+			}
+			if fx.gate.fake.dirtyCalls != 2 {
+				t.Errorf("clean-tree checks = %d; want 2, the check after the verify never running", fx.gate.fake.dirtyCalls)
+			}
+		})
 	}
 }
 
@@ -169,31 +174,6 @@ func TestPublishVerify_DirtyTreeHalts(t *testing.T) {
 	}
 }
 
-func TestPublishVerify_DirtyResultFromVerifyHalts(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}
-	failOnGitHubClient(t)
-	outcome, reason, err := fx.call(t)
-	if err != nil || outcome != shedengine.Stuck || !strings.Contains(reason, "late.txt") {
-		t.Fatalf("Call() = %q, %q, %v; want Stuck naming late.txt", outcome, reason, err)
-	}
-	if fx.pushed {
-		t.Error("push ran on a dirty tree")
-	}
-}
-
-func TestPublishVerify_CleanCheckErrorIsNotStuck(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	fx.gate.fake.dirtyErr = errors.New("git exploded")
-	outcome, _, err := fx.call(t)
-	if err == nil || outcome == shedengine.Stuck || !strings.Contains(err.Error(), "git exploded") {
-		t.Fatalf("Call() = %q, %v; want a returned error", outcome, err)
-	}
-	if fx.pushed || fx.res.called {
-		t.Errorf("pushed=%v resolver called=%v; want neither", fx.pushed, fx.res.called)
-	}
-}
-
 func TestPublishVerify_ResolverStuck(t *testing.T) {
 	fx := newPublishVerifyFixture(t, "go test ./...", false)
 	fx.res.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "cannot resolve"}
@@ -224,45 +204,59 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 	}
 }
 
-func TestPublishVerify_ClosureError(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "", false)
-	fx.p.gate.command = func() (string, error) { return "", errors.New("plan unreadable") }
-	outcome, _, err := fx.call(t)
-	if err == nil || outcome == shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want a returned error", outcome, err)
+// TestPublishVerify_HardErrorsAreReturned pins that a failing clean-tree check, an unreadable verify command and a cancellation are returned as errors rather than Stuck verdicts, with nothing pushed.
+func TestPublishVerify_HardErrorsAreReturned(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(fx *publishVerifyFixture) context.Context
+		// wantErrHas is a substring of the returned error, when one is required.
+		wantErrHas string
+		// wantResolverIdle requires the resolver never to have been called.
+		wantResolverIdle bool
+	}{
+		{
+			name: "clean-tree check error",
+			setup: func(fx *publishVerifyFixture) context.Context {
+				fx.gate.fake.dirtyErr = errors.New("git exploded")
+				return context.Background()
+			},
+			wantErrHas: "git exploded", wantResolverIdle: true,
+		},
+		{
+			name: "verify command closure error",
+			setup: func(fx *publishVerifyFixture) context.Context {
+				fx.p.gate.command = func() (string, error) { return "", errors.New("plan unreadable") }
+				return context.Background()
+			},
+		},
+		{
+			name: "cancellation",
+			setup: func(fx *publishVerifyFixture) context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				fx.gate.fake.onVerify = cancel
+				fx.gate.fake.verifyErr = context.Canceled
+				return ctx
+			},
+		},
 	}
-	if fx.pushed {
-		t.Error("push ran after a closure error")
-	}
-}
-
-func TestPublishVerify_CouldNotStart(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}
-	failOnGitHubClient(t)
-	outcome, reason, err := fx.call(t)
-	if err != nil || outcome != shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-	}
-	if !strings.Contains(reason, "no shell") {
-		t.Errorf("reason %q lacks the spawn error", reason)
-	}
-	if fx.pushed {
-		t.Error("push ran after a spawn failure")
-	}
-}
-
-func TestPublishVerify_Cancelled(t *testing.T) {
-	fx := newPublishVerifyFixture(t, "go test ./...", false)
-	ctx, cancel := context.WithCancel(context.Background())
-	fx.gate.fake.onVerify = cancel
-	fx.gate.fake.verifyErr = context.Canceled
-	outcome, _, err := fx.p.Call(ctx)
-	if err == nil || outcome == shedengine.Stuck {
-		t.Fatalf("Call() = %q, %v; want a returned error", outcome, err)
-	}
-	if fx.pushed {
-		t.Error("push ran after a cancellation")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newPublishVerifyFixture(t, "go test ./...", false)
+			ctx := tt.setup(fx)
+			outcome, _, err := fx.p.Call(ctx)
+			if err == nil || outcome == shedengine.Stuck {
+				t.Fatalf("Call() = %q, %v; want a returned error", outcome, err)
+			}
+			if tt.wantErrHas != "" && !strings.Contains(err.Error(), tt.wantErrHas) {
+				t.Errorf("error %q lacks %q", err, tt.wantErrHas)
+			}
+			if fx.pushed {
+				t.Error("push ran after a returned error")
+			}
+			if tt.wantResolverIdle && fx.res.called {
+				t.Error("resolver called; want the failing clean-tree check to stop first")
+			}
+		})
 	}
 }
 

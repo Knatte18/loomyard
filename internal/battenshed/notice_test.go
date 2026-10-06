@@ -83,7 +83,9 @@ func (h *noticeHarness) call(p shedengine.ShedProducer) {
 	}
 }
 
-func TestRenderNotice_Shape(t *testing.T) {
+func TestRenderNotice(t *testing.T) {
+	t.Parallel()
+
 	status := shedengine.Status{State: shedengine.StateFailed, Error: "boom\nsecond\x1b[0m line " + strings.Repeat("x", 300)}
 	line := renderNotice("task", "child left running", status, "/wt/task")
 
@@ -106,10 +108,9 @@ func TestRenderNotice_Shape(t *testing.T) {
 	if !strings.Contains(line, kept+";") {
 		t.Errorf("notice = %q; want the error cut to %d characters", line, noticeErrorMax)
 	}
-}
 
-func TestRenderNotice_NoErrorOmitsIt(t *testing.T) {
-	line := renderNotice("task", "child left running", shedengine.Status{State: shedengine.StateDone}, "/wt")
+	// A status with no error carries no error clause.
+	line = renderNotice("task", "child left running", shedengine.Status{State: shedengine.StateDone}, "/wt")
 	if strings.Contains(line, "error:") {
 		t.Errorf("notice = %q; want no error clause", line)
 	}

@@ -1,7 +1,6 @@
 //go:build integration
 
-// lyxcwd_test.go covers Location resolution, the geometry accessors, and the
-// ErrNotAGitRepo path for directories outside a git repo.
+// lyxcwd_test.go covers Location resolution against a real git checkout: Resolve's record-wins + strict cwd-equals-anchor gate, the marker-absent "." fallback, ResolveWorktree's gate-free counterpart used by internal callers that resolve geometry from a worktree root rather than an acting cwd, the stale-marker refusal, and the ErrNotAGitRepo path for directories outside a git repo.
 
 package lyxcwd_test
 
@@ -17,90 +16,180 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root yields AnchorRel "."
-// and correct other fields.
-func TestResolve_FromWorktreeRoot(t *testing.T) {
-	t.Parallel()
+// writeAnchor writes the recorded .lyx-anchor marker into hub's board
+// directory, creating the board directory if needed. hub here is the
+// lyxcwd.Location.HubPath value (the container directory), not a worktree root.
+func writeAnchor(t *testing.T, hub, anchor string) {
+	t.Helper()
 
-	fix := gitkit.CopyRepo(t)
-	hub := fix.Repo
-
-	layout, err := lyxcwd.Resolve(hub)
-	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
 	}
-
-	if layout == nil {
-		t.Fatal("Resolve() returned nil layout")
-	}
-
-	// AnchorRel should be "." when no anchor is recorded, regardless of cwd.
-	if layout.AnchorRel != "." {
-		t.Errorf("layout.AnchorRel = %q; want %q", layout.AnchorRel, ".")
-	}
-
-	// WorktreePath() should be the hub (worktree root)
-	if layout.WorktreePath() != filepath.Clean(hub) {
-		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
-	}
-
-	// HubPath should be the parent of WorktreePath()
-	expectedContainer := filepath.Dir(hub)
-	if layout.HubPath != expectedContainer {
-		t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, expectedContainer)
-	}
-
-	// RepoName is derived by trimming HubSuffix off the container directory's base
-	// name — this fixture's container has no "-LYXHUB" suffix, so RepoName is simply
-	// its base name unchanged.
-	wantRepoName := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix)
-	if layout.RepoName != wantRepoName {
-		t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, wantRepoName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
+	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 }
 
-// TestResolve_FromSubdirectory verifies that, for an unanchored repo, Resolve from a subdirectory
-// errors under the strict cwd gate: with no anchor recorded, AnchorRel is only ever ".", so cwd is
-// only ever accepted at the worktree root itself, never in a subdirectory.
-func TestResolve_FromSubdirectory(t *testing.T) {
-	t.Parallel()
+// requireOutsideAnchor fails unless Resolve(cwd) returns no layout and an error wrapping ErrCwdOutsideAnchor.
+func requireOutsideAnchor(t *testing.T, cwd string) {
+	t.Helper()
 
-	fix := gitkit.CopyRepo(t)
-	hub := fix.Repo
-
-	// Create a subdirectory structure
-	subDir := filepath.Join(hub, "subdir", "nested")
-	if err := os.MkdirAll(subDir, 0755); err != nil {
-		t.Fatalf("failed to create subdirectory: %v", err)
-	}
-
-	layout, err := lyxcwd.Resolve(subDir)
+	layout, err := lyxcwd.Resolve(cwd)
 	if layout != nil {
-		t.Errorf("Resolve(%q) returned non-nil layout; want nil", subDir)
+		t.Errorf("Resolve(%q) returned non-nil layout; want nil", cwd)
 	}
 	if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
-		t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", subDir, err)
+		t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", cwd, err)
 	}
 }
 
-// TestResolve_ForwardSlashNormalization verifies that forward-slash output from --show-toplevel is
-// reconciled with backslash cwd on Windows.
-func TestResolve_ForwardSlashNormalization(t *testing.T) {
+// requireAnchorRel fails unless Resolve(cwd) succeeds with the given AnchorRel.
+func requireAnchorRel(t *testing.T, cwd, want string) {
+	t.Helper()
+
+	layout, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		t.Fatalf("Resolve(%q) error = %v; want nil", cwd, err)
+	}
+	if layout.AnchorRel != want {
+		t.Errorf("Resolve(%q).AnchorRel = %q; want %q", cwd, layout.AnchorRel, want)
+	}
+}
+
+// TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it, in the order below; each step starts from the anchor marker state the step before it left.
+// The steps run serially, and the top-level test calls t.Parallel and no step does, because the steps share the one checkout and its recorded marker.
+//
+// Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker.
+func TestResolve_AnchorScenario(t *testing.T) {
 	t.Parallel()
 
 	fix := gitkit.CopyRepo(t)
-	hub := fix.Repo
+	root := fix.Repo
 
-	// Call Resolve normally; both cwd and --show-toplevel output get normalized
-	layout, err := lyxcwd.Resolve(hub)
+	base, err := lyxcwd.Resolve(root)
 	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
+		t.Fatalf("Resolve(root) error = %v; want nil", err)
 	}
 
-	// Verify paths are clean and use the platform's separator
-	if layout.WorktreePath() != filepath.Clean(hub) {
-		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
+	subDir := filepath.Join(root, "sub", "nested")
+	backendDir := filepath.Join(root, "backend")
+	deeperDir := filepath.Join(backendDir, "deeper")
+	frontendDir := filepath.Join(root, "frontend")
+	for _, dir := range []string{subDir, deeperDir, frontendDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
 	}
+
+	// With no anchor recorded, AnchorRel falls back to "." with no error at the worktree root, never to a cwd-derived relative path, which would make the Location name a lie.
+	// The strict gate applies unconditionally, so a subdirectory errors.
+	if !t.Run("no marker recorded", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(root)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil", root, err)
+		}
+		if layout == nil {
+			t.Fatal("Resolve() returned nil layout")
+		}
+		if layout.AnchorRel != "." {
+			t.Errorf("layout.AnchorRel = %q; want %q (no-anchor fallback)", layout.AnchorRel, ".")
+		}
+		if layout.WorktreePath() != filepath.Clean(root) {
+			t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(root))
+		}
+		if want := filepath.Dir(root); layout.HubPath != want {
+			t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, want)
+		}
+		// RepoName is derived by trimming HubSuffix off the container directory's base name; this fixture's container has no "-LYXHUB" suffix, so RepoName is simply its base name unchanged.
+		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix); layout.RepoName != want {
+			t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, want)
+		}
+
+		requireOutsideAnchor(t, subDir)
+	}) {
+		return
+	}
+
+	// A root anchor resolves from exactly the worktree root, and the strict gate rejects a subdirectory of it.
+	if !t.Run("root anchor", func(t *testing.T) {
+		writeAnchor(t, base.HubPath, ".")
+
+		requireAnchorRel(t, root, ".")
+		requireOutsideAnchor(t, subDir)
+	}) {
+		return
+	}
+
+	// A subpath anchor resolves from exactly the anchored directory; a descendant, a sibling and the repo root above it are hard errors wrapping ErrCwdOutsideAnchor.
+	// ResolveWorktree from a worktree root that sits ABOVE the anchor returns the recorded subpath and no ErrCwdOutsideAnchor: this gate-free behavior is what distinguishes it from Resolve, and is the exact geometry fabricengine's layout fallback hits.
+	if !t.Run("subpath anchor", func(t *testing.T) {
+		writeAnchor(t, base.HubPath, "backend")
+
+		requireAnchorRel(t, backendDir, "backend")
+		for name, cwd := range map[string]string{
+			"descendant of the anchored directory": deeperDir,
+			"sibling directory of the anchor":      frontendDir,
+			"repo root above a subpath anchor":     root,
+		} {
+			t.Run(name, func(t *testing.T) {
+				requireOutsideAnchor(t, cwd)
+			})
+		}
+
+		layout, err := lyxcwd.ResolveWorktree(root)
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%q) error = %v; want nil (no gate applied)", root, err)
+		}
+		if layout.AnchorRel != "backend" {
+			t.Errorf("ResolveWorktree(%q).AnchorRel = %q; want %q", root, layout.AnchorRel, "backend")
+		}
+	}) {
+		return
+	}
+
+	// The read side refuses a hub that recorded its subpath under the pre-rename marker name and never migrated.
+	// Falling back to "." there re-anchors the whole repo at its root, after which fabric's own repair verb wires a second junction set at that root, so both the gated and the gate-free resolver must refuse instead.
+	t.Run("stale marker", func(t *testing.T) {
+		boardDir := fabricengine.BoardDir(base.HubPath)
+		if err := os.Remove(filepath.Join(boardDir, lyxcwd.AnchorFileName)); err != nil {
+			t.Fatalf("remove %s: %v", lyxcwd.AnchorFileName, err)
+		}
+		stalePath := filepath.Join(boardDir, lyxcwd.StaleAnchorFileName)
+		if err := os.WriteFile(stalePath, []byte("backend\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", stalePath, err)
+		}
+
+		if !t.Run("Resolve refuses", func(t *testing.T) {
+			layout, err := lyxcwd.Resolve(root)
+			if layout != nil {
+				t.Errorf("Resolve(%q) returned non-nil layout; want nil", root)
+			}
+			if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+				t.Errorf("Resolve(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+			}
+		}) {
+			return
+		}
+
+		if !t.Run("ResolveWorktree refuses", func(t *testing.T) {
+			layout, err := lyxcwd.ResolveWorktree(root)
+			if layout != nil {
+				t.Errorf("ResolveWorktree(%q) returned non-nil layout; want nil", root)
+			}
+			if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+				t.Errorf("ResolveWorktree(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+			}
+		}) {
+			return
+		}
+
+		t.Run("renamed marker beside it resolves normally", func(t *testing.T) {
+			writeAnchor(t, base.HubPath, ".")
+			requireAnchorRel(t, root, ".")
+		})
+	})
 }
 
 // TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory returns ErrNotAGitRepo.
@@ -126,33 +215,5 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 	}
 	if err.Error() != lyxcwd.ErrNotAGitRepo.Error() {
 		t.Errorf("Resolve() error = %q; want exactly %q", err.Error(), lyxcwd.ErrNotAGitRepo.Error())
-	}
-}
-
-// TestIsReservedHubName_PatternNoLongerReserved pins the inverse of the old truth: _pattern has
-// collapsed into _lyx (see fabricengine/junctionnames_test.go's TestIsReservedHubName for the full
-// current table of what remains reserved -- _lyx, _board, _portals, _launchers), so a worktree slug
-// named "_pattern" is no longer refused on reserved-name grounds.
-// nil is passed for junctionNames rather than a fixture naming "_pattern": with pathspec empty the
-// production call site supplies no junction names at all, and injecting "_pattern" through
-// junctionNames would make the assertion trivially reserved again and prove nothing.
-// IsReservedHubName only ranges over that parameter, so nil and an empty slice are interchangeable
-// here; nil is the simpler literal.
-func TestIsReservedHubName_PatternNoLongerReserved(t *testing.T) {
-	t.Parallel()
-
-	if got := fabricengine.IsReservedHubName("_pattern", nil); got {
-		t.Errorf("IsReservedHubName(%q, nil) = %v; want false", "_pattern", got)
-	}
-}
-
-// TestIsReservedHubName_RaddleNoLongerReserved pins the same convergence for _raddle: raddle has
-// converged on an anchor-level `_lyx/raddle/` design with no hub-level presence, so the name is no
-// longer reserved and a worktree slug named "_raddle" is accepted.
-func TestIsReservedHubName_RaddleNoLongerReserved(t *testing.T) {
-	t.Parallel()
-
-	if got := fabricengine.IsReservedHubName("_raddle", nil); got {
-		t.Errorf("IsReservedHubName(%q, nil) = %v; want false", "_raddle", got)
 	}
 }

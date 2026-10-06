@@ -20,46 +20,36 @@ func segmentedRouting() Routing {
 	}
 }
 
-func TestProgressAt_StraightLine(t *testing.T) {
-	r := Routing{Entry: "a", Producers: []ProducerDef{{Name: "a", OnDone: "b"}, {Name: "b", OnDone: "c"}, {Name: "c"}}}
-	got := r.ProgressAt("b")
-	want := Progress{Step: 2, Steps: 3, Name: "b", Remaining: []string{"c"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v; want %+v", got, want)
+func TestProgressAt(t *testing.T) {
+	t.Parallel()
+	straight := Routing{Entry: "a", Producers: []ProducerDef{{Name: "a", OnDone: "b"}, {Name: "b", OnDone: "c"}, {Name: "c"}}}
+	tests := []struct {
+		name    string
+		routing Routing
+		at      string
+		want    Progress
+	}{
+		{"straight line", straight, "b", Progress{Step: 2, Steps: 3, Name: "b", Remaining: []string{"c"}}},
+		{"a segment counts once", segmentedRouting(), "burn", Progress{Step: 2, Steps: 4, Name: "Review", Remaining: []string{"burn2", "publish"}}},
+		{"a burler maps to its segment", segmentedRouting(), "burler", Progress{Step: 2, Steps: 4, Name: "Review", Remaining: []string{"burn2", "publish"}}},
+		{"the terminal row has no remaining", segmentedRouting(), "publish", Progress{Step: 4, Steps: 4, Name: "publish"}},
+		{"an unknown producer is step zero", segmentedRouting(), "nope", Progress{Step: 0, Steps: 4, Name: "nope", Remaining: []string{"write", "Review", "burn2", "publish"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.routing.ProgressAt(tt.at)
+			if len(got.Remaining) == 0 {
+				got.Remaining = nil
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %+v; want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestProgressAt_SegmentCountedOnce(t *testing.T) {
-	r := segmentedRouting()
-	got := r.ProgressAt("burn")
-	want := Progress{Step: 2, Steps: 4, Name: "Review", Remaining: []string{"burn2", "publish"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v; want %+v", got, want)
-	}
-}
-
-func TestProgressAt_BurlerMapsToSegment(t *testing.T) {
-	r := segmentedRouting()
-	if got, want := r.ProgressAt("burler"), r.ProgressAt("bouncer"); !reflect.DeepEqual(got, want) {
-		t.Errorf("burler %+v; want %+v", got, want)
-	}
-}
-
-func TestProgressAt_TerminalHasEmptyRemaining(t *testing.T) {
-	got := segmentedRouting().ProgressAt("publish")
-	if got.Step != 4 || got.Steps != 4 || got.Name != "publish" || len(got.Remaining) != 0 {
-		t.Errorf("got %+v", got)
-	}
-}
-
-func TestProgressAt_UnknownProducer(t *testing.T) {
-	got := segmentedRouting().ProgressAt("nope")
-	want := Progress{Step: 0, Steps: 4, Name: "nope", Remaining: []string{"write", "Review", "burn2", "publish"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %+v; want %+v", got, want)
-	}
-}
-
+//testtiming:keep pins that an OnDone cycle terminates the step count, which its covering tests do not
 func TestProgressAt_CyclicOnDone(t *testing.T) {
 	r := Routing{Entry: "a", Producers: []ProducerDef{{Name: "a", OnDone: "b"}, {Name: "b", OnDone: "a"}}}
 	if got := r.ProgressAt("b"); got.Steps != 2 || got.Step != 2 {

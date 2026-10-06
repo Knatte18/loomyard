@@ -37,94 +37,82 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestConfigTemplate_ParsesAsYAML asserts the embedded template is well-formed YAML on its own,
-// independent of Active's strict-decode path.
-func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
-	var out map[string]any
-	if err := yaml.Unmarshal([]byte(batcher.ConfigTemplate()), &out); err != nil {
-		t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
+// TestActive asserts Active resolves the configured batchifier from batcher.yaml:
+// the template verbatim (which must itself parse as plain YAML) resolves the documented empty default, an explicit active: value resolves its registered batchifier, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring, and an unregistered active: value surfaces Select's own unknown-batcher error naming the value.
+func TestActive(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// seed prepares baseDir; a nil seed leaves it bare, with no _lyx/ at all.
+		seed        func(t *testing.T, baseDir string)
+		wantName    string
+		wantErrWith []string
+	}{
+		{
+			name: "templateDefaultResolvesIdentity",
+			seed: func(t *testing.T, baseDir string) {
+				var out map[string]any
+				if err := yaml.Unmarshal([]byte(batcher.ConfigTemplate()), &out); err != nil {
+					t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
+				}
+				seedConfig(t, baseDir, "batcher", batcher.ConfigTemplate())
+			},
+			wantName: batcher.DefaultName,
+		},
+		{
+			name: "explicitNameResolves",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", `active: "identity"`+"\n")
+			},
+			wantName: "identity",
+		},
+		{
+			name: "unknownNameErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", `active: "does-not-exist"`+"\n")
+			},
+			wantErrWith: []string{"unknown batcher", "does-not-exist"},
+		},
+		{
+			name: "absentConfigResolvesTemplate",
+			seed: func(t *testing.T, baseDir string) {
+				if err := os.MkdirAll(filepath.Join(baseDir, "_lyx"), 0o755); err != nil {
+					t.Fatalf("mkdir _lyx: %v", err)
+				}
+			},
+			wantName: batcher.DefaultName,
+		},
+		{
+			name:     "absentLyxDirResolvesTemplate",
+			wantName: batcher.DefaultName,
+		},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if tt.seed != nil {
+				tt.seed(t, baseDir)
+			}
 
-// TestActive_TemplateDefaultResolvesIdentity seeds the template verbatim and asserts Active resolves
-// the documented empty default to the identity batchifier.
-func TestActive_TemplateDefaultResolvesIdentity(t *testing.T) {
-	baseDir := t.TempDir()
-	seedConfig(t, baseDir, "batcher", batcher.ConfigTemplate())
-
-	got, err := batcher.Active(baseDir)
-	if err != nil {
-		t.Fatalf("Active(template) = _, %v; want nil error", err)
-	}
-	if got.Name() != batcher.DefaultName {
-		t.Errorf("Active(template).Name() = %q; want %q", got.Name(), batcher.DefaultName)
-	}
-}
-
-// TestActive_ExplicitNameResolves asserts an explicit active: value resolves to the matching
-// registered batchifier.
-func TestActive_ExplicitNameResolves(t *testing.T) {
-	baseDir := t.TempDir()
-	seedConfig(t, baseDir, "batcher", `active: "identity"`+"\n")
-
-	got, err := batcher.Active(baseDir)
-	if err != nil {
-		t.Fatalf("Active(explicit identity) = _, %v; want nil error", err)
-	}
-	if got.Name() != "identity" {
-		t.Errorf("Active(explicit identity).Name() = %q; want %q", got.Name(), "identity")
-	}
-}
-
-// TestActive_UnknownNameErrors asserts an unregistered active: value surfaces Select's own
-// unknown-batcher error unchanged.
-func TestActive_UnknownNameErrors(t *testing.T) {
-	baseDir := t.TempDir()
-	seedConfig(t, baseDir, "batcher", `active: "does-not-exist"`+"\n")
-
-	_, err := batcher.Active(baseDir)
-	if err == nil {
-		t.Fatal("Active(unknown name) = nil error; want error naming the unknown batcher")
-	}
-	if !strings.Contains(err.Error(), "unknown batcher") {
-		t.Errorf("Active(unknown name) error = %q; want it to contain %q", err.Error(), "unknown batcher")
-	}
-	if !strings.Contains(err.Error(), "does-not-exist") {
-		t.Errorf("Active(unknown name) error = %q; want it to contain %q", err.Error(), "does-not-exist")
-	}
-}
-
-// TestActive_AbsentConfigResolvesTemplate asserts that when _lyx/ exists but batcher.yaml does not,
-// Active degrades to the embedded template and resolves the identity batchifier ConfigTemplate()
-// selects, rather than erroring.
-func TestActive_AbsentConfigResolvesTemplate(t *testing.T) {
-	baseDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(baseDir, "_lyx"), 0o755); err != nil {
-		t.Fatalf("mkdir _lyx: %v", err)
-	}
-	// Do NOT write _lyx/config/batcher.yaml.
-
-	got, err := batcher.Active(baseDir)
-	if err != nil {
-		t.Fatalf("Active(no batcher.yaml) = _, %v; want nil error", err)
-	}
-	if got.Name() != batcher.DefaultName {
-		t.Errorf("Active(no batcher.yaml).Name() = %q; want %q", got.Name(), batcher.DefaultName)
-	}
-}
-
-// TestActive_AbsentLyxDirResolvesTemplate asserts that on a bare tree with no _lyx/ directory at
-// all, Active degrades to the embedded template and resolves the identity batchifier
-// ConfigTemplate() selects, rather than the old strict "not initialized here" error.
-func TestActive_AbsentLyxDirResolvesTemplate(t *testing.T) {
-	baseDir := t.TempDir()
-	// Do NOT create _lyx/ at all.
-
-	got, err := batcher.Active(baseDir)
-	if err != nil {
-		t.Fatalf("Active(no _lyx/) = _, %v; want nil error", err)
-	}
-	if got.Name() != batcher.DefaultName {
-		t.Errorf("Active(no _lyx/).Name() = %q; want %q", got.Name(), batcher.DefaultName)
+			got, err := batcher.Active(baseDir)
+			if len(tt.wantErrWith) > 0 {
+				if err == nil {
+					t.Fatal("Active = nil error; want error naming the unknown batcher")
+				}
+				for _, want := range tt.wantErrWith {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Active error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Active = _, %v; want nil error", err)
+			}
+			if got.Name() != tt.wantName {
+				t.Errorf("Active().Name() = %q; want %q", got.Name(), tt.wantName)
+			}
+		})
 	}
 }

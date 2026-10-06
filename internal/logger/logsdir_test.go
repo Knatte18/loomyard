@@ -13,33 +13,37 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-func TestLogsDir_UnanchoredEqualsWorktreePathBased(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
-		WorktreeName: "repo",
-		AnchorRel:    ".",
+// TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath: for an unanchored Location that equals the worktree path, and for a subpath-anchored one it differs.
+//
+//testtiming:keep pins LogsDir path arithmetic for unanchored and subpath-anchored Locations without git, which its covering integration scenario reaches only for the unanchored repository root
+func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name               string
+		anchorRel          string
+		sameAsWorktreePath bool
+	}{
+		{name: "unanchored equals the worktree-path-based directory", anchorRel: ".", sameAsWorktreePath: true},
+		{name: "subpath-anchored differs from the worktree-path-based directory", anchorRel: filepath.Join("sub", "dir"), sameAsWorktreePath: false},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := &lyxcwd.Location{
+				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
+				WorktreeName: "repo",
+				AnchorRel:    tt.anchorRel,
+			}
 
-	want := filepath.Join(l.WorktreePath(), ".lyx", "logs")
-	if got := logger.LogsDir(l); got != want {
-		t.Errorf("LogsDir(l) = %q; want %q", got, want)
-	}
-}
-
-func TestLogsDir_SubpathAnchoredDiffersFromWorktreePathBased(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
-		WorktreeName: "repo",
-		AnchorRel:    filepath.Join("sub", "dir"),
-	}
-
-	want := filepath.Join(l.AnchorPath(), ".lyx", "logs")
-	if got := logger.LogsDir(l); got != want {
-		t.Errorf("LogsDir(l) = %q; want %q", got, want)
-	}
-
-	worktreeBased := filepath.Join(l.WorktreePath(), ".lyx", "logs")
-	if got := logger.LogsDir(l); got == worktreeBased {
-		t.Errorf("LogsDir(l) = %q; want it to differ from the WorktreePath-based path %q for a subpath-anchored Location", got, worktreeBased)
+			want := filepath.Join(l.AnchorPath(), ".lyx", "logs")
+			got := logger.LogsDir(l)
+			if got != want {
+				t.Errorf("LogsDir(l) = %q; want %q", got, want)
+			}
+			worktreeBased := filepath.Join(l.WorktreePath(), ".lyx", "logs")
+			if (got == worktreeBased) != tt.sameAsWorktreePath {
+				t.Errorf("LogsDir(l) = %q equals the WorktreePath-based path %q: %v; want %v", got, worktreeBased, got == worktreeBased, tt.sameAsWorktreePath)
+			}
+		})
 	}
 }

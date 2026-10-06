@@ -24,31 +24,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWire_SucceedsForNonexistentTaskWorktree asserts that wire returns no error even though the
-// managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that
-// wire itself resolves nothing about that worktree.
-func TestWire_SucceedsForNonexistentTaskWorktree(t *testing.T) {
-	c := &battenCLI{}
-	location := &lyxcwd.Location{
-		RepoName:     "example",
-		HubPath:      t.TempDir(),
-		WorktreeName: "hub-repo",
-		AnchorRel:    ".",
-	}
+// TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire returns no error even though the managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that wire itself resolves nothing about that worktree -- and that all lazy seams are each present as an injected closure after wire returns, not already-evaluated values: the status-path resolver (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), both teardown halves (Env.Teardown.Shutdown, Env.Teardown.Remove) and the rest listed below, plus the durable status file's commit seam (shedPaths.CommitStatus).
+// Covering every seam separately is deliberate: eager evaluation is exactly the failure laziness exists to avoid, and a check on only one seam would let the others regress silently.
+func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
+	t.Parallel()
 
-	if err := c.wire(location, "a-slug-with-no-worktree-anywhere"); err != nil {
-		t.Fatalf("wire() error = %v; want nil", err)
-	}
-}
-
-// TestWire_LazySeams covers all four lazy seams individually: the status-path resolver
-// (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), and both teardown halves
-// (Env.Teardown.Shutdown, Env.Teardown.Remove) are each present as an injected closure after wire
-// returns -- not already-evaluated values -- for a slug whose worktree does not exist. Covering all
-// four separately, rather than just the first, is deliberate: eager evaluation is exactly the
-// failure laziness exists to avoid, and a test covering only one seam would let the other three
-// regress silently.
-func TestWire_LazySeams(t *testing.T) {
 	c := &battenCLI{}
 	location := &lyxcwd.Location{
 		RepoName:     "example",
@@ -72,9 +52,12 @@ func TestWire_LazySeams(t *testing.T) {
 		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 		{"OpenIDE", c.env.InnerRun.OpenIDE != nil},
+		{"CommitStatus", c.shedPaths.CommitStatus != nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if !tt.present {
 				t.Errorf("wire() left this seam nil; want an injected closure present but uncalled")
 			}
@@ -204,6 +187,8 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 }
 
 // TestChildSeedFor_CarriesRecipeDriverAndParams asserts the child's seed carries the given recipe, driver and params.
+//
+//testtiming:keep pins the child seed's driver and params, which the end-to-end four-row run covering it never reads back
 func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	params := map[string]string{"parent": "main"}
 
@@ -213,40 +198,22 @@ func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	}
 }
 
-// TestWire_CommitStatusFilled asserts c.shedPaths.CommitStatus is non-nil after wire returns, now
-// that the status file is durable, fabric-synced state (see paths.go) rather than the per-machine
-// state nil used to document.
-func TestWire_CommitStatusFilled(t *testing.T) {
-	c := &battenCLI{}
-	location := &lyxcwd.Location{
-		RepoName:     "example",
-		HubPath:      t.TempDir(),
-		WorktreeName: "hub-repo",
-		AnchorRel:    ".",
-	}
-
-	if err := c.wire(location, "a-slug-with-no-worktree-anywhere"); err != nil {
-		t.Fatalf("wire() error = %v; want nil", err)
-	}
-
-	if c.shedPaths.CommitStatus == nil {
-		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
-	}
-}
-
-// TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a
-// non-zero exit carries the child's own output, a silent child passes the run error through, a nil
-// run error stays nil, and over-long output is truncated with an explicit marker.
+// TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a non-zero exit carries the child's own output, a silent child passes the run error through, a nil run error stays nil, and over-long output is truncated with an explicit marker, on a valid UTF-8 boundary even when a multi-byte rune straddles it -- a naive byte slice at maxChildOutputInError can land mid-rune and embed an invalid tail.
+// Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked, wherever it sits in the output.
 func TestChildSpawnError(t *testing.T) {
+	t.Parallel()
+
 	runErr := errors.New("exit status 1")
 	longOutput := strings.Repeat("x", maxChildOutputInError+50)
+	notParkedLine := `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`
 
 	tests := []struct {
-		name        string
-		runErr      error
-		childOutput string
-		wantNil     bool
-		wantSubstr  []string
+		name          string
+		runErr        error
+		childOutput   string
+		wantNil       bool
+		wantNotParked bool
+		wantSubstr    []string
 	}{
 		{
 			name:        "nil_run_error_stays_nil",
@@ -261,10 +228,36 @@ func TestChildSpawnError(t *testing.T) {
 			wantSubstr:  []string{"exit status 1", "disagreeing seed"},
 		},
 		{
-			name:        "not_parked_refusal_stays_a_run_error",
+			name:          "not_parked_refusal_wraps_the_sentinel_and_the_run_error",
+			runErr:        runErr,
+			childOutput:   notParkedLine,
+			wantNotParked: true,
+			wantSubstr:    []string{"exit status 1", "not parked yet"},
+		},
+		{
+			name:          "not_parked_refusal_after_log_noise_still_wraps_the_sentinel",
+			runErr:        runErr,
+			childOutput:   "log noise\n" + notParkedLine + "\n",
+			wantNotParked: true,
+			wantSubstr:    []string{"exit status 1"},
+		},
+		{
+			name:        "another_refusal_is_not_the_sentinel",
 			runErr:      runErr,
-			childOutput: `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}`,
-			wantSubstr:  []string{"exit status 1", "not parked yet"},
+			childOutput: `{"error":"loom: some other refusal","ok":false}`,
+			wantSubstr:  []string{"exit status 1", "some other refusal"},
+		},
+		{
+			name:        "another_refusal_kind_is_not_the_sentinel",
+			runErr:      runErr,
+			childOutput: `{"error":"x","kind":"busy","ok":false}`,
+			wantSubstr:  []string{"exit status 1"},
+		},
+		{
+			name:        "non_json_output_naming_the_kind_is_not_the_sentinel",
+			runErr:      runErr,
+			childOutput: `not json ` + shedrun.StartNotParkedKind,
+			wantSubstr:  []string{"exit status 1"},
 		},
 		{
 			name:        "silent_child_passes_the_run_error_through",
@@ -278,10 +271,18 @@ func TestChildSpawnError(t *testing.T) {
 			childOutput: longOutput,
 			wantSubstr:  []string{"exit status 1", "... (truncated)"},
 		},
+		{
+			name:        "truncation_keeps_a_straddling_multi_byte_rune_whole",
+			runErr:      runErr,
+			childOutput: strings.Repeat("x", maxChildOutputInError-1) + "€ trailing text after the cut point",
+			wantSubstr:  []string{"exit status 1", "... (truncated)"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := childSpawnError(tt.runErr, tt.childOutput)
 			if tt.wantNil {
 				if got != nil {
@@ -295,10 +296,16 @@ func TestChildSpawnError(t *testing.T) {
 			if !errors.Is(got, tt.runErr) {
 				t.Errorf("childSpawnError(...) does not unwrap to the run error; want errors.Is to hold")
 			}
+			if errors.Is(got, battenshed.ErrChildNotParked) != tt.wantNotParked {
+				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildNotParked) = %v, want %v", got, !tt.wantNotParked, tt.wantNotParked)
+			}
 			for _, want := range tt.wantSubstr {
 				if !strings.Contains(got.Error(), want) {
 					t.Errorf("childSpawnError(...) = %q; want it to contain %q", got.Error(), want)
 				}
+			}
+			if !utf8.ValidString(got.Error()) {
+				t.Errorf("childSpawnError(...) = %q; want valid UTF-8", got.Error())
 			}
 			if len(got.Error()) > maxChildOutputInError+200 {
 				t.Errorf("childSpawnError(...) produced %d bytes; want the output capped near maxChildOutputInError", len(got.Error()))
@@ -307,49 +314,27 @@ func TestChildSpawnError(t *testing.T) {
 	}
 }
 
-// TestChildSpawnError_NotParkedRefusalWrapsTheSentinel pins that only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked.
-func TestChildSpawnError_NotParkedRefusalWrapsTheSentinel(t *testing.T) {
-	runErr := errors.New("exit status 1")
-	notParked := "log noise\n" + `{"error":"loom: the driver has not parked yet","kind":"` + shedrun.StartNotParkedKind + `","ok":false}` + "\n"
-	if got := childSpawnError(runErr, notParked); !errors.Is(got, battenshed.ErrChildNotParked) || !errors.Is(got, runErr) {
-		t.Errorf("childSpawnError(not-parked refusal) = %v; want it to wrap both ErrChildNotParked and the run error", got)
-	}
-	for _, other := range []string{
-		`{"error":"loom: some other refusal","ok":false}`,
-		`{"error":"x","kind":"busy","ok":false}`,
-		`not json ` + shedrun.StartNotParkedKind,
-	} {
-		if got := childSpawnError(runErr, other); errors.Is(got, battenshed.ErrChildNotParked) {
-			t.Errorf("childSpawnError(%q) = %v; want no ErrChildNotParked", other, got)
-		}
-	}
-}
+// TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal asserts an unmaterialized task worktree is reported on its own terms.
+// taskWorktreePresent, the create row's idempotency probe, answers false with no error, so a genuinely absent worktree still reaches fabric's own create rather than short-circuiting the row.
+// taskWorktreeLocation names the run and the expected path and points at a real remedy, never a fabric command that would actually mutate prime itself, rather than the resolver's generic "not a git repository" failure.
+//
+// The present case needs a real git worktree and so lives at the integration tier (TestBattenIntegration_Rows); this suite stays untagged and never spawns git.
+//
+//testtiming:keep pins the absent-pair answer and the refusal's wording, which the covering tests never assert
+func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
+	t.Parallel()
 
-// TestChildSpawnError_TruncationStaysValidUTF8 pins the truncation boundary against a multi-byte
-// rune straddling it: a naive byte slice at maxChildOutputInError can land mid-rune, embedding an
-// invalid UTF-8 tail into the returned error. The fixture places a 3-byte rune ("€") exactly across
-// that boundary.
-func TestChildSpawnError_TruncationStaysValidUTF8(t *testing.T) {
-	runErr := errors.New("exit status 1")
-	childOutput := strings.Repeat("x", maxChildOutputInError-1) + "€ trailing text after the cut point"
-
-	got := childSpawnError(runErr, childOutput)
-	if got == nil {
-		t.Fatal("childSpawnError(...) = nil; want an error")
-	}
-	if !utf8.ValidString(got.Error()) {
-		t.Errorf("childSpawnError(...) = %q; want valid UTF-8, the truncation boundary split a multi-byte rune", got.Error())
-	}
-}
-
-// TestTaskWorktreeLocation_AbsentPairIsNamed asserts an unmaterialized task worktree is reported on
-// its own terms -- naming the run and the expected path, and pointing at a real remedy rather than a
-// fabric command that would actually mutate prime itself -- rather than as the resolver's generic
-// "not a git repository" failure.
-func TestTaskWorktreeLocation_AbsentPairIsNamed(t *testing.T) {
 	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 
-	_, err := taskWorktreeLocation(prime, "never-created")
+	present, err := taskWorktreePresent(prime, "never-created")
+	if err != nil {
+		t.Fatalf("taskWorktreePresent(prime, \"never-created\") error = %v; want nil", err)
+	}
+	if present {
+		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
+	}
+
+	_, err = taskWorktreeLocation(prime, "never-created")
 	if err == nil {
 		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
 	}
@@ -452,53 +437,56 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 }
 
-// TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError asserts the create row's idempotency probe
-// answers false with no error for a task worktree that was never created, so a genuinely absent one
-// still reaches fabric's own create rather than short-circuiting the row.
-//
-// The present case needs a real git worktree and so lives at the integration tier
-// (TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree); this suite stays
-// untagged and never spawns git.
-func TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError(t *testing.T) {
-	prime := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
-
-	present, err := taskWorktreePresent(prime, "never-created")
-	if err != nil {
-		t.Fatalf("taskWorktreePresent(prime, \"never-created\") error = %v; want nil", err)
-	}
-	if present {
-		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
-	}
-}
-
-// TestFinishRemoval_NotFoundIsDone asserts a removal that finds nothing of the pair reports done -- the state a process killed right after Remove succeeded leaves, since shedengine persists the transition only after the producer returns -- rather than stranding the run at teardown.
-func TestFinishRemoval_NotFoundIsDone(t *testing.T) {
-	notFound := fmt.Errorf("remove: %w: nothing of %q remains", fabricengine.ErrPairNotFound, "already-removed")
-
-	if err := finishRemoval(fabricengine.RemoveResult{}, notFound, "already-removed"); err != nil {
-		t.Errorf("finishRemoval(not found) = %v; want nil", err)
-	}
-}
-
-// TestFinishRemoval_HalfRemovedPairIsNoLongerRefusedByName asserts a finished half-removed pair reports done and a remote branch left behind halts the row resumable, with neither verdict naming the retired sibling-remnant refusal or its fabric prune remedy.
+// TestFinishRemoval asserts a removal that finds nothing of the pair reports done -- the state a process killed right after Remove succeeded leaves, since shedengine persists the transition only after the producer returns -- rather than stranding the run at teardown, that a finished half-removed pair reports done, and that a remote branch left behind halts the row resumable, with no verdict naming the retired sibling-remnant refusal or its fabric prune remedy.
 // The real half-removed state is driven at the integration tier.
-func TestFinishRemoval_HalfRemovedPairIsNoLongerRefusedByName(t *testing.T) {
+//
+//testtiming:keep pins that no removal verdict names the retired fabric prune remedy, which the integration steps never assert
+func TestFinishRemoval(t *testing.T) {
+	t.Parallel()
+
 	const slug = "half-torn"
 
-	if err := finishRemoval(fabricengine.RemoveResult{Finished: true}, nil, slug); err != nil {
-		t.Errorf("finishRemoval(finished half-removed pair) = %v; want nil", err)
+	tests := []struct {
+		name       string
+		result     fabricengine.RemoveResult
+		removeErr  error
+		wantErr    bool
+		wantSubstr []string
+	}{
+		{
+			name:      "NotFoundIsDone",
+			removeErr: fmt.Errorf("remove: %w: nothing of %q remains", fabricengine.ErrPairNotFound, slug),
+		},
+		{name: "FinishedHalfRemovedPairIsDone", result: fabricengine.RemoveResult{Finished: true}},
+		{
+			name:       "RemoteBranchErrorHaltsResumable",
+			result:     fabricengine.RemoveResult{RemoteBranchError: "push refused"},
+			wantErr:    true,
+			wantSubstr: []string{slug, "push refused", "resume this run"},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	err := finishRemoval(fabricengine.RemoveResult{RemoteBranchError: "push refused"}, nil, slug)
-	if err == nil {
-		t.Fatal("finishRemoval(remote branch error) = nil; want the row to halt resumable")
-	}
-	for _, want := range []string{slug, "push refused", "resume this run"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("finishRemoval(remote branch error) = %q; want it to contain %q", err.Error(), want)
-		}
-	}
-	if strings.Contains(err.Error(), "lyx fabric prune") {
-		t.Errorf("finishRemoval(remote branch error) = %q; want it to never name lyx fabric prune", err.Error())
+			err := finishRemoval(tt.result, tt.removeErr, slug)
+			if !tt.wantErr {
+				if err != nil {
+					t.Errorf("finishRemoval(%s) = %v; want nil", tt.name, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("finishRemoval(%s) = nil; want the row to halt resumable", tt.name)
+			}
+			for _, want := range tt.wantSubstr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("finishRemoval(%s) = %q; want it to contain %q", tt.name, err.Error(), want)
+				}
+			}
+			if strings.Contains(err.Error(), "lyx fabric prune") {
+				t.Errorf("finishRemoval(%s) = %q; want it to never name lyx fabric prune", tt.name, err.Error())
+			}
+		})
 	}
 }

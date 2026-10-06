@@ -48,6 +48,7 @@ func twoSiblings() []Strand {
 }
 
 func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		strands  []Strand
@@ -64,7 +65,7 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			wantPins: []Pin{{PaneID: "%h", Height: 2}, {PaneID: "%1", Height: 2}},
 		},
 		{
-			// Mirrors rules_test.go's TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage fixture:
+			// Mirrors TestRulesGolden's SelvageBandEnumeratesEveryStrandCellPlusSelvage fixture:
 			// band unclamped at 3, root and mid collapse to CollapsedRows (2).
 			name:     "SelvagePlusChainSelvageThenEveryCollapsedPlacement",
 			strands:  belowParentChain(),
@@ -107,10 +108,7 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			wantPins: []Pin{{PaneID: "%h", Height: 17}, {PaneID: "%1", Height: 1}},
 		},
 		{
-			// Mirrors rules_test.go's SelvagePresentClampedRowNoCellEverNonPositive golden row: the
-			// window is too short for the collapsed placements' natural CollapsedRows (2), and
-			// clampToFit's priority-1 pass reclaims each down to 1 — the pins must carry 1, never
-			// CollapsedRows.
+			// Mirrors TestRulesGolden's SelvagePresentClampedRowNoCellEverNonPositive row: the window is too short for the collapsed placements' natural CollapsedRows (2), and clampToFit's priority-1 pass reclaims each down to 1 — the pins must carry 1, never CollapsedRows.
 			name:     "TooShortWindowCollapsedPinsCarryTheReclaimedValueNotCollapsedRows",
 			strands:  belowParentChain(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 8},
@@ -140,15 +138,19 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			gotPins := FixedHeightPins(tt.strands, tt.box, tt.params)
 			if diff := cmp.Diff(tt.wantPins, gotPins); diff != "" {
 				t.Errorf("FixedHeightPins() mismatch (-want +got):\n%s", diff)
 			}
 
-			layout, _, err := Rules(tt.strands, tt.box, tt.params, nil)
+			layout, focus, err := Rules(tt.strands, tt.box, tt.params, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("Rules() with the same input: expected error, got nil")
+				}
+				if layout != "" || focus != "" {
+					t.Errorf("Rules() on error = (%q, %q), want both empty", layout, focus)
 				}
 				return
 			}
@@ -167,99 +169,4 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryCollapsedPin asserts pin ordering directly:
-// with the Selvage band and two collapsed placements present, the Selvage pin is index 0 and both
-// collapsed pins follow — hook-array fire order, not screen position, since the band itself renders
-// at the bottom.
-func TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryCollapsedPin(t *testing.T) {
-	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 2}}
-	box := Box{X: 0, Y: 0, W: 100, H: 21}
-
-	pins := FixedHeightPins(belowParentChain(), box, params)
-	if len(pins) != 3 {
-		t.Fatalf("FixedHeightPins() returned %d pins, want 3 (Selvage + two collapsed): %+v", len(pins), pins)
-	}
-	if pins[0].PaneID != "%h" {
-		t.Errorf("pins[0].PaneID = %q, want the Selvage pane %q first", pins[0].PaneID, "%h")
-	}
-	gotStrips := map[string]bool{pins[1].PaneID: true, pins[2].PaneID: true}
-	wantStrips := map[string]bool{"%1": true, "%2": true}
-	if diff := cmp.Diff(wantStrips, gotStrips); diff != "" {
-		t.Errorf("strip pins after the Selvage pin (-want +got):\n%s", diff)
-	}
-}
-
-// TestSelvageBandCellOffsetsSumToTheBoxWithDivider asserts the bottom-band geometry directly: for a
-// box of height H with a Selvage band of height B and n placed strands, the strand cells occupy rows
-// box.Y .. box.Y+H-B-2 and the Selvage cell occupies rows box.Y+H-B .. box.Y+H-1 — the single row at
-// box.Y+H-B-1 is the divider between the stack and the band, never claimed by either.
-func TestSelvageBandCellOffsetsSumToTheBoxWithDivider(t *testing.T) {
-	params := Params{CollapsedRows: 2, MinFullRows: 3, Selvage: Selvage{PaneID: "%h", HeightRows: 3}}
-	box := Box{X: 0, Y: 0, W: 100, H: 21}
-
-	layout, _, err := Rules(belowParentChain(), box, params, nil)
-	if err != nil {
-		t.Fatalf("Rules() unexpected error: %v", err)
-	}
-
-	plan, err := planCells(belowParentChain(), box, params)
-	if err != nil {
-		t.Fatalf("planCells() unexpected error: %v", err)
-	}
-	bandHeight := plan.bandHeight
-
-	wantStackLastRow := box.Y + box.H - bandHeight - 2
-	wantBandFirstRow := box.Y + box.H - bandHeight
-	wantBandLastRow := box.Y + box.H - 1
-
-	stackLastRow := paneHeightFromLayoutY(t, layout, "%3")
-	if stackLastRow > wantStackLastRow {
-		t.Errorf("strand cell %q occupies rows up to %d, want at most %d (box.Y+H-B-2)", "%3", stackLastRow, wantStackLastRow)
-	}
-	bandFirstRow := bandFirstRowFromLayout(t, layout, "h")
-	if bandFirstRow != wantBandFirstRow {
-		t.Errorf("Selvage cell first row = %d, want %d (box.Y+H-B)", bandFirstRow, wantBandFirstRow)
-	}
-	bandLastRow := bandFirstRow + bandHeight - 1
-	if bandLastRow != wantBandLastRow {
-		t.Errorf("Selvage cell last row = %d, want %d (box.Y+H-1)", bandLastRow, wantBandLastRow)
-	}
-}
-
-// bandFirstRowFromLayout returns the y offset of paneID's cell within layout.
-func bandFirstRowFromLayout(t *testing.T, layout, paneID string) int {
-	t.Helper()
-	pattern := regexp.MustCompile(`\d+x\d+,\d+,(\d+),` + regexp.QuoteMeta(paneID))
-	m := pattern.FindStringSubmatch(layout)
-	if m == nil {
-		t.Fatalf("pane %q not found as a cell in layout %q", paneID, layout)
-	}
-	y, err := strconv.Atoi(m[1])
-	if err != nil {
-		t.Fatalf("pane %q y offset %q did not parse as an integer: %v", paneID, m[1], err)
-	}
-	return y
-}
-
-// paneHeightFromLayoutY returns the last row paneID's cell occupies within layout (its y offset plus
-// its height minus one).
-func paneHeightFromLayoutY(t *testing.T, layout, paneID string) int {
-	t.Helper()
-	want := strings.TrimPrefix(paneID, "%")
-	pattern := regexp.MustCompile(`\d+x(\d+),\d+,(\d+),` + regexp.QuoteMeta(want))
-	m := pattern.FindStringSubmatch(layout)
-	if m == nil {
-		t.Fatalf("pane %q not found as a cell in layout %q", paneID, layout)
-	}
-	height, err := strconv.Atoi(m[1])
-	if err != nil {
-		t.Fatalf("pane %q height %q did not parse as an integer: %v", paneID, m[1], err)
-	}
-	y, err := strconv.Atoi(m[2])
-	if err != nil {
-		t.Fatalf("pane %q y offset %q did not parse as an integer: %v", paneID, m[2], err)
-	}
-	return y + height - 1
 }

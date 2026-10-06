@@ -9,6 +9,7 @@ import (
 )
 
 func TestOverview_RealFilePassesCheck(t *testing.T) {
+	t.Parallel()
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)

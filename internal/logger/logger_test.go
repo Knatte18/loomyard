@@ -1,13 +1,11 @@
-// logger_test.go verifies the default-Warn silence, the SetVerbosity thresholds driven by the
-// -v/-vv flag, and the SetOutput test seam.
+// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
+// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
 
 package logger
 
 import (
 	"bytes"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -26,85 +24,106 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 
 var originalOut = out
 
-func TestDefaultLevel_WarnIsSilentForInfoAndDebug(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(0)
+// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr only at -vv and never the durable sink.
+// Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.
+func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
+	tests := []struct {
+		name        string
+		emit        func(msg string, args ...any)
+		verbosity   int
+		unarmedSink bool
+		wantStderr  bool
+		wantDurable bool
+	}{
+		{name: "debug at default", emit: Debug, verbosity: 0, wantStderr: false, wantDurable: false},
+		{name: "debug at -v", emit: Debug, verbosity: 1, wantStderr: false, wantDurable: false},
+		{name: "debug at -vv", emit: Debug, verbosity: 2, wantStderr: true, wantDurable: false},
+		{name: "info at default", emit: Info, verbosity: 0, wantStderr: false, wantDurable: true},
+		{name: "info at -v", emit: Info, verbosity: 1, wantStderr: true, wantDurable: true},
+		{name: "info at -vv", emit: Info, verbosity: 2, wantStderr: true, wantDurable: true},
+		{name: "warn at default", emit: Warn, verbosity: 0, wantStderr: true, wantDurable: true},
+		{name: "warn at -v", emit: Warn, verbosity: 1, wantStderr: true, wantDurable: true},
+		{name: "warn at -vv", emit: Warn, verbosity: 2, wantStderr: true, wantDurable: true},
+		{name: "warn with unarmed durable sink", emit: Warn, verbosity: 0, unarmedSink: true, wantStderr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tt.unarmedSink {
+				SetDurableSinkDir("")
+			} else {
+				SetDurableSinkDir(dir)
+			}
+			buf := withCapturedOutput(t)
+			SetVerbosity(tt.verbosity)
+			t.Cleanup(func() { SetVerbosity(0) })
+			wantTrace := "trace=" + TraceID()
+			const message = "fan-out check"
 
-	Info("info at default level")
-	Debug("debug at default level")
+			tt.emit(message)
 
-	if buf.Len() != 0 {
-		t.Errorf("Info/Debug at default level wrote %d bytes; want 0 (got %q)", buf.Len(), buf.String())
+			if tt.wantStderr {
+				for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+					if !strings.Contains(line, wantTrace) {
+						t.Errorf("stderr line = %q; want it to contain %q", line, wantTrace)
+					}
+				}
+				if !strings.Contains(buf.String(), message) {
+					t.Errorf("stderr output = %q; want it to contain the message", buf.String())
+				}
+			} else if buf.Len() != 0 {
+				t.Errorf("stderr output = %q; want 0 bytes", buf.String())
+			}
+
+			if tt.unarmedSink {
+				return
+			}
+			if !tt.wantDurable {
+				if files := listSinkDirFiles(t, dir); len(files) != 0 {
+					t.Errorf("listSinkDirFiles(dir) = %v; want no durable sink file", files)
+				}
+				return
+			}
+			for _, line := range strings.Split(strings.TrimRight(readSoleSinkFile(t, dir), "\n"), "\n") {
+				if !strings.Contains(line, wantTrace) {
+					t.Errorf("durable sink line = %q; want it to contain %q", line, wantTrace)
+				}
+			}
+			if !strings.Contains(readSoleSinkFile(t, dir), message) {
+				t.Errorf("durable sink content does not contain the message")
+			}
+		})
 	}
 }
 
-func TestSetVerbosity_OneEnablesInfoNotDebug(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(1)
-
-	Info("info at verbosity 1")
-	if buf.Len() == 0 {
-		t.Error("Info at verbosity 1 wrote 0 bytes; want a log line")
+func TestConfigureFromEnv_LogLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		level    string
+		wantInfo bool
+	}{
+		{name: "unset leaves the default untouched", level: "", wantInfo: false},
+		{name: "info raises the threshold", level: "info", wantInfo: true},
 	}
-	if !strings.Contains(buf.String(), "info at verbosity 1") {
-		t.Errorf("Info output = %q; want it to contain the message", buf.String())
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := withCapturedOutput(t)
+			SetVerbosity(0)
+			t.Cleanup(func() { SetVerbosity(0) })
+			if tt.level == "" {
+				t.Setenv("LYX_LOG_LEVEL", "")
+				os.Unsetenv("LYX_LOG_LEVEL")
+			} else {
+				t.Setenv("LYX_LOG_LEVEL", tt.level)
+			}
 
-	buf.Reset()
-	Debug("debug at verbosity 1")
-	if buf.Len() != 0 {
-		t.Errorf("Debug at verbosity 1 wrote %d bytes; want 0 (got %q)", buf.Len(), buf.String())
-	}
-}
+			configureFromEnv()
+			Info("info via LYX_LOG_LEVEL")
 
-func TestSetVerbosity_TwoEnablesDebug(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-
-	Debug("debug at verbosity 2")
-	if buf.Len() == 0 {
-		t.Error("Debug at verbosity 2 wrote 0 bytes; want a log line")
-	}
-	if !strings.Contains(buf.String(), "debug at verbosity 2") {
-		t.Errorf("Debug output = %q; want it to contain the message", buf.String())
-	}
-}
-
-func TestSetOutput_CapturesIntoCallerBuffer(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(1)
-
-	Warn("warn goes to the injected buffer")
-
-	if !strings.Contains(buf.String(), "warn goes to the injected buffer") {
-		t.Errorf("SetOutput buffer = %q; want it to contain the Warn message", buf.String())
-	}
-}
-
-func TestConfigureFromEnv_LogLevelRaisesThreshold(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Setenv("LYX_LOG_LEVEL", "info")
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	configureFromEnv()
-	Info("info via LYX_LOG_LEVEL")
-
-	if !strings.Contains(buf.String(), "info via LYX_LOG_LEVEL") {
-		t.Errorf("output = %q; want it to contain the Info message once LYX_LOG_LEVEL=info is applied", buf.String())
-	}
-}
-
-func TestConfigureFromEnv_UnsetLogLevelLeavesDefaultUntouched(t *testing.T) {
-	buf := withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	configureFromEnv()
-	Info("should stay silent")
-
-	if buf.Len() != 0 {
-		t.Errorf("output = %q; want 0 bytes when LYX_LOG_LEVEL is unset", buf.String())
+			if got := strings.Contains(buf.String(), "info via LYX_LOG_LEVEL"); got != tt.wantInfo {
+				t.Errorf("Info emitted = %v with LYX_LOG_LEVEL=%q (output %q); want %v", got, tt.level, buf.String(), tt.wantInfo)
+			}
+		})
 	}
 }
 
@@ -146,142 +165,9 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// TestDualHandler_DebugReachesStderrOnlyNotDurableSink verifies Debug does not reach the durable
-// sink.
-func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
-	dir := t.TempDir()
-	SetDurableSinkDir(dir)
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	Debug("debug fan-out check")
-
-	if !strings.Contains(buf.String(), "debug fan-out check") {
-		t.Errorf("stderr output = %q; want it to contain the Debug message at -vv", buf.String())
-	}
-	if got := listSinkDirFiles(t, dir); len(got) != 0 {
-		t.Errorf("listSinkDirFiles(dir) = %v; want no durable sink file from a Debug-only sequence", got)
-	}
-}
-
-// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV verifies Info reaches
-// durable sink at all verbosity levels.
-func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *testing.T) {
-	dir := t.TempDir()
-	SetDurableSinkDir(dir)
-	buf := withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	Info("info fan-out at default verbosity")
-
-	if buf.Len() != 0 {
-		t.Errorf("stderr output = %q; want 0 bytes for an Info record at the default Warn threshold", buf.String())
-	}
-	files := listSinkDirFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	if !strings.Contains(string(data), "info fan-out at default verbosity") {
-		t.Errorf("durable sink content = %q; want it to contain the Info message even at the default verbosity", string(data))
-	}
-
-	buf.Reset()
-	SetVerbosity(1)
-	Info("info fan-out at -v")
-	if !strings.Contains(buf.String(), "info fan-out at -v") {
-		t.Errorf("stderr output = %q; want it to contain the Info message once -v is set", buf.String())
-	}
-}
-
-// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity verifies Warn reaches both sinks at all
-// levels.
-func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
-	for _, verbosity := range []int{0, 1, 2} {
-		t.Run(fmt.Sprintf("verbosity=%d", verbosity), func(t *testing.T) {
-			dir := t.TempDir()
-			SetDurableSinkDir(dir)
-			buf := withCapturedOutput(t)
-			SetVerbosity(verbosity)
-			t.Cleanup(func() { SetVerbosity(0) })
-
-			Warn("warn fan-out check")
-
-			if !strings.Contains(buf.String(), "warn fan-out check") {
-				t.Errorf("stderr output = %q; want it to contain the Warn message at verbosity %d", buf.String(), verbosity)
-			}
-			files := listSinkDirFiles(t, dir)
-			if len(files) != 1 {
-				t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-			}
-			data, err := os.ReadFile(filepath.Join(dir, files[0]))
-			if err != nil {
-				t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-			}
-			if !strings.Contains(string(data), "warn fan-out check") {
-				t.Errorf("durable sink content = %q; want it to contain the Warn message", string(data))
-			}
-		})
-	}
-}
-
-// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic verifies Warn works without a
-// durable sink.
-func TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic(t *testing.T) {
-	SetDurableSinkDir("")
-	buf := withCapturedOutput(t)
-	SetVerbosity(0)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	Warn("warn with unarmed durable sink")
-
-	if !strings.Contains(buf.String(), "warn with unarmed durable sink") {
-		t.Errorf("stderr output = %q; want it to contain the Warn message even with the durable sink unarmed", buf.String())
-	}
-}
-
-// TestDualHandler_EveryLevelStampsCurrentTraceID verifies all levels stamp the trace ID.
-func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
-	dir := t.TempDir()
-	SetDurableSinkDir(dir)
-	buf := withCapturedOutput(t)
-	SetVerbosity(2)
-	t.Cleanup(func() { SetVerbosity(0) })
-
-	wantTrace := "trace=" + TraceID()
-
-	Debug("debug trace stamp check")
-	Info("info trace stamp check")
-	Warn("warn trace stamp check")
-
-	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
-		if !strings.Contains(line, wantTrace) {
-			t.Errorf("stderr line = %q; want it to contain %q", line, wantTrace)
-		}
-	}
-
-	files := listSinkDirFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
-		if !strings.Contains(line, wantTrace) {
-			t.Errorf("durable sink line = %q; want it to contain %q", line, wantTrace)
-		}
-	}
-}
-
-// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent
-// writes produce one file and one marker.
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes produce one file and one marker.
+//
+//testtiming:keep pins one sink file and one truncation marker under concurrent first writers, which the serial size-cap test does not exercise
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -309,11 +195,7 @@ func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t 
 		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one sink file even under concurrent first-write races", files)
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, files[0]))
-	if err != nil {
-		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
-	}
-	if got := countMarkerLines(data); got != 1 {
+	if got := countMarkerLines([]byte(readSoleSinkFile(t, dir))); got != 1 {
 		t.Errorf("countMarkerLines(data) = %d; want exactly 1 truncation marker line even under concurrent writers crossing the cap", got)
 	}
 }

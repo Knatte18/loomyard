@@ -1,6 +1,4 @@
-// repo_test.go covers openRepo, resolveTargets, and the four exported query wrappers (TOC, Glyphs,
-// Resolve, Expand), and declares writeFixtureRepo, the small on-disk Go fixture builder every test
-// file in this package shares.
+// repo_test.go covers the four exported query wrappers (TOC, Glyphs, Resolve, Expand), which run openRepo and resolveTargets, and declares writeFixtureRepo, the small on-disk Go fixture builder every test file in this package shares.
 
 package planglyph
 
@@ -18,49 +16,6 @@ import (
 func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	return plankit.Repo(t, files)
-}
-
-// TestOpenRepo_Success asserts openRepo succeeds against a real directory.
-func TestOpenRepo_Success(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n"})
-
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-	if repo == nil {
-		t.Fatalf("openRepo(%q) returned nil *quarry.Repo with a nil error", root)
-	}
-}
-
-// TestOpenRepo_NonRepository asserts openRepo's error against a directory that does not exist
-// satisfies errors.Is(err, ErrQuarryUnavailable), so a caller can distinguish an infrastructure
-// failure without string matching.
-func TestOpenRepo_NonRepository(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "does-not-exist")
-
-	_, err := openRepo(missing)
-	if !errors.Is(err, ErrQuarryUnavailable) {
-		t.Errorf("openRepo(%q) error = %v; want errors.Is(err, ErrQuarryUnavailable)", missing, err)
-	}
-}
-
-// TestResolveTargets_Success asserts resolveTargets returns Resolve's own positional results
-// unchanged.
-func TestResolveTargets_Success(t *testing.T) {
-	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-	repo, err := openRepo(root)
-	if err != nil {
-		t.Fatalf("openRepo(%q) returned error: %v", root, err)
-	}
-
-	results, err := resolveTargets(repo, []string{"sub#Foo"})
-	if err != nil {
-		t.Fatalf("resolveTargets(...) returned error: %v", err)
-	}
-	if len(results) != 1 || results[0].Target != "sub#Foo" {
-		t.Errorf("resolveTargets(...) = %+v; want one result for %q", results, "sub#Foo")
-	}
 }
 
 // TestTOC_Success asserts TOC delegates to the underlying quarry.Repo.TOC and returns its answer

@@ -5,39 +5,44 @@ package preflight
 
 import "testing"
 
+// TestReport_AddFailure covers AddFailure on a Report shaped the way a check's return value is shaped -- OK explicitly set true before any AddFailure call, rather than the bare zero value whose OK defaults to false with an empty Failures slice and so does not itself satisfy the invariant: each recorded failure is appended in order with its check and reason, and the first one flips OK to false, so OK == (len(Failures) == 0) holds before and after.
+//
+//testtiming:keep pins AddFailure's append order, failure fields and OK flip, which the CheckResolved table covering its blocks only reads back through the CheckID set
 func TestReport_AddFailure(t *testing.T) {
-	var r Report
-	r.OK = true
+	t.Parallel()
 
-	r.AddFailure(CheckGeometry, "not inside a git repository")
+	tests := []struct {
+		name string
+		adds []Failure
+	}{
+		{name: "no failure keeps OK"},
+		{name: "one failure", adds: []Failure{{Check: CheckGeometry, Reason: "not inside a git repository"}}},
+		{name: "multiple failures keep their order", adds: []Failure{{Check: CheckWorktreeClean, Reason: "dirty"}, {Check: CheckFabricReady, Reason: "not ready"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if len(r.Failures) != 1 {
-		t.Fatalf("len(r.Failures) = %d; want 1", len(r.Failures))
-	}
-	got := r.Failures[0]
-	want := Failure{Check: CheckGeometry, Reason: "not inside a git repository"}
-	if got != want {
-		t.Errorf("r.Failures[0] = %+v; want %+v", got, want)
-	}
-	if r.OK {
-		t.Errorf("r.OK = true after AddFailure; want false")
-	}
-}
+			r := Report{OK: true}
+			for _, f := range tt.adds {
+				r.AddFailure(f.Check, f.Reason)
+			}
 
-func TestReport_AddFailure_Multiple(t *testing.T) {
-	var r Report
-
-	r.AddFailure(CheckWorktreeClean, "dirty")
-	r.AddFailure(CheckFabricReady, "not ready")
-
-	if len(r.Failures) != 2 {
-		t.Fatalf("len(r.Failures) = %d; want 2", len(r.Failures))
-	}
-	if r.OK {
-		t.Errorf("r.OK = true after two AddFailure calls; want false")
-	}
-	if r.Failures[0].Check != CheckWorktreeClean || r.Failures[1].Check != CheckFabricReady {
-		t.Errorf("r.Failures = %+v; want CheckWorktreeClean then CheckFabricReady", r.Failures)
+			if len(r.Failures) != len(tt.adds) {
+				t.Fatalf("len(r.Failures) = %d; want %d", len(r.Failures), len(tt.adds))
+			}
+			for i, want := range tt.adds {
+				if r.Failures[i] != want {
+					t.Errorf("r.Failures[%d] = %+v; want %+v", i, r.Failures[i], want)
+				}
+			}
+			if wantOK := len(tt.adds) == 0; r.OK != wantOK {
+				t.Errorf("r.OK = %v; want %v", r.OK, wantOK)
+			}
+			if r.OK != (len(r.Failures) == 0) {
+				t.Errorf("Report violates OK == (len(Failures) == 0): %+v", r)
+			}
+		})
 	}
 }
 
@@ -75,21 +80,5 @@ func TestReport_Has(t *testing.T) {
 				t.Errorf("Report.Has(%q) = %v; want %v", tt.check, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestReport_OKFailuresInvariant checks the OK == (len(Failures) == 0) invariant on a Report shaped
-// the way a check's return value is shaped -- OK explicitly set true before any AddFailure call --
-// rather than on the bare zero value, whose OK defaults to false with an empty Failures slice and so
-// does not itself satisfy the invariant; that shape is never what a check returns.
-func TestReport_OKFailuresInvariant(t *testing.T) {
-	r := Report{OK: true}
-	if !(r.OK == (len(r.Failures) == 0)) {
-		t.Errorf("clean-pass Report violates OK == (len(Failures) == 0): %+v", r)
-	}
-
-	r.AddFailure(CheckGeometry, "reason")
-	if !(r.OK == (len(r.Failures) == 0)) {
-		t.Errorf("after AddFailure, Report violates OK == (len(Failures) == 0): %+v", r)
 	}
 }

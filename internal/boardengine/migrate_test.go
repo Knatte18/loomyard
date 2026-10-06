@@ -41,6 +41,7 @@ func TestMigrateEntriesTierAndType(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the unspaced, vocabulary-type, repeated and non-leading bracket prefixes, which its covering tests do not assert
 func TestMigrateEntriesBracketPrefixes(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -66,48 +67,80 @@ func TestMigrateEntriesBracketPrefixes(t *testing.T) {
 	}
 }
 
-func TestMigrateEntriesNoteDependsOnMovesToBody(t *testing.T) {
-	empty := oldEntry("n1", 3, "feature")
-	empty.DependsOn = []string{"a", "b"}
-	filled := oldEntry("n2", 3, "feature")
-	filled.DependsOn = []string{"a"}
-	filled.Body = "Some body."
-
-	got := migrateEntries([]storedEntry{empty, filled}, nil)
-	if got[0].Body != "Depends on `a`, `b`." || len(got[0].DependsOn) != 0 {
-		t.Errorf("empty body: body=%q deps=%v", got[0].Body, got[0].DependsOn)
-	}
-	if got[1].Body != "Some body.\n\nDepends on `a`." || len(got[1].DependsOn) != 0 {
-		t.Errorf("non-empty body: body=%q deps=%v", got[1].Body, got[1].DependsOn)
-	}
-}
-
-func TestMigrateEntriesTaskEdgeToMigratedNoteRemoved(t *testing.T) {
-	task := oldEntry("t", 1, "feature")
-	task.DependsOn = []string{"done-note", "real"}
+func TestMigrateEntriesRewrites(t *testing.T) {
+	t.Parallel()
 	done := "done"
-	note := oldEntry("done-note", 3, "feature")
-	note.Status = &done
-	real := oldEntry("real", 1, "feature")
-
-	got := migrateEntries([]storedEntry{task, note, real}, nil)
-	if !slices.Equal(got[0].DependsOn, []string{"real"}) {
-		t.Errorf("task deps = %v, want [real]", got[0].DependsOn)
+	tests := []struct {
+		name string
+		in   []storedEntry
+		// want holds the expected fields of each migrated entry, in input order.
+		want []Task
+	}{
+		{
+			name: "a note's depends_on moves into its body",
+			in: []storedEntry{
+				func() storedEntry { e := oldEntry("n1", 3, "feature"); e.DependsOn = []string{"a", "b"}; return e }(),
+				func() storedEntry {
+					e := oldEntry("n2", 3, "feature")
+					e.DependsOn = []string{"a"}
+					e.Body = "Some body."
+					return e
+				}(),
+			},
+			want: []Task{
+				{Kind: KindNote, Labels: []string{"enhancement"}, Body: "Depends on `a`, `b`."},
+				{Kind: KindNote, Labels: []string{"enhancement"}, Body: "Some body.\n\nDepends on `a`."},
+			},
+		},
+		{
+			name: "a task's edge to a migrated note is removed",
+			in: []storedEntry{
+				func() storedEntry {
+					e := oldEntry("t", 1, "feature")
+					e.DependsOn = []string{"done-note", "real"}
+					return e
+				}(),
+				func() storedEntry { e := oldEntry("done-note", 3, "feature"); e.Status = &done; return e }(),
+				oldEntry("real", 1, "feature"),
+			},
+			want: []Task{
+				{Kind: KindTask, Labels: []string{"enhancement"}, DependsOn: []string{"real"}},
+				{Kind: KindNote, Labels: []string{"enhancement"}, Status: &done},
+				{Kind: KindTask, Labels: []string{"enhancement"}},
+			},
+		},
+		{
+			name: "an entry that already has a kind is untouched",
+			in: []storedEntry{
+				{Task: Task{Slug: "a", Kind: KindTask, Labels: []string{"bug"}, Brief: "[infra] keep", DependsOn: []string{"n"}}, Tier: intp(3), Type: strp("design")},
+				{Task: Task{Slug: "n", Kind: KindNote, Labels: []string{"bug"}}},
+			},
+			want: []Task{
+				{Kind: KindTask, Labels: []string{"bug"}, Brief: "[infra] keep", DependsOn: []string{"n"}},
+				{Kind: KindNote, Labels: []string{"bug"}},
+			},
+		},
+		{
+			name: "an entry with neither tier nor kind is a note with empty labels",
+			in:   []storedEntry{{Task: Task{Slug: "a"}}},
+			want: []Task{{Kind: KindNote, Labels: []string{}}},
+		},
 	}
-}
-
-func TestMigrateEntriesKindEntryUntouched(t *testing.T) {
-	e := storedEntry{Task: Task{Slug: "a", Kind: KindTask, Labels: []string{"bug"}, Brief: "[infra] keep", DependsOn: []string{"n"}}, Tier: intp(3), Type: strp("design")}
-	n := storedEntry{Task: Task{Slug: "n", Kind: KindNote, Labels: []string{"bug"}}}
-	got := migrateEntries([]storedEntry{e, n}, nil)
-	if got[0].Kind != KindTask || !slices.Equal(got[0].Labels, []string{"bug"}) || got[0].Brief != "[infra] keep" || !slices.Equal(got[0].DependsOn, []string{"n"}) {
-		t.Errorf("entry with kind changed: %+v", got[0])
-	}
-}
-
-func TestMigrateEntriesNeitherTierNorKindIsNote(t *testing.T) {
-	got := migrateEntries([]storedEntry{{Task: Task{Slug: "a"}}}, nil)[0]
-	if got.Kind != KindNote || got.Labels == nil || len(got.Labels) != 0 {
-		t.Errorf("got kind=%q labels=%v, want a note with empty labels", got.Kind, got.Labels)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := migrateEntries(tt.in, nil)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d entries, want %d", len(got), len(tt.want))
+			}
+			for i, want := range tt.want {
+				e := got[i]
+				if e.Kind != want.Kind || e.Brief != want.Brief || e.Body != want.Body ||
+					!slices.Equal(e.Labels, want.Labels) || (e.Labels == nil) != (want.Labels == nil) ||
+					!slices.Equal(e.DependsOn, want.DependsOn) || (e.Status == nil) != (want.Status == nil) {
+					t.Errorf("entry %d = %+v, want %+v", i, e, want)
+				}
+			}
+		})
 	}
 }

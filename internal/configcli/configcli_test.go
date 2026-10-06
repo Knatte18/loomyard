@@ -1,11 +1,8 @@
 // configcli_test.go — unit and integration tests for configcli.
 //
-// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp
-// baseDirs seeded via the paths helpers.
-// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub
-// built by the hubforge package.
-// The git-init-backed TestDispatchSet_PreservedKeyDetectedByReconcile lives in
-// configcli_integration_test.go per the Test Tier Purity Invariant.
+// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
+// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub built by the hubforge package.
+// The git-init-backed reconcile scenario lives in reconcile_integration_test.go per the Test Tier Purity Invariant.
 
 package configcli
 
@@ -17,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -94,198 +92,179 @@ func newHubFixture(t *testing.T) hubFixture {
 	return fx
 }
 
-// TestEditOneSuccess tests the success path: valid YAML, sync succeeds (exit 0).
-func TestEditOneSuccess(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
+// TestEditOne pins the single-module edit: a valid edit is synced and reported as a JSON success, an unknown module is refused with the known list before anything runs, an editor failure aborts before the sync, and a failing sync is reported with its own output.
+func TestEditOne(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		module     string
+		editor     configengine.EditorFunc
+		syncExit   int
+		syncOutput string
+		wantCode   int
+		wantSynced bool
+		wantOut    []string
+		// wantOKModule is the module the JSON success envelope names; empty skips the check.
+		wantOKModule string
+		// wantErr are substrings the JSON error envelope's error field must hold.
+		wantErr []string
+	}{
+		{
+			name:         "valid edit is synced and reported",
+			module:       "loom",
+			editor:       fakeEditor("discussion_timeout_min: 1\n", nil),
+			wantCode:     0,
+			wantSynced:   true,
+			wantOut:      []string{"edited and synced"},
+			wantOKModule: "loom",
+		},
+		{
+			name:     "unknown module is refused before the sync",
+			module:   "unknown",
+			editor:   fakeEditor("test\n", nil),
+			wantCode: 1,
+			wantErr:  []string{"unknown config module", "known:"},
+		},
+		{
+			name:     "editor failure aborts before the sync",
+			module:   "loom",
+			editor:   fakeEditor("test\n", errors.New("simulated editor exit 1")),
+			wantCode: 1,
+			wantOut:  []string{"aborted"},
+		},
+		{
+			name:       "failing sync is reported with its output",
+			module:     "loom",
+			editor:     fakeEditor("discussion_timeout_min: 1\n", nil),
+			syncExit:   1,
+			syncOutput: "sync error: something went wrong",
+			wantCode:   1,
+			wantSynced: true,
+			wantOut:    []string{"fabric sync failed", "sync error: something went wrong"},
+		},
 	}
 
-	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write loom.yaml: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			seedModuleConfig(t, baseDir, "loom", "# temp\n")
 
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("discussion_timeout_min: 1\n", nil), tracker.syncFunc(), nil)
+			var out bytes.Buffer
+			synced := false
+			sync := func(w io.Writer) int {
+				synced = true
+				fmt.Fprint(w, tt.syncOutput)
+				return tt.syncExit
+			}
+			code := editOne(worktreeDirs(baseDir), &out, tt.module, tt.editor, sync, nil)
 
-	if code != 0 {
-		t.Errorf("editOne() = %d; want 0", code)
-	}
-	if !tracker.called {
-		t.Error("sync was not called")
-	}
-	output := out.String()
-	if !strings.Contains(output, "edited and synced") {
-		t.Errorf("editOne output missing success message; got %q", output)
-	}
-	assertJSONOkContains(t, output, map[string]any{"module": "loom"})
-}
-
-// TestEditOneUnknownModule tests unknown module handling.
-func TestEditOneUnknownModule(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write loom.yaml: %v", err)
-	}
-
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(worktreeDirs(baseDir), &out, "unknown", fakeEditor("test\n", nil), tracker.syncFunc(), nil)
-
-	if code != 1 {
-		t.Errorf("editOne() = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called for unknown module")
-	}
-	output := out.String()
-
-	// Verify the output is a valid JSON error envelope — errors are no longer plain text.
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &env); err != nil {
-		t.Fatalf("editOne(unknown) output is not valid JSON: %v; got %q", err, output)
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("editOne(unknown) envelope ok = true; want false")
-	}
-	msg, _ := env["error"].(string)
-	if !strings.Contains(msg, "unknown config module") {
-		t.Errorf("editOne(unknown) error field missing 'unknown config module'; got %q", msg)
-	}
-	if !strings.Contains(msg, "known:") {
-		t.Errorf("editOne(unknown) error field missing known-module list; got %q", msg)
-	}
-}
-
-// TestEditOneAbort tests the abort path: editor returns error (configengine.ErrAborted).
-func TestEditOneAbort(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write loom.yaml: %v", err)
-	}
-
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc(), nil)
-
-	if code != 1 {
-		t.Errorf("editOne() = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called on abort")
-	}
-	output := out.String()
-	if !strings.Contains(output, "aborted") {
-		t.Errorf("editOne output missing abort message; got %q", output)
+			if code != tt.wantCode {
+				t.Errorf("editOne() = %d; want %d; output: %q", code, tt.wantCode, out.String())
+			}
+			if synced != tt.wantSynced {
+				t.Errorf("sync called = %v; want %v", synced, tt.wantSynced)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("editOne output missing %q; got %q", want, out.String())
+				}
+			}
+			if tt.wantOKModule != "" {
+				assertJSONOkContains(t, out.String(), map[string]any{"module": tt.wantOKModule})
+			}
+			for _, want := range tt.wantErr {
+				assertJSONErrContains(t, out.String(), want)
+			}
+		})
 	}
 }
 
-// TestEditOneSyncFails tests the sync-failure path: sync returns non-zero.
-func TestEditOneSyncFails(t *testing.T) {
-	baseDir := t.TempDir()
-
-	// Create _lyx/config directory
-	configDir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
+// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lyx config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
+// The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
+func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode int
+		// wantHelp expects help text naming the verbs and every module instead of an envelope.
+		wantHelp bool
+		// wantErr are substrings of the envelope's error field; wantErrExact is its whole text.
+		wantErr      []string
+		wantErrExact string
+		// viaProcessCwd runs the row through RunCLI, which reads the process cwd, instead of RunCLIIn.
+		viaProcessCwd bool
+	}{
+		{name: "bare config prints help", args: []string{}, wantCode: 0, wantHelp: true},
+		{name: "bare config through the process-cwd seam prints help", args: []string{}, wantCode: 0, wantHelp: true, viaProcessCwd: true},
+		{
+			name:     "unknown argument names itself and the way forward",
+			args:     []string{"bogus"},
+			wantCode: 1,
+			wantErr:  []string{"unknown subcommand", "bogus", `run "lyx config" to list modules and verbs`},
+		},
+		{
+			name:     "menu rejects an argument before resolving any cwd",
+			args:     []string{"menu", "bogus"},
+			wantCode: 1,
+			wantErr:  []string{"bogus"},
+		},
+		{
+			name:         "reconcile surfaces the bare not-a-repository sentinel",
+			args:         []string{"reconcile"},
+			wantCode:     1,
+			wantErrExact: "not a git repository",
+		},
 	}
 
-	// Create a fake _lyx/config/loom.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, "loom"), []byte("# temp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write loom.yaml: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			var code int
+			if tt.viaProcessCwd {
+				code = RunCLI(&out, tt.args)
+			} else {
+				code = RunCLIIn(t.TempDir(), &out, tt.args)
+			}
 
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 1}
-	syncWithOutput := func(w io.Writer) int {
-		tracker.called = true
-		fmt.Fprint(w, "sync error: something went wrong")
-		return 1
-	}
-	code := editOne(worktreeDirs(baseDir), &out, "loom", fakeEditor("discussion_timeout_min: 1\n", nil), syncWithOutput, nil)
-
-	if code != 1 {
-		t.Errorf("editOne() = %d; want 1", code)
-	}
-	output := out.String()
-	if !strings.Contains(output, "fabric sync failed") {
-		t.Errorf("editOne output missing sync-failed message; got %q", output)
-	}
-	if !strings.Contains(output, "sync error: something went wrong") {
-		t.Errorf("editOne output missing sync error details; got %q", output)
-	}
-}
-
-// TestBareConfigListsModulesAndVerbs verifies that bare `lyx config` from a non-git directory exits 0,
-// prints help rather than an envelope, and names reconcile, menu and every module.
-func TestBareConfigListsModulesAndVerbs(t *testing.T) {
-	var out bytes.Buffer
-	code := RunCLIIn(t.TempDir(), &out, nil)
-
-	if code != 0 {
-		t.Fatalf("lyx config = %d; want 0; output: %q", code, out.String())
-	}
-	got := out.String()
-	if strings.HasPrefix(strings.TrimSpace(got), "{") {
-		t.Errorf("lyx config printed an envelope; want help text: %q", got)
-	}
-	for _, verb := range []string{"reconcile", "menu"} {
-		if !strings.Contains(got, verb) {
-			t.Errorf("lyx config output does not name %s: %q", verb, got)
-		}
-	}
-	for _, name := range configreg.Names() {
-		if !strings.Contains(got, name) {
-			t.Errorf("lyx config output does not name module %q: %q", name, got)
-		}
-	}
-}
-
-// TestUnknownConfigArgumentRefuses verifies that `lyx config bogus` from a non-git directory exits 1
-// with an unknown-subcommand envelope naming the argument and the way forward.
-func TestUnknownConfigArgumentRefuses(t *testing.T) {
-	var out bytes.Buffer
-	code := RunCLIIn(t.TempDir(), &out, []string{"bogus"})
-
-	if code != 1 {
-		t.Fatalf("lyx config bogus = %d; want 1; output: %q", code, out.String())
-	}
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("output is not a JSON envelope: %v; got %q", err, out.String())
-	}
-	msg, _ := env["error"].(string)
-	for _, want := range []string{"unknown subcommand", "bogus", `run "lyx config" to list modules and verbs`} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("error %q does not contain %q", msg, want)
-		}
+			if code != tt.wantCode {
+				t.Fatalf("lyx config %v = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
+			}
+			got := out.String()
+			if tt.wantHelp {
+				if strings.HasPrefix(strings.TrimSpace(got), "{") {
+					t.Errorf("lyx config printed an envelope; want help text: %q", got)
+				}
+				for _, want := range append([]string{"reconcile", "menu"}, configreg.Names()...) {
+					if !strings.Contains(got, want) {
+						t.Errorf("lyx config output does not name %q: %q", want, got)
+					}
+				}
+				return
+			}
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(got)), &env); err != nil {
+				t.Fatalf("output is not a JSON envelope: %v; got %q", err, got)
+			}
+			msg, _ := env["error"].(string)
+			for _, want := range tt.wantErr {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error %q does not contain %q", msg, want)
+				}
+			}
+			if tt.wantErrExact != "" && msg != tt.wantErrExact {
+				t.Errorf("error = %q; want exactly %q", msg, tt.wantErrExact)
+			}
+		})
 	}
 }
 
 // TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand,
 // since a subcommand name always routes as a subcommand.
 func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
+	t.Parallel()
 	subs := map[string]bool{}
 	for _, c := range Command().Commands() {
 		subs[c.Name()] = true
@@ -297,10 +276,20 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	}
 }
 
-// runMenuWith runs menu over a hub fixture with the given input,
-// seeding each named module at the dir the registry says holds it,
-// and returning the exit code, the output and the sync tracker.
-func runMenuWith(t *testing.T, input string, seed ...string) (int, string, *fakeSyncTracker) {
+// TestConfigLong verifies that the config command's Long help text names every module in configreg.Names(), so it stays in sync with the registry rather than drifting from a hardcoded list, and documents the EDITOR/VISUAL editor fallback and the --set flag.
+func TestConfigLong(t *testing.T) {
+	t.Parallel()
+	longText := Command().Long
+	wants := append([]string{"EDITOR", "VISUAL", "code --wait", "nano", "--set"}, configreg.Names()...)
+	for _, want := range wants {
+		if !strings.Contains(longText, want) {
+			t.Errorf("config Long missing %q; Long = %q", want, longText)
+		}
+	}
+}
+
+// runMenuWith runs menu over a hub fixture with the given input and editor, seeding each named module at the dir the registry says holds it, and returning the exit code, the output and the sync tracker.
+func runMenuWith(t *testing.T, input string, editor configengine.EditorFunc, seed ...string) (int, string, *fakeSyncTracker) {
 	t.Helper()
 	fx := newHubFixture(t)
 	dirs := dirsOf(fx.layout)
@@ -313,86 +302,57 @@ func runMenuWith(t *testing.T, input string, seed ...string) (int, string, *fake
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(dirs, strings.NewReader(input), &out, fakeEditor("test: value\n", nil), tracker.syncFunc(), nil)
+	code := menu(dirs, strings.NewReader(input), &out, editor, tracker.syncFunc(), nil)
 	return code, out.String(), tracker
 }
 
-// TestMenuSelection tests menu with a valid selection.
-func TestMenuSelection(t *testing.T) {
-	code, output, tracker := runMenuWith(t, "1\nq\n", "batcher")
-
-	if code != 0 {
-		t.Errorf("menu() = %d; want 0", code)
+// TestMenu pins the interactive menu: a valid selection edits and syncs the module, quit exits 0 without either, a non-number and an out-of-range number each exit 1 with an invalid message and without either, and the listing marks seeded modules (configured) and unseeded ones (default), looking for a hub-wide module at the board dir and for any other at the worktree.
+func TestMenu(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		seed  []string
+		// editsAllowed lets the editor run; otherwise the editor fails the test if called.
+		editsAllowed bool
+		wantCode     int
+		wantSynced   bool
+		wantOut      []string
+	}{
+		{name: "valid selection", input: "1\nq\n", seed: []string{"batcher"}, editsAllowed: true, wantSynced: true, wantOut: []string{"board"}},
+		{name: "quit", input: "q\n"},
+		{name: "non-number", input: "abc\n", wantCode: 1, wantOut: []string{"invalid"}},
+		{name: "out-of-range number", input: "999\n", wantCode: 1, wantOut: []string{"invalid"}},
+		{
+			name:    "status marks seeded and unseeded modules",
+			input:   "q\n",
+			seed:    []string{"board", "loom"},
+			wantOut: []string{"board (configured)", "loom (configured)", "fabric (default)", "reed (default)"},
+		},
 	}
-	if !tracker.called {
-		t.Error("sync should be called for selected module")
-	}
-	if !strings.Contains(output, "board") {
-		t.Errorf("menu output missing board option; got %q", output)
-	}
-}
 
-// TestMenuQuit tests menu with 'q' selection.
-func TestMenuQuit(t *testing.T) {
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := menu(worktreeDirs(t.TempDir()), strings.NewReader("q\n"), &out, makeNeverCalledEditor(t), tracker.syncFunc(), nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			editor := makeNeverCalledEditor(t)
+			if tt.editsAllowed {
+				editor = fakeEditor("test: value\n", nil)
+			}
 
-	if code != 0 {
-		t.Errorf("menu() = %d; want 0", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called on quit")
-	}
-}
+			code, output, tracker := runMenuWith(t, tt.input, editor, tt.seed...)
 
-// TestMenuInvalidSelection tests that a non-number and an out-of-range number each exit 1
-// without calling the editor or sync.
-func TestMenuInvalidSelection(t *testing.T) {
-	for _, input := range []string{"abc\n", "999\n"} {
-		var out bytes.Buffer
-		tracker := &fakeSyncTracker{exitCode: 0}
-		code := menu(worktreeDirs(t.TempDir()), strings.NewReader(input), &out, makeNeverCalledEditor(t), tracker.syncFunc(), nil)
-
-		if code != 1 {
-			t.Errorf("menu(%q) = %d; want 1", input, code)
-		}
-		if tracker.called {
-			t.Errorf("sync should not be called on input %q", input)
-		}
-		if !strings.Contains(out.String(), "invalid") {
-			t.Errorf("menu(%q) output missing an invalid message; got %q", input, out.String())
-		}
-	}
-}
-
-// TestMenuStatus tests that menu marks seeded modules (configured) and unseeded ones (default),
-// looking for a hub-wide module at the board dir and for any other at the worktree.
-func TestMenuStatus(t *testing.T) {
-	_, output, _ := runMenuWith(t, "q\n", "board", "loom")
-
-	for _, want := range []string{"board (configured)", "loom (configured)", "fabric (default)", "reed (default)"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("menu output missing %q; got %q", want, output)
-		}
-	}
-}
-
-// TestConfigMenuRejectsArgument verifies that `lyx config menu bogus` from a non-git directory
-// exits 1 with a JSON error envelope naming the argument, before the handler resolves any cwd.
-func TestConfigMenuRejectsArgument(t *testing.T) {
-	var out bytes.Buffer
-	code := RunCLIIn(t.TempDir(), &out, []string{"menu", "bogus"})
-
-	if code != 1 {
-		t.Fatalf("lyx config menu bogus = %d; want 1; output: %q", code, out.String())
-	}
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("output is not a JSON envelope: %v; got %q", err, out.String())
-	}
-	if msg, _ := env["error"].(string); !strings.Contains(msg, "bogus") {
-		t.Errorf("error %q does not name bogus", msg)
+			if code != tt.wantCode {
+				t.Errorf("menu(%q) = %d; want %d", tt.input, code, tt.wantCode)
+			}
+			if tracker.called != tt.wantSynced {
+				t.Errorf("menu(%q) sync called = %v; want %v", tt.input, tracker.called, tt.wantSynced)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(output, want) {
+					t.Errorf("menu(%q) output missing %q; got %q", tt.input, want, output)
+				}
+			}
+		})
 	}
 }
 
@@ -474,101 +434,183 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 	}
 }
 
-// TestPrintModule_Seeded verifies that config <module> --print emits the on-disk YAML verbatim at
-// exit 0 and never invokes the editor.
-func TestPrintModule_Seeded(t *testing.T) {
-	baseDir := t.TempDir()
+// TestPrint pins the --print form, which never opens an editor: a seeded module's on-disk YAML is emitted verbatim, a known module with no file is an ok:false envelope, an unknown module is an ok:false envelope naming it, and the aggregate form prints a deterministic header for every registry module with inline YAML for seeded ones and "# (not configured)" for absent ones.
+func TestPrint(t *testing.T) {
+	t.Parallel()
 	const loomYAML = "discussion_timeout_min: 60\n"
-	seedModuleConfig(t, baseDir, "loom", loomYAML)
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), nil, nil, true, nil)
-
-	if code != 0 {
-		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
-	}
-	if got := out.String(); got != loomYAML {
-		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, loomYAML)
-	}
-}
-
-// TestPrintModule_KnownButUnseeded verifies that config <module> --print for a known module with no
-// on-disk file returns an ok:false JSON envelope at exit 1.
-func TestPrintModule_KnownButUnseeded(t *testing.T) {
-	baseDir := t.TempDir()
-	// Create the config directory but not the loom.yaml file.
-	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), nil, nil, true, nil)
-
-	if code != 1 {
-		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
-	}
-	assertJSONErrContains(t, out.String(), "not configured")
-}
-
-// TestPrintAggregate_PartialSeed verifies the aggregate --print form with a partial module seed.
-// It asserts deterministic headers for every registry module, inline YAML for seeded ones, and #
-// (not configured) for absent ones, all at exit 0.
-func TestPrintAggregate_PartialSeed(t *testing.T) {
-	baseDir := t.TempDir()
-	const loomYAML = "discussion_timeout_min: 60\n"
-	seedModuleConfig(t, baseDir, "loom", loomYAML)
-	// reed is intentionally not seeded.
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), nil, nil, true, nil)
-
-	if code != 0 {
-		t.Errorf("dispatch(print=true, aggregate) = %d; want 0; output: %q", code, out.String())
-	}
-	got := out.String()
-
-	// Every registry module must have a section header in output order.
+	aggregateWants := []string{loomYAML[:len(loomYAML)-1]}
 	for _, name := range configreg.Names() {
-		if !strings.Contains(got, "# "+name) {
-			t.Errorf("aggregate output missing header for %q; output:\n%s", name, got)
-		}
+		aggregateWants = append(aggregateWants, "# "+name)
 	}
-	// loom is seeded; its YAML content must appear.
-	if !strings.Contains(got, "discussion_timeout_min: 60") {
-		t.Errorf("aggregate output missing seeded loom YAML; output:\n%s", got)
+
+	tests := []struct {
+		name string
+		// seedLoom is the loom.yaml content; empty seeds nothing but still creates the config dir.
+		seedLoom string
+		args     []string
+		wantCode int
+		// wantExact is the whole output; wantContains are substrings of it; wantErr a substring of the error envelope.
+		wantExact    string
+		wantContains []string
+		wantErr      string
+		// minNotConfigured is the least number of "# (not configured)" lines expected.
+		minNotConfigured int
+	}{
+		{name: "seeded module is printed verbatim", seedLoom: loomYAML, args: []string{"loom"}, wantExact: loomYAML},
+		{name: "known module with no file is not configured", args: []string{"loom"}, wantCode: 1, wantErr: "not configured"},
+		{name: "unknown module is refused", args: []string{"bogus"}, wantCode: 1, wantErr: "unknown config module"},
+		{name: "aggregate with a partial seed", seedLoom: loomYAML, wantContains: aggregateWants, minNotConfigured: 2},
 	}
-	// The other modules are absent; their sections must each say # (not configured).
-	if count := strings.Count(got, "# (not configured)"); count < 2 {
-		t.Errorf("expected ≥2 '# (not configured)' lines; got %d; output:\n%s", count, got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+				t.Fatalf("failed to create config dir: %v", err)
+			}
+			if tt.seedLoom != "" {
+				seedModuleConfig(t, baseDir, "loom", tt.seedLoom)
+			}
+
+			var out bytes.Buffer
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil)
+
+			if code != tt.wantCode {
+				t.Errorf("dispatch(print=true, %v) = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
+			}
+			if tt.wantExact != "" && out.String() != tt.wantExact {
+				t.Errorf("output = %q; want %q", out.String(), tt.wantExact)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output missing %q; output:\n%s", want, out.String())
+				}
+			}
+			if count := strings.Count(out.String(), "# (not configured)"); count < tt.minNotConfigured {
+				t.Errorf("got %d '# (not configured)' lines; want at least %d; output:\n%s", count, tt.minNotConfigured, out.String())
+			}
+			if tt.wantErr != "" {
+				assertJSONErrContains(t, out.String(), tt.wantErr)
+			}
+		})
 	}
 }
 
-// TestPrintUnknownModule verifies that config bogus --print returns an ok:false JSON envelope at
-// exit 1 whose error field names the unknown module.
-func TestPrintUnknownModule(t *testing.T) {
-	baseDir := t.TempDir()
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	code := dispatch(l, &out, []string{"bogus"}, makeNeverCalledEditor(t), nil, nil, true, nil)
-
-	if code != 1 {
-		t.Errorf("dispatch(print=true, unknown) = %d; want 1", code)
+// TestDispatchSet pins the --set path on a per-worktree module: it never opens the editor, syncs once for a successful write and never for a refused one, reports an orphan key it preserved in the envelope's "preserved" field and omits the field for a clean file, and refuses an unknown key, a --print/--set pair, a missing module and a value without '='.
+func TestDispatchSet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// seed is the loom.yaml content; empty seeds nothing.
+		seed      string
+		args      []string
+		printOnly bool
+		setFlags  []string
+		wantCode  int
+		wantSyncs int
+		// wantErr is a substring of the error envelope; empty means a success envelope naming loom.
+		wantErr string
+		// wantPreserved is the "preserved" field; nil means the field must be absent.
+		wantPreserved []string
+	}{
+		{
+			name:      "set on a clean file syncs once and reports nothing preserved",
+			seed:      "discussion_timeout_min: 480\n",
+			args:      []string{"loom"},
+			setFlags:  []string{"discussion_timeout_min=60"},
+			wantSyncs: 1,
+		},
+		{
+			name:          "orphan key is preserved and reported",
+			seed:          "discussion_timeout_min: 480\nlegacy_key: keepme\n",
+			args:          []string{"loom"},
+			setFlags:      []string{"discussion_timeout_min=60"},
+			wantSyncs:     1,
+			wantPreserved: []string{"legacy_key"},
+		},
+		{
+			name:     "unknown key never syncs",
+			seed:     "discussion_timeout_min: 480\n",
+			args:     []string{"loom"},
+			setFlags: []string{"bogus_key=x"},
+			wantCode: 1,
+			wantErr:  "unknown config key",
+		},
+		{
+			name:      "print and set are mutually exclusive",
+			args:      []string{"loom"},
+			printOnly: true,
+			setFlags:  []string{"discussion_timeout_min=60"},
+			wantCode:  1,
+			wantErr:   "mutually exclusive",
+		},
+		{
+			name:     "set with no module is refused",
+			setFlags: []string{"discussion_timeout_min=60"},
+			wantCode: 1,
+			wantErr:  "module required with --set",
+		},
+		{
+			name:     "value without an equals sign is refused",
+			args:     []string{"loom"},
+			setFlags: []string{"no-equals-sign"},
+			wantCode: 1,
+			wantErr:  "expected key=value",
+		},
 	}
-	assertJSONErrContains(t, out.String(), "unknown config module")
-}
 
-// TestConfigLong_ContainsModuleNames verifies that the config command's Long help text includes
-// every name from configreg.Names(), proving the help text stays in sync with the registry rather
-// than drifting from a hardcoded list.
-func TestConfigLong_ContainsModuleNames(t *testing.T) {
-	longText := Command().Long
-	for _, name := range configreg.Names() {
-		if !strings.Contains(longText, name) {
-			t.Errorf("config Long missing module name %q; Long = %q", name, longText)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if tt.seed != "" {
+				seedModuleConfig(t, baseDir, "loom", tt.seed)
+			}
+
+			var out bytes.Buffer
+			editorCalls, syncCalls := 0, 0
+			sync := func(w io.Writer) int {
+				syncCalls++
+				return 0
+			}
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags)
+
+			if code != tt.wantCode {
+				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
+			}
+			if editorCalls != 0 {
+				t.Errorf("dispatch(--set) invoked the editor %d times; want 0", editorCalls)
+			}
+			if syncCalls != tt.wantSyncs {
+				t.Errorf("dispatch(--set) called sync %d times; want %d", syncCalls, tt.wantSyncs)
+			}
+			if tt.wantErr != "" {
+				assertJSONErrContains(t, out.String(), tt.wantErr)
+				return
+			}
+			assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("output is not valid JSON: %v; got %q", err, out.String())
+			}
+			preserved, present := env["preserved"]
+			if tt.wantPreserved == nil {
+				if present {
+					t.Errorf("JSON envelope has a \"preserved\" field on a clean write; got %v", env)
+				}
+				return
+			}
+			var got []string
+			list, _ := preserved.([]any)
+			for _, entry := range list {
+				got = append(got, fmt.Sprint(entry))
+			}
+			if !slices.Equal(got, tt.wantPreserved) {
+				t.Errorf("preserved = %v; want %v", preserved, tt.wantPreserved)
+			}
+		})
 	}
 }
 
@@ -579,260 +621,6 @@ func countingEditor(calls *int) configengine.EditorFunc {
 	return func(path string) error {
 		*calls++
 		return nil
-	}
-}
-
-// TestDispatchSet_NeverInvokesEditor verifies that a successful --set invocation never calls the
-// injected EditorFunc.
-func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	editorCalls := 0
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
-
-	if code != 0 {
-		t.Errorf("dispatch(--set) = %d; want 0; output: %q", code, out.String())
-	}
-	if editorCalls != 0 {
-		t.Errorf("dispatch(--set) invoked the editor %d times; want 0", editorCalls)
-	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
-}
-
-// TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to --set returns an
-// error and the injected sync function is never invoked.
-func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	editorCalls := 0
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, false, []string{"bogus_key=x"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--set unknown key) = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called when --set names an unknown key")
-	}
-	assertJSONErrContains(t, out.String(), "unknown config key")
-}
-
-// TestDispatchSet_OpenMapAddsLabel verifies that --set under a declared open map of a map-shaped board.yaml
-// writes the entry under that map at the board dir and commits once.
-func TestDispatchSet_OpenMapAddsLabel(t *testing.T) {
-	fx := newHubFixture(t)
-	seedModuleConfig(t, fx.board, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
-
-	var out bytes.Buffer
-	commit := &fakeHubCommit{}
-	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"labels.x=desc"})
-
-	if code != 0 {
-		t.Fatalf("dispatch(--set labels.x) = %d; want 0; output: %q", code, out.String())
-	}
-	if commit.calls != 1 {
-		t.Errorf("hub commit ran %d times after a successful --set; want 1", commit.calls)
-	}
-	data, err := os.ReadFile(configengine.ConfigFile(fx.board, "board"))
-	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
-	}
-	if !strings.Contains(string(data), "x: desc") || !strings.Contains(string(data), "old: kept") {
-		t.Errorf("board.yaml lacks the new and the existing label; got %q", data)
-	}
-}
-
-// TestDispatchSet_OpenMapRefusesListShape verifies that --set under an open map holding a list refuses,
-// writes nothing to the board dir file.
-func TestDispatchSet_OpenMapRefusesListShape(t *testing.T) {
-	fx := newHubFixture(t)
-	seeded := "types:\n  bug: a defect\nlabels:\n  - old\n"
-	seedModuleConfig(t, fx.board, "board", seeded)
-
-	var out bytes.Buffer
-	commit := &fakeHubCommit{}
-	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"labels.x=desc"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--set into list-shaped labels) = %d; want 1", code)
-	}
-	data, err := os.ReadFile(configengine.ConfigFile(fx.board, "board"))
-	if err != nil {
-		t.Fatalf("read board.yaml: %v", err)
-	}
-	if string(data) != seeded {
-		t.Errorf("board.yaml changed on a refused --set; got %q", data)
-	}
-}
-
-// TestDispatchSet_UndeclaredNonexistentKeyStillRefuses verifies that an undeclared key on a module with open maps
-// still refuses.
-func TestDispatchSet_UndeclaredNonexistentKeyStillRefuses(t *testing.T) {
-	fx := newHubFixture(t)
-	seedModuleConfig(t, fx.board, "board", "types:\n  bug: a defect\nlabels:\n  old: kept\n")
-
-	var out bytes.Buffer
-	commit := &fakeHubCommit{}
-	code := dispatch(fx.layout, &out, []string{"board"}, makeNeverCalledEditor(t), nil, commit.commitFunc(), false, []string{"bogus_key=x"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--set undeclared key) = %d; want 1", code)
-	}
-	assertJSONErrContains(t, out.String(), "unknown config key")
-}
-
-// TestDispatchSet_PrintMutuallyExclusive verifies that passing both --print and --set returns the
-// mutual-exclusivity error, with neither the editor nor sync invoked.
-func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
-	baseDir := t.TempDir()
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	editorCalls := 0
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, countingEditor(&editorCalls), tracker.syncFunc(), nil, true, []string{"discussion_timeout_min=60"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--print, --set) = %d; want 1", code)
-	}
-	if editorCalls != 0 {
-		t.Errorf("dispatch(--print, --set) invoked the editor %d times; want 0", editorCalls)
-	}
-	if tracker.called {
-		t.Error("sync should not be called when --print and --set are both set")
-	}
-	assertJSONErrContains(t, out.String(), "mutually exclusive")
-}
-
-// TestDispatchSet_NoModuleRequiresOne verifies that --set with no module positional returns the
-// module-required error.
-func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
-	baseDir := t.TempDir()
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, nil, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--set, no module) = %d; want 1", code)
-	}
-	assertJSONErrContains(t, out.String(), "module required with --set")
-}
-
-// TestDispatchSet_MultipleValuesOneSync verifies that multiple --set values in one dispatch() call
-// all land in a single sync invocation.
-func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	syncCalls := 0
-	sync := func(w io.Writer) int {
-		syncCalls++
-		return 0
-	}
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), sync, nil, false, []string{"discussion_timeout_min=60"})
-
-	if code != 0 {
-		t.Errorf("dispatch(--set multiple) = %d; want 0; output: %q", code, out.String())
-	}
-	if syncCalls != 1 {
-		t.Errorf("dispatch(--set multiple) called sync %d times; want 1", syncCalls)
-	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "loom"})
-}
-
-// TestDispatchSet_MalformedValue verifies that a malformed --set value with no '=' returns the
-// parseSetFlags error.
-func TestDispatchSet_MalformedValue(t *testing.T) {
-	baseDir := t.TempDir()
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"no-equals-sign"})
-
-	if code != 1 {
-		t.Errorf("dispatch(--set malformed) = %d; want 1", code)
-	}
-	if tracker.called {
-		t.Error("sync should not be called for a malformed --set value")
-	}
-	assertJSONErrContains(t, out.String(), "expected key=value")
-}
-
-// TestConfigLong_MentionsEditorFallbackAndSet verifies that buildConfigLong's output documents both
-// the EDITOR/VISUAL editor fallback and the --set flag.
-func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
-	longText := buildConfigLong()
-	if !strings.Contains(longText, "EDITOR") || !strings.Contains(longText, "VISUAL") {
-		t.Errorf("config Long missing EDITOR/VISUAL fallback documentation; Long = %q", longText)
-	}
-	if !strings.Contains(longText, "code --wait") || !strings.Contains(longText, "nano") {
-		t.Errorf("config Long missing code --wait/nano fallback documentation; Long = %q", longText)
-	}
-	if !strings.Contains(longText, "--set") {
-		t.Errorf("config Long missing --set documentation; Long = %q", longText)
-	}
-}
-
-// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning verifies that --set against a module file
-// carrying an orphan key (one absent from the current template) preserves that key rather than
-// dropping it,
-// and reports it via the JSON envelope's "preserved" field.
-func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\nlegacy_key: keepme\n")
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
-
-	if code != 0 {
-		t.Fatalf("dispatch(--set, orphan key) = %d; want 0; output: %q", code, out.String())
-	}
-
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("output is not valid JSON: %v; got %q", err, out.String())
-	}
-	preserved, ok := env["preserved"].([]any)
-	if !ok {
-		t.Fatalf("JSON envelope missing \"preserved\" field or wrong type; got %v", env)
-	}
-	if len(preserved) != 1 || preserved[0] != "legacy_key" {
-		t.Errorf("preserved = %v; want [\"legacy_key\"]", preserved)
-	}
-}
-
-// TestDispatchSet_CleanFileNoPreservedField verifies that --set against a module file with no
-// orphan keys emits a JSON envelope with no "preserved" field at all, rather than an empty one.
-func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
-	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "loom", "discussion_timeout_min: 480\n")
-
-	l := makeLayoutAt(baseDir)
-	var out bytes.Buffer
-	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, &out, []string{"loom"}, makeNeverCalledEditor(t), tracker.syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
-
-	if code != 0 {
-		t.Fatalf("dispatch(--set, clean file) = %d; want 0; output: %q", code, out.String())
-	}
-
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
-		t.Fatalf("output is not valid JSON: %v; got %q", err, out.String())
-	}
-	if _, ok := env["preserved"]; ok {
-		t.Errorf("JSON envelope has a \"preserved\" field on a clean write; got %v", env)
 	}
 }
 
@@ -847,6 +635,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const rival = "readme: Rival.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const invalid = "readme: [a]\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
 	const unresolved = "readme: ${env:LYX_CONFIGCLI_TEST_UNSET}\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
+	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
 
 	rows := []struct {
 		name string
@@ -894,6 +683,30 @@ func TestDispatchHubWideBoard(t *testing.T) {
 					t.Errorf("hub file changed on a refused set; got %q", hubFile)
 				}
 				assertJSONErrContains(t, out, "unchanged")
+			},
+		},
+		{
+			name:        "open-map entry into a list-shaped map is refused and writes nothing",
+			seed:        listShaped,
+			setFlags:    []string{"labels.x=desc"},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != listShaped {
+					t.Errorf("hub file changed on a refused set; got %q", hubFile)
+				}
+			},
+		},
+		{
+			name:        "undeclared key beside open maps is refused",
+			setFlags:    []string{"bogus_key=x"},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a refused set; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "unknown config key")
 			},
 		},
 		{

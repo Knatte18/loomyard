@@ -10,85 +10,39 @@ import (
 
 // shedfake.Shuttle serves here as a non-nil seam value and, as a nil *shedfake.Shuttle, a typed-nil interface value.
 
-func TestRequireAbsRoot(t *testing.T) {
+// TestRequireHelpers pins the entry-construction guards: each refuses an invalid value with an error naming the entry and the field, and accepts a valid one.
+// A typed-nil concrete pointer stored in a seam interface is refused too, which a direct nil comparison misses.
+//
+//testtiming:keep pins that each entry-construction guard refuses with an error naming the entry and field, including a typed-nil seam, which its covering tests do not
+func TestRequireHelpers(t *testing.T) {
+	t.Parallel()
+	var nilShuttleInterface shedadapters.Shuttle
+	var typedNilShuttle shedadapters.Shuttle = (*shedfake.Shuttle)(nil)
 	tests := []struct {
-		name  string
-		value string
+		name    string
+		call    func() error
+		wantErr bool
 	}{
-		{"Empty", ""},
-		{"Relative", "relative/path"},
+		{"requireAbsRoot refuses empty", func() error { return requireAbsRoot("MyEntry", "MyField", "") }, true},
+		{"requireAbsRoot refuses relative", func() error { return requireAbsRoot("MyEntry", "MyField", "relative/path") }, true},
+		{"requireAbsRoot accepts absolute", func() error { return requireAbsRoot("MyEntry", "MyField", "/abs/path") }, false},
+		{"requireNonEmpty refuses empty", func() error { return requireNonEmpty("MyEntry", "MyField", "") }, true},
+		{"requireNonEmpty accepts non-empty", func() error { return requireNonEmpty("MyEntry", "MyField", "a-slug") }, false},
+		{"requireSeam refuses untyped nil", func() error { return requireSeam("MyEntry", "MyField", nil) }, true},
+		{"requireSeam refuses a nil interface", func() error { return requireSeam("MyEntry", "MyField", nilShuttleInterface) }, true},
+		{"requireSeam refuses a typed-nil pointer", func() error { return requireSeam("MyEntry", "MyField", typedNilShuttle) }, true},
+		{"requireSeam accepts a non-nil value", func() error { return requireSeam("MyEntry", "MyField", &shedfake.Shuttle{}) }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := requireAbsRoot("MyEntry", "MyField", tt.value)
-			if err == nil {
-				t.Fatalf("requireAbsRoot() error = nil; want non-nil")
+			t.Parallel()
+			err := tt.call()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v; want error = %v", err, tt.wantErr)
 			}
-			if !strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField") {
-				t.Errorf("requireAbsRoot() error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
+			if err != nil && (!strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField")) {
+				t.Errorf("error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
 			}
 		})
 	}
-
-	t.Run("Absolute", func(t *testing.T) {
-		if err := requireAbsRoot("MyEntry", "MyField", "/abs/path"); err != nil {
-			t.Errorf("requireAbsRoot() error = %v; want nil", err)
-		}
-	})
-}
-
-func TestRequireNonEmpty(t *testing.T) {
-	t.Run("Empty", func(t *testing.T) {
-		err := requireNonEmpty("MyEntry", "MyField", "")
-		if err == nil {
-			t.Fatalf("requireNonEmpty() error = nil; want non-nil")
-		}
-		if !strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField") {
-			t.Errorf("requireNonEmpty() error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
-		}
-	})
-
-	t.Run("NonEmpty", func(t *testing.T) {
-		if err := requireNonEmpty("MyEntry", "MyField", "a-slug"); err != nil {
-			t.Errorf("requireNonEmpty() error = %v; want nil", err)
-		}
-	})
-}
-
-func TestRequireSeam(t *testing.T) {
-	t.Run("UntypedNil", func(t *testing.T) {
-		err := requireSeam("MyEntry", "MyField", nil)
-		if err == nil {
-			t.Fatalf("requireSeam() error = nil; want non-nil")
-		}
-		if !strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField") {
-			t.Errorf("requireSeam() error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
-		}
-	})
-
-	t.Run("NilShuttleInterface", func(t *testing.T) {
-		var s shedadapters.Shuttle
-		err := requireSeam("MyEntry", "MyField", s)
-		if err == nil {
-			t.Fatalf("requireSeam() error = nil; want non-nil")
-		}
-	})
-
-	t.Run("NonNilValue", func(t *testing.T) {
-		s := &shedfake.Shuttle{}
-		if err := requireSeam("MyEntry", "MyField", s); err != nil {
-			t.Errorf("requireSeam() error = %v; want nil", err)
-		}
-	})
-
-	t.Run("TypedNilConcretePointerStoredInInterface", func(t *testing.T) {
-		var s shedadapters.Shuttle = (*shedfake.Shuttle)(nil)
-		err := requireSeam("MyEntry", "MyField", s)
-		if err == nil {
-			t.Fatalf("requireSeam() error = nil; want non-nil -- this is the case a direct nil comparison misses")
-		}
-		if !strings.Contains(err.Error(), "MyEntry") || !strings.Contains(err.Error(), "MyField") {
-			t.Errorf("requireSeam() error = %v; want it to name entry %q and field %q", err, "MyEntry", "MyField")
-		}
-	})
 }

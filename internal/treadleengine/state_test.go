@@ -9,10 +9,9 @@ package treadleengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 func TestLoadOrInitState(t *testing.T) {
@@ -43,13 +42,31 @@ func TestLoadOrInitState(t *testing.T) {
 		}
 	})
 
+	// The resumed state is read back through state.ReadJSON, so every field of the seeded rounds must survive the saveState/read cycle: the first round sets every roundRecord field, including the *bool GatePassed.
 	t.Run("unfinished state with matching hash resumes at the next round", func(t *testing.T) {
 		runDir := t.TempDir()
+		gatePassed := true
 		seed := runState{
 			ProfileHash: "hash-1",
 			RoundCaps:   []int{5, 8, 10},
 			Rounds: []roundRecord{
-				{Round: 1, Attempts: 1, Verdict: "BLOCKING"},
+				{
+					Round:           1,
+					Attempts:        2,
+					ShuttleOutcome:  "done",
+					Verdict:         "BLOCKING",
+					BlockingCount:   3,
+					ReviewPath:      "round-1-review.md",
+					FixerReportPath: "round-1-fixer-report.md",
+					JudgePath:       "round-1-judge.md",
+					HandoffPath:     "round-1-handoff.md",
+					GatePath:        "round-1-gate.md",
+					TriagePath:      "",
+					SeedPath:        "round-1-seed.md",
+					JudgeVerdict:    "PROGRESSING",
+					GatePassed:      &gatePassed,
+					SessionID:       "session-abc",
+				},
 				{Round: 2, Attempts: 1, Verdict: "BLOCKING"},
 			},
 		}
@@ -67,8 +84,11 @@ func TestLoadOrInitState(t *testing.T) {
 		if info.NextRound != 3 {
 			t.Errorf("info.NextRound = %d; want 3", info.NextRound)
 		}
-		if len(got.Rounds) != 2 {
-			t.Errorf("len(got.Rounds) = %d; want 2", len(got.Rounds))
+		if !reflect.DeepEqual(got.Rounds, seed.Rounds) {
+			t.Errorf("got.Rounds = %+v; want the seeded rounds %+v", got.Rounds, seed.Rounds)
+		}
+		if got.ProfileHash != seed.ProfileHash || !intSlicesEqual(got.RoundCaps, seed.RoundCaps) {
+			t.Errorf("got = (%q, %v); want (%q, %v)", got.ProfileHash, got.RoundCaps, seed.ProfileHash, seed.RoundCaps)
 		}
 	})
 
@@ -170,77 +190,6 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Errorf("got.Rounds = %+v; want one round with both HandoffPath and SeedPath empty", got.Rounds)
 		}
 	})
-}
-
-// TestSaveState_ReadJSONRoundTrip round-trips a runState through saveState and a direct
-// state.ReadJSON read, checking every field survives the write/read cycle.
-func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
-	runDir := t.TempDir()
-	gatePassed := true
-	want := runState{
-		ProfileHash: "hash-1",
-		RoundCaps:   []int{5, 8, 10},
-		Rounds: []roundRecord{
-			{
-				Round:           1,
-				Attempts:        2,
-				ShuttleOutcome:  "done",
-				Verdict:         "BLOCKING",
-				BlockingCount:   3,
-				ReviewPath:      "round-1-review.md",
-				FixerReportPath: "round-1-fixer-report.md",
-				JudgePath:       "round-1-judge.md",
-				HandoffPath:     "round-1-handoff.md",
-				GatePath:        "round-1-gate.md",
-				TriagePath:      "",
-				SeedPath:        "round-1-seed.md",
-				JudgeVerdict:    "PROGRESSING",
-				GatePassed:      &gatePassed,
-				SessionID:       "session-abc",
-			},
-		},
-		Outcome:     "",
-		StuckReason: "",
-	}
-
-	if err := saveState(runDir, runDir, want); err != nil {
-		t.Fatalf("saveState() = %v; want nil", err)
-	}
-
-	path := filepath.Join(runDir, stateFileName)
-	lockPath := path + ".lock"
-	got, found, err := state.ReadJSON[runState](path, lockPath)
-	if err != nil {
-		t.Fatalf("ReadJSON() = %v; want nil", err)
-	}
-	if !found {
-		t.Fatal("ReadJSON() found = false; want true")
-	}
-
-	if got.ProfileHash != want.ProfileHash {
-		t.Errorf("ProfileHash = %q; want %q", got.ProfileHash, want.ProfileHash)
-	}
-	if !intSlicesEqual(got.RoundCaps, want.RoundCaps) {
-		t.Errorf("RoundCaps = %v; want %v", got.RoundCaps, want.RoundCaps)
-	}
-	if len(got.Rounds) != 1 {
-		t.Fatalf("len(Rounds) = %d; want 1", len(got.Rounds))
-	}
-	gotRound := got.Rounds[0]
-	wantRound := want.Rounds[0]
-	if gotRound.Round != wantRound.Round || gotRound.Attempts != wantRound.Attempts ||
-		gotRound.ShuttleOutcome != wantRound.ShuttleOutcome || gotRound.Verdict != wantRound.Verdict ||
-		gotRound.BlockingCount != wantRound.BlockingCount || gotRound.ReviewPath != wantRound.ReviewPath ||
-		gotRound.FixerReportPath != wantRound.FixerReportPath || gotRound.JudgePath != wantRound.JudgePath ||
-		gotRound.HandoffPath != wantRound.HandoffPath ||
-		gotRound.GatePath != wantRound.GatePath || gotRound.TriagePath != wantRound.TriagePath ||
-		gotRound.SeedPath != wantRound.SeedPath ||
-		gotRound.JudgeVerdict != wantRound.JudgeVerdict || gotRound.SessionID != wantRound.SessionID {
-		t.Errorf("Rounds[0] = %+v; want %+v", gotRound, wantRound)
-	}
-	if gotRound.GatePassed == nil || *gotRound.GatePassed != *wantRound.GatePassed {
-		t.Errorf("Rounds[0].GatePassed = %v; want %v", gotRound.GatePassed, *wantRound.GatePassed)
-	}
 }
 
 // TestTerminalOutcome covers the three states a caller's own pause verb (e.g.

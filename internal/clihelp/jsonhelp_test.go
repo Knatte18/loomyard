@@ -49,7 +49,8 @@ func buildJSONHelpRoot() (*cobra.Command, *bool) {
 	return root, &jsonFlag
 }
 
-func TestInstallJSONHelp_OutputIsValidJSON(t *testing.T) {
+// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and cobra's built-in subcommands.
+func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 	t.Parallel()
 
 	root, jsonFlag := buildJSONHelpRoot()
@@ -63,153 +64,73 @@ func TestInstallJSONHelp_OutputIsValidJSON(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 		t.Fatalf("InstallJSONHelp output is not valid JSON: %v\noutput: %s", err, buf.String())
 	}
-}
-
-func TestInstallJSONHelp_SchemaContainsExpectedTopLevelFields(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
 	var result cmdJSON
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
 
-	if result.Name == "" {
-		t.Error("cmdJSON.Name is empty; want non-empty command path")
-	}
-	if result.Short != "root short" {
-		t.Errorf("cmdJSON.Short = %q; want %q", result.Short, "root short")
-	}
-	if result.Long != "root long description" {
-		t.Errorf("cmdJSON.Long = %q; want %q", result.Long, "root long description")
-	}
-}
+	t.Run("top-level fields", func(t *testing.T) {
+		t.Parallel()
+		if result.Name == "" {
+			t.Error("cmdJSON.Name is empty; want non-empty command path")
+		}
+		if result.Short != "root short" {
+			t.Errorf("cmdJSON.Short = %q; want %q", result.Short, "root short")
+		}
+		if result.Long != "root long description" {
+			t.Errorf("cmdJSON.Long = %q; want %q", result.Long, "root long description")
+		}
+	})
 
-func TestInstallJSONHelp_ListsChildSubcommand(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
-	var result cmdJSON
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-
-	found := false
-	for _, cmd := range result.Commands {
-		if cmd.Name == "child" {
-			found = true
-			if cmd.Short != "child short" {
-				t.Errorf("child.Short = %q; want %q", cmd.Short, "child short")
+	t.Run("lists the child subcommand", func(t *testing.T) {
+		t.Parallel()
+		found := false
+		for _, cmd := range result.Commands {
+			if cmd.Name == "child" {
+				found = true
+				if cmd.Short != "child short" {
+					t.Errorf("child.Short = %q; want %q", cmd.Short, "child short")
+				}
 			}
 		}
-	}
-	if !found {
-		t.Errorf("Commands does not contain \"child\"; got %v", result.Commands)
-	}
-}
-
-func TestInstallJSONHelp_IncludesLocalFlag(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
-	var result cmdJSON
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-
-	found := false
-	for _, f := range result.Flags {
-		if f.Name == "--verbose" {
-			found = true
+		if !found {
+			t.Errorf("Commands does not contain \"child\"; got %v", result.Commands)
 		}
-	}
-	if !found {
-		t.Errorf("Flags does not contain \"--verbose\"; got %v", result.Flags)
-	}
-}
+	})
 
-func TestInstallJSONHelp_OmitsHiddenFlag(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
-	var result cmdJSON
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-
-	for _, f := range result.Flags {
-		if f.Name == "--secret" {
-			t.Errorf("Flags contains hidden flag \"--secret\"; want it omitted")
+	t.Run("includes the local flag", func(t *testing.T) {
+		t.Parallel()
+		found := false
+		for _, f := range result.Flags {
+			if f.Name == "--verbose" {
+				found = true
+			}
 		}
-	}
-}
-
-func TestInstallJSONHelp_OmitsMetaFlags(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
-	var result cmdJSON
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-
-	for _, f := range result.Flags {
-		if f.Name == "--json" || f.Name == "--help" {
-			t.Errorf("Flags contains meta flag %q; want it omitted", f.Name)
+		if !found {
+			t.Errorf("Flags does not contain \"--verbose\"; got %v", result.Flags)
 		}
-	}
-}
+	})
 
-func TestInstallJSONHelp_OmitsCobraBuiltinSubcommands(t *testing.T) {
-	t.Parallel()
-
-	root, jsonFlag := buildJSONHelpRoot()
-	*jsonFlag = true
-
-	var buf bytes.Buffer
-	root.SetOut(&buf)
-	root.Help() //nolint:errcheck
-
-	var result cmdJSON
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-
-	for _, cmd := range result.Commands {
-		if cmd.Name == "help" || cmd.Name == "completion" {
-			t.Errorf("Commands contains cobra built-in %q; want it omitted", cmd.Name)
+	t.Run("omits the hidden and meta flags", func(t *testing.T) {
+		t.Parallel()
+		for _, f := range result.Flags {
+			switch f.Name {
+			case "--secret":
+				t.Errorf("Flags contains hidden flag %q; want it omitted", f.Name)
+			case "--json", "--help":
+				t.Errorf("Flags contains meta flag %q; want it omitted", f.Name)
+			}
 		}
-	}
+	})
+
+	t.Run("omits cobra built-in subcommands", func(t *testing.T) {
+		t.Parallel()
+		for _, cmd := range result.Commands {
+			if cmd.Name == "help" || cmd.Name == "completion" {
+				t.Errorf("Commands contains cobra built-in %q; want it omitted", cmd.Name)
+			}
+		}
+	})
 }
 
 func TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse(t *testing.T) {

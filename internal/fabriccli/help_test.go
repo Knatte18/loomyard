@@ -1,4 +1,4 @@
-// help_test.go pins the flag surface of the built fabric command tree.
+// help_test.go pins the declared surface of the built fabric command tree: every verb's summary and the commit verb's flag set.
 // It inspects cobra commands only, spawning nothing, per the Test Tier Purity Invariant.
 
 package fabriccli_test
@@ -9,28 +9,34 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 )
 
-func TestCommand_CommitDeclaresNoMessageFlag(t *testing.T) {
+// TestCommand_VerbDeclarations asserts every verb declares a non-empty Short and the commit verb declares no --message flag.
+//
+//testtiming:keep pins that every verb carries a summary and that commit's message stays fixed, assertions the arity test that covers its blocks does not make
+func TestCommand_VerbDeclarations(t *testing.T) {
 	t.Parallel()
 
-	commit, _, err := fabriccli.Command().Find([]string{"commit"})
-	if err != nil {
-		t.Fatalf("Find([commit]) error: %v", err)
-	}
-	if commit.Flags().Lookup("message") != nil {
-		t.Errorf("commit declares a --message flag; the commit message is fixed")
-	}
-}
+	t.Run("EveryVerbDeclaresShort", func(t *testing.T) {
+		t.Parallel()
 
-func TestCommand_PullAndMergeInDeclareShort(t *testing.T) {
-	t.Parallel()
+		for _, sub := range fabriccli.Command().Commands() {
+			if name := sub.Name(); name == "help" || name == "completion" {
+				continue
+			}
+			if sub.Short == "" {
+				t.Errorf("%s.Short is empty; want a non-empty summary", sub.Name())
+			}
+		}
+	})
 
-	for _, verb := range []string{"pull", "merge-in"} {
-		cmd, _, err := fabriccli.Command().Find([]string{verb})
+	t.Run("CommitDeclaresNoMessageFlag", func(t *testing.T) {
+		t.Parallel()
+
+		commit, _, err := fabriccli.Command().Find([]string{"commit"})
 		if err != nil {
-			t.Fatalf("Find([%s]) error: %v", verb, err)
+			t.Fatalf("Find([commit]) error: %v", err)
 		}
-		if cmd.Short == "" {
-			t.Errorf("%s.Short is empty; want a non-empty summary", verb)
+		if commit.Flags().Lookup("message") != nil {
+			t.Errorf("commit declares a --message flag; the commit message is fixed")
 		}
-	}
+	})
 }

@@ -25,9 +25,10 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig_WellFormed verifies the template's default values round-trip, including the
-// single-entry base-branch list and the squash default.
-func TestLoadConfig_WellFormed(t *testing.T) {
+// TestLoadConfig_TemplateDefaults verifies the template's default values round-trip, including the single-entry base-branch list, the squash default and the three Describe-related keys.
+func TestLoadConfig_TemplateDefaults(t *testing.T) {
+	t.Parallel()
+
 	baseDir := t.TempDir()
 	seedLandingConfig(t, baseDir, ConfigTemplate())
 
@@ -47,41 +48,6 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	if cfg.ConflictTimeoutMin != 60 {
 		t.Errorf("cfg.ConflictTimeoutMin = %d; want %d", cfg.ConflictTimeoutMin, 60)
 	}
-}
-
-// TestLoadConfig_MalformedConflictSpec verifies a hand-edited landing.yaml with an ungrammatical
-// conflict model-spec fails loud at load time, naming the "conflict" key, rather than being
-// silently carried into the conflict-resolution session's spawn site.
-func TestLoadConfig_MalformedConflictSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLandingConfig(t, baseDir, `require_pr_to_base: ["main"]
-squash: true
-conflict: "opus[high"
-conflict_timeout_min: 60
-describe: sonnet[medium]
-describe_timeout_min: 30
-co_authored_by: Claude <noreply@anthropic.com>
-`)
-
-	_, err := LoadConfig(baseDir, "landing")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed conflict spec")
-	}
-	if !strings.Contains(err.Error(), "conflict") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "conflict")
-	}
-}
-
-// TestLoadConfig_DescribeDefaults verifies the template carries the three Describe-related keys'
-// defaults.
-func TestLoadConfig_DescribeDefaults(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLandingConfig(t, baseDir, ConfigTemplate())
-
-	cfg, err := LoadConfig(baseDir, "landing")
-	if err != nil {
-		t.Fatalf("LoadConfig() = _, %v; want nil error", err)
-	}
 	if cfg.Describe != "sonnet[medium]" {
 		t.Errorf("cfg.Describe = %q; want %q", cfg.Describe, "sonnet[medium]")
 	}
@@ -93,20 +59,25 @@ func TestLoadConfig_DescribeDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_InvalidDescribeKeys verifies a malformed describe spec and an empty co_authored_by
-// each fail at load, naming their key.
-func TestLoadConfig_InvalidDescribeKeys(t *testing.T) {
-	const head = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n"
+// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an empty co_authored_by fails loud at load time, naming the key, rather than being silently carried into the spawn site that reads it.
+func TestLoadConfig_InvalidKeys(t *testing.T) {
+	t.Parallel()
+
+	const wellFormed = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n"
 	cases := []struct {
-		name, tail, key string
+		name, valid, invalid, key string
 	}{
-		{"malformed describe", "describe: \"sonnet[medium\"\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n", "describe"},
-		{"empty co_authored_by", "describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: \"  \"\n", "co_authored_by"},
+		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
+		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
+		{"empty co_authored_by", "co_authored_by: Claude <noreply@anthropic.com>", "co_authored_by: \"  \"", "co_authored_by"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			baseDir := t.TempDir()
-			seedLandingConfig(t, baseDir, head+tc.tail)
+			seedLandingConfig(t, baseDir, strings.Replace(wellFormed, tc.valid, tc.invalid, 1))
 			_, err := LoadConfig(baseDir, "landing")
 			if err == nil {
 				t.Fatal("LoadConfig() = _, nil; want non-nil error")
@@ -122,6 +93,8 @@ func TestLoadConfig_InvalidDescribeKeys(t *testing.T) {
 // config file is an error rather than a degrading default, which is the whole point of adopting the
 // strict loader.
 func TestLoadConfig_NotInitialized(t *testing.T) {
+	t.Parallel()
+
 	baseDir := t.TempDir()
 
 	_, err := LoadConfig(baseDir, "landing")

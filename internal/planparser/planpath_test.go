@@ -11,24 +11,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-func TestPlanDir(t *testing.T) {
+func TestPlanPaths(t *testing.T) {
+	t.Parallel()
+
 	anchor := filepath.Join("home", "user", "repo", "sub", "dir")
 
-	want := filepath.Join(anchor, lyxdirs.LyxDirName, "plan")
-	if got := PlanDir(anchor); got != want {
-		t.Errorf("PlanDir(%q) = %q; want %q", anchor, got, want)
+	wantDir := filepath.Join(anchor, lyxdirs.LyxDirName, "plan")
+	if got := PlanDir(anchor); got != wantDir {
+		t.Errorf("PlanDir(%q) = %q; want %q", anchor, got, wantDir)
 	}
-}
 
-func TestPlanOverview(t *testing.T) {
-	anchor := filepath.Join("home", "user", "repo", "sub", "dir")
-
-	want := filepath.Join(PlanDir(anchor), "00-overview.md")
+	want := filepath.Join(wantDir, "00-overview.md")
 	if got := PlanOverview(anchor); got != want {
 		t.Errorf("PlanOverview(%q) = %q; want %q", anchor, got, want)
 	}
 
-	wantFromConstant := filepath.Join(PlanDir(anchor), overviewFileName)
+	wantFromConstant := filepath.Join(wantDir, overviewFileName)
 	if got := PlanOverview(anchor); got != wantFromConstant {
 		t.Errorf("PlanOverview(%q) = %q; want %q (via overviewFileName)", anchor, got, wantFromConstant)
 	}

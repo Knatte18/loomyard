@@ -50,44 +50,35 @@ func TestResolveDriver(t *testing.T) {
 	}
 }
 
-// TestResolveDriver_UnknownAlias verifies an alias absent from the registry returns an error naming
-// the driver role, rather than being silently carried into the driver session's spawn site.
-func TestResolveDriver_UnknownAlias(t *testing.T) {
-	cfg := Config{Driver: "not-a-real-alias"}
+// TestResolveDriver_Refuses verifies an alias absent from the registry and an ungrammatical driver model-spec each return an error naming the driver role, rather than being silently carried into the driver session's spawn site.
+func TestResolveDriver_Refuses(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		driver string
+		wantIn []string
+	}{
+		{"unknown alias", "not-a-real-alias", []string{"driver", "not-a-real-alias"}},
+		{"malformed spec", "opus[effort", []string{"driver"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reg, err := modelspec.LoadRegistry(t.TempDir())
+			if err != nil {
+				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+			}
 
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
-	}
-
-	_, err = ResolveDriver(cfg, reg)
-	if err == nil {
-		t.Fatal("ResolveDriver(...) = _, nil; want non-nil error for an unknown driver alias")
-	}
-	if !strings.Contains(err.Error(), "driver") {
-		t.Errorf("ResolveDriver(...) error = %q; want it to name the driver role", err.Error())
-	}
-	if !strings.Contains(err.Error(), "not-a-real-alias") {
-		t.Errorf("ResolveDriver(...) error = %q; want it to name the unknown alias %q", err.Error(), "not-a-real-alias")
-	}
-}
-
-// TestResolveDriver_MalformedSpec verifies an ungrammatical driver model-spec returns an error
-// naming the driver role, rather than being silently carried into the driver session's spawn site.
-func TestResolveDriver_MalformedSpec(t *testing.T) {
-	cfg := Config{Driver: "opus[effort"}
-
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
-	}
-
-	_, err = ResolveDriver(cfg, reg)
-	if err == nil {
-		t.Fatal("ResolveDriver(...) = _, nil; want non-nil error for malformed driver spec")
-	}
-	if !strings.Contains(err.Error(), "driver") {
-		t.Errorf("ResolveDriver(...) error = %q; want it to name the driver role", err.Error())
+			_, err = ResolveDriver(Config{Driver: tt.driver}, reg)
+			if err == nil {
+				t.Fatalf("ResolveDriver(%q) = _, nil; want non-nil error", tt.driver)
+			}
+			for _, want := range tt.wantIn {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("ResolveDriver(%q) error = %q; want it to contain %q", tt.driver, err.Error(), want)
+				}
+			}
+		})
 	}
 }
 

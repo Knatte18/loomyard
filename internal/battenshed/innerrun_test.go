@@ -92,6 +92,8 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 		wantReason string
 	}{
 		{
+			// A done child whose driver is gone must never itself be Stuck: ProducerDef.OnStuck is a static per-producer value, so it routes every Stuck from this row back to itself with no per-verdict distinction possible.
+			// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
 			name:     "AlreadyDone",
 			statuses: []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}},
 			wantDone: true,
@@ -178,19 +180,6 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 	}
 }
 
-// TestInnerRun_DoneWithGoneDriverNeverStuck is the load-bearing assertion the static self-route depends on: a done child whose driver is gone must never itself be Stuck, since ProducerDef.OnStuck is a static per-producer value and routes every Stuck from this row back to itself with no per-verdict distinction possible.
-// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
-func TestInnerRun_DoneWithGoneDriverNeverStuck(t *testing.T) {
-	clock := &fakeClock{}
-	_, _, deps := newInnerRunDeps(nil, nil, doneStatus(), clock)
-
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
-	outcome, _, err := producer.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Errorf("Call() = %v %v; want Done for a done child whose driver is gone", outcome, err)
-	}
-}
-
 func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
@@ -247,138 +236,91 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestInnerRun_CancelledDuringResolveStatusError, TestInnerRun_CancelledDuringFirstReadStatusError
-// and TestInnerRun_CancelledDuringSecondReadStatusError assert the three innerrun.go hard-error
-// paths F1 (crucible round sonnet-xhigh-r3) found missing their cancelErr check now carry the
-// cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the
-// time the failing seam call itself returns.
-func TestInnerRun_CancelledDuringResolveStatusError(t *testing.T) {
-	scratchDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	resolveErr := errors.New("resolve failed")
-	deps := InnerRunDeps{
-		Spawn: func(ctx context.Context) error { return nil },
-		ResolveStatus: func() (string, string, error) {
-			cancel()
-			return "", "", resolveErr
-		},
-		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-			return shedengine.Status{}, false, nil
-		},
-		Sleep: (&fakeClock{}).Sleep,
-	}
+// TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths (the status-path resolve, the pre-spawn read and the post-spawn read) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
+	t.Parallel()
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	_, _, err := producer.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
-	}
-	if !strings.Contains(err.Error(), "context cancelled during run") {
-		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ResolveStatus error", err.Error())
-	}
-}
-
-func TestInnerRun_CancelledDuringFirstReadStatusError(t *testing.T) {
-	scratchDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
 	readErr := errors.New("decode failed")
-	deps := InnerRunDeps{
-		Spawn: func(ctx context.Context) error { return nil },
-		ResolveStatus: func() (string, string, error) {
-			return "/status/path", "/status/lock/path", nil
+	tests := []struct {
+		name string
+		deps func(cancel context.CancelFunc) InnerRunDeps
+	}{
+		{
+			name: "ResolveStatus",
+			deps: func(cancel context.CancelFunc) InnerRunDeps {
+				return InnerRunDeps{
+					Spawn: func(ctx context.Context) error { return nil },
+					ResolveStatus: func() (string, string, error) {
+						cancel()
+						return "", "", errors.New("resolve failed")
+					},
+					ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+						return shedengine.Status{}, false, nil
+					},
+					Sleep: (&fakeClock{}).Sleep,
+				}
+			},
 		},
-		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-			cancel()
-			return shedengine.Status{}, false, readErr
+		{
+			name: "FirstReadStatus",
+			deps: func(cancel context.CancelFunc) InnerRunDeps {
+				return InnerRunDeps{
+					Spawn: func(ctx context.Context) error { return nil },
+					ResolveStatus: func() (string, string, error) {
+						return "/status/path", "/status/lock/path", nil
+					},
+					ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+						cancel()
+						return shedengine.Status{}, false, readErr
+					},
+					Sleep: (&fakeClock{}).Sleep,
+				}
+			},
 		},
-		Sleep: (&fakeClock{}).Sleep,
+		{
+			name: "SecondReadStatus",
+			deps: func(cancel context.CancelFunc) InnerRunDeps {
+				readCalls := 0
+				return InnerRunDeps{
+					Spawn: func(ctx context.Context) error { return nil },
+					ResolveStatus: func() (string, string, error) {
+						return "/status/path", "/status/lock/path", nil
+					},
+					ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+						readCalls++
+						if readCalls == 1 {
+							// The pre-spawn read: no status file yet, so Call proceeds to Spawn.
+							return shedengine.Status{}, false, nil
+						}
+						// The post-spawn read: this is the one whose own error path is under test.
+						cancel()
+						return shedengine.Status{}, false, readErr
+					},
+					Sleep: (&fakeClock{}).Sleep,
+				}
+			},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	_, _, err := producer.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
-	}
-	if !strings.Contains(err.Error(), "context cancelled during run") {
-		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ReadStatus error", err.Error())
-	}
-}
+			ctx, cancel := context.WithCancel(context.Background())
+			producer := NewInnerRun("innerrun", "myslug", tt.deps(cancel), time.Millisecond, t.TempDir(), testGrace)
 
-func TestInnerRun_CancelledDuringSecondReadStatusError(t *testing.T) {
-	scratchDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	readErr := errors.New("decode failed")
-	readCalls := 0
-	deps := InnerRunDeps{
-		Spawn: func(ctx context.Context) error { return nil },
-		ResolveStatus: func() (string, string, error) {
-			return "/status/path", "/status/lock/path", nil
-		},
-		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-			readCalls++
-			if readCalls == 1 {
-				// The pre-spawn read: no status file yet, so Call proceeds to Spawn.
-				return shedengine.Status{}, false, nil
+			_, _, err := producer.Call(ctx)
+			if err == nil {
+				t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
 			}
-			// The post-spawn read: this is the one whose own error path is under test.
-			cancel()
-			return shedengine.Status{}, false, readErr
-		},
-		Sleep: (&fakeClock{}).Sleep,
-	}
-
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	_, _, err := producer.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
-	}
-	if !strings.Contains(err.Error(), "context cancelled during run") {
-		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw second-read ReadStatus error", err.Error())
-	}
-}
-
-// TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn is the second load-bearing assertion:
-// once a status file exists, a re-entered Call -- the shape shedengine's on_stuck self-route
-// produces -- must read it without spawning again, which is what makes re-entry safe against a
-// double spawn.
-func TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn(t *testing.T) {
-	scratchDir := t.TempDir()
-	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	clock := &fakeClock{}
-	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
-
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	if *spawnCalls != 0 {
-		t.Errorf("spawn calls = %d; want 0 against a running status with a confirmed spawn", *spawnCalls)
-	}
-}
-
-// TestInnerRun_StillRunningSleepsExactlyOnce asserts the still-running arm performs exactly one
-// deps.Sleep call and no more -- the single sleep this producer performs, since the wait across
-// Call invocations is shedengine's own bounce budget, not a loop inside this producer.
-func TestInnerRun_StillRunningSleepsExactlyOnce(t *testing.T) {
-	scratchDir := t.TempDir()
-	clock := &fakeClock{}
-	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
-
-	producer := NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir, testGrace)
-
-	start := time.Now()
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	elapsed := time.Since(start)
-
-	if clock.sleepCalls != 1 {
-		t.Errorf("Sleep calls = %d; want exactly 1", clock.sleepCalls)
-	}
-	if elapsed >= time.Second {
-		t.Errorf("Call() took %s of real time; want well under 1s, proving the fake Sleep never actually slept", elapsed)
+			if !strings.Contains(err.Error(), "context cancelled during run") {
+				t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw seam error", err.Error())
+			}
+		})
 	}
 }
 
 // TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, and when ReviewWait fails.
+// Whatever the reason, the arm performs exactly one deps.Sleep call and no more: the wait across Call invocations is shedengine's own bounce budget, not a loop inside this producer.
 func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	plain := "inner shed run still running; sleeping 5s before the next bounce"
 	tests := []struct {
@@ -393,12 +335,16 @@ func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, &fakeClock{})
+			clock := &fakeClock{}
+			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
 			deps.ReviewWait = tt.reviewWait
 
 			ptr := shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 5*time.Second, t.TempDir(), testGrace), shedengine.Stuck)
 			if ptr.Reason != tt.wantReason {
 				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+			}
+			if clock.sleepCalls != 1 {
+				t.Errorf("Sleep calls = %d; want exactly 1", clock.sleepCalls)
 			}
 		})
 	}

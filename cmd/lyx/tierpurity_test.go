@@ -138,6 +138,8 @@ func isTierTagged(data []byte) bool {
 }
 
 // TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged recognizes all known tier tags.
+//
+//testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard classifies every known tier tag as tagged
 func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 	tests := []struct {
 		name string
@@ -161,9 +163,9 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 	}
 }
 
-// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: an untagged test
-// file's raw source containing the literal DeltaGit token trips the guard exactly like every other
-// bannedTokens entry.
+// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: an untagged test file's raw source containing the literal DeltaGit token trips the guard exactly like every other bannedTokens entry.
+//
+//testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard fires on an untagged file carrying the DeltaGit token
 func TestFirstBannedToken_RecognizesDeltaGit(t *testing.T) {
 	tests := []struct {
 		name string

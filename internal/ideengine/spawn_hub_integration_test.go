@@ -1,8 +1,8 @@
 //go:build integration
 
-// spawn_hub_integration_test.go drives Spawn against real hubs from hubforge.NewHub:
+// spawn_hub_integration_test.go holds the Spawn checks that run against the prime and against a task pair of one hubforge hub:
 // the prime opens a lyx-generated hub workspace, a task slug still opens its bare folder.
-// Serial by design, because every test swaps the package-level CodeLauncher.
+// Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
 
@@ -45,67 +45,74 @@ func primeSettingsPath(h *hubforge.Hub, prime string) string {
 	return filepath.Join(h.Path, prime, h.Location.AnchorRel, ".vscode", "settings.json")
 }
 
-// TestSpawnPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at both anchors.
-func TestSpawnPrimeWritesHubWorkspace(t *testing.T) {
-	for _, anchor := range []string{".", "wts/some-task"} {
-		t.Run(anchor, func(t *testing.T) {
-			h := hubforge.NewHub(t, anchor)
-			l := h.Location
-			prime := primeOf(t, h)
-			launched := recordLauncher(t)
-
-			if err := Spawn(l, prime); err != nil {
-				t.Fatalf("Spawn: %v", err)
-			}
-
-			wsPath := fabricengine.HubWorkspacePath(l, prime)
-			if len(*launched) != 1 || (*launched)[0] != wsPath {
-				t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
-			}
-			data, err := os.ReadFile(wsPath)
-			if err != nil {
-				t.Fatalf("read workspace file: %v", err)
-			}
-			var ws struct {
-				Folders []struct {
-					Name string `json:"name"`
-					Path string `json:"path"`
-				} `json:"folders"`
-			}
-			if err := json.Unmarshal(data, &ws); err != nil {
-				t.Fatalf("workspace file is not valid JSON: %v\n%s", err, data)
-			}
-			wantNames := []string{prime, "_board", "_portals"}
-			wantDirs := []string{
-				filepath.Join(h.Path, prime, l.AnchorRel),
-				fabricengine.BoardDir(h.Path),
-				filepath.Join(h.Path, "_portals", l.AnchorRel),
-			}
-			if len(ws.Folders) != 3 {
-				t.Fatalf("folders = %+v, want 3", ws.Folders)
-			}
-			for i, f := range ws.Folders {
-				if f.Name != wantNames[i] {
-					t.Errorf("folder %d name = %q, want %q", i, f.Name, wantNames[i])
-				}
-				got := filepath.Join(filepath.Dir(wsPath), filepath.FromSlash(f.Path))
-				if got != wantDirs[i] {
-					t.Errorf("folder %d resolves to %s, want %s", i, got, wantDirs[i])
-				}
-			}
-			if info, err := os.Stat(wantDirs[2]); err != nil || !info.IsDir() {
-				t.Errorf("_portals/<AnchorRel> missing: %v", err)
-			}
-		})
+// resetPrimeEditorState removes the prime's untracked .vscode directory and the hub workspace file, returning the prime to the state of a freshly built hub for a step that depends on it.
+func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	prime := primeOf(t, h)
+	if err := os.RemoveAll(filepath.Dir(primeSettingsPath(h, prime))); err != nil {
+		t.Fatalf("remove prime .vscode: %v", err)
+	}
+	if err := os.RemoveAll(fabricengine.HubWorkspacePath(h.Location, prime)); err != nil {
+		t.Fatalf("remove hub workspace: %v", err)
 	}
 }
 
-// TestSpawnTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file.
-func TestSpawnTaskSlugOpensBareFolder(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at the hub's anchor.
+func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
+	resetPrimeEditorState(t, h)
+	l := h.Location
+	prime := primeOf(t, h)
+	launched := recordLauncher(t)
+
+	if err := Spawn(l, prime); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	wsPath := fabricengine.HubWorkspacePath(l, prime)
+	if len(*launched) != 1 || (*launched)[0] != wsPath {
+		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
+	}
+	data, err := os.ReadFile(wsPath)
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	var ws struct {
+		Folders []struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"folders"`
+	}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("workspace file is not valid JSON: %v\n%s", err, data)
+	}
+	wantNames := []string{prime, "_board", "_portals"}
+	wantDirs := []string{
+		filepath.Join(h.Path, prime, l.AnchorRel),
+		fabricengine.BoardDir(h.Path),
+		filepath.Join(h.Path, "_portals", l.AnchorRel),
+	}
+	if len(ws.Folders) != 3 {
+		t.Fatalf("folders = %+v, want 3", ws.Folders)
+	}
+	for i, f := range ws.Folders {
+		if f.Name != wantNames[i] {
+			t.Errorf("folder %d name = %q, want %q", i, f.Name, wantNames[i])
+		}
+		got := filepath.Join(filepath.Dir(wsPath), filepath.FromSlash(f.Path))
+		if got != wantDirs[i] {
+			t.Errorf("folder %d resolves to %s, want %s", i, got, wantDirs[i])
+		}
+	}
+	if info, err := os.Stat(wantDirs[2]); err != nil || !info.IsDir() {
+		t.Errorf("_portals/<AnchorRel> missing: %v", err)
+	}
+}
+
+// checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder and writes no workspace file.
+func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
+	resetPrimeEditorState(t, h)
 	l := h.Location
 	launched := recordLauncher(t)
-	const slug = "some-task"
 	hubforge.AddPair(t, h, slug)
 
 	if err := Spawn(l, slug); err != nil {
@@ -121,9 +128,9 @@ func TestSpawnTaskSlugOpensBareFolder(t *testing.T) {
 	}
 }
 
-// TestSpawnPrimeSplicesSettingsAndRegenerates covers JSONC splice, idempotence, settings changes and hand-edit overwrite.
-func TestSpawnPrimeSplicesSettingsAndRegenerates(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkPrimeSplicesSettingsAndRegenerates covers JSONC splice, idempotence, settings changes and hand-edit overwrite.
+func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
+	resetPrimeEditorState(t, h)
 	l := h.Location
 	prime := primeOf(t, h)
 	recordLauncher(t)
@@ -180,9 +187,9 @@ func TestSpawnPrimeSplicesSettingsAndRegenerates(t *testing.T) {
 	}
 }
 
-// TestSpawnPrimeSettingsReadFailure plants a directory at the prime's settings.json and asserts the spawn fails.
-func TestSpawnPrimeSettingsReadFailure(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkPrimeSettingsReadFailure plants a directory at the prime's settings.json and asserts the spawn fails.
+func checkPrimeSettingsReadFailure(t *testing.T, h *hubforge.Hub) {
+	resetPrimeEditorState(t, h)
 	l := h.Location
 	prime := primeOf(t, h)
 	launched := recordLauncher(t)
@@ -202,13 +209,12 @@ func TestSpawnPrimeSettingsReadFailure(t *testing.T) {
 	}
 }
 
-// TestSpawnPrimeWorkspaceSurvivesTopologyVerbs asserts Remove and a Prune dry run leave the workspace file alone.
-func TestSpawnPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkPrimeWorkspaceSurvivesTopologyVerbs asserts Remove and a Prune dry run leave the workspace file alone.
+func checkPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T, h *hubforge.Hub, slug string) {
+	resetPrimeEditorState(t, h)
 	l := h.Location
 	prime := primeOf(t, h)
 	recordLauncher(t)
-	const slug = "some-task"
 	hubforge.AddPair(t, h, slug)
 
 	if err := Spawn(l, prime); err != nil {

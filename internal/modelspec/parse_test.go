@@ -12,6 +12,7 @@ import (
 )
 
 func TestParse_Accepts(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   string
@@ -85,6 +86,7 @@ func TestParse_Accepts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Parse(tt.in)
 			if err != nil {
 				t.Fatalf("Parse(%q) returned unexpected error: %v", tt.in, err)
@@ -108,6 +110,7 @@ func TestParse_Accepts(t *testing.T) {
 }
 
 func TestParse_Rejects(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		in         string
@@ -268,6 +271,7 @@ func TestParse_Rejects(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := Parse(tt.in)
 			if err == nil {
 				t.Fatalf("Parse(%q) returned nil error; want error containing %q", tt.in, tt.wantSubstr)

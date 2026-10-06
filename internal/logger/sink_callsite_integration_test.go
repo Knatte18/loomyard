@@ -59,49 +59,50 @@ func armFallbackSinkFrom(t *testing.T, repo string) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
-// TestDurableSink_CwdFallbackNeverArmsInAPlainCheckout drives R6-6's fix at its call site: a plain
-// git repository lyx does not own (no _lyx at its root) gets NO .lyx tree from an Info record —
-// before the fix, every non-zero-exit refusal wrote <repo>/.lyx/logs/trace-*.log into the
-// operator's own checkout.
-func TestDurableSink_CwdFallbackNeverArmsInAPlainCheckout(t *testing.T) {
+// TestDurableSink_CwdFallbackFollowsLyxOwnership drives R6-6's fix at its call site in one git repository, added to between its steps.
+// The scenario's top-level test does not call t.Parallel, because its steps chdir and set environment variables, which t.Chdir and t.Setenv refuse under t.Parallel; the step after the first relies on the repository the first step left behind.
+func TestDurableSink_CwdFallbackFollowsLyxOwnership(t *testing.T) {
 	repo := initPlainGitRepo(t, t.TempDir())
-	armFallbackSinkFrom(t, repo)
 
-	logger.Info("sink_callsite_integration_test: plain-checkout probe")
+	// A plain git repository lyx does not own (no _lyx at its root) gets NO .lyx tree from an Info record — before the fix, every non-zero-exit refusal wrote <repo>/.lyx/logs/trace-*.log into the operator's own checkout.
+	if !t.Run("a plain checkout is never armed", func(t *testing.T) {
+		armFallbackSinkFrom(t, repo)
 
-	if _, err := os.Stat(filepath.Join(repo, lyxdirs.DotLyxDirName)); !os.IsNotExist(err) {
-		t.Errorf("os.Stat(%s/.lyx) error = %v; want IsNotExist — the cwd-anchored fallback armed inside a repository lyx does not own", repo, err)
-	}
-}
+		logger.Info("sink_callsite_integration_test: plain-checkout probe")
 
-// TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree is the mirror case: with _lyx present at the
-// root, the same record must arm the fallback and land a trace file under <repo>/.lyx/logs — the
-// worktree the fallback exists for.
-func TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree(t *testing.T) {
-	repo := initPlainGitRepo(t, t.TempDir())
-	if err := os.MkdirAll(filepath.Join(repo, lyxdirs.LyxDirName), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	armFallbackSinkFrom(t, repo)
-
-	logger.Info("sink_callsite_integration_test: lyx-owned-worktree probe")
-
-	// The cwd-anchored arm reports not redirected, the logs directory, and the repo as its anchor.
-	want := logger.SinkArmState{
-		Armed:      true,
-		Redirected: false,
-		Dir:        filepath.Join(repo, lyxdirs.DotLyxDirName, "logs"),
-		AnchorPath: repo,
-	}
-	if got := logger.CurrentSinkArmState(); got != want {
-		t.Errorf("CurrentSinkArmState() = %+v; want %+v", got, want)
+		if _, err := os.Stat(filepath.Join(repo, lyxdirs.DotLyxDirName)); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(%s/.lyx) error = %v; want IsNotExist — the cwd-anchored fallback armed inside a repository lyx does not own", repo, err)
+		}
+	}) {
+		return
 	}
 
-	matches, err := filepath.Glob(filepath.Join(repo, lyxdirs.DotLyxDirName, "logs", "trace-*.log"))
-	if err != nil {
-		t.Fatalf("Glob() error = %v", err)
-	}
-	if len(matches) == 0 {
-		t.Errorf("no trace-*.log under %s/.lyx/logs; want the cwd-anchored fallback armed — this is exactly the worktree it exists for", repo)
-	}
+	// The mirror case, relying on the step above's repository: with _lyx now present at the root, the same record must arm the fallback and land a trace file under <repo>/.lyx/logs — the worktree the fallback exists for.
+	t.Run("a lyx-owned worktree is armed", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(repo, lyxdirs.LyxDirName), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		armFallbackSinkFrom(t, repo)
+
+		logger.Info("sink_callsite_integration_test: lyx-owned-worktree probe")
+
+		// The cwd-anchored arm reports not redirected, the logs directory, and the repo as its anchor.
+		want := logger.SinkArmState{
+			Armed:      true,
+			Redirected: false,
+			Dir:        filepath.Join(repo, lyxdirs.DotLyxDirName, "logs"),
+			AnchorPath: repo,
+		}
+		if got := logger.CurrentSinkArmState(); got != want {
+			t.Errorf("CurrentSinkArmState() = %+v; want %+v", got, want)
+		}
+
+		matches, err := filepath.Glob(filepath.Join(repo, lyxdirs.DotLyxDirName, "logs", "trace-*.log"))
+		if err != nil {
+			t.Fatalf("Glob() error = %v", err)
+		}
+		if len(matches) == 0 {
+			t.Errorf("no trace-*.log under %s/.lyx/logs; want the cwd-anchored fallback armed — this is exactly the worktree it exists for", repo)
+		}
+	})
 }

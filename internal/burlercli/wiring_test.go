@@ -76,18 +76,6 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Loca
 	return loc
 }
 
-// hash8For returns standalonestate.Derive's hash8 for target under the environment t.Setenv has
-// already redirected -- the caller must have already called t.Setenv("XDG_STATE_HOME", ...) (or the
-// per-OS equivalent) before calling this, exactly as it must before calling wire in standalone mode.
-func hash8For(t *testing.T, target string) string {
-	t.Helper()
-	_, hash8, err := standalonestate.Derive(target)
-	if err != nil {
-		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
-	}
-	return hash8
-}
-
 // setStandaloneStateRoot redirects both env vars standalonestate.Derive reads to fresh t.TempDir()
 // values, so a case that reaches wireStandalone stays hermetic. Not t.Parallel() -- t.Setenv panics
 // under a parallel test.
@@ -102,133 +90,76 @@ func setStandaloneStateRoot(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
-// TestWire_ModeHubSelectsHubMode covers the (loc non-nil, ModeHub) row: wire must select hub mode and
-// resolve c.mode/c.stateDir/c.stencilsDir to their hub-mode values.
-func TestWire_ModeHubSelectsHubMode(t *testing.T) {
-	t.Parallel()
-
-	hub := t.TempDir()
-	loc := hubLocation(t, hub, "code", ".")
-
-	c := &burlerCLI{}
-	if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.mode != "hub" {
-		t.Errorf("c.mode = %q; want %q", c.mode, "hub")
-	}
-	if c.stateDir != "" {
-		t.Errorf("c.stateDir = %q; want empty in hub mode", c.stateDir)
-	}
-	if want := fabricengine.StencilsDir(loc.HubPath); c.stencilsDir != want {
-		t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
-	}
-	if c.engine == nil {
-		t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
-	}
-}
-
-// TestWire_ModeStandaloneSelectsStandaloneMode covers both causes preflight.ResolveMode folds into
-// ModeStandalone: a plain downloaded git repository (no hub-level directory beside it) and a genuine
-// non-repository directory. ResolveMode returns a nil Location for each, and wire cannot and must not
-// try to tell them apart -- both land in standalone mode.
-func TestWire_ModeStandaloneSelectsStandaloneMode(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{"PlainDownloadedRepository"},
-		{"NonRepositoryDirectory"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			target := t.TempDir()
-			setStandaloneStateRoot(t)
-
-			c := &burlerCLI{}
-			// loc is nil regardless of which real ResolveMode cause produced ModeStandalone: both
-			// carry a nil Location, and wire consults mode alone to choose the dispatch branch.
-			if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
-				t.Fatalf("wire() = %v; want nil", err)
-			}
-
-			if c.mode != "standalone" {
-				t.Errorf("c.mode = %q; want %q", c.mode, "standalone")
-			}
-			stateDir, _, err := standalonestate.Derive(target)
-			if err != nil {
-				t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
-			}
-			if c.stateDir != stateDir {
-				t.Errorf("c.stateDir = %q; want %q", c.stateDir, stateDir)
-			}
-			if want := standalonegeom.StencilsDir(stateDir); c.stencilsDir != want {
-				t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
-			}
-		})
-	}
-}
-
-// TestWireStandalone_NeverReadsLoc proves wireStandalone never reads loc -- it takes only cwd and the
-// flags.
-func TestWireStandalone_NeverReadsLoc(t *testing.T) {
-	target := t.TempDir()
-	setStandaloneStateRoot(t)
-
-	c := &burlerCLI{}
-	if err := c.wireStandalone(target, "", ""); err != nil {
-		t.Fatalf("wireStandalone() = %v; want nil", err)
-	}
-	if c.mode != "standalone" {
-		t.Errorf("c.mode = %q; want %q", c.mode, "standalone")
-	}
-}
-
-// TestWire_StandalonePinnedValues pins every standalone value the design names: the burler
-// geometry's WorktreeRoot equals the target and its AnchorPath equals stateDir, the config base is
-// stateDir (proven indirectly by wire succeeding against a fictional, on-disk-absent state
-// directory), and c.stencilsDir equals standalonegeom.StencilsDir(stateDir) when the flag is unset.
-//
-// The burler geometry's WorktreeRoot/AnchorPath are not observable from outside the constructed
-// *burlerengine.Engine (its geom field is unexported), so this test asserts them indirectly: it
-// derives stateDir itself via standalonestate.Derive(target) and compares c.stateDir/c.stencilsDir,
-// which are the receiver's own reporting fields -- see the file header for what is and is not
-// observable at this seam.
-func TestWire_StandalonePinnedValues(t *testing.T) {
-	target := t.TempDir()
-	setStandaloneStateRoot(t)
-	stateDir, hash8 := hash8AndStateDir(t, target)
-
-	c := &burlerCLI{}
-	if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.stateDir != stateDir {
-		t.Errorf("c.stateDir = %q; want %q", c.stateDir, stateDir)
-	}
-	if want := standalonegeom.StencilsDir(stateDir); c.stencilsDir != want {
-		t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
-	}
-
-	// standalonegeom.ReedGeometry's own field values are pinned by TestReedGeometry in
-	// internal/standalonegeom/standalonegeom_test.go; hash8 is asserted here only to prove this
-	// invocation derived one at all, not to re-pin ReedGeometry's mapping.
-	if hash8 == "" {
-		t.Error("hash8 = \"\"; want a derived hash8")
-	}
-}
-
-// hash8AndStateDir derives both the state directory and hash8 for target under the environment
-// t.Setenv has already redirected.
-func hash8AndStateDir(t *testing.T, target string) (string, string) {
+// stateDirFor derives the state directory for target under the environment t.Setenv has already redirected.
+func stateDirFor(t *testing.T, target string) string {
 	t.Helper()
-	stateDir, hash8, err := standalonestate.Derive(target)
+	stateDir, _, err := standalonestate.Derive(target)
 	if err != nil {
 		t.Fatalf("standalonestate.Derive(%q) = %v; want nil error", target, err)
 	}
-	return stateDir, hash8
+	return stateDir
+}
+
+// TestWire_SelectsModeAndWiresItsFields covers wire's dispatch on the told mode.
+// Hub mode (loc non-nil) reports mode "hub", an empty stateDir and the hub stencils directory, and leaves the reed bring-up seam nil: hub mode's reed session is not run's to boot.
+// Standalone mode (loc nil, which is what ResolveMode returns for both a plain downloaded repository and a non-repository directory, so wire cannot tell them apart) reports mode "standalone", the derived state directory and its stencils directory, and arms the in-process reed bring-up seam.
+// The standalone subtest sets the process environment, so the test is not t.Parallel; the hub subtest touches no global state and runs in parallel.
+//
+//testtiming:keep pins the mode, stateDir, stencilsDir and reed-seam values per mode, which the stencils-dir and runner tests covering its blocks do not assert
+func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
+	t.Run("Hub", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(t, hub, "code", ".")
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		if c.mode != "hub" {
+			t.Errorf("c.mode = %q; want %q", c.mode, "hub")
+		}
+		if c.stateDir != "" {
+			t.Errorf("c.stateDir = %q; want empty in hub mode", c.stateDir)
+		}
+		if want := fabricengine.StencilsDir(loc.HubPath); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
+		}
+		if c.engine == nil {
+			t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
+		}
+		if c.reedUp != nil {
+			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
+		}
+	})
+
+	t.Run("Standalone", func(t *testing.T) {
+		target := t.TempDir()
+		setStandaloneStateRoot(t)
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		if c.mode != "standalone" {
+			t.Errorf("c.mode = %q; want %q", c.mode, "standalone")
+		}
+		stateDir := stateDirFor(t, target)
+		if c.stateDir != stateDir {
+			t.Errorf("c.stateDir = %q; want %q", c.stateDir, stateDir)
+		}
+		if want := standalonegeom.StencilsDir(stateDir); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want %q", c.stencilsDir, want)
+		}
+		if c.engine == nil {
+			t.Fatal("c.engine = nil; want a constructed *burlerengine.Engine")
+		}
+		if c.reedUp == nil {
+			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+		}
+	})
 }
 
 // TestWire_TargetDirRefusedInHubMode proves --target-dir is refused in hub mode with an error
@@ -250,19 +181,16 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_StencilsDirFlag covers --stencils-dir: honoured in both modes, the standalone default
-// seeded on disk when the flag is unset, and an explicit --stencils-dir never written to.
+// TestWire_StencilsDirFlag covers --stencils-dir in both modes: an absolute value is honoured as given, and a relative value resolves against cwd.
+// A relative value used to be stored verbatim, so the CLI process would read it against its working directory while the pane burler spawns runs at the target (standalone) or the anchor (hub), and one string named two different directories.
+// The told directory must exist on disk, since wiring stats it at the boundary.
+// The standalone subtests set the process environment and so are not t.Parallel.
 func TestWire_StencilsDirFlag(t *testing.T) {
-	t.Run("HonouredInHubMode", func(t *testing.T) {
+	t.Run("AbsoluteHonouredInHubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "code", ".")
-		override := filepath.Join(t.TempDir(), "custom-stencils")
-		// The told stencils directory must exist on disk since R7-F2's wiring-boundary stat; the
-		// honoured-override behavior under test here is unchanged.
-		if err := os.MkdirAll(override, 0o755); err != nil {
-			t.Fatalf("MkdirAll() error = %v", err)
-		}
+		override := t.TempDir()
 
 		c := &burlerCLI{}
 		if err := c.wire(loc, preflight.ModeHub, "", override, ""); err != nil {
@@ -273,7 +201,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 		}
 	})
 
-	t.Run("HonouredInStandaloneMode", func(t *testing.T) {
+	t.Run("AbsoluteHonouredInStandaloneMode", func(t *testing.T) {
 		target := t.TempDir()
 		setStandaloneStateRoot(t)
 		override := t.TempDir()
@@ -287,6 +215,40 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 		}
 	})
 
+	t.Run("RelativeResolvesAgainstCwdInHubMode", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		loc := hubLocation(t, hub, "code", ".")
+		cwd := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+
+		c := &burlerCLI{}
+		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), ""); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
+		}
+	})
+
+	t.Run("RelativeResolvesAgainstCwdInStandaloneMode", func(t *testing.T) {
+		target := t.TempDir()
+		setStandaloneStateRoot(t)
+		cwd := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+
+		c := &burlerCLI{}
+		if err := c.wire(nil, preflight.ModeStandalone, cwd, filepath.Join("custom", "stencils"), target); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
+			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
+		}
+	})
 }
 
 // TestWireHub_AbsentStencilsDirIsRefused is R7-F2's hub-side regression test for this module: a
@@ -307,52 +269,6 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "--stencils-dir") || !strings.Contains(err.Error(), told) {
 		t.Errorf("wire() error = %q; want it to name --stencils-dir and the told directory %q", err.Error(), told)
 	}
-}
-
-// TestWire_RelativeStencilsDirResolvesAgainstCwd is R4-23's direct regression test for this module.
-// --stencils-dir used to be stored verbatim, so a relative value reached the engine unresolved: the
-// CLI process would read it against ITS working directory while the pane burler spawns runs at the
-// target (standalone) or the anchor (hub), so one string named two different directories.
-func TestWire_RelativeStencilsDirResolvesAgainstCwd(t *testing.T) {
-	t.Run("HubMode", func(t *testing.T) {
-		t.Parallel()
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "code", ".")
-		cwd := t.TempDir()
-
-		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
-		// unchanged.
-		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
-			t.Fatalf("MkdirAll() error = %v", err)
-		}
-
-		c := &burlerCLI{}
-		if err := c.wire(loc, preflight.ModeHub, cwd, filepath.Join("custom", "stencils"), ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
-			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
-		}
-	})
-
-	t.Run("StandaloneMode", func(t *testing.T) {
-		target := t.TempDir()
-		setStandaloneStateRoot(t)
-		cwd := t.TempDir()
-		// Exists on disk since R7-F2's wiring-boundary stat; the resolution behavior under test is
-		// unchanged.
-		if err := os.MkdirAll(filepath.Join(cwd, "custom", "stencils"), 0o755); err != nil {
-			t.Fatalf("MkdirAll() error = %v", err)
-		}
-
-		c := &burlerCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, cwd, filepath.Join("custom", "stencils"), target); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if want := filepath.Join(cwd, "custom", "stencils"); c.stencilsDir != want {
-			t.Errorf("c.stencilsDir = %q; want the relative --stencils-dir resolved against cwd, %q", c.stencilsDir, want)
-		}
-	})
 }
 
 // TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
@@ -436,10 +352,10 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 	}
 }
 
-// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
-// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
-// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
-// the override would have put the trace file somewhere else.
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub mode through the standalone sink redirect.
+// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten the override would have put the trace file somewhere else.
+//
+//testtiming:keep pins that wireHub leaves the durable sink override untouched, which the mode test covering its blocks never reads back
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	sentinelDir := t.TempDir()
 	logger.SetDurableSinkDir(sentinelDir)
@@ -491,7 +407,7 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	setStandaloneStateRoot(t)
 
 	normalizedRoot := standalonestate.Normalize(repoRoot)
-	rootStateDir, _ := hash8AndStateDir(t, normalizedRoot)
+	rootStateDir := stateDirFor(t, normalizedRoot)
 
 	c := &burlerCLI{}
 	if err := c.wire(nil, preflight.ModeStandalone, subDir, "", ""); err != nil {
@@ -500,38 +416,6 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	if c.stateDir != rootStateDir {
 		t.Errorf("c.stateDir = %q; want the repository root's own state directory %q -- where the operator stands inside a repository must not change which repository burler reviews", c.stateDir, rootStateDir)
 	}
-}
-
-// TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin, mirroring
-// internal/webstercli's test of the same name: wireStandalone must arm the in-process reed
-// bring-up seam the run verb fires before driving a round (standalone's derived geometry is
-// reachable by no CLI verb — `lyx reed up` is hub-only), and wireHub must leave it nil.
-func TestWire_ReedUpSeamPerMode(t *testing.T) {
-	t.Run("StandaloneArmsTheSeam", func(t *testing.T) {
-		target := t.TempDir()
-		setStandaloneStateRoot(t)
-
-		c := &burlerCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.reedUp == nil {
-			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
-		}
-	})
-
-	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "code", ".")
-
-		c := &burlerCLI{}
-		if err := c.wire(loc, preflight.ModeHub, "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.reedUp != nil {
-			t.Error("wireHub armed c.reedUp; want nil — hub mode's reed session is not run's to boot")
-		}
-	})
 }
 
 // TestWireModule_DescriptorIsVerbatim pins burler's own wireModule descriptor, mirroring
@@ -740,18 +624,14 @@ func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
 	}
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never
-// reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
-// (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the
-// seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog). All three belong to hub
-// mode alone, per this batch's own scope note.
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog).
+// All three belong to hub mode alone, per this batch's own scope note.
 //
-// The scanned file set widened to include internal/standalonegeom's production files, reached by a
-// relative glob from this package's directory, when the spawn moved into internal/reedengine: that
-// package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no
-// longer structurally obvious from this package's own files alone. This is the guard
-// _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the
-// boundary unpinned. This test spawns nothing and stays untagged.
+// The scanned file set widened to include internal/standalonegeom's production files, reached by a relative glob from this package's directory, when the spawn moved into internal/reedengine: that package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no longer structurally obvious from this package's own files alone.
+// This is the guard _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the boundary unpinned.
+// This test spawns nothing and stays untagged.
+//
+//testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 	t.Parallel()
 

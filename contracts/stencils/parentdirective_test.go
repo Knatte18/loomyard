@@ -76,6 +76,8 @@ func registeredBodies(t *testing.T) map[string]string {
 }
 
 // TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered or lacks the parent directive marker.
+//
+//testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
 func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 	t.Parallel()
 
@@ -85,6 +87,8 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 }
 
 // TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family with an ask-the-operator sentence that carries no prohibition word.
+//
+//testtiming:keep pins PATTERN-parent-directive's ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
 func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +103,8 @@ func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 }
 
 // TestParentDirectiveScans_SyntheticRows proves each scan fails on a stencil that breaks its rule and passes on one that does not.
+//
+//testtiming:keep proves each parent-directive scan fires on a stencil that breaks its rule, which the scans over the real stencils cannot show while those stencils comply
 func TestParentDirectiveScans_SyntheticRows(t *testing.T) {
 	t.Parallel()
 

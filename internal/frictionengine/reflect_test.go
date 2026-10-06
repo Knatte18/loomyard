@@ -134,84 +134,9 @@ func writeNote(t *testing.T, deps Deps, name, content string) {
 	}
 }
 
-func TestReflect_MissingDirectory_Skipped(t *testing.T) {
-	shuttle := &shedfake.Shuttle{}
-	deps := newTestDeps(t, shuttle, nil)
-	if err := os.RemoveAll(deps.FrictionDir); err != nil {
-		t.Fatalf("RemoveAll(frictionDir): %v", err)
-	}
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusSkipped {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
-	}
-	if len(shuttle.Specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
-	}
-}
-
-func TestReflect_EmptyDirectory_Skipped(t *testing.T) {
-	shuttle := &shedfake.Shuttle{}
-	deps := newTestDeps(t, shuttle, nil)
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusSkipped {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
-	}
-	if len(shuttle.Specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
-	}
-}
-
-func TestReflect_OnlyNonMarkdownFiles_Skipped(t *testing.T) {
-	shuttle := &shedfake.Shuttle{}
-	deps := newTestDeps(t, shuttle, nil)
-	if err := os.WriteFile(filepath.Join(deps.FrictionDir, "notes.txt"), []byte("hello"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusSkipped {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
-	}
-	if len(shuttle.Specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
-	}
-}
-
-// TestReflect_OnlyStaleReport_Skipped covers the stale-report-from-a-timed-out-run case: a directory
-// whose only .md entry is friction.ReportFileName must not be mistaken for one note.
-func TestReflect_OnlyStaleReport_Skipped(t *testing.T) {
-	shuttle := &shedfake.Shuttle{}
-	deps := newTestDeps(t, shuttle, nil)
-	if err := os.WriteFile(filepath.Join(deps.FrictionDir, friction.ReportFileName), []byte("stale"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusSkipped {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
-	}
-	if len(shuttle.Specs) != 0 {
-		t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
-	}
-}
-
-// TestReflect_OneNote_SpawnsAndArchives covers the full happy path: exactly one spawn, the composed
-// Spec's shape, the prompt naming the friction directory, and the archive-and-recreate.
+// TestBuildReflectionSpec_SkillsAndParentDirective covers the composed Spec's reflection skill and its parent directive, with and without a recorded parent.
 func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		parentName string
@@ -243,7 +168,10 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 	}
 }
 
+// TestReflect_OneNote_SpawnsAndArchives covers the full happy path: exactly one spawn, the composed
+// Spec's shape, the prompt naming the friction directory, and the archive-and-recreate.
 func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
+	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "something went wrong")
@@ -325,72 +253,11 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 	}
 }
 
-// TestReflect_ShuttleOutcomes_FailedNoArchive covers the three non-done outcomes: each yields
-// StatusFailed with a nil error, and the friction directory is left exactly as it was -- no archive
-// sibling is created.
-func TestReflect_ShuttleOutcomes_FailedNoArchive(t *testing.T) {
-	tests := []struct {
-		name    string
-		outcome shuttleengine.Outcome
-	}{
-		{"Died", shuttleengine.OutcomeDied},
-		{"Timeout", shuttleengine.OutcomeTimeout},
-		{"Asking", shuttleengine.OutcomeAsking},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: tt.outcome}}
-			deps := newTestDeps(t, shuttle, nil)
-			writeNote(t, deps, "note-1", "something went wrong")
-
-			report, err := Reflect(deps)
-			if err != nil {
-				t.Fatalf("Reflect() error = %v; want nil", err)
-			}
-			if report.Status != StatusFailed {
-				t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-			}
-
-			if _, err := os.Stat(deps.FrictionDir); err != nil {
-				t.Errorf("friction directory %q no longer exists: %v", deps.FrictionDir, err)
-			}
-			requireExists(t, filepath.Join(deps.FrictionDir, "note-1.md"))
-			requireExists(t, filepath.Join(deps.FrictionDir, coveredRecordFileName))
-
-			matches, err := filepath.Glob(deps.ArchivePrefix + "*")
-			if err != nil {
-				t.Fatalf("Glob: %v", err)
-			}
-			if len(matches) != 0 {
-				t.Errorf("archive sibling(s) created: %v; want none", matches)
-			}
-		})
-	}
-}
-
-// TestReflect_ShuttleRunError_FailedNoArchive covers a plain Shuttle.Run error: StatusFailed, a nil
-// Reflect error, and no archive.
-func TestReflect_ShuttleRunError_FailedNoArchive(t *testing.T) {
-	shuttle := &shedfake.Shuttle{Err: errors.New("run failed")}
-	deps := newTestDeps(t, shuttle, nil)
-	writeNote(t, deps, "note-1", "something went wrong")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusFailed {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-	}
-	if _, err := os.Stat(deps.FrictionDir); err != nil {
-		t.Errorf("friction directory %q no longer exists: %v", deps.FrictionDir, err)
-	}
-}
-
 // TestReflect_StaleReportDeletedBeforeSpec covers the stale-report delete: a
 // friction.ReportFileName present alongside a real note before Reflect runs is deleted before the
 // spec is composed, so the composed Spec.OutputFiles entry does not already exist.
 func TestReflect_StaleReportDeletedBeforeSpec(t *testing.T) {
+	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "something went wrong")
@@ -422,6 +289,7 @@ func archiveDirFor(deps Deps, suffix string) string {
 // TestReflect_LiveAgentAttached_WaitsAndArchives covers a record whose agent is still live:
 // Attach finds it, nothing is spawned, and the covered files are archived once it is done.
 func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
+	t.Parallel()
 	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "x")
@@ -447,55 +315,10 @@ func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
 	}
 }
 
-// TestReflect_AttachedRunNotDone_FailedLeavesAll covers an attached run that does not finish: the notes, record and report stay in place.
-func TestReflect_AttachedRunNotDone_FailedLeavesAll(t *testing.T) {
-	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}
-	deps := newTestDeps(t, shuttle, fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-	writeReport(t, deps)
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusFailed {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-	}
-	want := []string{"note-1.md", coveredRecordFileName, friction.ReportFileName}
-	if got := entryNames(t, deps.FrictionDir); strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("friction directory holds %v; want %v", got, want)
-	}
-	if shuttle.Called {
-		t.Error("Run called; want no spawn")
-	}
-}
-
-// TestReflect_AttachError_FailedNoSpawn covers a probe that cannot answer:
-// it may be hiding a live agent, so nothing is spawned and nothing is archived.
-func TestReflect_AttachError_FailedNoSpawn(t *testing.T) {
-	shuttle := &shedfake.Shuttle{AttachErr: errors.New("probe failed")}
-	deps := newTestDeps(t, shuttle, fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusFailed {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-	}
-	if shuttle.Called {
-		t.Error("Run called; want no spawn")
-	}
-	requireExists(t, filepath.Join(deps.FrictionDir, "note-1.md"))
-	requireExists(t, filepath.Join(deps.FrictionDir, coveredRecordFileName))
-}
-
 // TestReflect_RecordAndReport_ArchivesWithoutSpawn covers a finished prior reflection:
 // no live agent, the report present, so the covered files are archived and nothing is spawned.
 func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
+	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "x")
@@ -527,6 +350,7 @@ func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
 // the archive leaves it behind and it is the only note the next spawn's prompt lists.
 // The two archives of one call share a clock second, so they also land in distinct directories.
 func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
+	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "x")
@@ -555,55 +379,10 @@ func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
 	}
 }
 
-// TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain covers a record whose agent is gone with no report:
-// the record is discarded and its notes are reflected by a new spawn.
-func TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain(t *testing.T) {
-	shuttle := doneShuttle()
-	deps := newTestDeps(t, shuttle, fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusReflected {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	if !shuttle.AttachCalled || len(shuttle.Specs) != 1 {
-		t.Errorf("Attach called = %v, Run called %d times; want true and 1", shuttle.AttachCalled, len(shuttle.Specs))
-	}
-	if !strings.Contains(shuttle.Specs[0].Prompt, "note-1.md") {
-		t.Errorf("spawn prompt does not list the reflected-again note: %q", shuttle.Specs[0].Prompt)
-	}
-	requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
-}
-
-// TestReflect_UnparsableRecord_DiscardedAndReflectedAgain covers a record that reads but does not parse: it never blocks a later reflection.
-func TestReflect_UnparsableRecord_DiscardedAndReflectedAgain(t *testing.T) {
-	shuttle := doneShuttle()
-	deps := newTestDeps(t, shuttle, fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	if err := os.WriteFile(filepath.Join(deps.FrictionDir, coveredRecordFileName), []byte("not json"), 0o644); err != nil {
-		t.Fatalf("WriteFile(record): %v", err)
-	}
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusReflected {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	if shuttle.AttachCalled || len(shuttle.Specs) != 1 {
-		t.Errorf("Attach called = %v, Run called %d times; want false and 1", shuttle.AttachCalled, len(shuttle.Specs))
-	}
-	requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
-}
-
 // TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive covers a note written while the agent runs:
 // the archive covers only the recorded notes, so the new one stays for the next reflection.
 func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
+	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
 	writeNote(t, deps, "note-1", "x")
@@ -623,109 +402,9 @@ func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
 	}
 }
 
-// TestReflect_TwoArchivesSameSecond_DistinctDirectories covers two Reflect calls whose archives share a clock second.
-func TestReflect_TwoArchivesSameSecond_DistinctDirectories(t *testing.T) {
-	deps := newTestDeps(t, doneShuttle(), fixedClock())
-	writeNote(t, deps, "note-1", "x")
-	if report, _ := Reflect(deps); report.Status != StatusReflected {
-		t.Fatalf("first Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	writeNote(t, deps, "note-2", "y")
-	if report, _ := Reflect(deps); report.Status != StatusReflected {
-		t.Fatalf("second Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
-	requireExists(t, filepath.Join(archiveDirFor(deps, "-2"), "note-2.md"))
-}
-
-// TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned covers an Attach wait that spends the whole budget:
-// the settled set is archived, a newer note is left unspawned and the call returns failed.
-func TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned(t *testing.T) {
-	clock := fixedClock()
-	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	deps := newTestDeps(t, shuttle, clock)
-	shuttle.DuringAttach = func() { clock.advance(deps.Timeout) }
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-	writeNote(t, deps, "note-2", "y")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusFailed {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
-	}
-	if shuttle.Called {
-		t.Error("Run called; want no spawn with the budget spent")
-	}
-	// The archive is stamped after the clock advanced a whole timeout.
-	requireExists(t, filepath.Join(deps.ArchivePrefix+"20260912-103100", "note-1.md"))
-	if got := entryNames(t, deps.FrictionDir); strings.Join(got, ",") != "note-2.md" {
-		t.Errorf("friction directory holds %v; want only note-2.md", got)
-	}
-}
-
-// TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder covers a partial spend: the spawn's Spec.Timeout is the budget left.
-func TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder(t *testing.T) {
-	clock := fixedClock()
-	shuttle := &shedfake.Shuttle{
-		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		AttachFound:  true,
-		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	deps := newTestDeps(t, shuttle, clock)
-	shuttle.DuringAttach = func() { clock.advance(20 * time.Second) }
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-	writeNote(t, deps, "note-2", "y")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusReflected {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	if len(shuttle.Specs) != 1 {
-		t.Fatalf("Run called %d times; want 1", len(shuttle.Specs))
-	}
-	if want := deps.Timeout - 20*time.Second; shuttle.Specs[0].Timeout != want {
-		t.Errorf("Spec.Timeout = %s; want %s", shuttle.Specs[0].Timeout, want)
-	}
-}
-
-// TestReflect_ZeroTimeout_DefersToShuttle covers a zero Deps.Timeout, the friction_timeout_min 0 that defers to shuttle's run_timeout_min.
-// It carries no budget: the attach probe and the spawn both receive a zero Spec.Timeout.
-func TestReflect_ZeroTimeout_DefersToShuttle(t *testing.T) {
-	shuttle := &shedfake.Shuttle{
-		Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		AttachFound:  true,
-		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	deps := newTestDeps(t, shuttle, nil)
-	deps.Timeout = 0
-	writeNote(t, deps, "note-1", "x")
-	writeRecordFor(t, deps, "note-1")
-	writeNote(t, deps, "note-2", "y")
-
-	report, err := Reflect(deps)
-	if err != nil {
-		t.Fatalf("Reflect() error = %v; want nil", err)
-	}
-	if report.Status != StatusReflected {
-		t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
-	}
-	if !shuttle.AttachCalled || shuttle.GotAttachSpec.Timeout != 0 {
-		t.Errorf("Attach called = %v with Timeout %s; want called with a zero Timeout", shuttle.AttachCalled, shuttle.GotAttachSpec.Timeout)
-	}
-	if len(shuttle.Specs) != 1 || shuttle.Specs[0].Timeout != 0 {
-		t.Errorf("Run specs = %v; want one with a zero Timeout", shuttle.Specs)
-	}
-}
-
 // TestReflect_UnwritableRecord_FailedNoSpawn covers a record write that fails before the spawn.
 func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("directory permissions do not bar writes here")
 	}
@@ -750,56 +429,265 @@ func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
 	requireExists(t, filepath.Join(deps.FrictionDir, "note-1.md"))
 }
 
-func TestReflect_DepsValidation(t *testing.T) {
-	validDeps := func(t *testing.T) Deps {
-		return newTestDeps(t, &shedfake.Shuttle{}, nil)
+// TestReflect_Skipped covers every friction directory with nothing to reflect: Reflect reports skipped and spawns nothing.
+// That is a missing directory, an empty one, one holding only a non-markdown file, and one whose only .md entry is a stale friction.ReportFileName left by a timed-out run, which must not be mistaken for one note.
+func TestReflect_Skipped(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, deps Deps)
+	}{
+		{"missing directory", func(t *testing.T, deps Deps) {
+			if err := os.RemoveAll(deps.FrictionDir); err != nil {
+				t.Fatalf("RemoveAll(frictionDir): %v", err)
+			}
+		}},
+		{"empty directory", func(t *testing.T, deps Deps) {}},
+		{"only non-markdown files", func(t *testing.T, deps Deps) {
+			if err := os.WriteFile(filepath.Join(deps.FrictionDir, "notes.txt"), []byte("hello"), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+		}},
+		{"only stale report", func(t *testing.T, deps Deps) {
+			if err := os.WriteFile(filepath.Join(deps.FrictionDir, friction.ReportFileName), []byte("stale"), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+		}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := &shedfake.Shuttle{}
+			deps := newTestDeps(t, shuttle, nil)
+			tt.setup(t, deps)
 
-	t.Run("NilShuttle", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.Shuttle = nil
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for a nil Shuttle")
-		}
-	})
+			report, err := Reflect(deps)
+			if err != nil {
+				t.Fatalf("Reflect() error = %v; want nil", err)
+			}
+			if report.Status != StatusSkipped {
+				t.Errorf("Reflect() status = %q; want %q", report.Status, StatusSkipped)
+			}
+			if len(shuttle.Specs) != 0 {
+				t.Errorf("Shuttle.Run called %d times; want 0", len(shuttle.Specs))
+			}
+		})
+	}
+}
 
-	t.Run("EmptyFrictionDir", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.FrictionDir = ""
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for an empty FrictionDir")
-		}
-	})
+// TestReflect_ShuttleFailures_FailedNoArchive covers every way a spawned run fails to finish: the three non-done outcomes and a plain Shuttle.Run error.
+// Each yields StatusFailed with a nil Reflect error, and the friction directory is left exactly as it was, with the note and the covered record in place and no archive sibling created.
+func TestReflect_ShuttleFailures_FailedNoArchive(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		shuttle *shedfake.Shuttle
+	}{
+		{"Died", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}},
+		{"Timeout", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}},
+		{"Asking", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}},
+		{"RunError", &shedfake.Shuttle{Err: errors.New("run failed")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deps := newTestDeps(t, tt.shuttle, nil)
+			writeNote(t, deps, "note-1", "something went wrong")
 
-	t.Run("RelativeFrictionDir", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.FrictionDir = "relative/friction"
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for a relative FrictionDir")
-		}
-	})
+			report, err := Reflect(deps)
+			if err != nil {
+				t.Fatalf("Reflect() error = %v; want nil", err)
+			}
+			if report.Status != StatusFailed {
+				t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
+			}
 
-	t.Run("EmptyArchivePrefix", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.ArchivePrefix = ""
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for an empty ArchivePrefix")
-		}
-	})
+			requireExists(t, deps.FrictionDir)
+			requireExists(t, filepath.Join(deps.FrictionDir, "note-1.md"))
+			requireExists(t, filepath.Join(deps.FrictionDir, coveredRecordFileName))
 
-	t.Run("EmptyStencilsDir", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.StencilsDir = ""
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for an empty StencilsDir")
-		}
-	})
+			matches, err := filepath.Glob(deps.ArchivePrefix + "*")
+			if err != nil {
+				t.Fatalf("Glob: %v", err)
+			}
+			if len(matches) != 0 {
+				t.Errorf("archive sibling(s) created: %v; want none", matches)
+			}
+		})
+	}
+}
 
-	t.Run("EmptyTaskSlug", func(t *testing.T) {
-		deps := validDeps(t)
-		deps.TaskSlug = ""
-		if _, err := Reflect(deps); err == nil {
-			t.Error("Reflect() error = nil; want non-nil for an empty TaskSlug")
-		}
-	})
+// TestReflect_AttachFailures_FailedNoSpawn covers a record whose attach probe leaves the reflection unfinished: an attached run that does not finish, and a probe that cannot answer and so may be hiding a live agent.
+// Each yields StatusFailed, nothing is spawned and the friction directory is left exactly as it was, so the notes, record and report stay in place.
+func TestReflect_AttachFailures_FailedNoSpawn(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		shuttle    *shedfake.Shuttle
+		withReport bool
+	}{
+		{"attached run not done", &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}, true},
+		{"probe error", &shedfake.Shuttle{AttachErr: errors.New("probe failed")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deps := newTestDeps(t, tt.shuttle, fixedClock())
+			writeNote(t, deps, "note-1", "x")
+			writeRecordFor(t, deps, "note-1")
+			if tt.withReport {
+				writeReport(t, deps)
+			}
+			before := entryNames(t, deps.FrictionDir)
+
+			report, err := Reflect(deps)
+			if err != nil {
+				t.Fatalf("Reflect() error = %v; want nil", err)
+			}
+			if report.Status != StatusFailed {
+				t.Errorf("Reflect() status = %q; want %q", report.Status, StatusFailed)
+			}
+			if tt.shuttle.Called {
+				t.Error("Run called; want no spawn")
+			}
+			if got := entryNames(t, deps.FrictionDir); strings.Join(got, ",") != strings.Join(before, ",") {
+				t.Errorf("friction directory holds %v; want it unchanged at %v", got, before)
+			}
+		})
+	}
+}
+
+// TestReflect_UnusableRecord_DiscardedAndReflectedAgain covers a record that cannot block a later reflection, so its note is reflected by a new spawn:
+// one whose agent is gone with no report, and one that reads but does not parse.
+// The unparsable record is discarded without an attach probe.
+func TestReflect_UnusableRecord_DiscardedAndReflectedAgain(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name             string
+		writeRecord      func(t *testing.T, deps Deps)
+		wantAttachCalled bool
+	}{
+		{"agent gone without report", func(t *testing.T, deps Deps) { writeRecordFor(t, deps, "note-1") }, true},
+		{"unparsable record", func(t *testing.T, deps Deps) {
+			if err := os.WriteFile(filepath.Join(deps.FrictionDir, coveredRecordFileName), []byte("not json"), 0o644); err != nil {
+				t.Fatalf("WriteFile(record): %v", err)
+			}
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := doneShuttle()
+			deps := newTestDeps(t, shuttle, fixedClock())
+			writeNote(t, deps, "note-1", "x")
+			tt.writeRecord(t, deps)
+
+			report, err := Reflect(deps)
+			if err != nil {
+				t.Fatalf("Reflect() error = %v; want nil", err)
+			}
+			if report.Status != StatusReflected {
+				t.Errorf("Reflect() status = %q; want %q", report.Status, StatusReflected)
+			}
+			if shuttle.AttachCalled != tt.wantAttachCalled || len(shuttle.Specs) != 1 {
+				t.Errorf("Attach called = %v, Run called %d times; want %v and 1", shuttle.AttachCalled, len(shuttle.Specs), tt.wantAttachCalled)
+			}
+			if !strings.Contains(shuttle.Specs[0].Prompt, "note-1.md") {
+				t.Errorf("spawn prompt does not list the reflected-again note: %q", shuttle.Specs[0].Prompt)
+			}
+			requireExists(t, filepath.Join(archiveDirFor(deps, ""), "note-1.md"))
+		})
+	}
+}
+
+// TestReflect_AttachBudget covers how a reflection's timeout budget is spent after the attach wait, with note-1 recorded and note-2 newer.
+// A wait that spends the whole budget archives the settled set, leaves the newer note unspawned and fails.
+// A partial spend gives the spawn the budget left as its Spec.Timeout.
+// A zero Deps.Timeout, the friction_timeout_min 0 that defers to shuttle's run_timeout_min, carries no budget: the attach probe and the spawn both receive a zero Spec.Timeout.
+func TestReflect_AttachBudget(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		advance time.Duration
+		// wantRunTimeout is the Spec.Timeout of the one spawn; ignored when wantStatus is failed, which spawns nothing.
+		wantRunTimeout time.Duration
+		wantStatus     string
+	}{
+		{"whole budget spent", time.Minute, time.Minute, 0, StatusFailed},
+		{"part of budget spent", time.Minute, 20 * time.Second, 40 * time.Second, StatusReflected},
+		{"zero timeout defers to shuttle", 0, 0, 0, StatusReflected},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := fixedClock()
+			shuttle := &shedfake.Shuttle{
+				Result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+				AttachFound:  true,
+				AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			}
+			deps := newTestDeps(t, shuttle, clock)
+			deps.Timeout = tt.timeout
+			shuttle.DuringAttach = func() { clock.advance(tt.advance) }
+			writeNote(t, deps, "note-1", "x")
+			writeRecordFor(t, deps, "note-1")
+			writeNote(t, deps, "note-2", "y")
+
+			report, err := Reflect(deps)
+			if err != nil {
+				t.Fatalf("Reflect() error = %v; want nil", err)
+			}
+			if report.Status != tt.wantStatus {
+				t.Errorf("Reflect() status = %q; want %q", report.Status, tt.wantStatus)
+			}
+
+			if tt.wantStatus == StatusFailed {
+				if shuttle.Called {
+					t.Error("Run called; want no spawn with the budget spent")
+				}
+				// The archive is stamped after the clock advanced a whole timeout.
+				requireExists(t, filepath.Join(deps.ArchivePrefix+"20260912-103100", "note-1.md"))
+				if got := entryNames(t, deps.FrictionDir); strings.Join(got, ",") != "note-2.md" {
+					t.Errorf("friction directory holds %v; want only note-2.md", got)
+				}
+				return
+			}
+			if len(shuttle.Specs) != 1 {
+				t.Fatalf("Run called %d times; want 1", len(shuttle.Specs))
+			}
+			if shuttle.Specs[0].Timeout != tt.wantRunTimeout {
+				t.Errorf("Spec.Timeout = %s; want %s", shuttle.Specs[0].Timeout, tt.wantRunTimeout)
+			}
+			if tt.timeout == 0 && (!shuttle.AttachCalled || shuttle.GotAttachSpec.Timeout != 0) {
+				t.Errorf("Attach called = %v with Timeout %s; want called with a zero Timeout", shuttle.AttachCalled, shuttle.GotAttachSpec.Timeout)
+			}
+		})
+	}
+}
+
+// TestReflect_DepsValidation covers each Deps field Reflect refuses: a nil Shuttle, an empty or relative FrictionDir, and an empty ArchivePrefix, StencilsDir or TaskSlug.
+func TestReflect_DepsValidation(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		mutate func(deps *Deps)
+	}{
+		{"NilShuttle", func(deps *Deps) { deps.Shuttle = nil }},
+		{"EmptyFrictionDir", func(deps *Deps) { deps.FrictionDir = "" }},
+		{"RelativeFrictionDir", func(deps *Deps) { deps.FrictionDir = "relative/friction" }},
+		{"EmptyArchivePrefix", func(deps *Deps) { deps.ArchivePrefix = "" }},
+		{"EmptyStencilsDir", func(deps *Deps) { deps.StencilsDir = "" }},
+		{"EmptyTaskSlug", func(deps *Deps) { deps.TaskSlug = "" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deps := newTestDeps(t, &shedfake.Shuttle{}, nil)
+			tt.mutate(&deps)
+			if _, err := Reflect(deps); err == nil {
+				t.Errorf("Reflect() error = nil; want non-nil for %s", tt.name)
+			}
+		})
+	}
 }

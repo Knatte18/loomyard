@@ -158,6 +158,9 @@ func TestComputeLayers(t *testing.T) {
 	}
 }
 
+// TestRenderOrder asserts RenderOrder's bucket order, tasks before notes with done entries last, and ID order within a bucket.
+//
+//testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which the render goldens do not assert
 func TestRenderOrder(t *testing.T) {
 	tests := []struct {
 		name  string

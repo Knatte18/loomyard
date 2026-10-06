@@ -98,60 +98,71 @@ func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 	}
 }
 
-func TestNoteRefusals_ErrFieldsRefusal_NoteCarriesField(t *testing.T) {
-	dir := t.TempDir()
-	c, _ := newTestCLI(t)
-	c.frictionDir = dir
-	parent := &cobra.Command{Use: "webster", RunE: clihelp.GroupRunE}
-	parent.AddCommand(stubRefusal(c))
+func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
+	t.Parallel()
 
-	var out bytes.Buffer
-	code := clihelp.Execute(parent, &out, []string{"stub"})
+	okVerb := func(c *websterCLI) *cobra.Command {
+		return c.noteRefusals(&cobra.Command{
+			Use:  "paused",
+			Args: cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"paused": true}))
+				return nil
+			},
+		})
+	}
+	cases := []struct {
+		name     string
+		verb     func(*websterCLI) *cobra.Command
+		args     []string
+		wantExit int
+		// wantNote lists what the single note must carry; empty means no note at all.
+		wantNote []string
+	}{
+		{"an ErrFields refusal writes a note carrying its field", stubRefusal, []string{"stub"}, 1, []string{"lyx webster stub refused", "webster: the plan drifted", "plan_drifted: true"}},
+		{"an ok envelope writes nothing", okVerb, []string{"paused"}, 0, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	if code != 1 {
-		t.Fatalf("exit code = %d; want 1, output: %s", code, out.String())
-	}
-	notes := refusalNotes(t, dir)
-	if len(notes) != 1 {
-		t.Fatalf("notes = %v; want exactly one", notes)
-	}
-	for _, body := range notes {
-		for _, want := range []string{"lyx webster stub refused", "webster: the plan drifted", "plan_drifted: true"} {
-			if !strings.Contains(body, want) {
-				t.Errorf("note missing %q; got:\n%s", want, body)
+			dir := t.TempDir()
+			c, _ := newTestCLI(t)
+			c.frictionDir = dir
+			parent := &cobra.Command{Use: "webster", RunE: clihelp.GroupRunE}
+			parent.AddCommand(tc.verb(c))
+
+			var out bytes.Buffer
+			code := clihelp.Execute(parent, &out, tc.args)
+
+			if code != tc.wantExit {
+				t.Fatalf("exit code = %d; want %d, output: %s", code, tc.wantExit, out.String())
 			}
-		}
-		if strings.Contains(body, "ok:") || strings.Contains(body, "error:") {
-			t.Errorf("note repeats a reserved key; got:\n%s", body)
-		}
+			notes := refusalNotes(t, dir)
+			if len(tc.wantNote) == 0 {
+				if len(notes) != 0 {
+					t.Errorf("an ok envelope wrote notes %v; want none", notes)
+				}
+				return
+			}
+			if len(notes) != 1 {
+				t.Fatalf("notes = %v; want exactly one", notes)
+			}
+			for _, body := range notes {
+				for _, want := range tc.wantNote {
+					if !strings.Contains(body, want) {
+						t.Errorf("note missing %q; got:\n%s", want, body)
+					}
+				}
+				if strings.Contains(body, "ok:") || strings.Contains(body, "error:") {
+					t.Errorf("note repeats a reserved key; got:\n%s", body)
+				}
+			}
+		})
 	}
 }
 
-func TestNoteRefusals_OkEnvelope_WritesNothing(t *testing.T) {
-	dir := t.TempDir()
-	c, _ := newTestCLI(t)
-	c.frictionDir = dir
-	parent := &cobra.Command{Use: "webster", RunE: clihelp.GroupRunE}
-	parent.AddCommand(c.noteRefusals(&cobra.Command{
-		Use:  "paused",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"paused": true}))
-			return nil
-		},
-	}))
-
-	var out bytes.Buffer
-	code := clihelp.Execute(parent, &out, []string{"paused"})
-
-	if code != 0 {
-		t.Fatalf("exit code = %d; want 0, output: %s", code, out.String())
-	}
-	if notes := refusalNotes(t, dir); len(notes) != 0 {
-		t.Errorf("an ok envelope wrote notes %v; want none", notes)
-	}
-}
-
+//testtiming:keep pins that a validate refusal writes no friction note, which its covering tests do not assert
 func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
 	dir := t.TempDir()
 	c, _ := newTestCLI(t)
@@ -167,31 +178,34 @@ func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
 	}
 }
 
-func TestNoteRefusals_EmptyFrictionDir_WritesNothingAndKeepsEnvelope(t *testing.T) {
-	c, _ := newTestCLI(t)
-	args := []string{"begin-batch", "x"}
+func TestNoteRefusals_UnusableFrictionDir_KeepsExitAndEnvelope(t *testing.T) {
+	t.Parallel()
 
-	rawCode, rawOut := runVerbs(c, false, args...)
-	code, out := runVerbs(c, true, args...)
-
-	if code != rawCode || out != rawOut {
-		t.Errorf("noted run = (%d, %q); want the unwrapped (%d, %q)", code, out, rawCode, rawOut)
-	}
-}
-
-func TestNoteRefusals_UnwritableFrictionDir_KeepsExitAndEnvelope(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", blocker, err)
 	}
-	c, _ := newTestCLI(t)
-	c.frictionDir = blocker
-	args := []string{"begin-batch", "x"}
+	cases := []struct {
+		name        string
+		frictionDir string
+	}{
+		{"empty directory writes nothing", ""},
+		{"unwritable directory", blocker},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	rawCode, rawOut := runVerbs(c, false, args...)
-	code, out := runVerbs(c, true, args...)
+			c, _ := newTestCLI(t)
+			c.frictionDir = tc.frictionDir
+			args := []string{"begin-batch", "x"}
 
-	if code != rawCode || out != rawOut {
-		t.Errorf("noted run = (%d, %q); want the unwrapped (%d, %q)", code, out, rawCode, rawOut)
+			rawCode, rawOut := runVerbs(c, false, args...)
+			code, out := runVerbs(c, true, args...)
+
+			if code != rawCode || out != rawOut {
+				t.Errorf("noted run = (%d, %q); want the unwrapped (%d, %q)", code, out, rawCode, rawOut)
+			}
+		})
 	}
 }

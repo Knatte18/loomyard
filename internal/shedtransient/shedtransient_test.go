@@ -55,16 +55,9 @@ func TestClassAndMark(t *testing.T) {
 			if class := shedengine.TransientOf(got); class != tt.want {
 				t.Errorf("TransientOf(Mark) = %q, want %q", class, tt.want)
 			}
-			if tt.want == "" && got != tt.err {
-				t.Errorf("Mark of a non-transient error must return it unchanged, got %v", got)
+			if (tt.want == "" || tt.err == marked) && got != tt.err {
+				t.Errorf("Mark of a non-transient or already marked error must return it unchanged, got %v", got)
 			}
 		})
-	}
-}
-
-func TestMark_NeverDoubleWraps(t *testing.T) {
-	marked := shedengine.MarkTransient(shedengine.TransientGitHubAPI, fmt.Errorf("x: %w", shuttleengine.ErrNotStarted))
-	if got := Mark(marked); got != marked {
-		t.Errorf("Mark re-wrapped an already marked error: %v", got)
 	}
 }

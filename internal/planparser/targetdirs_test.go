@@ -8,10 +8,13 @@ import (
 )
 
 func TestCardTargetDirs(t *testing.T) {
+	t.Parallel()
+
 	plan := &planparser.Plan{Language: "go"}
 	tests := []struct {
 		name   string
 		groups []planparser.TargetGroup
+		uses   []string
 		want   []planparser.TargetDir
 	}{
 		{
@@ -87,27 +90,21 @@ func TestCardTargetDirs(t *testing.T) {
 			},
 			want: []planparser.TargetDir{{Dir: "internal/a", NamesGo: true}},
 		},
+		{
+			name:   "Uses are excluded",
+			groups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#"}}},
+			uses:   []string{"internal/b/b.go#Read"},
+			want:   []planparser.TargetDir{{Dir: "internal/a", NamesGo: true}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			card := planparser.Card{Number: 1, Slug: "a", TargetGroups: tt.groups}
+			t.Parallel()
+			card := planparser.Card{Number: 1, Slug: "a", TargetGroups: tt.groups, Uses: tt.uses}
 			got := planparser.CardTargetDirs(plan, card)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CardTargetDirs() = %+v; want %+v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestCardTargetDirs_UsesAreExcluded(t *testing.T) {
-	card := planparser.Card{
-		Number:       1,
-		Slug:         "a",
-		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#"}}},
-		Uses:         []string{"internal/b/b.go#Read"},
-	}
-	got := planparser.CardTargetDirs(&planparser.Plan{Language: "go"}, card)
-	if len(got) != 1 || got[0].Dir != "internal/a" {
-		t.Errorf("CardTargetDirs() = %+v; want only internal/a", got)
 	}
 }

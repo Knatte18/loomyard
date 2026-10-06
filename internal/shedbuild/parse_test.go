@@ -9,6 +9,8 @@ import (
 )
 
 func TestParse_ValueAndErrorCases(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		yaml        string
@@ -364,10 +366,30 @@ producers:
 `,
 			wantErrSub: `shedbuild: producer 1 "dup": duplicate name, already defined by producer 0`,
 		},
+		{
+			// A stray "---" mid-recipe once silently truncated the producer graph: Parse decoded once and stopped, so a self-consistent prefix ran as a truncated pipeline.
+			name: "second YAML document is refused, not dropped",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+---
+version: 1
+entry: the-replacement-graph
+terminals: [the-replacement-graph]
+producers:
+  - name: the-replacement-graph
+    engine: bouncer
+`,
+			wantErrSub: "more than one YAML document",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Parse([]byte(tt.yaml))
 
 			if tt.wantErrSub != "" {
@@ -379,6 +401,10 @@ producers:
 				}
 				if tt.wantLineNum && !strings.Contains(err.Error(), "line ") {
 					t.Errorf("Parse(%q) error = %q; want a yaml line-number position", tt.name, err.Error())
+				}
+				// Map-iteration order must not change which offending key an error names.
+				if _, again := Parse([]byte(tt.yaml)); again == nil || again.Error() != err.Error() {
+					t.Errorf("Parse(%q) second call error = %v; want the identical error %q", tt.name, again, err.Error())
 				}
 				return
 			}
@@ -473,59 +499,4 @@ func stringSlicesEqual(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// TestParse_UnknownKeyDeterminism guards against map-iteration-order nondeterminism in the
-// unknown-key rejection message: parsing the same unknown-key input twice must report the same
-// offending key both times.
-func TestParse_UnknownKeyDeterminism(t *testing.T) {
-	input := []byte(`
-version: 1
-entry: start
-terminals: [done]
-producers:
-  - name: row1
-    engine: bouncer
-zzz_unknown_key: nope
-`)
-
-	_, err1 := Parse(input)
-	_, err2 := Parse(input)
-
-	if err1 == nil || err2 == nil {
-		t.Fatalf("Parse(unknown key input) = nil error on at least one call; want error both times (err1=%v, err2=%v)", err1, err2)
-	}
-	if err1.Error() != err2.Error() {
-		t.Errorf("Parse(unknown key input) reported different errors across two calls: %q vs %q", err1.Error(), err2.Error())
-	}
-}
-
-// TestParse_SecondYAMLDocumentIsRefusedNotDropped is R6-26's regression test: Parse decoded once and
-// stopped, so a stray "---" mid-recipe silently truncated the producer graph. If the surviving prefix
-// was self-consistent, shedengine.validate saw no dangling target and the run proceeded on a
-// truncated pipeline with no signal anywhere.
-func TestParse_SecondYAMLDocumentIsRefusedNotDropped(t *testing.T) {
-	t.Parallel()
-
-	const twoDocuments = `version: 1
-entry: row1
-terminals: [row1]
-producers:
-  - name: row1
-    engine: bouncer
----
-version: 1
-entry: the-replacement-graph
-terminals: [the-replacement-graph]
-producers:
-  - name: the-replacement-graph
-    engine: bouncer
-`
-	got, err := Parse([]byte(twoDocuments))
-	if err == nil {
-		t.Fatalf("Parse(two documents) = %+v, nil; want a refusal — the second document was being dropped silently", got)
-	}
-	if !strings.Contains(err.Error(), "more than one YAML document") {
-		t.Errorf("Parse(two documents) error = %v; want it to name the stray document", err)
-	}
 }

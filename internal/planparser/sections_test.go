@@ -12,77 +12,80 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-func TestParsePlan_GoldenFixture_PlanLevelSections(t *testing.T) {
+// TestParsePlan_PlanLevelSections asserts the three plan-level sections are exposed verbatim from the golden fixture and each defaults to "" when its heading is absent.
+//
+//testtiming:keep pins the three plan-level section bodies verbatim, which the golden fixture zero-findings test does not assert
+func TestParsePlan_PlanLevelSections(t *testing.T) {
 	t.Parallel()
 
-	plan, err := planparser.ParsePlan(goodPlanDir())
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", goodPlanDir(), err)
-	}
+	t.Run("golden fixture exposes them verbatim", func(t *testing.T) {
+		t.Parallel()
 
-	wantSharedDecisions := "### Decision: json-envelope-reuse\n\n" +
-		"- **Decision:** `--json` marshals each row through the existing `internal/output.Ok` envelope —\n" +
-		"  no new envelope type is introduced.\n" +
-		"- **Rationale:** one JSON emission path for the whole CLI; a second envelope shape would fork\n" +
-		"  behavior for no gain.\n" +
-		"- **Applies to:** all cards"
-	if plan.SharedDecisions != wantSharedDecisions {
-		t.Errorf("plan.SharedDecisions = %q; want %q", plan.SharedDecisions, wantSharedDecisions)
-	}
+		plan, err := planparser.ParsePlan(goodPlanDir())
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) error = %v; want nil", goodPlanDir(), err)
+		}
 
-	wantRenameMechanic := "1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.\n" +
-		"2. Then make ONLY surgical edits (package declaration, imports, identifier\n" +
-		"   retargeting) — no unrelated rewrites.\n" +
-		"3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded\n" +
-		"   into the `Rename` pair.\n" +
-		"4. Never write the relocated file from scratch and delete the original — that loses\n" +
-		"   git history exactly as an unstructured create+delete pair would."
-	if plan.RenameMechanic != wantRenameMechanic {
-		t.Errorf("plan.RenameMechanic = %q; want %q", plan.RenameMechanic, wantRenameMechanic)
-	}
+		wantSharedDecisions := "### Decision: json-envelope-reuse\n\n" +
+			"- **Decision:** `--json` marshals each row through the existing `internal/output.Ok` envelope —\n" +
+			"  no new envelope type is introduced.\n" +
+			"- **Rationale:** one JSON emission path for the whole CLI; a second envelope shape would fork\n" +
+			"  behavior for no gain.\n" +
+			"- **Applies to:** all cards"
+		if plan.SharedDecisions != wantSharedDecisions {
+			t.Errorf("plan.SharedDecisions = %q; want %q", plan.SharedDecisions, wantSharedDecisions)
+		}
 
-	wantVerify := "go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/..."
-	if plan.Verify != wantVerify {
-		t.Errorf("plan.Verify = %q; want %q", plan.Verify, wantVerify)
-	}
+		wantRenameMechanic := "1. Run `git mv <old> <new>` FIRST, before any other change to the moved file.\n" +
+			"2. Then make ONLY surgical edits (package declaration, imports, identifier\n" +
+			"   retargeting) — no unrelated rewrites.\n" +
+			"3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded\n" +
+			"   into the `Rename` pair.\n" +
+			"4. Never write the relocated file from scratch and delete the original — that loses\n" +
+			"   git history exactly as an unstructured create+delete pair would."
+		if plan.RenameMechanic != wantRenameMechanic {
+			t.Errorf("plan.RenameMechanic = %q; want %q", plan.RenameMechanic, wantRenameMechanic)
+		}
+
+		wantVerify := "go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/..."
+		if plan.Verify != wantVerify {
+			t.Errorf("plan.Verify = %q; want %q", plan.Verify, wantVerify)
+		}
+	})
+
+	t.Run("absent headings leave them empty", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
+		card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
+		if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+			t.Fatalf("write overview fixture: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+			t.Fatalf("write card fixture: %v", err)
+		}
+
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+		}
+		if plan.SharedDecisions != "" {
+			t.Errorf("plan.SharedDecisions = %q; want empty (section absent)", plan.SharedDecisions)
+		}
+		if plan.RenameMechanic != "" {
+			t.Errorf("plan.RenameMechanic = %q; want empty (section absent)", plan.RenameMechanic)
+		}
+		if plan.Verify != "" {
+			t.Errorf("plan.Verify = %q; want empty (section absent)", plan.Verify)
+		}
+	})
 }
 
-// TestParsePlan_PlanLevelSections_AbsentAreEmpty proves all three plan-level sections default to ""
-// when their headings are absent.
-func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	overview := "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
-	card := "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
-	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
-		t.Fatalf("write overview fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
-		t.Fatalf("write card fixture: %v", err)
-	}
-
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-	}
-	if plan.SharedDecisions != "" {
-		t.Errorf("plan.SharedDecisions = %q; want empty (section absent)", plan.SharedDecisions)
-	}
-	if plan.RenameMechanic != "" {
-		t.Errorf("plan.RenameMechanic = %q; want empty (section absent)", plan.RenameMechanic)
-	}
-	if plan.Verify != "" {
-		t.Errorf("plan.Verify = %q; want empty (section absent)", plan.Verify)
-	}
-}
-
-// TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is
-// carried whole, one command per line chained with " && ", rather than truncated to its first
-// line: the plan stencil tells the planner the section holds one or more commands, and a plan
-// whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by
-// webster's integration gate (crucible round fable-high-r2).
+// TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is carried whole, one command per line chained with " && ", rather than truncated to its first line: the plan stencil tells the planner the section holds one or more commands, and a plan whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by webster's integration gate (crucible round fable-high-r2).
 // The fence and comment rows pin that code-fence lines and full-line "#" comments are skipped rather than chained (issue #285).
+//
+//testtiming:keep pins how a multi-line verify section chains into one command, which its covering tests do not assert
 func TestParsePlan_VerifySection_ChainsEveryLine(t *testing.T) {
 	t.Parallel()
 

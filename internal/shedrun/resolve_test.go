@@ -16,68 +16,74 @@ func mkShedDir(t *testing.T, l *lyxcwd.Location, segment string) {
 	}
 }
 
+//testtiming:keep pins the self-to-worktree-name mapping and the pass-through of another id, which its covering test does not
 func TestResolveRunID(t *testing.T) {
-	l := syntheticLocation(t)
-	if got := ResolveRunID(l, SelfRunID); got != l.WorktreeName {
-		t.Errorf("ResolveRunID(self) = %q; want %q", got, l.WorktreeName)
+	t.Parallel()
+	tests := []struct {
+		name      string
+		legacyDir bool
+		id        string
+		want      string
+	}{
+		{"self resolves to the worktree name", false, SelfRunID, worktreeName},
+		{"another id resolves to itself", false, "other", "other"},
+		{"a legacy self dir still answers the slug", true, SelfRunID, worktreeName},
 	}
-	if got := ResolveRunID(l, "other"); got != "other" {
-		t.Errorf("ResolveRunID(other) = %q; want %q", got, "other")
-	}
-}
-
-func TestResolveRunID_LegacyDirStillAnswersSlug(t *testing.T) {
-	l := syntheticLocation(t)
-	mkShedDir(t, l, SelfRunID)
-	if got := ResolveRunID(l, SelfRunID); got != l.WorktreeName {
-		t.Errorf("ResolveRunID(self) with legacy dir = %q; want %q", got, l.WorktreeName)
-	}
-}
-
-func TestRunDir_SelfAndSlugAddressSlugDirForNewRun(t *testing.T) {
-	l := syntheticLocation(t)
-	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", l.WorktreeName)
-	for _, id := range []string{SelfRunID, l.WorktreeName} {
-		if got := RunDir(l, id); got != want {
-			t.Errorf("RunDir(%q) = %q; want %q", id, got, want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := syntheticLocation(t)
+			if tt.legacyDir {
+				mkShedDir(t, l, SelfRunID)
+			}
+			if got := ResolveRunID(l, tt.id); got != tt.want {
+				t.Errorf("ResolveRunID(%q) = %q; want %q", tt.id, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestRunDir_LegacyFallbackWhenOnlySelfExists(t *testing.T) {
-	l := syntheticLocation(t)
-	mkShedDir(t, l, SelfRunID)
-	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", SelfRunID)
-	for _, id := range []string{SelfRunID, l.WorktreeName} {
-		if got := RunDir(l, id); got != want {
-			t.Errorf("RunDir(%q) = %q; want %q", id, got, want)
-		}
+// TestRunDirResolution pins which directory a run-id addresses: the slug dir for a new run, the legacy self dir while only it exists, the slug dir once both exist, and an unrelated id's own dir.
+func TestRunDirResolution(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// existing lists the _lyx/shed segments created before resolving.
+		existing []string
+		ids      []string
+		wantSeg  string
+		// wantScratchSelfSeg, when set, is the .lyx/shed segment ScratchDir(self) must resolve to.
+		wantScratchSelfSeg string
+	}{
+		{"a new run is addressed by self or slug at the slug dir", nil, []string{SelfRunID, worktreeName}, worktreeName, ""},
+		{"a legacy self dir is the fallback while only it exists", []string{SelfRunID}, []string{SelfRunID, worktreeName}, SelfRunID, SelfRunID},
+		{"the slug dir wins over the legacy one", []string{SelfRunID, worktreeName}, []string{SelfRunID}, worktreeName, ""},
+		{"another run-id is unaffected by a legacy dir", []string{SelfRunID}, []string{"other"}, "other", ""},
 	}
-	wantScratch := filepath.Join(l.AnchorPath(), ".lyx", "shed", SelfRunID)
-	if got := ScratchDir(l, SelfRunID); got != wantScratch {
-		t.Errorf("ScratchDir(self) = %q; want %q", got, wantScratch)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := syntheticLocation(t)
+			for _, seg := range tt.existing {
+				mkShedDir(t, l, seg)
+			}
+			want := filepath.Join(l.AnchorPath(), "_lyx", "shed", tt.wantSeg)
+			for _, id := range tt.ids {
+				if got := RunDir(l, id); got != want {
+					t.Errorf("RunDir(%q) = %q; want %q", id, got, want)
+				}
+			}
+			if tt.wantScratchSelfSeg != "" {
+				wantScratch := filepath.Join(l.AnchorPath(), ".lyx", "shed", tt.wantScratchSelfSeg)
+				if got := ScratchDir(l, SelfRunID); got != wantScratch {
+					t.Errorf("ScratchDir(self) = %q; want %q", got, wantScratch)
+				}
+			}
+		})
 	}
 }
 
-func TestRunDir_SlugDirWinsOverLegacy(t *testing.T) {
-	l := syntheticLocation(t)
-	mkShedDir(t, l, SelfRunID)
-	mkShedDir(t, l, l.WorktreeName)
-	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", l.WorktreeName)
-	if got := RunDir(l, SelfRunID); got != want {
-		t.Errorf("RunDir(self) = %q; want %q", got, want)
-	}
-}
-
-func TestRunDir_OtherRunIDUnaffectedByLegacy(t *testing.T) {
-	l := syntheticLocation(t)
-	mkShedDir(t, l, SelfRunID)
-	want := filepath.Join(l.AnchorPath(), "_lyx", "shed", "other")
-	if got := RunDir(l, "other"); got != want {
-		t.Errorf("RunDir(other) = %q; want %q", got, want)
-	}
-}
-
+//testtiming:keep pins that self resolves against the told location, so a WriteSeed lands at SeedRel and SeedFile, which its covering tests do not
 func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
 	a := syntheticLocation(t)
 	b := &lyxcwd.Location{RepoName: "repo", HubPath: a.HubPath, WorktreeName: "child-slug", AnchorRel: "."}

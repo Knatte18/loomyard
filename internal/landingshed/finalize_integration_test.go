@@ -84,37 +84,12 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	return f
 }
 
-// TestFinalize_ResolvesConflictAndSquashMergesIntoParent builds a task pair and a parent pair off
-// the same hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task
-// pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real
-// resolution to the conflicted file, and asserts that the parent pair's code side afterward carries the
-// task's resolved content and the squash setting took effect there, that the parent pair's records side is
-// left byte-identical -- the records side is not a merge participant, per this task's own
-// no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge
-// record is left behind on either pair.
-func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
-
-	hubforge.AddPair(t, h, "task")
-	hubforge.AddPair(t, h, "parent")
-
-	taskCode, taskRecords := h.PairWarpWorktree("task"), h.PairWeftSibling("task")
-	parentCode, parentRecords := h.PairWarpWorktree("parent"), h.PairWeftSibling("parent")
-
-	// The genuine code-side conflict: both branches add conflict.txt independently, off a common
-	// ancestor where it does not exist.
-	gitkit.CommitFile(t, taskCode, "conflict.txt", "task content\n", "task: add conflict.txt")
-	gitkit.CommitFile(t, parentCode, "conflict.txt", "parent content\n", "parent: add conflict.txt")
-
-	// A clean, non-conflicting records-side divergence on the task pair alone, so "the parent pair
-	// carries the task's content on both sides" has a concrete records-side fact to assert.
-	gitkit.CommitFile(t, taskRecords, "task-note.txt", "task records note\n", "task: add task-note.txt")
-
-	shuttle := resolutionShuttle(taskCode, "resolved content\n", "conflict.txt")
-
+// newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake conflict-resolution session shuttle.
+func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle) *landingshed.Finalize {
+	t.Helper()
 	deps := landingshed.NewTestDeps(t)
 	deps.WorktreeRoot = taskCode
-	deps.TaskBranch = "task"
+	deps.TaskBranch = taskBranch
 	deps.ParentBranch = "parent"
 	deps.StencilsDir = seedConflictStencil(t)
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskCode), nil }
@@ -126,119 +101,124 @@ func TestFinalize_ResolvesConflictAndSquashMergesIntoParent(t *testing.T) {
 		ConflictTimeoutMin: 1,
 		CoAuthoredBy:       "Test Author <test@example.com>",
 	}
-
 	fz, err := landingshed.NewFinalize(deps)
 	if err != nil {
 		t.Fatalf("NewFinalize() error = %v; want nil", err)
 	}
-
-	// Captured before Call so the records-side-not-a-merge-participant assertion below has a concrete
-	// before/after pair to compare, mirroring internal/fabricengine's own before/HEAD
-	// convention for its records side (see e.g. its merge-local integration test).
-	parentRecordsBefore := gitkit.RevParse(t, parentRecords, "HEAD")
-
-	shedfake.RequireOutcome(t, fz, shedengine.Done)
-	if len(shuttle.Specs) != 1 {
-		t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", len(shuttle.Specs))
-	}
-
-	// The parent pair's code side carries the task's resolved content.
-	codeContent, err := os.ReadFile(filepath.Join(parentCode, "conflict.txt"))
-	if err != nil {
-		t.Fatalf("read parent code conflict.txt: %v", err)
-	}
-	if string(codeContent) != "resolved content\n" {
-		t.Errorf("parent code conflict.txt = %q; want the resolved content %q", codeContent, "resolved content\n")
-	}
-
-	// The parent pair's records side is left byte-identical: it is not a merge participant, so the
-	// task pair's records-only task-note.txt never reaches it, on either the file-tree or the commit
-	// graph -- mirroring internal/fabricengine's own "records side is not a merge participant" assertion
-	// shape (see e.g. its merge-local integration test's byte-identical check).
-	if _, err := os.Stat(filepath.Join(parentRecords, "task-note.txt")); !os.IsNotExist(err) {
-		t.Errorf("os.Stat(parent records task-note.txt) error = %v; want a not-exist error -- the records side is not a merge participant", err)
-	}
-	if got := gitkit.RevParse(t, parentRecords, "HEAD"); got != parentRecordsBefore {
-		t.Errorf("parent records HEAD = %q; want byte-identical %q -- the records side is not a merge participant", got, parentRecordsBefore)
-	}
-
-	// The squash setting took effect on the parent pair's code side: a single-parent commit.
-	codeHEAD := gitkit.RevParse(t, parentCode, "HEAD")
-	if got := len(strings.Fields(gitkit.Git(t, parentCode, "log", "-1", "--format=%P", codeHEAD))); got != 1 {
-		t.Errorf("parent code HEAD %s has %d parents; want exactly 1 (a squash commit)", codeHEAD, got)
-	}
-
-	// The landing commit's subject is the description title, its body is the description body, and
-	// exactly one Co-Authored-By trailer carries the configured value.
-	msgCmd := exec.Command("git", "log", "-1", "--format=%B")
-	msgCmd.Dir = parentCode
-	msgOut, err := msgCmd.Output()
-	if err != nil {
-		t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
-	}
-	wantMsg := "A landing title\n\nA landing body.\n\nCo-Authored-By: Test Author <test@example.com>"
-	if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
-		t.Errorf("landing commit message = %q; want %q", got, wantMsg)
-	}
-	if n := strings.Count(string(msgOut), "Co-Authored-By:"); n != 1 {
-		t.Errorf("landing commit carries %d Co-Authored-By lines; want exactly 1", n)
-	}
-
-	// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is
-	// a test-only export reachable only from fabricengine's own test binary, so this package checks
-	// the same fact through the public MergeInProgress accessor instead.
-	taskHandle := openFabricAtLanding(t, taskCode)
-	if inProgress, err := taskHandle.MergeInProgress(); err != nil || inProgress {
-		t.Errorf("task pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
-	}
-	parentHandle := openFabricAtLanding(t, parentCode)
-	if inProgress, err := parentHandle.MergeInProgress(); err != nil || inProgress {
-		t.Errorf("parent pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
-	}
+	return fz
 }
 
-// TestFinalize_AlreadyLandedParentIsIdempotent lands a task once, then calls Finalize again on the
-// same pair, and asserts the second call is Done with no second landing commit. A fresh Finalize
-// over a parent that already carries the task's squashed diff behaves the same way.
-func TestFinalize_AlreadyLandedParentIsIdempotent(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// TestFinalize_OverRealHub lands tasks into a parent pair of one hub, a step at a time.
+//
+// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real resolution to the conflicted file, and asserts that the parent pair's code side afterward carries the task's resolved content and the squash setting took effect there, that the parent pair's records side is left byte-identical -- the records side is not a merge participant, per this task's own no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge record is left behind on either pair.
+//
+// The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
+// A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
+//
+// The steps share one hub and one parent pair, and the second relies on the first having landed into that parent, so no step runs in parallel and the top-level test calls t.Parallel because the hub is its own.
+func TestFinalize_OverRealHub(t *testing.T) {
+	t.Parallel()
 
+	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPair(t, h, "parent")
+	parentCode, parentRecords := h.PairWarpWorktree("parent"), h.PairWeftSibling("parent")
 
-	taskCode := h.PairWarpWorktree("task")
-	parentCode := h.PairWarpWorktree("parent")
+	if !t.Run("resolves a conflict and squash merges into the parent", func(t *testing.T) {
+		taskCode, taskRecords := h.PairWarpWorktree("task"), h.PairWeftSibling("task")
 
-	gitkit.CommitFile(t, taskCode, "feature.txt", "task feature\n", "task: add feature.txt")
+		// The genuine code-side conflict: both branches add conflict.txt independently, off a common
+		// ancestor where it does not exist.
+		gitkit.CommitFile(t, taskCode, "conflict.txt", "task content\n", "task: add conflict.txt")
+		gitkit.CommitFile(t, parentCode, "conflict.txt", "parent content\n", "parent: add conflict.txt")
 
-	newFinalize := func() *landingshed.Finalize {
-		deps := landingshed.NewTestDeps(t)
-		deps.WorktreeRoot = taskCode
-		deps.TaskBranch = "task"
-		deps.ParentBranch = "parent"
-		deps.StencilsDir = seedConflictStencil(t)
-		deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskCode), nil }
-		deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentCode), nil }
-		deps.Shuttle = resolutionShuttle(taskCode, "")
-		deps.Config = landingshed.Config{
-			Squash:             true,
-			Conflict:           "claude:test-model",
-			ConflictTimeoutMin: 1,
-			CoAuthoredBy:       "Test Author <test@example.com>",
+		// A clean, non-conflicting records-side divergence on the task pair alone, so "the parent pair
+		// carries the task's content on both sides" has a concrete records-side fact to assert.
+		gitkit.CommitFile(t, taskRecords, "task-note.txt", "task records note\n", "task: add task-note.txt")
+
+		shuttle := resolutionShuttle(taskCode, "resolved content\n", "conflict.txt")
+		fz := newFinalizeAt(t, "task", taskCode, parentCode, shuttle)
+
+		// Captured before Call so the records-side-not-a-merge-participant assertion below has a concrete
+		// before/after pair to compare, mirroring internal/fabricengine's own before/HEAD
+		// convention for its records side (see e.g. its merge-local integration test).
+		parentRecordsBefore := gitkit.RevParse(t, parentRecords, "HEAD")
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+		if len(shuttle.Specs) != 1 {
+			t.Errorf("fake shuttle Run() called %d time(s); want exactly 1 (one conflict-resolution session)", len(shuttle.Specs))
 		}
-		fz, err := landingshed.NewFinalize(deps)
+
+		// The parent pair's code side carries the task's resolved content.
+		codeContent, err := os.ReadFile(filepath.Join(parentCode, "conflict.txt"))
 		if err != nil {
-			t.Fatalf("NewFinalize() error = %v; want nil", err)
+			t.Fatalf("read parent code conflict.txt: %v", err)
 		}
-		return fz
+		if string(codeContent) != "resolved content\n" {
+			t.Errorf("parent code conflict.txt = %q; want the resolved content %q", codeContent, "resolved content\n")
+		}
+
+		// The parent pair's records side is left byte-identical: it is not a merge participant, so the
+		// task pair's records-only task-note.txt never reaches it, on either the file-tree or the commit
+		// graph -- mirroring internal/fabricengine's own "records side is not a merge participant" assertion
+		// shape (see e.g. its merge-local integration test's byte-identical check).
+		if _, err := os.Stat(filepath.Join(parentRecords, "task-note.txt")); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(parent records task-note.txt) error = %v; want a not-exist error -- the records side is not a merge participant", err)
+		}
+		if got := gitkit.RevParse(t, parentRecords, "HEAD"); got != parentRecordsBefore {
+			t.Errorf("parent records HEAD = %q; want byte-identical %q -- the records side is not a merge participant", got, parentRecordsBefore)
+		}
+
+		// The squash setting took effect on the parent pair's code side: a single-parent commit.
+		codeHEAD := gitkit.RevParse(t, parentCode, "HEAD")
+		if got := len(strings.Fields(gitkit.Git(t, parentCode, "log", "-1", "--format=%P", codeHEAD))); got != 1 {
+			t.Errorf("parent code HEAD %s has %d parents; want exactly 1 (a squash commit)", codeHEAD, got)
+		}
+
+		// The landing commit's subject is the description title, its body is the description body, and
+		// exactly one Co-Authored-By trailer carries the configured value.
+		msgCmd := exec.Command("git", "log", "-1", "--format=%B")
+		msgCmd.Dir = parentCode
+		msgOut, err := msgCmd.Output()
+		if err != nil {
+			t.Fatalf("git log -1 --format=%%B in %s: %v", parentCode, err)
+		}
+		wantMsg := "A landing title\n\nA landing body.\n\nCo-Authored-By: Test Author <test@example.com>"
+		if got := strings.TrimSpace(string(msgOut)); got != wantMsg {
+			t.Errorf("landing commit message = %q; want %q", got, wantMsg)
+		}
+		if n := strings.Count(string(msgOut), "Co-Authored-By:"); n != 1 {
+			t.Errorf("landing commit carries %d Co-Authored-By lines; want exactly 1", n)
+		}
+
+		// No merge record is left behind on either pair. fabricengine's own MergeRecordExistsForTest is
+		// a test-only export reachable only from fabricengine's own test binary, so this package checks
+		// the same fact through the public MergeInProgress accessor instead.
+		taskHandle := openFabricAtLanding(t, taskCode)
+		if inProgress, err := taskHandle.MergeInProgress(); err != nil || inProgress {
+			t.Errorf("task pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
+		}
+		parentHandle := openFabricAtLanding(t, parentCode)
+		if inProgress, err := parentHandle.MergeInProgress(); err != nil || inProgress {
+			t.Errorf("parent pair MergeInProgress() = (%v, %v); want (false, nil)", inProgress, err)
+		}
+	}) {
+		return
 	}
 
-	shedfake.RequireOutcome(t, newFinalize(), shedengine.Done)
-	headAfterFirst := gitkit.RevParse(t, parentCode, "HEAD")
+	// Relies on the first step having landed into the parent pair, so this task's merge-in carries that landing in cleanly.
+	t.Run("an already landed parent is idempotent", func(t *testing.T) {
+		hubforge.AddPair(t, h, "second-task")
+		secondCode := h.PairWarpWorktree("second-task")
+		gitkit.CommitFile(t, secondCode, "feature.txt", "task feature\n", "task: add feature.txt")
 
-	// A second Finalize over the now already-landed parent.
-	shedfake.RequireOutcome(t, newFinalize(), shedengine.Done)
-	if got := gitkit.RevParse(t, parentCode, "HEAD"); got != headAfterFirst {
-		t.Errorf("parent code HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
-	}
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, "")), shedengine.Done)
+		headAfterFirst := gitkit.RevParse(t, parentCode, "HEAD")
+
+		// A second Finalize over the now already-landed parent.
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, "")), shedengine.Done)
+		if got := gitkit.RevParse(t, parentCode, "HEAD"); got != headAfterFirst {
+			t.Errorf("parent code HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
+		}
+	})
 }

@@ -11,6 +11,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,66 +128,62 @@ func bannedDeclNamesIn(astFile *ast.File) []string {
 	return names
 }
 
-// TestBannedDeclNamesIn_CatchesVarFuncLiteral is CW-2's own regression test (crucible round
-// sonnet-xhigh-r8): a banned helper re-declared as a package-level var holding a func literal is
-// exactly as much a re-implementation as the same name declared with `func`, and must be caught the
-// same way. Direct unit test over bannedDeclNamesIn rather than a planted whole-repo fixture, so the
-// regression lives beside the function it protects.
-func TestBannedDeclNamesIn_CatchesVarFuncLiteral(t *testing.T) {
-	const src = `package fakecli
+// TestBannedDeclNamesIn is a direct unit test over bannedDeclNamesIn rather than a planted whole-repo fixture, so each regression lives beside the function it protects.
+// A banned helper re-declared as a package-level var holding a func literal is exactly as much a re-implementation as the same name declared with `func`, and must be caught the same way (crucible round sonnet-xhigh-r8, CW-2).
+// The ordinary `func` form the pre-fix walk already caught must still be caught after widening the match to package-level var/const declarations.
+// The widened match must still discriminate on name, so an ordinary unrelated package-level var is not a false positive.
+//
+//testtiming:keep a guard self-check: pins that the declaration walk catches each banned shape and spares an unrelated name, which the real-tree scan never exercises
+func TestBannedDeclNamesIn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{
+			name: "CatchesVarFuncLiteral",
+			src: `package fakecli
 
 var resolveStandaloneTarget = func(cwd, flag string) (string, error) {
 	return cwd + flag, nil
 }
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
-	}
-
-	got := bannedDeclNamesIn(astFile)
-	if len(got) != 1 || got[0] != "resolveStandaloneTarget" {
-		t.Errorf("bannedDeclNamesIn() = %v; want [resolveStandaloneTarget] -- a var holding a func literal under a banned name must be caught exactly like a func declaration would be", got)
-	}
-}
-
-// TestBannedDeclNamesIn_FuncDeclStillCaught is a plain-shape sanity check alongside the var
-// regression above: the ordinary `func` form the pre-fix walk already caught must still be caught
-// after widening the match to package-level var/const declarations.
-func TestBannedDeclNamesIn_FuncDeclStillCaught(t *testing.T) {
-	const src = `package fakecli
+`,
+			want: []string{"resolveStandaloneTarget"},
+		},
+		{
+			name: "FuncDeclStillCaught",
+			src: `package fakecli
 
 func resolveStandaloneTarget(cwd, flag string) (string, error) {
 	return cwd + flag, nil
 }
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
-	}
-
-	got := bannedDeclNamesIn(astFile)
-	if len(got) != 1 || got[0] != "resolveStandaloneTarget" {
-		t.Errorf("bannedDeclNamesIn() = %v; want [resolveStandaloneTarget]", got)
-	}
-}
-
-// TestBannedDeclNamesIn_UnrelatedVarNotCaught confirms the widened match still discriminates on
-// name -- an ordinary, unrelated package-level var must not false-positive.
-func TestBannedDeclNamesIn_UnrelatedVarNotCaught(t *testing.T) {
-	const src = `package fakecli
+`,
+			want: []string{"resolveStandaloneTarget"},
+		},
+		{
+			name: "UnrelatedVarNotCaught",
+			src: `package fakecli
 
 var somethingElseEntirely = 42
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
+`,
+			want: nil,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if got := bannedDeclNamesIn(astFile); len(got) != 0 {
-		t.Errorf("bannedDeclNamesIn() = %v; want empty -- an unrelated var name is not a banned re-declaration", got)
+			fset := token.NewFileSet()
+			astFile, err := parser.ParseFile(fset, "fakecli.go", tt.src, 0)
+			if err != nil {
+				t.Fatalf("parse fixture source: %v", err)
+			}
+
+			if got := bannedDeclNamesIn(astFile); !slices.Equal(got, tt.want) {
+				t.Errorf("bannedDeclNamesIn() = %v; want %v", got, tt.want)
+			}
+		})
 	}
 }

@@ -1,8 +1,8 @@
 //go:build integration
 
-// spawn_driven_hub_integration_test.go drives SpawnDriven against real hubs from hubforge.NewHub and hubforge.AddPair:
+// spawn_driven_hub_integration_test.go holds the SpawnDriven checks that run against task pairs of one hubforge hub:
 // the attach-only chain, the shared info/exclude, and the tracked-tasks.json skip.
-// Serial by design, because every test swaps the package-level CodeLauncher.
+// Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
 
@@ -20,8 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
-
-const drivenSlug = "some-task"
 
 // sharedExcludePath resolves the shared info/exclude of the task worktree's repo.
 func sharedExcludePath(t *testing.T, worktreeDir string) string {
@@ -64,66 +62,60 @@ func assertSingleAttachTask(t *testing.T, anchorDir string) {
 	}
 }
 
-// TestSpawnDrivenWritesAttachOnlyAndExcludes covers the launch argument, the single attach task, a clean tree and the anchored exclude at both anchors.
-func TestSpawnDrivenWritesAttachOnlyAndExcludes(t *testing.T) {
-	for _, anchor := range []string{".", "wts/some-task"} {
-		t.Run(anchor, func(t *testing.T) {
-			h := hubforge.NewHub(t, anchor)
-			l := h.Location
-			launched := recordLauncher(t)
-			hubforge.AddPair(t, h, drivenSlug)
-			worktreeDir := fabricengine.WorktreePath(l, drivenSlug)
-			excludePath := sharedExcludePath(t, worktreeDir)
-			custom := "# custom-line-kept\n"
-			existing, _ := os.ReadFile(excludePath)
-			if err := os.WriteFile(excludePath, append(existing, []byte(custom)...), 0o644); err != nil {
-				t.Fatalf("write custom exclude line: %v", err)
-			}
+// checkDrivenWritesAttachOnlyAndExcludes covers the launch argument, the single attach task, a clean tree and the anchored exclude at the hub's anchor.
+func checkDrivenWritesAttachOnlyAndExcludes(t *testing.T, h *hubforge.Hub, slug string) {
+	l := h.Location
+	launched := recordLauncher(t)
+	hubforge.AddPair(t, h, slug)
+	worktreeDir := fabricengine.WorktreePath(l, slug)
+	excludePath := sharedExcludePath(t, worktreeDir)
+	custom := "# custom-line-kept\n"
+	existing, _ := os.ReadFile(excludePath)
+	if err := os.WriteFile(excludePath, append(existing, []byte(custom)...), 0o644); err != nil {
+		t.Fatalf("write custom exclude line: %v", err)
+	}
 
-			if err := SpawnDriven(l, drivenSlug); err != nil {
-				t.Fatalf("SpawnDriven: %v", err)
-			}
+	if err := SpawnDriven(l, slug); err != nil {
+		t.Fatalf("SpawnDriven: %v", err)
+	}
 
-			want := filepath.Join(worktreeDir, l.AnchorRel)
-			if len(*launched) != 1 || (*launched)[0] != want {
-				t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, want)
-			}
-			resolved, err := lyxcwd.ResolveWorktree(worktreeDir)
-			if err != nil {
-				t.Fatalf("ResolveWorktree: %v", err)
-			}
-			if resolved.AnchorPath() != want {
-				t.Errorf("launched %s, ResolveWorktree AnchorPath = %s", want, resolved.AnchorPath())
-			}
-			assertSingleAttachTask(t, want)
-			if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
-				t.Errorf("git status --porcelain not empty:\n%s", status)
-			}
-			ignored := filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode")) + "/"
-			if l.AnchorRel == "." {
-				ignored = ".vscode/"
-			}
-			if out := gitkit.Git(t, worktreeDir, "check-ignore", ignored); out == "" {
-				t.Errorf("check-ignore reported %s not ignored", ignored)
-			}
-			got, err := os.ReadFile(excludePath)
-			if err != nil {
-				t.Fatalf("read exclude: %v", err)
-			}
-			if !strings.Contains(string(got), custom) {
-				t.Errorf("custom exclude line lost:\n%s", got)
-			}
-		})
+	want := filepath.Join(worktreeDir, l.AnchorRel)
+	if len(*launched) != 1 || (*launched)[0] != want {
+		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, want)
+	}
+	resolved, err := lyxcwd.ResolveWorktree(worktreeDir)
+	if err != nil {
+		t.Fatalf("ResolveWorktree: %v", err)
+	}
+	if resolved.AnchorPath() != want {
+		t.Errorf("launched %s, ResolveWorktree AnchorPath = %s", want, resolved.AnchorPath())
+	}
+	assertSingleAttachTask(t, want)
+	if status := gitkit.Git(t, worktreeDir, "status", "--porcelain"); status != "" {
+		t.Errorf("git status --porcelain not empty:\n%s", status)
+	}
+	ignored := filepath.ToSlash(filepath.Join(l.AnchorRel, ".vscode")) + "/"
+	if l.AnchorRel == "." {
+		ignored = ".vscode/"
+	}
+	if out := gitkit.Git(t, worktreeDir, "check-ignore", ignored); out == "" {
+		t.Errorf("check-ignore reported %s not ignored", ignored)
+	}
+	got, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read exclude: %v", err)
+	}
+	if !strings.Contains(string(got), custom) {
+		t.Errorf("custom exclude line lost:\n%s", got)
 	}
 }
 
-// TestSpawnDrivenOverwritesTasksKeepsSettings asserts an untracked interactive tasks.json is replaced and settings.json is untouched.
-func TestSpawnDrivenOverwritesTasksKeepsSettings(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkDrivenOverwritesTasksKeepsSettings asserts an untracked interactive tasks.json is replaced and settings.json is untouched.
+func checkDrivenOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	recordLauncher(t)
-	hubforge.AddPair(t, h, drivenSlug)
-	vscodeDir := filepath.Join(fabricengine.WorktreePath(l, drivenSlug), l.AnchorRel, ".vscode")
+	hubforge.AddPair(t, h, slug)
+	vscodeDir := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, ".vscode")
 	if err := os.MkdirAll(vscodeDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -136,7 +128,7 @@ func TestSpawnDrivenOverwritesTasksKeepsSettings(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	if err := SpawnDriven(l, drivenSlug); err != nil {
+	if err := SpawnDriven(l, slug); err != nil {
 		t.Fatalf("SpawnDriven: %v", err)
 	}
 
@@ -150,13 +142,12 @@ func TestSpawnDrivenOverwritesTasksKeepsSettings(t *testing.T) {
 	}
 }
 
-// TestSpawnDrivenSkipsTrackedVSCode asserts a committed tasks.json is left alone, the exclude is unchanged, and the launch still happens with one warning.
-func TestSpawnDrivenSkipsTrackedVSCode(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+// checkDrivenSkipsTrackedVSCode asserts a committed tasks.json is left alone, the exclude is unchanged, and the launch still happens with one warning.
+func checkDrivenSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	launched := recordLauncher(t)
-	hubforge.AddPair(t, h, drivenSlug)
-	worktreeDir := fabricengine.WorktreePath(l, drivenSlug)
+	hubforge.AddPair(t, h, slug)
+	worktreeDir := fabricengine.WorktreePath(l, slug)
 	anchorDir := filepath.Join(worktreeDir, l.AnchorRel)
 	tasksPath := filepath.Join(anchorDir, ".vscode", "tasks.json")
 	if err := os.MkdirAll(filepath.Dir(tasksPath), 0o755); err != nil {
@@ -175,7 +166,7 @@ func TestSpawnDrivenSkipsTrackedVSCode(t *testing.T) {
 	logger.SetOutput(&logBuf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
-	if err := SpawnDriven(l, drivenSlug); err != nil {
+	if err := SpawnDriven(l, slug); err != nil {
 		t.Fatalf("SpawnDriven: %v", err)
 	}
 
@@ -192,7 +183,7 @@ func TestSpawnDrivenSkipsTrackedVSCode(t *testing.T) {
 	}
 	warns := 0
 	for _, line := range strings.Split(logBuf.String(), "\n") {
-		if strings.Contains(line, "level=WARN") && strings.Contains(line, drivenSlug) {
+		if strings.Contains(line, "level=WARN") && strings.Contains(line, slug) {
 			warns++
 		}
 	}

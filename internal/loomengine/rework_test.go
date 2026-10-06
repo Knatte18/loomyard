@@ -18,6 +18,8 @@ import (
 )
 
 // TestReworkSpec verifies the field mapping, that every marker renders its told path or value, and that the plan role's model-spec and timeout are reused.
+//
+//testtiming:keep pins OutputFiles, Role, Effort, the reused plan Timeout and every told path and first card in the prompt, which TestProducerSpecs_SkillsAndParentDirective does not assert
 func TestReworkSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}

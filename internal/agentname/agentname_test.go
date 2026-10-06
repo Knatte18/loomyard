@@ -5,7 +5,10 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins the exact formatted string of each name form and its Parse round trip, which Resolve and the rejection cases never assert
 func TestFormatParseRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct{ shortname, slug, role, want string }{
 		{"ly", "", "orch", "ly:orch"},
 		{"ly", "agent-naming", "driver-2", "ly:agent-naming:driver-2"},
@@ -24,6 +27,8 @@ func TestFormatParseRoundTrip(t *testing.T) {
 }
 
 func TestValidationRejections(t *testing.T) {
+	t.Parallel()
+
 	for _, shortname := range []string{"", "a", "abcdefg", "1ab", "a-b", "a:b", "a.b", "a@b", "AB"} {
 		if ValidateShortname(shortname) == nil {
 			t.Errorf("ValidateShortname(%q) accepted", shortname)
@@ -51,6 +56,8 @@ func TestValidationRejections(t *testing.T) {
 }
 
 func TestNumberRole(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		held []string
 		want string
@@ -70,28 +77,48 @@ func TestNumberRole(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	n, err := Resolve("ly", "task", "driver")
-	if err != nil || n.String() != "ly:task:driver" {
-		t.Fatalf("role query = %v, %v", n, err)
+	t.Parallel()
+
+	tests := []struct {
+		name                   string
+		shortname, slug, query string
+		wantName               string
+		wantErr                bool
+		wantErrContains        string
+	}{
+		{name: "RoleQuery", shortname: "ly", slug: "task", query: "driver", wantName: "ly:task:driver"},
+		{name: "FullQuery", shortname: "ly", slug: "task", query: "ly:task:orch", wantName: "ly:task:orch"},
+		{name: "PrimeFullQuery", shortname: "ly", slug: "", query: "ly:orch", wantName: "ly:orch"},
+		{
+			name: "ForeignPrefix", shortname: "ly", slug: "task", query: "zz:other:orch", wantErr: true,
+			wantErrContains: "way forward: pass the role segment alone, or run the command from the worktree the full name belongs to",
+		},
+		{name: "SlugMismatch", shortname: "ly", slug: "task", query: "ly:orch", wantErr: true},
 	}
-	n, err = Resolve("ly", "task", "ly:task:orch")
-	if err != nil || n.Role != "orch" {
-		t.Fatalf("full query = %v, %v", n, err)
-	}
-	n, err = Resolve("ly", "", "ly:orch")
-	if err != nil || n.String() != "ly:orch" {
-		t.Fatalf("prime full query = %v, %v", n, err)
-	}
-	_, err = Resolve("ly", "task", "zz:other:orch")
-	if err == nil || !strings.Contains(err.Error(), "way forward: pass the role segment alone, or run the command from the worktree the full name belongs to") {
-		t.Fatalf("foreign prefix err = %v", err)
-	}
-	if _, err = Resolve("ly", "task", "ly:orch"); err == nil {
-		t.Fatal("slug mismatch accepted")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			n, err := Resolve(tt.shortname, tt.slug, tt.query)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Resolve(%q,%q,%q) = %v; want an error", tt.shortname, tt.slug, tt.query, n)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("Resolve(%q,%q,%q) err = %v; want it to contain %q", tt.shortname, tt.slug, tt.query, err, tt.wantErrContains)
+				}
+				return
+			}
+			if err != nil || n.String() != tt.wantName {
+				t.Fatalf("Resolve(%q,%q,%q) = %v, %v; want %q", tt.shortname, tt.slug, tt.query, n, err, tt.wantName)
+			}
+		})
 	}
 }
 
 func TestMatches(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		full, query string
 		want        bool
@@ -111,6 +138,8 @@ func TestMatches(t *testing.T) {
 }
 
 func TestStandaloneShortname(t *testing.T) {
+	t.Parallel()
+
 	got := StandaloneShortname("a1b2c3d4")
 	if got != "sa1b2c" {
 		t.Fatalf("StandaloneShortname = %q", got)

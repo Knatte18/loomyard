@@ -27,6 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
+// TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded repo and checks the exit code and envelope each propagates.
+// It chdirs, which is process-global state, so neither it nor its steps run in parallel.
 func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lyx/config/board.yaml
@@ -50,45 +52,27 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	}
 	t.Chdir(cwd)
 
-	var out bytes.Buffer
-	code := run([]string{"board", "rerender"}, &out)
-	if code != 0 {
-		t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
-	}
+	// The steps share the one repo and board config and are independent of each other.
+	t.Run("a succeeding board command exits 0 with an ok envelope", func(t *testing.T) {
+		var out bytes.Buffer
+		code := run([]string{"board", "rerender"}, &out)
+		if code != 0 {
+			t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
+		}
 
-	envelope.RequireOK(t, out.String())
-}
+		envelope.RequireOK(t, out.String())
+	})
 
-func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
-	t.Setenv("BOARD_SKIP_GIT", "1")
-	// Create temp cwd with _lyx/config/board.yaml
-	cwd := t.TempDir()
-
-	// Initialize a git repo so lyxcwd.Resolve succeeds.
-	gitkit.Git(t, cwd, "init")
-
-	// The board config is the hub's: the hub is cwd's parent.
-	boardDir := fabricengine.BoardDir(filepath.Dir(cwd))
-	configDir := configengine.ConfigDir(boardDir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("failed to create hub board config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "board")
-	// Write a template-complete board config.
-	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
-		t.Fatalf("failed to write hub board.yaml: %v", err)
-	}
-	t.Chdir(cwd)
-
-	var out bytes.Buffer
-	code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 from failing board command, got %d; output: %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Fatalf("expected error JSON on out, got %q", out.String())
-	}
+	t.Run("a failing board command propagates exit 1 with an error envelope", func(t *testing.T) {
+		var out bytes.Buffer
+		code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out)
+		if code != 1 {
+			t.Fatalf("expected exit 1 from failing board command, got %d; output: %s", code, out.String())
+		}
+		if !strings.Contains(out.String(), `"ok":false`) {
+			t.Fatalf("expected error JSON on out, got %q", out.String())
+		}
+	})
 }
 
 // traceFilenamePattern matches the durable sink's trace-file naming: "trace-<UTC timestamp>-<TraceID>-<PID>.log".

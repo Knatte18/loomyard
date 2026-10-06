@@ -10,9 +10,10 @@ import (
 	"testing"
 )
 
-// TestRepoRoot_LocatesModuleRoot verifies RepoRoot returns the correct root directory with this
-// package's source beneath it.
-func TestRepoRoot_LocatesModuleRoot(t *testing.T) {
+// TestDevBinPaths_DeriveFromRepoRoot verifies RepoRoot returns the root directory with this package's source beneath it, Dir returns RepoRoot + ".dev-bin", and BinPath returns the platform's binary name inside Dir.
+func TestDevBinPaths_DeriveFromRepoRoot(t *testing.T) {
+	t.Parallel()
+
 	root, err := RepoRoot()
 	if err != nil {
 		t.Fatalf("RepoRoot() error: %v", err)
@@ -26,44 +27,26 @@ func TestRepoRoot_LocatesModuleRoot(t *testing.T) {
 	if wantSelfDir != gotSelfDir {
 		t.Errorf("RepoRoot() = %q; tools/internal/devbin beneath it = %q, want %q", root, wantSelfDir, gotSelfDir)
 	}
-}
 
-// TestDir_JoinsRepoRootWithDevBin verifies Dir returns RepoRoot + ".dev-bin".
-func TestDir_JoinsRepoRootWithDevBin(t *testing.T) {
-	root, err := RepoRoot()
-	if err != nil {
-		t.Fatalf("RepoRoot() error: %v", err)
-	}
-	want := filepath.Join(root, ".dev-bin")
-
-	got, err := Dir()
-	if err != nil {
-		t.Fatalf("Dir() error: %v", err)
-	}
-	if got != want {
-		t.Errorf("Dir() = %q; want %q", got, want)
-	}
-}
-
-// TestBinPath_PlatformBinaryName verifies BinPath returns the correct name for the current
-// platform.
-func TestBinPath_PlatformBinaryName(t *testing.T) {
+	wantDir := filepath.Join(root, ".dev-bin")
 	dir, err := Dir()
 	if err != nil {
 		t.Fatalf("Dir() error: %v", err)
+	}
+	if dir != wantDir {
+		t.Errorf("Dir() = %q; want %q", dir, wantDir)
 	}
 
 	name := "lyx"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	want := filepath.Join(dir, name)
-
+	wantBin := filepath.Join(dir, name)
 	got, err := BinPath()
 	if err != nil {
 		t.Fatalf("BinPath() error: %v", err)
 	}
-	if got != want {
-		t.Errorf("BinPath() = %q; want %q", got, want)
+	if got != wantBin {
+		t.Errorf("BinPath() = %q; want %q", got, wantBin)
 	}
 }

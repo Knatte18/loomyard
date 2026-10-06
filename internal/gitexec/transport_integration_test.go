@@ -12,7 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
+//testtiming:keep pins the real stderr git prints for an unreachable remote and a hook-rejected push, which TestIsTransportFailure's hand-built stderr rows do not
 func TestIsTransportFailure_RealGit(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	for _, args := range [][]string{
 		{"init"},

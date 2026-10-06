@@ -12,118 +12,88 @@ import (
 	"github.com/Knatte18/quarry/glyph"
 )
 
+// TestSyntacticContainment asserts which Targets pairings across cards overlap on one unit:
+// a member glyph or a file self glyph against the self glyph of its own direct directory on another card produces exactly one containment-unit-overlap finding, attributed to the finer-grained card; the same refs on one card (a card cannot conflict with itself), two member glyphs in one unit (the whole point of symbol granularity), two files in one directory and a file against an unrelated or ancestor directory produce none.
+// The file-vs-directory pairing is crucible round fable-high-r10, F4: it involves no member glyph, so neither the member pairing nor planglyph's resolve-backed member-vs-file tier ever compared them, and a whole-unit target and one of its own files dispatched blind in parallel.
 func TestSyntacticContainment(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a member glyph and a self glyph naming the same unit on two cards produces one finding", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
+	tests := []struct {
+		name  string
+		cards []Card
+		// wantCard is the card a single expected finding is attributed to; empty for none.
+		wantCard string
+	}{
+		{
+			name: "member glyph and self glyph of the same unit on two cards",
+			cards: []Card{
 				{Number: 1, Slug: "member", Targets: []string{"internal/foo#Bar"}},
 				{Number: 2, Slug: "self", Targets: []string{"internal/foo#"}},
 			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 1 {
-			t.Fatalf("len(syntacticContainment()) = %d; want 1", got)
-		}
-		if findings[0].Check != "containment-unit-overlap" {
-			t.Errorf("findings[0].Check = %q; want %q", findings[0].Check, "containment-unit-overlap")
-		}
-	})
-
-	t.Run("the same two refs on one card produces none", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
-				{Number: 1, Slug: "both", Targets: []string{"internal/foo#Bar", "internal/foo#"}},
-			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 0 {
-			t.Errorf("len(syntacticContainment()) = %d; want 0 (a card cannot conflict with itself)", got)
-		}
-	})
-
-	t.Run("two member glyphs in one unit produces none", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
+			wantCard: "1-member",
+		},
+		{
+			name:  "member glyph and self glyph on one card",
+			cards: []Card{{Number: 1, Slug: "both", Targets: []string{"internal/foo#Bar", "internal/foo#"}}},
+		},
+		{
+			name: "two member glyphs in one unit",
+			cards: []Card{
 				{Number: 1, Slug: "one", Targets: []string{"internal/foo#Bar"}},
 				{Number: 2, Slug: "two", Targets: []string{"internal/foo#Baz"}},
 			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 0 {
-			t.Errorf("len(syntacticContainment()) = %d; want 0 (symbol granularity is not flagged)", got)
-		}
-	})
-
-	// The self-vs-self cross-granularity pairing (crucible round fable-high-r10, F4): a file self
-	// glyph and the self glyph of the directory that file sits directly in involve no member glyph,
-	// so neither the member pairing above nor planglyph's resolve-backed member-vs-file tier ever
-	// compared them.
-	t.Run("a file self glyph and its directory's self glyph on two cards produces one finding", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
+		},
+		{
+			name: "file self glyph and its directory's self glyph on two cards",
+			cards: []Card{
 				{Number: 1, Slug: "file", Targets: []string{"internal/foo/bar.go#"}},
 				{Number: 2, Slug: "unit", Targets: []string{"internal/foo#"}},
 			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 1 {
-			t.Fatalf("len(syntacticContainment()) = %d; want 1 — a whole-unit target and one of its own files dispatch blind in parallel otherwise", got)
-		}
-		if findings[0].Check != "containment-unit-overlap" {
-			t.Errorf("findings[0].Check = %q; want %q", findings[0].Check, "containment-unit-overlap")
-		}
-		if findings[0].Card != "1-file" {
-			t.Errorf("findings[0].Card = %q; want %q (attributed to the finer-grained file card)", findings[0].Card, "1-file")
-		}
-	})
-
-	t.Run("a file self glyph and its directory's self glyph on ONE card produces none", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
-				{Number: 1, Slug: "both", Targets: []string{"internal/foo/bar.go#", "internal/foo#"}},
-			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 0 {
-			t.Errorf("len(syntacticContainment()) = %d; want 0 (a card cannot conflict with itself)", got)
-		}
-	})
-
-	t.Run("a file self glyph against an unrelated directory self glyph produces none", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
+			wantCard: "1-file",
+		},
+		{
+			name:  "file self glyph and its directory's self glyph on one card",
+			cards: []Card{{Number: 1, Slug: "both", Targets: []string{"internal/foo/bar.go#", "internal/foo#"}}},
+		},
+		{
+			name: "file self glyph against an unrelated and an ancestor directory",
+			cards: []Card{
 				{Number: 1, Slug: "file", Targets: []string{"internal/foo/bar.go#"}},
 				{Number: 2, Slug: "unit", Targets: []string{"internal/other#"}},
 				{Number: 3, Slug: "grandparent", Targets: []string{"internal#"}},
 			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 0 {
-			t.Errorf("len(syntacticContainment()) = %d; want 0 — only the file's own direct directory overlaps it", got)
-		}
-	})
-
-	t.Run("two file self glyphs in one directory produce none", func(t *testing.T) {
-		t.Parallel()
-		plan := &Plan{
-			Cards: []Card{
+		},
+		{
+			name: "two file self glyphs in one directory",
+			cards: []Card{
 				{Number: 1, Slug: "one", Targets: []string{"internal/foo/a.go#"}},
 				{Number: 2, Slug: "two", Targets: []string{"internal/foo/b.go#"}},
 			},
-		}
-		findings := syntacticContainment(plan, glyph.Go)
-		if got := len(findings); got != 0 {
-			t.Errorf("len(syntacticContainment()) = %d; want 0 (distinct files never overlap)", got)
-		}
-	})
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			findings := syntacticContainment(&Plan{Cards: tt.cards}, glyph.Go)
+			if tt.wantCard == "" {
+				if len(findings) != 0 {
+					t.Fatalf("syntacticContainment() = %+v; want none", findings)
+				}
+				return
+			}
+			if len(findings) != 1 {
+				t.Fatalf("len(syntacticContainment()) = %d; want 1", len(findings))
+			}
+			if findings[0].Check != "containment-unit-overlap" {
+				t.Errorf("findings[0].Check = %q; want %q", findings[0].Check, "containment-unit-overlap")
+			}
+			if findings[0].Card != tt.wantCard {
+				t.Errorf("findings[0].Card = %q; want %q", findings[0].Card, tt.wantCard)
+			}
+		})
+	}
 }
 
 // TestValidate_ContainmentUnitOverlap_LanguageNone proves language: none skips the check entirely

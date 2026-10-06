@@ -22,6 +22,7 @@ func overview(lines ...string) *fstest.MapFile {
 }
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	bg := &fstest.MapFile{Data: []byte("background\n")}
 	longLine := entryLine("PATTERN-long", "") + strings.Repeat("x", MaxEntryLineChars)
 
@@ -29,6 +30,8 @@ func TestCheck(t *testing.T) {
 		name string
 		fsys fstest.MapFS
 		want []string // "kind:subject"
+		// wantLine is the line of the one expected finding; zero leaves it unasserted.
+		wantLine int
 	}{
 		{
 			name: "bad name",
@@ -36,9 +39,10 @@ func TestCheck(t *testing.T) {
 			want: []string{KindBadName + ":PATTERN-Bad_Name"},
 		},
 		{
-			name: "duplicate name",
-			fsys: fstest.MapFS{"PATTERN.md": overview(entryLine("PATTERN-a", ""), entryLine("PATTERN-a", ""))},
-			want: []string{KindDuplicateName + ":PATTERN-a"},
+			name:     "duplicate name",
+			fsys:     fstest.MapFS{"PATTERN.md": overview(entryLine("PATTERN-a", ""), entryLine("PATTERN-a", ""))},
+			want:     []string{KindDuplicateName + ":PATTERN-a"},
+			wantLine: 6,
 		},
 		{
 			name: "two-line entry",
@@ -105,21 +109,18 @@ func TestCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var got []string
-			for _, f := range Check(tt.fsys) {
+			findings := Check(tt.fsys)
+			for _, f := range findings {
 				got = append(got, f.Kind+":"+f.Subject)
 			}
 			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
 				t.Fatalf("findings = %v, want %v", got, tt.want)
 			}
+			if tt.wantLine != 0 && findings[0].Line != tt.wantLine {
+				t.Errorf("finding line = %d, want %d", findings[0].Line, tt.wantLine)
+			}
 		})
-	}
-}
-
-func TestCheck_ReportsLineNumber(t *testing.T) {
-	fsys := fstest.MapFS{"PATTERN.md": overview(entryLine("PATTERN-a", ""), entryLine("PATTERN-a", ""))}
-	findings := Check(fsys)
-	if len(findings) != 1 || findings[0].Line != 6 {
-		t.Fatalf("findings = %+v, want one finding at line 6", findings)
 	}
 }

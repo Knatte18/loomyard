@@ -6,16 +6,26 @@ package clihelp
 
 import "testing"
 
-// TestSkipStencilSeedAnnotation_Literal pins SkipStencilSeedAnnotation's exact string value.
-func TestSkipStencilSeedAnnotation_Literal(t *testing.T) {
-	if got, want := SkipStencilSeedAnnotation, "lyx.skip-stencil-seed"; got != want {
-		t.Errorf("SkipStencilSeedAnnotation = %q; want %q", got, want)
-	}
-}
+// TestAnnotationLiterals pins the exact string value of each annotation constant.
+//
+//testtiming:keep pins the literal annotation strings that a cross-package consumer matches on, which no covering test asserts
+func TestAnnotationLiterals(t *testing.T) {
+	t.Parallel()
 
-// TestAnnotationEnabled_Literal pins AnnotationEnabled's exact string value.
-func TestAnnotationEnabled_Literal(t *testing.T) {
-	if got, want := AnnotationEnabled, "true"; got != want {
-		t.Errorf("AnnotationEnabled = %q; want %q", got, want)
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"SkipStencilSeedAnnotation", SkipStencilSeedAnnotation, "lyx.skip-stencil-seed"},
+		{"AnnotationEnabled", AnnotationEnabled, "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.got != tt.want {
+				t.Errorf("%s = %q; want %q", tt.name, tt.got, tt.want)
+			}
+		})
 	}
 }

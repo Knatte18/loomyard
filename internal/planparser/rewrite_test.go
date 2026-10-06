@@ -32,7 +32,7 @@ func TestRewriteRefs_SubstitutesTargetsUsesAndPairs(t *testing.T) {
 		"01-card1.md": "# Card 1 — card1\n\n" +
 			"**Rename:**\n- `internal/foo#Old` -> `plan:internal/foo#New`\n" +
 			"**Uses:**\n- `internal/bar.go`\n" +
-			"**Intent:** placeholder.\n",
+			"**Intent:** discusses internal/bar.go in prose, not as a bullet.\n",
 	})
 
 	subs := map[string]string{
@@ -63,8 +63,24 @@ func TestRewriteRefs_SubstitutesTargetsUsesAndPairs(t *testing.T) {
 	if strings.Contains(got, "internal/bar.go`") {
 		t.Errorf("rewritten card file = %q; want the pre-canonicalization surface lexeme gone", got)
 	}
+	if !strings.Contains(got, "discusses internal/bar.go in prose, not as a bullet.") {
+		t.Errorf("rewritten card file = %q; want the Intent: prose sentence left byte-identical", got)
+	}
+
+	// A second call finds nothing left to substitute.
+	if err := planparser.RewriteRefs(dir, subs); err != nil {
+		t.Fatalf("RewriteRefs() second call error = %v; want nil", err)
+	}
+	again, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
+	if err != nil {
+		t.Fatalf("read card file after second call: %v", err)
+	}
+	if string(again) != got {
+		t.Errorf("RewriteRefs() is not idempotent: first call = %q; second call = %q", got, again)
+	}
 }
 
+//testtiming:keep pins the per-card surface-lexeme rewrite across two cards, which TestRewriteRefs_SubstitutesTargetsUsesAndPairs does not
 func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 	t.Parallel()
 
@@ -104,111 +120,39 @@ func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 	}
 }
 
-func TestRewriteRefs_Idempotent(t *testing.T) {
+// TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts a substitution map that is empty, or whose keys match nothing the plan carries, leaves a card file byte-identical.
+func TestRewriteRefs_NothingToSubstituteLeavesFileUntouched(t *testing.T) {
 	t.Parallel()
 
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": rewriteOverview("card1"),
-		"01-card1.md":    "# Card 1 — card1\n\n**Edit:**\n- `internal/foo/bar.go`\n**Intent:** placeholder.\n",
-	})
-
-	subs := map[string]string{"internal/foo/bar.go#": "plan:internal/foo#NewThing"}
-
-	if err := planparser.RewriteRefs(dir, subs); err != nil {
-		t.Fatalf("RewriteRefs() first call error = %v; want nil", err)
+	tests := []struct {
+		name string
+		subs map[string]string
+	}{
+		{"empty map", map[string]string{}},
+		{"keys match nothing", map[string]string{"internal/nonexistent#Nothing": "internal/nonexistent#Something"}},
 	}
-	after1, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
-	if err != nil {
-		t.Fatalf("read after first call: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if err := planparser.RewriteRefs(dir, subs); err != nil {
-		t.Fatalf("RewriteRefs() second call error = %v; want nil", err)
-	}
-	after2, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
-	if err != nil {
-		t.Fatalf("read after second call: %v", err)
-	}
+			const body = "# Card 1 — card1\n\n**Edit:**\n- `internal/foo/bar.go`\n**Intent:** placeholder.\n"
+			dir := writePlanFiles(t, map[string]string{
+				"00-overview.md": rewriteOverview("card1"),
+				"01-card1.md":    body,
+			})
 
-	if string(after1) != string(after2) {
-		t.Errorf("RewriteRefs() is not idempotent: first call = %q; second call = %q", after1, after2)
-	}
-	if !strings.Contains(string(after2), "- `plan:internal/foo#NewThing`") {
-		t.Errorf("after both calls = %q; want the substitution applied exactly once", after2)
-	}
-}
+			if err := planparser.RewriteRefs(dir, tt.subs); err != nil {
+				t.Fatalf("RewriteRefs() error = %v; want nil", err)
+			}
 
-func TestRewriteRefs_NoOpMapLeavesFileUntouched(t *testing.T) {
-	t.Parallel()
-
-	const body = "# Card 1 — card1\n\n**Edit:**\n- `internal/foo/bar.go`\n**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": rewriteOverview("card1"),
-		"01-card1.md":    body,
-	})
-
-	// A canonical string that matches nothing this plan carries.
-	subs := map[string]string{"internal/nonexistent#Nothing": "internal/nonexistent#Something"}
-
-	if err := planparser.RewriteRefs(dir, subs); err != nil {
-		t.Fatalf("RewriteRefs() error = %v; want nil", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
-	if err != nil {
-		t.Fatalf("read card file: %v", err)
-	}
-	if string(data) != body {
-		t.Errorf("card file = %q; want byte-identical to the original %q", data, body)
-	}
-}
-
-func TestRewriteRefs_ProseContainingKeyStringLeftUnmodified(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — card1\n\n**Edit:**\n- `internal/foo/bar.go`\n" +
-		"**Intent:** discusses internal/foo/bar.go in prose, not as a bullet.\n"
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": rewriteOverview("card1"),
-		"01-card1.md":    body,
-	})
-
-	subs := map[string]string{"internal/foo/bar.go#": "internal/foo/baz.go#"}
-	if err := planparser.RewriteRefs(dir, subs); err != nil {
-		t.Fatalf("RewriteRefs() error = %v; want nil", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
-	if err != nil {
-		t.Fatalf("read card file: %v", err)
-	}
-	if !strings.Contains(string(data), "discusses internal/foo/bar.go in prose, not as a bullet.") {
-		t.Errorf("card file = %q; want the Intent: prose sentence left byte-identical", data)
-	}
-	if !strings.Contains(string(data), "- `internal/foo/baz.go#`") {
-		t.Errorf("card file = %q; want the bullet itself substituted", data)
-	}
-}
-
-func TestRewriteRefs_EmptySubsMapWritesNothing(t *testing.T) {
-	t.Parallel()
-
-	const body = "# Card 1 — card1\n\n**Edit:**\n- `internal/foo/bar.go`\n**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": rewriteOverview("card1"),
-		"01-card1.md":    body,
-	})
-
-	if err := planparser.RewriteRefs(dir, map[string]string{}); err != nil {
-		t.Fatalf("RewriteRefs() error = %v; want nil", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
-	if err != nil {
-		t.Fatalf("read card file: %v", err)
-	}
-	if string(data) != body {
-		t.Errorf("card file = %q; want byte-identical to the original %q", data, body)
+			data, err := os.ReadFile(filepath.Join(dir, "01-card1.md"))
+			if err != nil {
+				t.Fatalf("read card file: %v", err)
+			}
+			if string(data) != body {
+				t.Errorf("card file = %q; want byte-identical to the original %q", data, body)
+			}
+		})
 	}
 }
 

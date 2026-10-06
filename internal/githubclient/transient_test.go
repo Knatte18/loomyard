@@ -19,6 +19,8 @@ func errResponse(status int) *github.ErrorResponse {
 }
 
 func TestIsTransient(t *testing.T) {
+	t.Parallel()
+
 	dial := &url.Error{Op: "Get", URL: "https://api.github.com", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
 	rate := &github.RateLimitError{Response: &http.Response{StatusCode: http.StatusForbidden}}
 	abuse := &github.AbuseRateLimitError{Response: &http.Response{StatusCode: http.StatusForbidden}}
@@ -54,6 +56,8 @@ func TestIsTransient(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := IsTransient(tt.err); got != tt.want {
 				t.Errorf("IsTransient(%v) = %v, want %v", tt.err, got, tt.want)
 			}

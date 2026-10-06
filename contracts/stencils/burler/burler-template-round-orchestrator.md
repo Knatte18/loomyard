@@ -6,7 +6,7 @@
      previewed early.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires every marker but parent_directive non-empty, and parent_directive is rendered by internal/parentdirective, and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
-     This file deliberately never repeats the downstream instruction files' bodies — the review-file YAML format, the fix-everything body, and the cluster fork-spawn prose all live in the instruction files it names, not here — see TestTemplate_OrchestratorExcludesDownstreamBodies in template_test.go. -->
+     This file deliberately never repeats the downstream instruction files' bodies — the review-file YAML format, the fix-everything body, and the cluster fork-spawn prose all live in the instruction files it names, not here — see TestComposePrompt_MinimalProfile in prompt_test.go. -->
 
 # Burler round — review, then fix
 

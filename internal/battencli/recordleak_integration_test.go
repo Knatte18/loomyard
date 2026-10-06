@@ -59,10 +59,9 @@ func commitPrimeBattenRecords(t *testing.T, h *hubforge.Hub, slug, otherSlug str
 	}
 }
 
-// TestBattenIntegration_SeedChild_IgnoresPrimesCommittedBattenRecords reproduces the reported "task worktree already seeded with a disagreeing seed" refusal:
+// stepSeedChild_IgnoresPrimesCommittedBattenRecords reproduces the reported "task worktree already seeded with a disagreeing seed" refusal:
 // prime tracks a batten seed for the child's own slug, and the child must still get its own loom seed and none of prime's other runs.
-func TestBattenIntegration_SeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func stepSeedChild_IgnoresPrimesCommittedBattenRecords(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-seed"
 	otherSlug := "batten-leak-other"
 	seedBoardTask(t, h, slug, "loom")
@@ -109,10 +108,9 @@ func TestBattenIntegration_SeedChild_IgnoresPrimesCommittedBattenRecords(t *test
 	}
 }
 
-// TestBattenIntegration_RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug holds the unstubbed status read:
+// stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug holds the unstubbed status read:
 // prime tracks a batten status for the child's slug, and the child must report its own status as simply absent.
-func TestBattenIntegration_RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+func stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leak-status"
 	seedBoardTask(t, h, slug, "loom")
 	commitPrimeBattenRecords(t, h, slug, "batten-leak-status-other")

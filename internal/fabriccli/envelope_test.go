@@ -1,8 +1,5 @@
-// envelope_test.go covers okWithRecord/errWithRecord's shape directly against an io.Writer buffer:
-// the fixed mutations/partial key pair on both the success and the failure path, the never-null
-// "mutations" array, and each helper's own reserved-key override set. It is a pure-data test with no
-// git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end per-verb
-// assertions that need a real hub live in the integration-tagged cli_test.go instead.
+// envelope_test.go covers okWithRecord/errWithRecord/errConflictsWithRecord's shape directly against an io.Writer buffer: the fixed mutations/partial key pair on both the success and the failure path, the never-null "mutations" array, and each helper's own reserved-key override set.
+// It is a pure-data test with no git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end per-verb assertions that need a real hub live in the integration-tagged scenario files instead.
 
 package fabriccli
 
@@ -24,9 +21,10 @@ func populatedMutations(hubRoot string) fabricengine.Mutations {
 	return rec.Snapshot()
 }
 
-// TestOkWithRecord_SuccessShape asserts the success envelope always carries a non-null "mutations"
-// array and "partial": false, alongside the caller's own fields unchanged — backward compatibility of
-// the success envelope is an explicit assertion, not an assumption.
+// TestOkWithRecord_SuccessShape asserts the success envelope always carries a non-null "mutations" array and "partial": false, alongside the caller's own fields unchanged — backward compatibility of the success envelope is an explicit assertion, not an assumption.
+// A caller-supplied "ok", "mutations" or "partial" is overridden by the helper's own value, while "error" is left alone: output.Ok never touches it, so okWithRecord does not reserve it either.
+//
+//testtiming:keep pins the exact envelope shape (a "mutations" array that is never null, "partial" false) that its covering integration test only sees through a real hub
 func TestOkWithRecord_SuccessShape(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -94,9 +92,9 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 	}
 }
 
-// TestErrWithRecord_FailureShape covers the two record states the failure path's "partial" derivation
-// distinguishes: an empty record (partial false) and a non-empty one (partial true), both carrying a
-// non-null "mutations" array, "ok": false and the flattened error string.
+// TestErrWithRecord_FailureShape covers the two record states the failure path's "partial" derivation distinguishes: an empty record (partial false) and a non-empty one (partial true), both carrying a non-null "mutations" array, "ok": false and the flattened error string.
+//
+//testtiming:keep pins the exact failure-envelope shape (a "mutations" array that is never null, "partial" derived from the record, no "refusal" key) that its covering integration test only sees through a real hub
 func TestErrWithRecord_FailureShape(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -139,59 +137,9 @@ func TestErrWithRecord_FailureShape(t *testing.T) {
 	}
 }
 
-// TestOkWithRecord_ReservedKeysOverrideCallerFields asserts okWithRecord overrides a caller-supplied
-// "ok", "mutations" or "partial" key, but leaves "error" alone — output.Ok never touches it, so
-// okWithRecord does not reserve it either.
-func TestOkWithRecord_ReservedKeysOverrideCallerFields(t *testing.T) {
-	var out bytes.Buffer
-	fields := map[string]any{
-		"ok":        "bogus",
-		"mutations": "bogus",
-		"partial":   "bogus",
-		"error":     "caller-supplied, left alone",
-	}
-	okWithRecord(&out, fabricengine.Mutations{}, fields)
-
-	result := envelope.RequireOK(t, out.String())
-	if _, isString := result.Raw["mutations"].(string); isString {
-		t.Errorf("mutations = %v; want the reserved array, not the caller's bogus value", result.Raw["mutations"])
-	}
-	if result.Partial == nil || *result.Partial {
-		t.Errorf("partial = %v; want the reserved false, not the caller's bogus value", result.Partial)
-	}
-	if result.Error != "caller-supplied, left alone" {
-		t.Errorf("error = %q; want the caller's own value untouched, since okWithRecord never reserves it", result.Error)
-	}
-}
-
-// TestErrWithRecord_KeysAreAlwaysTheReservedValues asserts errWithRecord's four keys — "ok", "error",
-// "mutations" and "partial" — are always exactly its own computed values. Unlike okWithRecord,
-// errWithRecord takes no caller fields map at all (see this file's helpers, and envelope.go's
-// signature), so there is no caller-supplied value for it to override; the "reserved" property here is
-// that these four keys are the only ones present and are never anything but the helper's own
-// derivation, regardless of what rec or err carry.
-func TestErrWithRecord_KeysAreAlwaysTheReservedValues(t *testing.T) {
-	var out bytes.Buffer
-	wantErr := errors.New("the real failure")
-	errWithRecord(&out, fabricengine.Mutations{}, wantErr)
-
-	result := envelope.RequireErr(t, out.String(), "")
-	if result.Error != wantErr.Error() {
-		t.Errorf("error = %q; want %q", result.Error, wantErr.Error())
-	}
-	if _, isArray := result.Raw["mutations"].([]any); !isArray {
-		t.Errorf("mutations = %v; want a JSON array", result.Raw["mutations"])
-	}
-	if result.Partial == nil || *result.Partial {
-		t.Errorf("partial = %v; want false for an empty record", result.Partial)
-	}
-}
-
-// TestErrConflictsWithRecord_ConflictEnvelopeShape covers the dedicated conflict-envelope helper's
-// contract: "mutations" from the record and never null, "partial" the literal false even against a
-// non-empty record (the property the Shared Decision exists to pin — a nil engine error with a
-// non-empty record would compute true through errWithRecordFields, which this helper never routes
-// through), "conflicts" never null, reserved keys winning over any collision, and return value 1.
+// TestErrConflictsWithRecord_ConflictEnvelopeShape covers the dedicated conflict-envelope helper's contract: "mutations" from the record and never null, "partial" the literal false even against a non-empty record (the property the Shared Decision exists to pin — a nil engine error with a non-empty record would compute true through errWithRecordFields, which this helper never routes through), "conflicts" never null, the fixed error text naming the way forward, and return value 1.
+//
+//testtiming:keep pins the conflict envelope's literal "partial": false and never-null "conflicts" array against a non-empty record, which its covering integration test only sees through a real hub
 func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -235,22 +183,5 @@ func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
 				t.Errorf("conflicts = %v; want %d entries", conflicts, len(tt.conflicts))
 			}
 		})
-	}
-}
-
-// TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues asserts errConflictsWithRecord
-// takes no caller fields map at all, so its four keys — "ok", "error", "mutations", "partial" — plus
-// "conflicts" are always exactly its own derivation.
-func TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues(t *testing.T) {
-	var out bytes.Buffer
-	exitCode := errConflictsWithRecord(&out, populatedMutations("/hub"), []string{"conflict.txt"}, nil)
-	if exitCode != 1 {
-		t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
-	}
-
-	result := envelope.Decode(t, out.String())
-	wantErr := `merge produced conflicts; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue"`
-	if result.Error != wantErr {
-		t.Errorf("error = %q; want %q", result.Error, wantErr)
 	}
 }

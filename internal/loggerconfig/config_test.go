@@ -25,129 +25,115 @@ func seedConfig(t *testing.T, anchor, content string) {
 	}
 }
 
-func TestLoad_ValidNonDefaultValues(t *testing.T) {
-	anchor := t.TempDir()
-	seedConfig(t, anchor, "trace_retention_count: 7\ntrace_retention_days: 3\n")
-
-	got, err := loggerconfig.Load(anchor)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+func TestLoad_ResolvesBounds(t *testing.T) {
+	t.Parallel()
+	const day = 24 * time.Hour
+	tests := []struct {
+		name string
+		// seed writes the config file into the anchor; nil leaves the anchor without a _lyx directory.
+		seed func(t *testing.T, anchor string)
+		want logger.RetentionBounds
+	}{
+		{
+			name: "valid non-default values",
+			seed: func(t *testing.T, anchor string) {
+				seedConfig(t, anchor, "trace_retention_count: 7\ntrace_retention_days: 3\n")
+			},
+			want: logger.RetentionBounds{Count: 7, MaxAge: 3 * day},
+		},
+		{
+			name: "missing key loads template default",
+			seed: func(t *testing.T, anchor string) { seedConfig(t, anchor, "trace_retention_count: 7\n") },
+			want: logger.RetentionBounds{Count: 7, MaxAge: 14 * day},
+		},
+		{
+			name: "largest day count a duration holds",
+			seed: func(t *testing.T, anchor string) {
+				seedConfig(t, anchor, "trace_retention_count: 200\ntrace_retention_days: 106751\n")
+			},
+			want: logger.RetentionBounds{Count: 200, MaxAge: 106751 * day},
+		},
+		{
+			name: "absent _lyx",
+			want: logger.DefaultRetentionBounds(),
+		},
+		{
+			name: "absent logger.yaml",
+			seed: func(t *testing.T, anchor string) {
+				if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: logger.DefaultRetentionBounds(),
+		},
+		{
+			name: "template matches default bounds",
+			seed: func(t *testing.T, anchor string) { seedConfig(t, anchor, loggerconfig.ConfigTemplate()) },
+			want: logger.DefaultRetentionBounds(),
+		},
 	}
-	want := logger.RetentionBounds{Count: 7, MaxAge: 3 * 24 * time.Hour}
-	if got != want {
-		t.Errorf("Load = %+v, want %+v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			if tt.seed != nil {
+				tt.seed(t, anchor)
+			}
+
+			got, err := loggerconfig.Load(anchor)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Load = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestLoad_AbsentConfigReturnsDefaults(t *testing.T) {
-	t.Run("absent _lyx", func(t *testing.T) {
-		got, err := loggerconfig.Load(t.TempDir())
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if got != logger.DefaultRetentionBounds() {
-			t.Errorf("Load = %+v, want %+v", got, logger.DefaultRetentionBounds())
-		}
-	})
-	t.Run("absent logger.yaml", func(t *testing.T) {
-		anchor := t.TempDir()
-		if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		got, err := loggerconfig.Load(anchor)
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if got != logger.DefaultRetentionBounds() {
-			t.Errorf("Load = %+v, want %+v", got, logger.DefaultRetentionBounds())
-		}
-	})
-}
-
-func TestConfigTemplate_MatchesDefaultRetentionBounds(t *testing.T) {
-	anchor := t.TempDir()
-	seedConfig(t, anchor, loggerconfig.ConfigTemplate())
-
-	got, err := loggerconfig.Load(anchor)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if got != logger.DefaultRetentionBounds() {
-		t.Errorf("template resolves to %+v, want %+v", got, logger.DefaultRetentionBounds())
-	}
-}
-
+// TestLoad_InvalidValueErrorsNamingKey includes a day count too large for a time.Duration, which must error instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
 func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
-	keys := []string{"trace_retention_count", "trace_retention_days"}
-	values := []string{"0", "-1", "1.5", "14.0", `"ten"`}
+	t.Parallel()
+	tests := []struct{ key, value string }{
+		{"trace_retention_count", "0"},
+		{"trace_retention_count", "-1"},
+		{"trace_retention_count", "1.5"},
+		{"trace_retention_count", "14.0"},
+		{"trace_retention_count", `"ten"`},
+		{"trace_retention_days", "0"},
+		{"trace_retention_days", "-1"},
+		{"trace_retention_days", "1.5"},
+		{"trace_retention_days", "14.0"},
+		{"trace_retention_days", `"ten"`},
+		{"trace_retention_days", "1000000"},
+	}
 
-	for _, key := range keys {
-		for _, value := range values {
-			t.Run(key+"="+value, func(t *testing.T) {
-				count, days := "200", "14"
-				if key == "trace_retention_count" {
-					count = value
-				} else {
-					days = value
-				}
-				anchor := t.TempDir()
-				seedConfig(t, anchor, fmt.Sprintf("trace_retention_count: %s\ntrace_retention_days: %s\n", count, days))
+	for _, tt := range tests {
+		t.Run(tt.key+"="+tt.value, func(t *testing.T) {
+			t.Parallel()
+			count, days := "200", "14"
+			if tt.key == "trace_retention_count" {
+				count = tt.value
+			} else {
+				days = tt.value
+			}
+			anchor := t.TempDir()
+			seedConfig(t, anchor, fmt.Sprintf("trace_retention_count: %s\ntrace_retention_days: %s\n", count, days))
 
-				_, err := loggerconfig.Load(anchor)
-				if err == nil {
-					t.Fatal("Load: want error, got nil")
-				}
-				if !strings.Contains(err.Error(), key) {
-					t.Errorf("error %q does not name key %q", err, key)
-				}
-			})
-		}
+			_, err := loggerconfig.Load(anchor)
+			if err == nil {
+				t.Fatal("Load: want error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.key) {
+				t.Errorf("error %q does not name key %q", err, tt.key)
+			}
+		})
 	}
 }
 
-// TestLoad_DaysBeyondDurationRangeErrors pins that a day count too large for a time.Duration errors instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
-func TestLoad_DaysBeyondDurationRangeErrors(t *testing.T) {
-	anchor := t.TempDir()
-	seedConfig(t, anchor, "trace_retention_count: 200\ntrace_retention_days: 1000000\n")
-
-	_, err := loggerconfig.Load(anchor)
-	if err == nil {
-		t.Fatal("Load: want error for an out-of-range day count, got nil")
-	}
-	if !strings.Contains(err.Error(), "trace_retention_days") {
-		t.Errorf("error %q does not name key %q", err, "trace_retention_days")
-	}
-}
-
-// TestLoad_LargestDurationDayCountLoads pins that the largest day count a time.Duration holds still loads, with a positive MaxAge.
-func TestLoad_LargestDurationDayCountLoads(t *testing.T) {
-	anchor := t.TempDir()
-	seedConfig(t, anchor, "trace_retention_count: 200\ntrace_retention_days: 106751\n")
-
-	got, err := loggerconfig.Load(anchor)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if got.MaxAge <= 0 {
-		t.Errorf("Load MaxAge = %v; want positive", got.MaxAge)
-	}
-}
-
-func TestLoad_MissingKeyLoadsTemplateDefault(t *testing.T) {
-	anchor := t.TempDir()
-	seedConfig(t, anchor, "trace_retention_count: 7\n")
-
-	got, err := loggerconfig.Load(anchor)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	want := logger.RetentionBounds{Count: 7, MaxAge: 14 * 24 * time.Hour}
-	if got != want {
-		t.Errorf("Load = %+v, want %+v", got, want)
-	}
-}
-
+//testtiming:keep pins the exact config file path, which no covering test asserts
 func TestConfigPath(t *testing.T) {
+	t.Parallel()
 	anchor := t.TempDir()
 	want := filepath.Join(anchor, "_lyx", "config", "logger.yaml")
 	if got := loggerconfig.ConfigPath(anchor); got != want {

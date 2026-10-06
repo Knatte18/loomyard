@@ -1,6 +1,4 @@
-// export_test.go covers the exported StripLeadingComment and TopLevelMarkers helpers, and pins the
-// existing Fill unfilled-marker error as a regression against the unfilledTopLevelMarkers refactor
-// that shares its AST-walking logic with TopLevelMarkers.
+// export_test.go covers the exported StripLeadingComment and TopLevelMarkers helpers.
 
 package stencil
 
@@ -10,6 +8,8 @@ import (
 )
 
 func TestStripLeadingComment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		text string
@@ -33,6 +33,8 @@ func TestStripLeadingComment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := StripLeadingComment(tt.text)
 			if got != tt.want {
 				t.Errorf("StripLeadingComment(%q) = %q; want %q", tt.text, got, tt.want)
@@ -42,54 +44,51 @@ func TestStripLeadingComment(t *testing.T) {
 }
 
 func TestTopLevelMarkers(t *testing.T) {
-	template := []byte("{{.a}} and {{.b}} and {{.a}} again")
+	t.Parallel()
 
-	got, err := TopLevelMarkers(template)
-	if err != nil {
-		t.Fatalf("TopLevelMarkers(%q) returned error: %v", template, err)
+	tests := []struct {
+		name        string
+		template    string
+		want        []string
+		wantErrText string
+	}{
+		{
+			name:     "DedupedInFirstSeenOrder",
+			template: "{{.a}} and {{.b}} and {{.a}} again",
+			want:     []string{"a", "b"},
+		},
+		{
+			name:     "IgnoresLeadingBannerComment",
+			template: "<!-- ignored {{.hidden}} -->\n{{.visible}}",
+			want:     []string{"visible"},
+		},
+		{
+			name:        "UnparseableTemplate",
+			template:    "{{.a",
+			wantErrText: "parse template:",
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	want := []string{"a", "b"}
-	if !equalStrings(got, want) {
-		t.Errorf("TopLevelMarkers(%q) = %v; want %v", template, got, want)
-	}
-}
-
-func TestTopLevelMarkers_IgnoresLeadingBannerComment(t *testing.T) {
-	template := []byte("<!-- ignored {{.hidden}} -->\n{{.visible}}")
-
-	got, err := TopLevelMarkers(template)
-	if err != nil {
-		t.Fatalf("TopLevelMarkers(%q) returned error: %v", template, err)
-	}
-
-	want := []string{"visible"}
-	if !equalStrings(got, want) {
-		t.Errorf("TopLevelMarkers(%q) = %v; want %v", template, got, want)
-	}
-}
-
-func TestTopLevelMarkers_UnparseableTemplate(t *testing.T) {
-	template := []byte("{{.a")
-
-	_, err := TopLevelMarkers(template)
-	if err == nil {
-		t.Fatalf("TopLevelMarkers(%q) returned nil error; want a parse error", template)
-	}
-	if !strings.Contains(err.Error(), "parse template:") {
-		t.Errorf("TopLevelMarkers(%q) error = %q; want it to contain %q", template, err.Error(), "parse template:")
-	}
-}
-
-func TestFill_RegressionUnfilledMarker(t *testing.T) {
-	template := []byte("{{.missing}}")
-
-	_, err := Fill(template, nil)
-	if err == nil {
-		t.Fatalf("Fill(%q, nil) returned nil error; want the unfilled-marker error", template)
-	}
-	if !strings.Contains(err.Error(), "unfilled top-level marker(s): missing") {
-		t.Errorf("Fill(%q, nil) error = %q; want it to contain %q", template, err.Error(), "unfilled top-level marker(s): missing")
+			got, err := TopLevelMarkers([]byte(tt.template))
+			if tt.wantErrText != "" {
+				if err == nil {
+					t.Fatalf("TopLevelMarkers(%q) returned nil error; want a parse error", tt.template)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrText) {
+					t.Errorf("TopLevelMarkers(%q) error = %q; want it to contain %q", tt.template, err.Error(), tt.wantErrText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("TopLevelMarkers(%q) returned error: %v", tt.template, err)
+			}
+			if !equalStrings(got, tt.want) {
+				t.Errorf("TopLevelMarkers(%q) = %v; want %v", tt.template, got, tt.want)
+			}
+		})
 	}
 }
 

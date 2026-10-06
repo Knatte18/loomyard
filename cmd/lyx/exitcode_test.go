@@ -37,15 +37,20 @@ func setupBoardConfig(t *testing.T) {
 	t.Chdir(cwd)
 }
 
-// TestExitCode_HelpPaths asserts help paths exit 0 and never emit JSON error envelopes.
+// TestExitCode_HelpPaths asserts help paths exit 0, never emit JSON error envelopes, and name the modules or text a help listing must carry.
+// run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_HelpPaths(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
+		// wantInOutput is a substring the help output must carry; empty asserts only non-empty output.
+		wantInOutput string
 	}{
-		{"bare lyx", nil},
-		{"lyx board (no subcommand)", []string{"board"}},
-		{"lyx --help", []string{"--help"}},
+		{"bare lyx", nil, "board"},
+		{"lyx board (no subcommand)", []string{"board"}, ""},
+		{"lyx --help", []string{"--help"}, ""},
+		{"lyx config --help lists the reconcile verb", []string{"config", "--help"}, "reconcile"},
+		{"lyx orch start --help lists the --adopt flag", []string{"orch", "start", "--help"}, "--adopt"},
 	}
 
 	for _, tt := range tests {
@@ -57,6 +62,12 @@ func TestExitCode_HelpPaths(t *testing.T) {
 			}
 
 			got := out.String()
+			if got == "" {
+				t.Errorf("run(%v) printed no help output", tt.args)
+			}
+			if !strings.Contains(got, tt.wantInOutput) {
+				t.Errorf("help output of %v does not name %q; got:\n%s", tt.args, tt.wantInOutput, got)
+			}
 			if strings.Contains(got, `"ok":false`) {
 				t.Errorf("help path %v emitted error envelope; output:\n%s", tt.args, got)
 			}
@@ -64,20 +75,29 @@ func TestExitCode_HelpPaths(t *testing.T) {
 	}
 }
 
-// TestExitCode_UnknownModule asserts unknown modules exit 1 with "unknown command" in JSON error
-// field.
+// TestExitCode_UnknownModule asserts unknown modules, including the removed "update" verb, exit 1 with "unknown command" in the JSON error field.
+// run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_UnknownModule(t *testing.T) {
-	var out bytes.Buffer
-	code := run([]string{"bogus"}, &out)
-	if code != 1 {
-		t.Fatalf("run([bogus]) = %d; want 1. output:\n%s", code, out.String())
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare unknown module", []string{"bogus"}},
+		{"unknown module with a verb", []string{"bogus", "list"}},
+		{"update was folded into config reconcile", []string{"update"}},
 	}
 
-	if !strings.Contains(out.String(), "unknown command") {
-		t.Fatalf("expected 'unknown command' in output for unknown module; got:\n%s", out.String())
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			code := run(tt.args, &out)
+			if code != 1 {
+				t.Fatalf("run(%v) = %d; want 1. output:\n%s", tt.args, code, out.String())
+			}
 
-	envelope.RequireErr(t, out.String(), "unknown command")
+			envelope.RequireErr(t, out.String(), "unknown command")
+		})
+	}
 }
 
 // TestExitCode_HandlerFailure asserts handler failures exit 1 with JSON {"ok":false} envelope.

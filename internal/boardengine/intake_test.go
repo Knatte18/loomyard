@@ -42,51 +42,52 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 	}
 }
 
-func TestImportIssueNewNote(t *testing.T) {
-	b, _ := newIntakeBoard(t)
-	res, err := b.ImportIssue(boardengine.ImportRequest{Issue: testIssue(7, "bug", "undecided", "stray"), Slug: "from-inbox"})
-	if err != nil {
-		t.Fatalf("ImportIssue: %v", err)
+// TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels, drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
+func TestImportIssueNewEntry(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		req         boardengine.ImportRequest
+		wantTitle   string
+		wantBrief   string
+		wantLabels  []string
+		wantDropped []string
+	}{
+		{
+			name:        "issue labels filtered to the vocabulary",
+			req:         boardengine.ImportRequest{Issue: testIssue(7, "bug", "undecided", "stray"), Slug: "from-inbox"},
+			wantTitle:   "Issue title",
+			wantLabels:  []string{"bug", "undecided"},
+			wantDropped: []string{"stray"},
+		},
+		{
+			name:       "explicit title, brief and labels win",
+			req:        boardengine.ImportRequest{Issue: testIssue(7, "stray"), Slug: "x", Title: "Mine", Brief: "b", Labels: []string{"enhancement"}},
+			wantTitle:  "Mine",
+			wantBrief:  "b",
+			wantLabels: []string{"enhancement"},
+		},
 	}
-	e := res.Entry
-	if e.Kind != boardengine.KindNote || e.Title != "Issue title" || !slices.Equal(e.Labels, []string{"bug", "undecided"}) || !slices.Equal(e.Issues, []int{7}) {
-		t.Errorf("entry = %+v", e)
-	}
-	wantBody := "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
-	if e.Body != wantBody {
-		t.Errorf("body = %q, want %q", e.Body, wantBody)
-	}
-	if !slices.Equal(res.Dropped, []string{"stray"}) {
-		t.Errorf("dropped = %v, want [stray]", res.Dropped)
-	}
-}
-
-func TestImportIssueExplicitLabelsAndTitle(t *testing.T) {
-	b, _ := newIntakeBoard(t)
-	res, err := b.ImportIssue(boardengine.ImportRequest{Issue: testIssue(7, "stray"), Slug: "x", Title: "Mine", Brief: "b", Labels: []string{"enhancement"}})
-	if err != nil {
-		t.Fatalf("ImportIssue: %v", err)
-	}
-	if res.Entry.Title != "Mine" || res.Entry.Brief != "b" || !slices.Equal(res.Entry.Labels, []string{"enhancement"}) || len(res.Dropped) != 0 {
-		t.Errorf("result = %+v", res)
-	}
-}
-
-func TestImportIssueTypeLabelRefusals(t *testing.T) {
-	b, boardPath := newIntakeBoard(t)
-	mustUpsert(t, b, map[string]any{"slug": "seed", "labels": bugLabels})
-	before := readBoardJSON(t, boardPath)
-
-	_, err := b.ImportIssue(boardengine.ImportRequest{Issue: testIssue(7, "undecided"), Slug: "x"})
-	if err == nil || !strings.Contains(err.Error(), "no type label") || !strings.Contains(err.Error(), "labels") {
-		t.Errorf("no type label: err = %v", err)
-	}
-	_, err = b.ImportIssue(boardengine.ImportRequest{Issue: testIssue(7, "bug", "enhancement"), Slug: "x"})
-	if err == nil || !strings.Contains(err.Error(), "bug, enhancement") {
-		t.Errorf("two type labels: err = %v", err)
-	}
-	if readBoardJSON(t, boardPath) != before {
-		t.Error("a refused import changed board.json")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b, _ := newIntakeBoard(t)
+			res, err := b.ImportIssue(tt.req)
+			if err != nil {
+				t.Fatalf("ImportIssue: %v", err)
+			}
+			e := res.Entry
+			if e.Kind != boardengine.KindNote || e.Title != tt.wantTitle || e.Brief != tt.wantBrief || !slices.Equal(e.Labels, tt.wantLabels) || !slices.Equal(e.Issues, []int{7}) {
+				t.Errorf("entry = %+v", e)
+			}
+			wantBody := "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
+			if e.Body != wantBody {
+				t.Errorf("body = %q, want %q", e.Body, wantBody)
+			}
+			if !slices.Equal(res.Dropped, tt.wantDropped) {
+				t.Errorf("dropped = %v, want %v", res.Dropped, tt.wantDropped)
+			}
+		})
 	}
 }
 
@@ -186,19 +187,23 @@ func TestImportIssueRefusals(t *testing.T) {
 
 	for name, tc := range map[string]struct {
 		req  boardengine.ImportRequest
-		want string
+		want []string
 	}{
-		"pull request":   {boardengine.ImportRequest{Issue: pr, Slug: "x"}, "pull request"},
-		"closed":         {boardengine.ImportRequest{Issue: closed, Slug: "x"}, "closed"},
-		"taken slug":     {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Slug: "taken"}, `"taken"`},
-		"missing into":   {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "nope"}, `"nope"`},
-		"into and title": {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "taken", Title: "t"}, "takes no title"},
-		"slug and into":  {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "taken", Slug: "s"}, "both"},
-		"neither":        {boardengine.ImportRequest{Issue: testIssue(3, "bug")}, "neither"},
+		"pull request":    {boardengine.ImportRequest{Issue: pr, Slug: "x"}, []string{"pull request"}},
+		"closed":          {boardengine.ImportRequest{Issue: closed, Slug: "x"}, []string{"closed"}},
+		"taken slug":      {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Slug: "taken"}, []string{`"taken"`}},
+		"missing into":    {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "nope"}, []string{`"nope"`}},
+		"into and title":  {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "taken", Title: "t"}, []string{"takes no title"}},
+		"slug and into":   {boardengine.ImportRequest{Issue: testIssue(3, "bug"), Into: "taken", Slug: "s"}, []string{"both"}},
+		"neither":         {boardengine.ImportRequest{Issue: testIssue(3, "bug")}, []string{"neither"}},
+		"no type label":   {boardengine.ImportRequest{Issue: testIssue(7, "undecided"), Slug: "x"}, []string{"no type label", "labels"}},
+		"two type labels": {boardengine.ImportRequest{Issue: testIssue(7, "bug", "enhancement"), Slug: "x"}, []string{"bug, enhancement"}},
 	} {
 		_, err := b.ImportIssue(tc.req)
-		if err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%s: err = %v, want it to contain %q", name, err, tc.want)
+		for _, want := range tc.want {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: err = %v, want it to contain %q", name, err, want)
+			}
 		}
 	}
 	if readBoardJSON(t, boardPath) != before {

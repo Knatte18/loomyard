@@ -13,6 +13,7 @@ import (
 )
 
 func TestIdentityBatcher_Batch(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		cards []planparser.Card
@@ -27,6 +28,7 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := identityBatcher{}.Batch(tt.cards)
 			if len(got) != len(tt.cards) {
 				t.Fatalf("Batch(%d cards) returned %d batches; want %d", len(tt.cards), len(got), len(tt.cards))
@@ -45,6 +47,7 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 }
 
 func TestIdentityBatcher_Name(t *testing.T) {
+	t.Parallel()
 	if got := (identityBatcher{}).Name(); got != "identity" {
 		t.Errorf("identityBatcher{}.Name() = %q; want %q", got, "identity")
 	}

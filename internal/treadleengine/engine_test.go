@@ -647,6 +647,18 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 		if st.Rounds[1].HandoffPath != "" {
 			t.Errorf("Rounds[1].HandoffPath = %q; want empty (no handoff file was ever written)", st.Rounds[1].HandoffPath)
 		}
+
+		// With no handoff ever produced, the judge call's read-set is exactly the all-reviews list: the degrade path a block with handoff maintenance disabled, or simply never yet exercised, must still behave identically to the pre-handoff loop.
+		if len(qs.specs) != 1 {
+			t.Fatalf("queuedShuttle called %d times; want exactly 1", len(qs.specs))
+		}
+		prompt := qs.specs[0].Prompt
+		if !strings.Contains(prompt, "(none)") {
+			t.Errorf("judge prompt = %q; want the previous_handoff marker to read \"(none)\"", prompt)
+		}
+		if !strings.Contains(prompt, "round-1-review.md") {
+			t.Errorf("judge prompt = %q; want it to list round-1-review.md -- exactly the all-reviews list", prompt)
+		}
 	})
 }
 
@@ -831,46 +843,6 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	logged := logBuf.String()
 	if !strings.Contains(logged, "tenter: circling judge handoff file unparseable") {
 		t.Errorf("captured log = %q; want a \"tenter: \"-prefixed unparseable-handoff Warn", logged)
-	}
-}
-
-// TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews proves (e) as its own minimal
-// case: with no handoff ever produced at all, a judge call's read-set is exactly today's
-// all-reviews list — the degrade path a block with handoff-maintenance disabled (or simply never
-// yet exercised) must still behave identically to the pre-handoff loop.
-func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T) {
-	runDir := filepath.Join(t.TempDir(), "run")
-
-	fr := &fakeRunner{}
-	fr.queue = []queuedAttemptResult{
-		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
-		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
-		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
-	}
-	qs := &queuedShuttle{}
-	qs.queue = []queuedShuttleEntry{
-		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
-	}
-	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
-
-	got, err := e.Run(p, runDir)
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-	if got.Outcome != OutcomeApproved {
-		t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
-	}
-	if len(qs.specs) != 1 {
-		t.Fatalf("queuedShuttle called %d times; want exactly 1", len(qs.specs))
-	}
-
-	got1 := qs.specs[0]
-	if !strings.Contains(got1.Prompt, "(none)") {
-		t.Errorf("judge prompt = %q; want the previous_handoff marker to read \"(none)\"", got1.Prompt)
-	}
-	if !strings.Contains(got1.Prompt, "round-1-review.md") {
-		t.Errorf("judge prompt = %q; want it to list round-1-review.md — exactly the all-reviews list", got1.Prompt)
 	}
 }
 

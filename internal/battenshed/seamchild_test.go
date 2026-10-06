@@ -54,65 +54,46 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 	return calls, deps
 }
 
-// TestSeedChild_TwoSourceSplit is the load-bearing assertion the two-source split depends on: the
-// seed's recipe comes from the Board's own type, and its driver comes from the injected
-// ChildDriver, never from one collapsed source.
-func TestSeedChild_TwoSourceSplit(t *testing.T) {
-	scratchDir := t.TempDir()
-	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, nil)
+// TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on: the seed's recipe comes from the Board's own type, read at Call time rather than captured at wiring time, and defaults when the Board names none, while its driver comes from the injected ChildDriver, never from one collapsed source.
+func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) {
+	t.Parallel()
 
-	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if calls.writeRecipe != "batten" {
-		t.Errorf("WriteSeed recipe = %q; want %q (the Board's own type)", calls.writeRecipe, "batten")
+	tests := []struct {
+		name string
+		// typeAtWiring is the Board's type when the row is built, typeAtCall its type when Call runs.
+		typeAtWiring string
+		typeAtCall   string
+		wantRecipe   string
+	}{
+		{name: "TwoSourceSplit", typeAtWiring: "batten", typeAtCall: "batten", wantRecipe: "batten"},
+		{name: "BoardTypeCorrectedAfterWiringIsHonoured", typeAtWiring: "loom", typeAtCall: "batten", wantRecipe: "batten"},
+		{name: "EmptyBoardTypeDefaultsToLoom", typeAtWiring: "", typeAtCall: "", wantRecipe: defaultChildRecipe},
 	}
-	if calls.writeDriver != "claude" {
-		t.Errorf("WriteSeed driver = %q; want %q (the injected ChildDriver value)", calls.writeDriver, "claude")
-	}
-	if !calls.commitCalled {
-		t.Error("CommitSeed was not called")
-	}
-	if !calls.pushCalled {
-		t.Error("PushSeed was not called")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-// TestSeedChild_BoardTypeReadFreshAtCallTime proves the Board's own type is read at Call time, not
-// captured at wiring time: a Board type that changes between wiring and this Call must still be
-// honoured.
-func TestSeedChild_BoardTypeReadFreshAtCallTime(t *testing.T) {
-	scratchDir := t.TempDir()
-	currentType := "loom"
-	deps := SeedChildDeps{
-		ReadBoardType: func(ctx context.Context) (string, error) {
-			return currentType, nil
-		},
-		ChildDriver: func() (string, error) { return "claude", nil },
-		WriteSeed: func(ctx context.Context, recipe, driver string) error {
-			if recipe != "batten" {
-				t.Errorf("WriteSeed recipe = %q; want %q, the type set after wiring", recipe, "batten")
+			currentType := tt.typeAtWiring
+			calls, deps := newSeedChildDeps("", nil, "claude", nil, nil, nil, nil)
+			deps.ReadBoardType = func(ctx context.Context) (string, error) { return currentType, nil }
+
+			producer := NewSeedChild("seedchild", "myslug", deps, t.TempDir())
+			currentType = tt.typeAtCall
+
+			shedfake.RequireOutcome(t, producer, shedengine.Done)
+			if calls.writeRecipe != tt.wantRecipe {
+				t.Errorf("WriteSeed recipe = %q; want %q", calls.writeRecipe, tt.wantRecipe)
 			}
-			return nil
-		},
-		CommitSeed: func(ctx context.Context) error { return nil },
-		PushSeed:   func(ctx context.Context) error { return nil },
-	}
-
-	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	// Simulate the Board's type being corrected after prime was seeded but before this Call.
-	currentType = "batten"
-
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-}
-
-func TestSeedChild_EmptyBoardTypeDefaultsToLoom(t *testing.T) {
-	scratchDir := t.TempDir()
-	calls, deps := newSeedChildDeps("", nil, "claude", nil, nil, nil, nil)
-
-	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	shedfake.RequireOutcome(t, producer, shedengine.Done)
-	if calls.writeRecipe != defaultChildRecipe {
-		t.Errorf("WriteSeed recipe = %q; want %q", calls.writeRecipe, defaultChildRecipe)
+			if calls.writeDriver != "claude" {
+				t.Errorf("WriteSeed driver = %q; want %q (the injected ChildDriver value)", calls.writeDriver, "claude")
+			}
+			if !calls.commitCalled {
+				t.Error("CommitSeed was not called")
+			}
+			if !calls.pushCalled {
+				t.Error("PushSeed was not called")
+			}
+		})
 	}
 }
 
@@ -255,57 +236,60 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 	}
 }
 
-// TestSeedChild_CancelledDuringChildDriverError and TestSeedChild_CancelledDuringWriteSeedError
-// assert the two seamchild.go hard-error paths F1 (crucible round sonnet-xhigh-r3) found missing
-// their cancelErr check both now carry the cancelled-context diagnosis rather than the raw
-// underlying error, when ctx is cancelled by the time the failing seam call itself returns.
-func TestSeedChild_CancelledDuringChildDriverError(t *testing.T) {
-	scratchDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	driverErr := errors.New("driver read failed")
-	deps := SeedChildDeps{
-		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
-		ChildDriver: func() (string, error) {
-			cancel()
-			return "", driverErr
+// TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the two hard-error paths (the child-driver read and the seed write) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		deps func(cancel context.CancelFunc) SeedChildDeps
+	}{
+		{
+			name: "ChildDriver",
+			deps: func(cancel context.CancelFunc) SeedChildDeps {
+				return SeedChildDeps{
+					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+					ChildDriver: func() (string, error) {
+						cancel()
+						return "", errors.New("driver read failed")
+					},
+					WriteSeed:  func(ctx context.Context, recipe, driver string) error { return nil },
+					CommitSeed: func(ctx context.Context) error { return nil },
+					PushSeed:   func(ctx context.Context) error { return nil },
+				}
+			},
 		},
-		WriteSeed:  func(ctx context.Context, recipe, driver string) error { return nil },
-		CommitSeed: func(ctx context.Context) error { return nil },
-		PushSeed:   func(ctx context.Context) error { return nil },
-	}
-
-	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	_, _, err := producer.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
-	}
-	if !strings.Contains(err.Error(), "context cancelled during run") {
-		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw ChildDriver error", err.Error())
-	}
-}
-
-func TestSeedChild_CancelledDuringWriteSeedError(t *testing.T) {
-	scratchDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	writeErr := errors.New("resolve seed path failed")
-	deps := SeedChildDeps{
-		ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
-		ChildDriver:   func() (string, error) { return "claude", nil },
-		WriteSeed: func(ctx context.Context, recipe, driver string) error {
-			cancel()
-			return writeErr
+		{
+			name: "WriteSeed",
+			deps: func(cancel context.CancelFunc) SeedChildDeps {
+				return SeedChildDeps{
+					ReadBoardType: func(ctx context.Context) (string, error) { return "batten", nil },
+					ChildDriver:   func() (string, error) { return "claude", nil },
+					WriteSeed: func(ctx context.Context, recipe, driver string) error {
+						cancel()
+						return errors.New("resolve seed path failed")
+					},
+					CommitSeed: func(ctx context.Context) error { return nil },
+					PushSeed:   func(ctx context.Context) error { return nil },
+				}
+			},
 		},
-		CommitSeed: func(ctx context.Context) error { return nil },
-		PushSeed:   func(ctx context.Context) error { return nil },
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	producer := NewSeedChild("seedchild", "myslug", deps, scratchDir)
-	_, _, err := producer.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
-	}
-	if !strings.Contains(err.Error(), "context cancelled during run") {
-		t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw WriteSeed error", err.Error())
+			ctx, cancel := context.WithCancel(context.Background())
+			producer := NewSeedChild("seedchild", "myslug", tt.deps(cancel), t.TempDir())
+
+			_, _, err := producer.Call(ctx)
+			if err == nil {
+				t.Fatal("Call() error = nil; want the cancelled-context diagnosis")
+			}
+			if !strings.Contains(err.Error(), "context cancelled during run") {
+				t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw seam error", err.Error())
+			}
+		})
 	}
 }
 

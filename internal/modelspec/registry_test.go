@@ -1,41 +1,15 @@
-// registry_test.go table-drives builtins and Registry.Resolve: bracket-over- default precedence,
-// whole-entry lookups, unknown-alias/escape-form behaviour, and the zero-value Registry's
-// fail-clean shape.
+// registry_test.go table-drives Registry.Resolve: bracket-over-default precedence, whole-entry lookups, unknown-alias/escape-form behaviour, input immutability, and the zero-value Registry's fail-clean shape.
 
 package modelspec
 
 import (
+	"maps"
 	"strings"
 	"testing"
 )
 
-func TestBuiltins(t *testing.T) {
-	b := builtins()
-	want := map[string]Entry{
-		"sonnet": {Engine: "claude", Model: "sonnet"},
-		"opus":   {Engine: "claude", Model: "opus"},
-		"haiku":  {Engine: "claude", Model: "haiku"},
-		"fable":  {Engine: "claude", Model: "fable"},
-	}
-	if len(b) != len(want) {
-		t.Fatalf("builtins() has %d entries; want %d", len(b), len(want))
-	}
-	for alias, wantEntry := range want {
-		gotEntry, ok := b[alias]
-		if !ok {
-			t.Errorf("builtins() missing alias %q", alias)
-			continue
-		}
-		if gotEntry.Engine != wantEntry.Engine || gotEntry.Model != wantEntry.Model {
-			t.Errorf("builtins()[%q] = %+v; want %+v", alias, gotEntry, wantEntry)
-		}
-		if len(gotEntry.Defaults) != 0 {
-			t.Errorf("builtins()[%q].Defaults = %v; want none (built-ins carry no defaults)", alias, gotEntry.Defaults)
-		}
-	}
-}
-
 func TestRegistry_Resolve(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		registry   Registry
@@ -95,6 +69,13 @@ func TestRegistry_Resolve(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			defaultsBefore := make(map[string]map[string]string, len(tt.registry))
+			for alias, entry := range tt.registry {
+				defaultsBefore[alias] = maps.Clone(entry.Defaults)
+			}
+			specParamsBefore := maps.Clone(tt.spec.Params)
+
 			got, err := tt.registry.Resolve(tt.spec)
 			if err != nil {
 				t.Fatalf("Resolve(%+v) returned unexpected error: %v", tt.spec, err)
@@ -114,51 +95,48 @@ func TestRegistry_Resolve(t *testing.T) {
 					t.Errorf("Resolve(%+v).Params[%q] = %q; want %q", tt.spec, k, got.Params[k], v)
 				}
 			}
+
+			// The resolved Params must be a copy: writing through it never reaches the registry or the spec.
+			got.Params["effort"] = "mutated"
+			for k := range got.Params {
+				got.Params[k] = "mutated"
+			}
+			for alias, entry := range tt.registry {
+				if !maps.Equal(entry.Defaults, defaultsBefore[alias]) {
+					t.Errorf("Resolve(%+v) mutated registry entry %q Defaults: got %v, want %v", tt.spec, alias, entry.Defaults, defaultsBefore[alias])
+				}
+			}
+			if !maps.Equal(tt.spec.Params, specParamsBefore) {
+				t.Errorf("Resolve mutated the input Spec's Params: got %v, want %v", tt.spec.Params, specParamsBefore)
+			}
 		})
 	}
 }
 
 func TestRegistry_Resolve_UnknownAlias(t *testing.T) {
-	r := Registry{"sonnet": {Engine: "claude", Model: "sonnet"}}
-	_, err := r.Resolve(Spec{Alias: "ghost"})
-	if err == nil {
-		t.Fatal("Resolve(unknown alias) returned nil error; want an error naming the alias")
+	t.Parallel()
+	var zeroValueRegistry Registry // nil map, zero value
+	tests := []struct {
+		name      string
+		registry  Registry
+		alias     string
+		wantNames []string
+	}{
+		{"unknown alias names it and lists the known ones", Registry{"sonnet": {Engine: "claude", Model: "sonnet"}}, "ghost", []string{`"ghost"`, "sonnet"}},
+		{"zero-value registry fails clean", zeroValueRegistry, "sonnet", []string{"sonnet"}},
 	}
-	if !strings.Contains(err.Error(), `"ghost"`) {
-		t.Errorf("Resolve(unknown alias) error = %q; want it to name the alias %q", err.Error(), "ghost")
-	}
-	if !strings.Contains(err.Error(), "sonnet") {
-		t.Errorf("Resolve(unknown alias) error = %q; want it to list the known alias %q", err.Error(), "sonnet")
-	}
-}
-
-func TestRegistry_Resolve_ZeroValueRegistry(t *testing.T) {
-	var r Registry // nil map, zero value
-	_, err := r.Resolve(Spec{Alias: "sonnet"})
-	if err == nil {
-		t.Fatal("zero-value Registry.Resolve(alias) returned nil error; want a clean error, not a panic")
-	}
-	if !strings.Contains(err.Error(), "sonnet") {
-		t.Errorf("zero-value Registry.Resolve error = %q; want it to name the alias %q", err.Error(), "sonnet")
-	}
-}
-
-func TestRegistry_Resolve_NeverMutatesInputs(t *testing.T) {
-	entry := Entry{Engine: "claude", Model: "sonnet", Defaults: map[string]string{"effort": "medium"}}
-	r := Registry{"sonnet": entry}
-	specParams := map[string]string{"version": "4.5"}
-	spec := Spec{Alias: "sonnet", Params: specParams}
-
-	got, err := r.Resolve(spec)
-	if err != nil {
-		t.Fatalf("Resolve returned unexpected error: %v", err)
-	}
-	got.Params["effort"] = "mutated"
-
-	if r["sonnet"].Defaults["effort"] != "medium" {
-		t.Errorf("Resolve mutated the registry entry's Defaults: got %q, want %q", r["sonnet"].Defaults["effort"], "medium")
-	}
-	if len(specParams) != 1 || specParams["version"] != "4.5" {
-		t.Errorf("Resolve mutated the input Spec's Params: got %v", specParams)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := tt.registry.Resolve(Spec{Alias: tt.alias})
+			if err == nil {
+				t.Fatalf("Resolve(%q) returned nil error; want a clean error naming the alias, not a panic", tt.alias)
+			}
+			for _, want := range tt.wantNames {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Resolve(%q) error = %q; want it to contain %q", tt.alias, err.Error(), want)
+				}
+			}
+		})
 	}
 }

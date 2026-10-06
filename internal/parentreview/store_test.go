@@ -41,15 +41,11 @@ func writeFile(t *testing.T, content string) string {
 	return p
 }
 
-func TestLatest_NoRounds(t *testing.T) {
-	s, _ := newStore(t)
-	if _, ok, err := s.Latest(); ok || err != nil {
-		t.Fatalf("Latest = %v, %v; want none", ok, err)
-	}
-}
-
 func TestOpenRequest_WritesRequestAndBrief(t *testing.T) {
 	s, _ := newStore(t)
+	if _, ok, err := s.Latest(); ok || err != nil {
+		t.Fatalf("Latest with no rounds = %v, %v; want none", ok, err)
+	}
 	r := openOne(t, s)
 	if r.Number != 1 || r.Request == nil || r.Request.State != StateOpen {
 		t.Fatalf("round = %+v", r)
@@ -340,6 +336,7 @@ func writeVerdict(t *testing.T, s Store, n int, body string) {
 	}
 }
 
+//testtiming:keep pins that only reject verdicts count, not approves, rounds with no verdict or expired rounds, which the final-gate test covering its blocks does not assert
 func TestRejectedRounds_CountsOnlyRejects(t *testing.T) {
 	s, _ := newStore(t)
 	if n, err := s.RejectedRounds(); n != 0 || err != nil {

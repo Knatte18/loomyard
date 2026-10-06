@@ -31,8 +31,9 @@ func TestInterruptPolicyFor(t *testing.T) {
 	}
 }
 
-// TestInterruptPolicies_ClosedVocabulary asserts every value in InterruptPolicies is one of the two
-// declared constants, so a typo'd third policy word cannot ship.
+// TestInterruptPolicies_ClosedVocabulary asserts every value in InterruptPolicies is one of the two declared constants, so a typo'd third policy word cannot ship.
+//
+//testtiming:keep pins that every policy value is a declared constant, which TestArchivedWebsterDirs never asserts
 func TestInterruptPolicies_ClosedVocabulary(t *testing.T) {
 	for row, policy := range InterruptPolicies {
 		if policy != InterruptPolicyReinvoke && policy != InterruptPolicyHandback {

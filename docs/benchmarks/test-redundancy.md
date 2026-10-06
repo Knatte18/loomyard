@@ -7,47 +7,34 @@ Only the removable set may be deleted together; the reading rules are in `patter
 
 ## cmd/lyx
 
-85 tests, wall 16.88s, serial 16.86s.
+64 tests, wall 11.40s, serial 11.37s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestBoardGuard_ShellOutDetection` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestCheckedCallInvariant_TokenSpellingsDoNotCollide` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestCLITree_RootLongNamesEveryModule` | `TestCLITree_EveryCommand` | yes |
-| `TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestCwdMutationGuard_NotVacuous` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestMutationRecord_FabricengineProductionSource` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestExitCode_UnknownModule` | `TestUpdateCommandRemoved` | yes |
-| `TestNotifyExitAndSweep_ZeroCodeWithoutRecordDoesNotSweep` | `TestNotifyExitAndSweep_ZeroCodeAfterInfoRecordSweeps`, `TestCLITree_EveryCommand` | yes |
-| `TestNotifyExitAndSweep_NonZeroCodeArmsAndSweeps` | `TestNotifyExitAndSweep_ZeroCodeAfterInfoRecordSweeps`, `TestExitCode_HandlerFailure` | yes |
-| `TestNotifyExitAndSweep_ZeroCodeAfterInfoRecordSweeps` | `TestNotifyExitAndSweep_NonZeroCodeArmsAndSweeps`, `TestExitSweepBounds_AnchorWithoutLyxDefaultsSilently`, `TestRunDispatchesToBoard` | no |
-| `TestExitSweepBounds_RedirectedIgnoresConfig` | `TestExitSweepBounds_InvalidConfigWarnsOnceAndDefaults`, `TestNotifyExitAndSweep_ZeroCodeAfterInfoRecordSweeps` | yes |
-| `TestExitSweepBounds_ValidConfigWins` | `TestExitSweepBounds_InvalidConfigWarnsOnceAndDefaults`, `TestExitSweepBounds_AnchorWithoutLyxDefaultsSilently` | yes |
-| `TestGitkitSpawnReference` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestHelpTree_ConfigListsReconcile` | `TestCLITree_EveryCommand` | yes |
-| `TestHelpTree_OrchStartListsAdopt` | `TestCLITree_EveryCommand` | yes |
-| `TestJSONHelp_SelfreportSchema` | `TestJSONHelp_VerbModuleSchema` | yes |
-| `TestJSONHelp_SelfreportCreateLeaf` | `TestJSONHelp_RootSchema` | yes |
-| `TestRunUnknownModule` | `TestUpdateCommandRemoved` | yes |
-| `TestRootHookSuppressedUnderTest` | `TestCLITree_EveryCommand`, `TestExitSweepBounds_AnchorWithoutLyxDefaultsSilently` | yes |
-| `TestNoDeniedRecovery_ScannedSurfaceHasNone` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestNoDeniedRecovery_ScanSelfCheck` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestRoot_NoBareRunChild` | `TestCLITree_EveryCommand` | yes |
-| `TestSandboxCoverage_AllModulesCoveredOrExcluded` | `TestCLITree_EveryCommand`, `TestCwdMutation_MigratedFilesStayChdirFree` | yes |
-| `TestSpawnObservability_DetectionHelper` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestSpawnRole_FixtureFlagsInlineLiteral` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestReedStatuslineCarriesTheStencilSeedSkipAnnotation` | `TestCLITree_EveryCommand` | yes |
-| `TestIsTierTagged_RecognizesKnownTagsList` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestFirstBannedToken_RecognizesDeltaGit` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestFindLongLiteralSleep_DetectsAllArgumentForms` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestFileNamePlatform` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestTmuxkitSpawnReference` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
-| `TestUpdateCommandRemoved` | `TestExitCode_UnknownModule` | no |
-| `TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant` | `TestBoardGuard_NoRawGitImportOrShellOut` | yes |
+| `TestBoardGuard_ShellOutDetection` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestCheckedCallInvariant_TokenSpellingsDoNotCollide` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestCwdMutationGuard_NotVacuous` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestMutationRecord_FabricengineProductionSource` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestDriverStencil_ShowsOneBareStepCall` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestGitkitSpawnReference` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestRootHookSuppressedUnderTest` | `TestCLITree_EveryCommand`, `TestExitSweepBounds` | yes |
+| `TestNoDeniedRecovery_ScannedSurfaceHasNone` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestNoDeniedRecovery_ScanSelfCheck` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestSandboxCoverage_AllModulesCoveredOrExcluded` | `TestCLITree_EveryCommand`, `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestSpawnObservability_DetectionHelper` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestSpawnRole_FixtureFlagsInlineLiteral` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestIsTierTagged_RecognizesKnownTagsList` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestFirstBannedToken_RecognizesDeltaGit` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestFindLongLiteralSleep_DetectsAllArgumentForms` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestFileNamePlatform` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestTmuxkitSpawnReference` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
+| `TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant` | `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport` | yes |
 
 No coverage:
 
+- `TestAgentFiledIssues_NoCreateIssueOutsideSelfreport`: spawns
 - `TestBoardGuard_NoRawGitImportOrShellOut`: spawns
 - `TestCheckedCallInvariant_RawSitesMarkedAndPinned`: spawns
 - `TestCLITree_EveryCommand`: unclassifiable call
@@ -63,26 +50,19 @@ No coverage:
 - `TestLLMTier_OnlyLLMFilesReachAnLLM`: spawns
 - `TestLLMTier_FixtureTrees`: spawns
 - `TestRunDispatchesToBoard`: spawns
-- `TestRunBoardErrorPropagatesExitCode`: spawns
 - `TestRootHookWritesTraceFileOnNonZeroExit`: spawns
 - `TestRunDispatchesToConfigReconcile`: spawns
 - `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces`: spawns
 - `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode`: spawns
 - `TestExitSweep_QuietZeroExitNeitherArmsNorSweeps`: spawns
-- `TestRunNoArgs`: failed
 - `TestPathRules`: unclassifiable call
 - `TestNoRawGitMutation_WebsterProductionSource`: spawns
 - `TestRegistration_AllModulesRegistered`: spawns
 - `TestSpawnObservability_ProductionSpawnsAreLogged`: spawns
 - `TestSpawnRole_NoInlineRoleLiteral`: spawns
-- `TestSeedStencilsAt_SeedsBothSubtrees`: spawns
-- `TestSeedStencilsAt_SecondRunWritesNothing`: spawns
-- `TestSeedStencilsAt_CommitsTheSpecsSubtree`: spawns
-- `TestSeedStencilsAt_WritesAndCommits`: spawns
-- `TestSeedStencils_NoOpUnderTest`: spawns
-- `TestRun_ReadOnlyCommandEnvelopeCarriesNoMutationsKey`: spawns
 - `TestStencilSeedTarget_PlainRepoHasNoHub`: spawns
-- `TestStencilSeedTarget_RealHubCases`: spawns
+- `TestStencilSeeding_HubScenario`: spawns
+- `TestSeedStencils_NoOpAndEnvelopeUnderRoot`: spawns
 - `TestTierPurity_UntaggedTestsSpawnNothing`: spawns
 - `TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain`: spawns
 - `TestTmuxIsolation_FixtureTrees`: spawns
@@ -106,35 +86,29 @@ No coverage:
 
 ## contracts/specs
 
-4 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestRegistry_NamesAreStableAndComplete` | `TestRegistry_DefaultReturnsNonEmptyBytes` | yes |
+No candidates.
 
 No test lacks coverage.
 
 ## contracts/stencils
 
-17 tests, wall 0.02s, serial 0.01s.
+14 tests, wall 0.02s, serial 0.04s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestStencils_NoBareCrossRepoCitations` | `TestStencils_AllowlistHasNoStaleEntries` | yes |
-| `TestNamesConstraintsFile` | `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestStencils_NameNoConstraintsFile` | `TestStencils_AllowlistHasNoStaleEntries` | yes |
-| `TestBranchOf` | `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestSectionOf` | `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestBurlerFocusDirective_Markers` | `TestLoomTemplatePriorPlan_Markers` | yes |
-| `TestLoomTemplatePriorPlan_Markers` | `TestBurlerFocusDirective_Markers` | no |
-| `TestRegistry_MatchesOnDiskTree` | `TestStencils_AllowlistHasNoStaleEntries` | yes |
-| `TestRegistry_IncludesBouncerStencils` | `TestStencils_AllowlistHasNoStaleEntries` | yes |
-| `TestRegistry_DefaultsAndRelPathAreConsistent` | `TestStencils_AllowlistHasNoStaleEntries`, `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestLoomRubricDiscussionReview_MarkersWithinAllowlist` | `TestLoomTemplatePriorPlan_Markers` | yes |
-| `TestLoomRubricPlanReview_MarkersWithinAllowlist` | `TestLoomTemplatePriorPlan_Markers`, `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestLoomRubricWebsterReview_MarkersWithinAllowlist` | `TestLoomTemplatePriorPlan_Markers`, `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
-| `TestLoomRubrics_ParseUnderTheRenderHelper` | `TestLoomRubrics_NameTheWriterStencil` | no |
-| `TestLoomRubrics_NameTheWriterStencil` | `TestLoomRubrics_ParseUnderTheRenderHelper` | yes |
+| `TestStencils_NameNoConstraintsFile` | `TestStencils_NoBareCrossRepoCitations` | yes |
+| `TestBranchOf` | `TestLoomRubrics` | yes |
+| `TestSectionOf` | `TestLoomRubrics` | yes |
+| `TestStencils_TopLevelMarkers` | `TestLoomRubrics` | yes |
+| `TestStencils_OpeningStencilsRenderParentDirective` | `TestStencils_NoBareCrossRepoCitations` | yes |
+| `TestStencils_NoUnboundedAskOperator` | `TestStencils_NoBareCrossRepoCitations` | yes |
+| `TestParentDirectiveScans_SyntheticRows` | `TestLoomRubrics` | yes |
+| `TestRegistry_MatchesOnDiskTree` | `TestStencils_NoBareCrossRepoCitations` | yes |
+| `TestRegistry_DefaultsAndRelPathAreConsistent` | `TestStencils_NoBareCrossRepoCitations`, `TestLoomRubrics` | yes |
+| `TestStencils_NoSkillLoadInstructions` | `TestStencils_NoBareCrossRepoCitations` | yes |
+| `TestSkillLoadViolations_SyntheticRows` | `TestLoomRubrics` | yes |
 
 No coverage:
 
@@ -142,7 +116,7 @@ No coverage:
 
 ## internal/agentname
 
-7 tests, wall 0.01s, serial 0.00s.
+7 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
@@ -152,114 +126,50 @@ No test lacks coverage.
 
 ## internal/batcher
 
-13 tests, wall 0.02s, serial 0.00s.
+5 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestSelect_UnknownNameReturnsError` | `TestActive_UnknownNameErrors` | no |
-| `TestLookup_UnknownName` | `TestActive_AbsentConfigResolvesTemplate` | yes |
-| `TestConfigTemplate_ParsesAsYAML` | `TestActive_AbsentConfigResolvesTemplate` | yes |
-| `TestActive_UnknownNameErrors` | `TestActive_ExplicitNameResolves`, `TestSelect_UnknownNameReturnsError` | yes |
+No candidates.
 
 No coverage:
 
-- `TestSelect_EmptyNameResolvesToIdentity`: unclassifiable call
-- `TestSelect_IdentityByName`: unclassifiable call
+- `TestSelect`: unclassifiable call
 - `TestIdentityBatcher_Batch`: unclassifiable call
 - `TestIdentityBatcher_Name`: unclassifiable call
 - `TestRegister_Lookup_RoundTrip`: unclassifiable call
-- `TestActive_TemplateDefaultResolvesIdentity`: unclassifiable call
-- `TestActive_ExplicitNameResolves`: unclassifiable call
-- `TestActive_AbsentConfigResolvesTemplate`: unclassifiable call
-- `TestActive_AbsentLyxDirResolvesTemplate`: unclassifiable call
+- `TestActive`: unclassifiable call
 
 ## internal/battencli
 
-104 tests, wall 16.79s, serial 16.76s.
+48 tests, wall 6.18s, serial 6.57s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestArmSeed_RunAndStepSeedBeforeWire` | `TestArmSeed_SeedsWhetherOrNotStrandNameIsSet` | yes |
-| `TestArmSeed_SeedsWhetherOrNotStrandNameIsSet` | `TestArmSeed_RunAndStepSeedBeforeWire` | no |
-| `TestArmSeed_StatusAndPauseRefuseAndSeedNothing` | `TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundFalse` | yes |
-| `TestArmSeed_OwnDriverLLMStillRefuses` | `TestArmSeed_DriverFlagMatrix` | yes |
-| `TestBattenPreRun_AwaitingArmsWithoutRefusal` | `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow` | yes |
 | `TestBootstrapVerb_IsEmpty` | `TestArmSeed_DriverFlagMatrix` | yes |
-| `TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity` | `TestBattenIntegration_NonPrimeRefusal` | yes |
-| `TestBattenRunCommitPaths` | `TestBattenIntegration_RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug` | yes |
-| `TestBattenDir` | `TestBattenIntegration_AttachDirNamesTheTaskWorktree` | yes |
-| `TestStatusFileIsDurableWhileLocksStayEphemeral` | `TestBattenIntegration_AttachDirNamesTheTaskWorktree` | yes |
-| `TestPerSlugPathsAreDistinctAndTheTwoLocksAreUnderBattenDir` | `TestBattenIntegration_AttachDirNamesTheTaskWorktree` | yes |
-| `TestPrimeRunLock` | `TestBattenIntegration_AttachDirNamesTheTaskWorktree` | yes |
-| `TestPathsStayUnderAnchorAndNeverNameTheManagedSlugWorktree` | `TestBattenIntegration_AttachDirNamesTheTaskWorktree` | yes |
-| `TestBattenPostRun_ErrorPathReturnsNil` | `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow` | yes |
-| `TestBattenPostRun_SuccessPathReturnsAbandonedSession` | `TestRunCmd_AbandonedSessionKey` | yes |
-| `TestRefuseNonPrime_MessagesAreDistinguishable` | `TestRefuseNonPrime` | yes |
-| `TestRunCmd_ResumeDispositions` | `TestRunCmd_HistoryLengthKey`, `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow`, `TestRunCmd_AbandonedSessionKey` | yes |
-| `TestRunCmd_AbsentStatusFileStartsFresh` | `TestRunCmd_HistoryLengthKey` | yes |
-| `TestRunCmd_HistoryLengthKey` | `TestRunCmd_AbsentStatusFileStartsFresh` | no |
-| `TestPauseCmd_SetsPauseRequestedAndEnvelope` | `TestStatusAndPause_ReadADurableStatusWhoseLockDirIsAbsent` | yes |
-| `TestStatusCmd_RegistersWatchAndIntervalFlags` | `TestPauseCmd_AbsentFileRefuses` | yes |
-| `TestSpecFor_CarriesBattenMissingStatusWayForward` | `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow` | yes |
+| `TestBattenRunCommitPaths` | `TestBattenIntegration_Rows` | yes |
+| `TestPaths_ResolveUnderTheAnchorBySegment` | `TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub` | yes |
+| `TestBattenPostRun` | `TestRunCmd_AbandonedSessionKey` | yes |
 | `TestBattenPreStep_SeedsAbsentStatus` | `TestStepCmd_FreshSlugNeverSurfacesKindProducer` | yes |
-| `TestSpecFor_StepBuildShedNonNil` | `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow` | yes |
-| `TestSpecFor_ScratchDir` | `TestRunCmd_AbandonedSessionKey` | yes |
-| `TestChildSeedFor_CarriesRecipeDriverAndParams` | `TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown` | yes |
-| `TestChildSpawnError_NotParkedRefusalWrapsTheSentinel` | `TestChildSpawnError` | yes |
-| `TestChildSpawnError_TruncationStaysValidUTF8` | `TestChildSpawnError` | yes |
-| `TestTaskWorktreeLocation_AbsentPairIsNamed` | `TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName` | yes |
-| `TestTaskWorktreePresent_AbsentIsAnAnswerNotAnError` | `TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub` | yes |
-| `TestFinishRemoval_NotFoundIsDone` | `TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone` | yes |
-| `TestFinishRemoval_HalfRemovedPairIsNoLongerRefusedByName` | `TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably` | yes |
+| `TestChildSeedFor_CarriesRecipeDriverAndParams` | `TestBattenIntegration_Rows` | yes |
+| `TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal` | `TestBattenIntegration_Rows`, `TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName` | yes |
+| `TestFinishRemoval` | `TestBattenIntegration_Rows` | yes |
 
 No coverage:
 
-- `TestRunCLI_GroupGuard_NoGitRepoNeeded`: failed
 - `TestCommand_HelpCarriesNoTeardownGotoExample`: unclassifiable call
-- `TestNewCommitStatusSeam_RepeatedPairCommitsOnce`: unclassifiable call
-- `TestNewCommitStatusSeam_SkipSurvivesARebuiltSeam`: unclassifiable call
-- `TestNewCommitStatusSeam_ChangedPairCommitsAgain`: unclassifiable call
-- `TestNewCommitStatusSeam_MissingMarkerCommitsOnce`: unclassifiable call
-- `TestNewCommitStatusSeam_CorruptMarkerCommitsOnce`: unclassifiable call
+- `TestNewCommitStatusSeam`: unclassifiable call
 - `TestPreGoto`: unclassifiable call
 - `TestPreGoto_UnresolvedWorktreeRefused`: unclassifiable call
-- `TestBattenIntegration_SeedChild_WritesASeedTheChildBootstrapAgreesWith`: spawns
-- `TestBattenIntegration_SeedChild_WriteSeedRewrapsARealDisagreeingChildSeed`: spawns
-- `TestBattenIntegration_RealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring`: spawns
-- `TestBattenIntegration_FourRowRun_SeedsChildCommitsAndTearsDown`: spawns
-- `TestBattenIntegration_Teardown_AlreadyGonePairFinishesItsBranchDeletion`: spawns
-- `TestBattenIntegration_Teardown_FailedRemoteDeletionHaltsResumably`: spawns
-- `TestBattenIntegration_Teardown_UnreachableRemoteHaltsBeforeRemovalResumably`: spawns
-- `TestBattenIntegration_Teardown_AlreadyGonePairWithNoBranchIsDone`: spawns
-- `TestBattenIntegration_StepDrivenRunShed_ReturnsAfterOnePollInterval`: spawns
-- `TestBattenIntegration_RunShedPausedChild_WaitsThenTearsDownOnceDone`: spawns
-- `TestBattenIntegration_CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree`: spawns
-- `TestBattenIntegration_CreateRow_PairWithoutOriginRecordIsIncomplete`: spawns
-- `TestBattenIntegration_CreateRow_LeftoverBranchIsRewordedForPrime`: spawns
-- `TestBattenIntegration_CreateRow_IncompletePairRefusesRatherThanSkippingAdd`: spawns
+- `TestBattenIntegration_Rows`: spawns
 - `TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub`: spawns
-- `TestBattenIntegration_DirtyPrime_CreateRowBlocksBeforeAnythingCreated`: spawns
-- `TestBattenIntegration_MidListResume_SkipsTheCompletedCreateRow`: spawns
-- `TestBattenIntegration_NonPrimeRefusal`: spawns
-- `TestBattenIntegration_RecordsPrimeRefusal`: spawns
-- `TestBattenIntegration_Teardown_ReEntryAfterCompletedRemovalIsDone`: spawns
-- `TestBattenIntegration_Teardown_SiblingDirtOutsideRecordPathsRefusesShutdown`: spawns
-- `TestBattenIntegration_AttachDirNamesTheTaskWorktree`: spawns
-- `TestBattenIntegration_SeedChild_IgnoresPrimesCommittedBattenRecords`: spawns
-- `TestBattenIntegration_RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug`: spawns
-- `TestBattenIntegration_AwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords`: spawns
-- `TestBattenIntegration_AwaitingRejectionResumesTheChildOnce`: spawns
 - `TestRecentHistory`: unclassifiable call
 - `TestWire_EverySeamFilled`: spawns
 - `TestWire_NotifyQueuesOnThePrimesOrch`: spawns
 - `TestWire_NotifyWritesNothingWithoutAnOrchStrand`: spawns
 - `TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName`: spawns
-- `TestWire_SucceedsForNonexistentTaskWorktree`: spawns
-- `TestWire_LazySeams`: spawns
+- `TestWire_BuildsLazilyForANonexistentTaskWorktree`: spawns
 - `TestDriverAliveFrom`: unclassifiable call
 - `TestWire_ChildDriverDelegatesToChildDriverOf`: spawns
 - `TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree`: spawns
-- `TestWire_CommitStatusFilled`: spawns
 
 ## internal/battenrecipe
 
@@ -279,31 +189,13 @@ No coverage:
 
 ## internal/battenshed
 
-97 tests, wall 0.04s, serial 0.02s.
+76 tests, wall 0.03s, serial 0.02s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestWorktreeCreate_HappyPath` | `TestWorktreeCreate_WaitsForContendedLockThenCreates` | yes |
-| `TestWorktreeCreate_CreateWorktreeError` | `TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim` | yes |
-| `TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim` | `TestWorktreeCreate_CreateWorktreeError` | no |
-| `TestWorktreeCreate_DirtyDrivingWorktreePassesThroughVerbatim` | `TestWorktreeCreate_PreExistingBranchRemedySurvivesVerbatim` | yes |
-| `TestWorktreeCreate_PrimeLockUnavailable` | `TestWorktreeCreate_LockStillHeldPastBoundIsStuck` | yes |
 | `TestInnerRun_AwaitingWithoutApprovalWaitsExempt` | `TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry`, `TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning` | yes |
-| `TestInnerRun_AwaitingWaitIsNotBlockedByTheRunningBudget` | `TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry` | yes |
-| `TestInnerRun_ApprovedResumeAfterOpenDoesNotReopen` | `TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval`, `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
-| `TestInnerRun_ApprovedResumeWithoutMarkerOpensOnce` | `TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint`, `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
-| `TestInnerRun_StaleMarkerDoesNotSuppressFreshChildOpen` | `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
-| `TestInnerRun_ReentryAgainstExistingStatusDoesNotRespawn` | `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
-| `TestInnerRun_StillRunningSleepsExactlyOnce` | `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
-| `TestRenderNotice_NoErrorOmitsIt` | `TestNotice_DeadDriverWhileRunning` | yes |
-| `TestSeedChild_TwoSourceSplit` | `TestSeedChild_EmptyBoardTypeDefaultsToLoom` | yes |
-| `TestSeedChild_BoardTypeReadFreshAtCallTime` | `TestSeedChild_EmptyBoardTypeDefaultsToLoom` | yes |
-| `TestWorktreeTeardown_HappyPathOrdering` | `TestWorktreeTeardown_WaitsForContendedLockThenTearsDown` | yes |
+| `TestInnerRun_OpensIDEOncePerRunAcrossAMarker` | `TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval`, `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall` | yes |
 | `TestWorktreeTeardown_RemoveFailureNamesRemovalHalf` | `TestWorktreeTeardown_PrimeLockDispositions` | yes |
-| `TestWorktreeTeardown_RemoveRefusalMergeInProgress` | `TestWorktreeTeardown_PrimeLockDispositions` | yes |
-| `TestWorktreeTeardown_AbandonedSessionOnOtherwiseDoneRow` | `TestTeardown_DoneRunRecordsTheAbandonedSession` | no |
-| `TestRecordAbandonedSession` | `TestWorktreeTeardown_AbandonedSessionOnOtherwiseDoneRow`, `TestWorktreeTeardown_PrimeLockDispositions` | yes |
-| `TestTeardown_DoneRunRecordsTheAbandonedSession` | `TestWorktreeTeardown_AbandonedSessionOnOtherwiseDoneRow` | yes |
 
 No coverage:
 
@@ -311,12 +203,11 @@ No coverage:
 - `TestWorktreeCreate_CancelledContext`: unclassifiable call
 - `TestWorktreeCreate_CancelledDuringAcquireError`: unclassifiable call
 - `TestWorktreeCreate_CancelledAfterSuccessfulCreate`: unclassifiable call
-- `TestWorktreeCreate_WaitsForContendedLockThenCreates`: unclassifiable call
+- `TestWorktreeCreate_CreatesOnceTheLockIsFree`: unclassifiable call
 - `TestWorktreeCreate_LockStillHeldPastBoundIsStuck`: unclassifiable call
 - `TestWorktreeCreate_CancelledDuringLockWait`: unclassifiable call
 - `TestWorktreeCreate_AcquireErrorOnLaterAttempt`: unclassifiable call
-- `TestEntryErr`: unclassifiable call
-- `TestCancelErr`: unclassifiable call
+- `TestEntryErrAndCancelErr`: unclassifiable call
 - `TestInnerRun_AwaitingResumesOncePerApproval`: unclassifiable call
 - `TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint`: unclassifiable call
 - `TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint`: unclassifiable call
@@ -339,13 +230,10 @@ No coverage:
 - `TestInnerRun_OpenErrorIsWarnedNotEscalated`: unclassifiable call
 - `TestInnerRun_FailedSpawnDoesNotOpen`: unclassifiable call
 - `TestInnerRun_VerdictTable`: unclassifiable call
-- `TestInnerRun_DoneWithGoneDriverNeverStuck`: unclassifiable call
 - `TestInnerRun_SpawnFailureIsReturnedError`: unclassifiable call
 - `TestInnerRun_ResolveStatusFailureIsReturnedError`: unclassifiable call
 - `TestInnerRun_CancelledContext`: unclassifiable call
-- `TestInnerRun_CancelledDuringResolveStatusError`: unclassifiable call
-- `TestInnerRun_CancelledDuringFirstReadStatusError`: unclassifiable call
-- `TestInnerRun_CancelledDuringSecondReadStatusError`: unclassifiable call
+- `TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation`: unclassifiable call
 - `TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext`: unclassifiable call
 - `TestInnerRun_SpawnsUntilASpawnIsConfirmed`: unclassifiable call
 - `TestInnerRun_FailedSpawnIsRetriedOnTheNextCall`: unclassifiable call
@@ -360,38 +248,27 @@ No coverage:
 - `TestToldGeometryInvariant_AllowlistOnly`: spawns
 - `TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError`: unclassifiable call
 - `TestSeedChild_ChildDriverFailureIsReturnedError`: unclassifiable call
-- `TestSeedChild_CancelledDuringChildDriverError`: unclassifiable call
-- `TestSeedChild_CancelledDuringWriteSeedError`: unclassifiable call
+- `TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation`: unclassifiable call
 - `TestSeedChild_CancelledContext`: unclassifiable call
 - `TestWorktreeTeardown_PrimeLockDispositions`: unclassifiable call
 - `TestWorktreeTeardown_CancelledDuringAcquireError`: unclassifiable call
 - `TestWorktreeTeardown_CancelledContext`: unclassifiable call
-- `TestWorktreeTeardown_WaitsForContendedLockThenTearsDown`: unclassifiable call
+- `TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree`: unclassifiable call
 - `TestWorktreeTeardown_LockStillHeldPastBoundIsStuck`: unclassifiable call
 - `TestWorktreeTeardown_CancelledDuringLockWait`: unclassifiable call
 
 ## internal/boardcli
 
-42 tests, wall 0.90s, serial 0.87s.
+12 tests, wall 0.21s, serial 0.20s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestApplyBodyFile_File` | `TestCLIGetBody` | yes |
-| `TestApplyBodyFile_Stdin` | `TestCLIMergeBodyFile` | yes |
-| `TestApplyBodyFile_EmptyFile` | `TestCLIGetBody` | yes |
-| `TestApplyBodyFile_BodyInPayloadRefused` | `TestCLIMergeBodyFile` | yes |
-| `TestApplyBodyFile_StdinForBothRefused` | `TestCLIMergeBodyFile` | yes |
-| `TestHelpSchema_LeafCommands` | `TestCLIBoardPathResolution` | yes |
-| `TestHelpStatesSlugLimit` | `TestCLIBoardPathResolution` | yes |
-| `TestRenderCompact_AlignsColumns` | `TestCLIListAndFindText` | yes |
-| `TestRenderCompact_AlignsMultiByteTitles` | `TestCLIListAndFindText` | yes |
-| `TestRenderCompact_StatusBracketOnlyWhenSet` | `TestCLIListAndFindText` | yes |
-| `TestRenderCompact_NoLabelsLeavesNoTrailingGap` | `TestCLIListAndFindText` | yes |
-| `TestRenderCompact_PreservesInputOrder` | `TestCLIListAndFindText` | yes |
-| `TestRenderCompact_EmptyInputPrintsNothing` | `TestCLIListAndFindText` | yes |
+| `TestHelpSchema_LeafCommands` | `TestCLI` | yes |
+| `TestRenderCompact` | `TestCLI` | yes |
 
 No coverage:
 
+- `TestApplyBodyFile`: unclassifiable call
 - `TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages`: unclassifiable call
 - `TestIntakeImport_NewNoteCommentsAndCloses`: unclassifiable call
 - `TestIntakeImport_FoldIntoEntry`: unclassifiable call
@@ -400,79 +277,32 @@ No coverage:
 - `TestIntakeImport_CloseFailureReportsEntryAndClosePayload`: unclassifiable call
 - `TestIntakeClose`: unclassifiable call
 - `TestIntakeClose_RecordedOpenIssue`: unclassifiable call
-- `TestCLIContract`: spawns
-- `TestCLIErrorAndEdgeCases`: spawns
-- `TestCLIStrictPayloadShapes`: spawns
-- `TestCLILookupContract`: spawns
-- `TestCLIBoardPathResolution`: spawns
-- `TestCLIPromote`: spawns
-- `TestCLIPromote_Refusals`: spawns
-- `TestCLIPrune`: spawns
-- `TestCLIFind`: spawns
-- `TestCLIListAndFindLabelFilter`: spawns
-- `TestCLIFind_NoArgumentRefused`: spawns
-- `TestCLIListAndFindText`: spawns
-- `TestCLIRetireLegacy`: spawns
-- `TestCLIGetAndRemoveByID`: spawns
-- `TestCLIUpsertBodyFile`: spawns
-- `TestCLIMergeBodyFile`: spawns
-- `TestCLIGetBody`: spawns
-- `TestCLIGetBodyRoundTrip`: spawns
-- `TestCLILabelsMapShapedPrintsFileOrderWithDescriptions`: spawns
-- `TestCLILabelsListShapedPrintsNamesWithEmptyDescriptions`: spawns
+- `TestCLI`: spawns
 
 ## internal/boardengine
 
-111 tests, wall 0.74s, serial 0.71s.
+73 tests, wall 0.29s, serial 0.28s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestMigrateLegacyBracketPrefixesBecomeLabels` | `TestFoldLegacyDoneAppliesOnce`, `TestMigrateEntriesBracketPrefixes` | no |
-| `TestMigrateLegacyCollidingNoteIDReassigned` | `TestFindOnUnmigratedBoardWritesNothing`, `TestMigrateLegacyKindAndLabels` | yes |
-| `TestMigrateLegacyDuplicateSlugRefused` | `TestDuplicateLegacySlugRefusesReadsAndWrites` | yes |
-| `TestMigrateLegacyDoneSeed` | `TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles`, `TestMigrateLegacyKindAndLabels`, `TestRetireLegacyFailedDeletionKeepsLegacyDone` | yes |
-| `TestFoldLegacyDoneAppliesOnce` | `TestPreUpgradeDoneMarkSurvivesNewWrite`, `TestMigrateLegacyKindAndLabels` | yes |
-| `TestFoldLegacyDoneAbsentSlugRecorded` | `TestPreUpgradeDoneMarkSurvivesNewWrite` | yes |
-| `TestFoldLegacyDoneIgnoresOtherStatuses` | `TestFindOnUnmigratedBoardWritesNothing` | yes |
-| `TestFoldLegacyDoneReopenedStaysReopened` | `TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles`, `TestMigrateLegacyKindAndLabels` | yes |
-| `TestFoldLegacyDoneReusedSlugNotMarkedDone` | `TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles`, `TestMigrateLegacyKindAndLabels` | yes |
-| `TestMigrateEntriesBracketPrefixes` | `TestMigrateLegacyBracketPrefixesBecomeLabels`, `TestFirstWriteCreatesBoardJSONAndKeepsLegacyFiles` | yes |
-| `TestMigrateEntriesTaskEdgeToMigratedNoteRemoved` | `TestMigrateLegacyKindAndLabels` | yes |
-| `TestMigrateEntriesKindEntryUntouched` | `TestBoardRefusesUnconfiguredLabel` | yes |
-| `TestConfigTemplate_ValidYAML` | `TestConfigTemplate_ResolvesToDefaults` | yes |
-| `TestConfigTemplate_HasRequiredKeys` | `TestConfigTemplate_ResolvesToDefaults` | yes |
-| `TestHealthCheckPassesLegacyFileAlone` | `TestHealthCheckFailsNoStoreFile`, `TestHealthCheckPasses` | yes |
-| `TestHealthCheckPassesCorruptFile` | `TestHealthCheckPasses` | yes |
-| `TestLoadConfig_HappyPath` | `TestLoadConfig_EnvResolution` | yes |
-| `TestLoadConfig_AbsolutePathResolution` | `TestLoadConfig_EnvResolution` | yes |
-| `TestLoadConfig_RelativePathResolution` | `TestLoadConfig_EnvResolution` | yes |
-| `TestLoadConfig_LabelsDefault` | `TestLoadConfig_EnvResolution`, `TestBoardRefusesUnconfiguredLabel` | yes |
-| `TestOutputs_TypesFollowFileOrder` | `TestBoardRefusesUnconfiguredLabel` | yes |
+| `TestMigrateLegacyIDsDoneSeedAndDuplicateSlug` | `TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles`, `TestMigrateLegacyKindAndLabels`, `TestRetireLegacyFailedDeletionKeepsLegacyDone`, `TestDuplicateLegacySlugRefusesReadsAndWrites` | yes |
+| `TestMigrateEntriesBracketPrefixes` | `TestMigrateLegacyKindAndLabels`, `TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone` | yes |
 | `TestVocabulary` | `TestBoardRefusesUnconfiguredLabel` | yes |
 | `TestOutputs` | `TestBoardRefusesUnconfiguredLabel` | yes |
 | `TestRenderOrder` | `TestRenderReadmeGolden` | yes |
-| `TestRenderToDisk` | `TestImportIssueFold`, `TestRenderToDiskManifestCleanup`, `TestImportIssueRecordedIsNoOp` | yes |
-| `TestRenderReadmeNoDoneSection` | `TestBoardRefusesUnconfiguredLabel` | yes |
 | `TestRenderCustomOutputs` | `TestImportIssueFold` | yes |
-| `TestLoadNilDependsOnNormalization` | `TestRetireLegacyFailedDeletionKeepsLegacyDone`, `TestBoardRefusesUnconfiguredLabel`, `TestLoadNilLabelsNormalization` | yes |
-| `TestLoadFromBoardJSON` | `TestPreUpgradeDoneMarkSurvivesNewWrite` | yes |
-| `TestLoadOldShapeRoundTrip` | `TestPreUpgradeDoneMarkSurvivesNewWrite`, `TestMigrateLegacyBracketPrefixesBecomeLabels`, `TestMigrateEntriesTierAndType` | yes |
 
 No coverage:
 
 - `TestStoreValidatesLabelsWithVocabulary`: spawns
-- `TestSync_DirtyBoard_CommitsAndPushes`: spawns
-- `TestSync_SeedsGitignoreWithLockAndManifestPatterns`: spawns
-- `TestSync_ConcurrentCallSerializesOnBoardPushLock`: spawns
-- `TestSync_SkipPush_CommitsLocallyButDoesNotPush`: spawns
-- `TestSync_RetireLegacy_CommitsBoardJSONAndLegacyDeletions`: spawns
+- `TestFoldLegacyDone`: unclassifiable call
+- `TestSync_Scenario`: spawns
 - `TestUpsertTask`: spawns
 - `TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting`: spawns
 - `TestRerender`: spawns
-- `TestHealthCheckPasses`: spawns
+- `TestHealthCheck`: spawns
 - `TestLegacyBoardReadsMigratedWithoutWriting`: unclassifiable call
-- `TestFirstWriteCreatesBoardJSONAndKeepsLegacyFiles`: spawns
-- `TestWriteOnFreshBoardCreatesNoLegacyFiles`: spawns
+- `TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone`: spawns
 - `TestDuplicateLegacySlugRefusesReadsAndWrites`: spawns
 - `TestReadFoldsLegacyDoneWithoutWriting`: spawns
 - `TestPreUpgradeDoneMarkSurvivesNewWrite`: spawns
@@ -480,14 +310,11 @@ No coverage:
 - `TestPromotePreservesRecipeAndLabels`: spawns
 - `TestBoardRefusesUnconfiguredLabel`: spawns
 - `TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned`: spawns
-- `TestFindOnUnmigratedBoardWritesNothing`: unclassifiable call
 - `TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles`: spawns
 - `TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing`: spawns
 - `TestRetireLegacyFailedDeletionKeepsLegacyDone`: spawns
 - `TestFilterLabelValidation`: spawns
-- `TestImportIssueNewNote`: spawns
-- `TestImportIssueExplicitLabelsAndTitle`: spawns
-- `TestImportIssueTypeLabelRefusals`: spawns
+- `TestImportIssueNewEntry`: spawns
 - `TestImportIssueFold`: spawns
 - `TestImportIssueFoldIntoStaleLabelRefused`: spawns
 - `TestImportIssueRecordedIsNoOp`: spawns
@@ -499,9 +326,7 @@ No coverage:
 - `TestUpsertTaskPreservesFields`: spawns
 - `TestUpsertTaskGroupKeyError`: spawns
 - `TestUpsertFieldAllowlist`: spawns
-- `TestValidateDependencyErrors`: spawns
-- `TestValidateCycleDetection`: spawns
-- `TestValidateNoCycleLongChain`: spawns
+- `TestValidateDependencyGraph`: spawns
 - `TestRemoveTaskMissing`: spawns
 - `TestSetStatus`: spawns
 - `TestMergeTasks`: spawns
@@ -519,23 +344,17 @@ No coverage:
 
 ## internal/boardengine/boardtest
 
-9 tests, wall 2.04s, serial 8.07s.
+3 tests, wall 0.31s, serial 0.45s.
 
 No candidates.
 
 No coverage:
 
-- `TestSyncCommitsAndPushes`: spawns
-- `TestSyncCoalescesBurstIntoOneCommit`: spawns
-- `TestSyncSkipPushCommitsLocallyOnly`: spawns
-- `TestSyncCleanTreeIsNoOp`: spawns
-- `TestSyncNothingPendingSkipsPushEntirely`: spawns
-- `TestSyncIgnoresLockfiles`: spawns
-- `TestSkipSeam`: spawns
+- `TestSync`: spawns
 
 ## internal/buildinfo
 
-2 tests, wall 0.01s, serial 0.00s.
+2 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
@@ -543,27 +362,19 @@ No test lacks coverage.
 
 ## internal/burlercli
 
-25 tests, wall 0.15s, serial 0.07s.
+17 tests, wall 0.08s, serial 0.01s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestDecodeProfile` | `TestRunCmd_PassesWatchTrueToReedUp`, `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
-| `TestDecodeProfile_FullValidFieldMapping` | `TestRunCmd_PassesWatchTrueToReedUp` | yes |
-| `TestWire_ModeHubSelectsHubMode` | `TestWire_RelativeStencilsDirResolvesAgainstCwd`, `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate` | yes |
-| `TestWire_ModeStandaloneSelectsStandaloneMode` | `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
-| `TestWireStandalone_NeverReadsLoc` | `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
-| `TestWire_StandalonePinnedValues` | `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
-| `TestWire_StencilsDirFlag` | `TestWire_RelativeStencilsDirResolvesAgainstCwd` | yes |
-| `TestWireHub_LeavesDurableSinkDirUntouched` | `TestWire_RelativeStencilsDirResolvesAgainstCwd`, `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
-| `TestWire_ReedUpSeamPerMode` | `TestWire_RelativeStencilsDirResolvesAgainstCwd`, `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd` | yes |
+| `TestWire_SelectsModeAndWiresItsFields` | `TestWire_StencilsDirFlag`, `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError` | yes |
+| `TestWireHub_LeavesDurableSinkDirUntouched` | `TestWire_StencilsDirFlag`, `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError` | yes |
 | `TestProductionFiles_NeverReferenceHubWatchdogMechanism` | `TestReedUpSeam_WatcherLifecycle` | yes |
 
 No coverage:
 
-- `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate`: unclassifiable call
-- `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged`: unclassifiable call
-- `TestRunCLI_GroupGuard_OutsideGitRepo`: failed
-- `TestRunCLI_Run_MissingProfile`: unclassifiable call
+- `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched`: unclassifiable call
+- `TestRunCLI_GroupGuard_OutsideGitRepo`: unclassifiable call
 - `TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo`: unclassifiable call
 - `TestRunVerb_RelativeProfileResolvesAgainstSeamCwd`: unclassifiable call
 - `TestReedUpSeam_WatcherLifecycle`: unclassifiable call
@@ -571,44 +382,27 @@ No coverage:
 
 ## internal/burlerengine
 
-49 tests, wall 0.16s, serial 0.10s.
+28 tests, wall 0.07s, serial 0.04s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestConfigTemplate_DecodesThroughLoadConfig` | `TestResolveFan` | yes |
-| `TestConfigTemplate_SelfConsistency` | `TestResolveFan` | yes |
-| `TestProfile_Validate_ResolvesPathsInPlace` | `TestProfile_Validate` | yes |
-| `TestProfile_Validate_AbsolutePathsKeptVerbatim` | `TestProfile_Validate` | yes |
-| `TestProfile_Validate_ClusterFanPopulatesLensesInOrder` | `TestEngine_Run_ClusterAuditPolicy` | yes |
-| `TestComposePrompt_FillsAllMarkers` | `TestComposePrompt_ClusterRules` | yes |
-| `TestComposePrompt_DirectoryAnnotation` | `TestComposePrompt_ClusterRules` | yes |
-| `TestComposePrompt_ReturnsThreeInstructionFiles` | `TestComposePrompt_ClusterRules` | yes |
-| `TestComposePrompt_BlockHelpersLandInIntendedAsset` | `TestComposePrompt_ClusterRules` | yes |
-| `TestTemplate_StatesClusterForkDiscipline` | `TestComposePrompt_ClusterRules` | yes |
-| `TestTemplate_OrchestratorExcludesDownstreamBodies` | `TestComposePrompt_ClusterRules` | yes |
+| `TestConfigTemplate_DecodesAndIsSelfConsistent` | `TestResolveFan` | yes |
+| `TestComposePrompt_MinimalProfile` | `TestComposePrompt_ClusterRules` | yes |
 | `TestComposePrompt_ReadsEditedStencilFromDisk` | `TestComposePrompt_ClusterRules` | yes |
 
 No coverage:
 
 - `TestAuditClusterRound`: unclassifiable call
 - `TestMutatingGitPattern`: unclassifiable call
+- `TestLoadConfig`: unclassifiable call
 - `TestResolveFan`: unclassifiable call
 - `TestEngine_Run_SpecConstruction`: unclassifiable call
 - `TestEngine_Run_ForkSubagentsSpecWiring`: unclassifiable call
 - `TestEngine_Run_ClusterAuditPolicy`: unclassifiable call
-- `TestEngine_Run_NonDoneOutcomes`: unclassifiable call
-- `TestEngine_Run_NotStartedPassthrough`: unclassifiable call
-- `TestEngine_Run_DoneBlockingVerdict`: unclassifiable call
-- `TestEngine_Run_DoneApprovedVerdict`: unclassifiable call
-- `TestEngine_Run_DoneMissingReviewFile`: unclassifiable call
-- `TestEngine_Run_DoneMalformedReviewFile`: unclassifiable call
-- `TestEngine_Run_ShuttleError`: unclassifiable call
+- `TestEngine_Run_ShuttleOutcomes`: unclassifiable call
+- `TestEngine_Run_GateOutcomes`: unclassifiable call
 - `TestEngine_Run_MaterializesInstructionFiles`: unclassifiable call
 - `TestEngine_Run_PatternDirectiveReachesInstruction1`: unclassifiable call
-- `TestEngine_Run_GateFailure`: unclassifiable call
-- `TestEngine_Run_ZeroGateSpec`: unclassifiable call
-- `TestEngine_Run_GateFailureFindingsNameRoundPaths`: unclassifiable call
-- `TestEngine_Run_SecondGateEntryFindingsNameRoundPaths`: unclassifiable call
 - `TestEngine_Run_MaterializeFailure`: unclassifiable call
 - `TestProfile_Validate`: unclassifiable call
 - `TestProfileValidate_ClusterExclude`: unclassifiable call
@@ -620,54 +414,38 @@ No coverage:
 - `TestComposePrompt_FrictionDirective`: unclassifiable call
 - `TestWarnIfFocusMarkerAbsent`: unclassifiable call
 - `TestTemplate_FillsWithAllMarkers`: unclassifiable call
-- `TestTemplate_PatternDirectiveOptional`: unclassifiable call
-- `TestTemplate_FrictionDirectiveOptional`: unclassifiable call
-- `TestTemplate_FocusDirectiveOptional`: unclassifiable call
+- `TestTemplate_OptionalDirectives`: unclassifiable call
 - `TestParseReview`: unclassifiable call
 
 ## internal/clihelp
 
-20 tests, wall 0.01s, serial 0.00s.
+11 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestSkipStencilSeedAnnotation_Literal` | `TestExecuteIn_HandlerObservesInjectedCwd` | yes |
-| `TestAnnotationEnabled_Literal` | `TestExecuteIn_HandlerObservesInjectedCwd` | yes |
+| `TestAnnotationLiterals` | `TestExecuteIn_HandlerObservesInjectedCwd` | yes |
 
 No coverage:
 
-- `TestExecute_SuccessHandlerReturnsZero`: unclassifiable call
-- `TestExecute_FailHandlerReturnsOne`: unclassifiable call
-- `TestWrapRun_ShortCircuitsAfterAbort`: unclassifiable call
+- `TestExecute_HandlerExitCode`: unclassifiable call
+- `TestWrap_ShortCircuitsAfterAbort`: unclassifiable call
 - `TestExecute_ConcurrentInvocationsDoNotCrossExitCodes`: unclassifiable call
 - `TestExecuteIn_HandlerObservesInjectedCwd`: unclassifiable call
 - `TestExecute_HandlerObservesProcessCwd`: unclassifiable call
 - `TestRunRootCtx_PropagatesContextValue`: unclassifiable call
 - `TestWrapRunCtx_ReceivesCommandContext`: unclassifiable call
-- `TestWrapRunCtx_ShortCircuitsAfterAbort`: unclassifiable call
-- `TestInstallJSONHelp_OutputIsValidJSON`: unclassifiable call
-- `TestInstallJSONHelp_SchemaContainsExpectedTopLevelFields`: unclassifiable call
-- `TestInstallJSONHelp_ListsChildSubcommand`: unclassifiable call
-- `TestInstallJSONHelp_IncludesLocalFlag`: unclassifiable call
-- `TestInstallJSONHelp_OmitsHiddenFlag`: unclassifiable call
-- `TestInstallJSONHelp_OmitsMetaFlags`: unclassifiable call
-- `TestInstallJSONHelp_OmitsCobraBuiltinSubcommands`: unclassifiable call
+- `TestInstallJSONHelp_RendersSchema`: unclassifiable call
 - `TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse`: unclassifiable call
 
 ## internal/cliwire
 
-20 tests, wall 0.28s, serial 0.26s.
+12 tests, wall 0.14s, serial 0.12s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestBannedDeclNamesIn_CatchesVarFuncLiteral` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
-| `TestBannedDeclNamesIn_FuncDeclStillCaught` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
-| `TestBannedDeclNamesIn_UnrelatedVarNotCaught` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
-| `TestCallsDerive_CatchesFunctionValueIndirection` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
-| `TestCallsDerive_DirectCallStillCaught` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
-| `TestCallsDerive_UnrelatedSelectorNotCaught` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
+| `TestBannedDeclNamesIn` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
+| `TestCallsDerive` | `TestBannedDeclarations_CliPackagesCallIntoCliwire` | yes |
 | `TestRepositoryRootOf` | `TestModule_ResolveStandaloneTarget` | yes |
-| `TestModule_RefuseNestedStandaloneGeometry_SeesThroughASymlinkedStateHome` | `TestModule_RefuseNestedStandaloneGeometry` | yes |
 | `TestSamePlanDirAndResolvePlanDir` | `TestResolveStandalone_PlanRules` | yes |
 
 No coverage:
@@ -678,88 +456,35 @@ No coverage:
 - `TestResolveStandalone_SinkRedirectOrdering`: unclassifiable call
 - `TestResolveStandalone_Stencils`: unclassifiable call
 - `TestToldGeometryInvariant_AllowlistOnly`: spawns
-- `TestResolveStandalone_SeedsTheSpecsDirectory`: unclassifiable call
-- `TestResolveStandalone_ToldStencilsDirStillPopulatesSpecs`: unclassifiable call
-- `TestResolveStandalone_SpecsDirIsAbsolute`: unclassifiable call
 
 ## internal/configcli
 
-34 tests, wall 0.62s, serial 0.59s.
+10 tests, wall 0.22s, serial 0.21s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestConfigLong_MentionsEditorFallbackAndSet` | `TestConfigLong_ContainsModuleNames` | yes |
+No candidates.
 
 No coverage:
 
-- `TestE2ESyncIntegration`: spawns
-- `TestDispatchSet_PreservedKeyDetectedByReconcile`: unclassifiable call
-- `TestEditOneSuccess`: unclassifiable call
-- `TestEditOneUnknownModule`: unclassifiable call
-- `TestEditOneAbort`: unclassifiable call
-- `TestEditOneSyncFails`: unclassifiable call
-- `TestBareConfigListsModulesAndVerbs`: failed
-- `TestUnknownConfigArgumentRefuses`: unclassifiable call
+- `TestConfigOverRealHub`: spawns
+- `TestEditOne`: unclassifiable call
+- `TestRunCLIIn_FromNonGitDirectory`: unclassifiable call
 - `TestNoModuleSharesNameWithSubcommand`: unclassifiable call
-- `TestMenuSelection`: unclassifiable call
-- `TestMenuQuit`: unclassifiable call
-- `TestMenuInvalidSelection`: unclassifiable call
-- `TestMenuStatus`: unclassifiable call
-- `TestConfigMenuRejectsArgument`: unclassifiable call
-- `TestPrintModule_Seeded`: unclassifiable call
-- `TestPrintModule_KnownButUnseeded`: unclassifiable call
-- `TestPrintAggregate_PartialSeed`: unclassifiable call
-- `TestPrintUnknownModule`: unclassifiable call
-- `TestConfigLong_ContainsModuleNames`: unclassifiable call
-- `TestDispatchSet_NeverInvokesEditor`: unclassifiable call
-- `TestDispatchSet_UnknownKeyNeverSyncs`: unclassifiable call
-- `TestDispatchSet_OpenMapAddsLabel`: unclassifiable call
-- `TestDispatchSet_OpenMapRefusesListShape`: unclassifiable call
-- `TestDispatchSet_UndeclaredNonexistentKeyStillRefuses`: unclassifiable call
-- `TestDispatchSet_PrintMutuallyExclusive`: unclassifiable call
-- `TestDispatchSet_NoModuleRequiresOne`: unclassifiable call
-- `TestDispatchSet_MultipleValuesOneSync`: unclassifiable call
-- `TestDispatchSet_MalformedValue`: unclassifiable call
-- `TestDispatchSet_PreservesUnrecognizedKeyReportsWarning`: unclassifiable call
-- `TestDispatchSet_CleanFileNoPreservedField`: unclassifiable call
-- `TestReconcile_DryRun`: unclassifiable call
-- `TestReconcile_Apply`: unclassifiable call
-- `TestReconcile_NotAGitRepo`: unclassifiable call
+- `TestConfigLong`: unclassifiable call
+- `TestMenu`: unclassifiable call
+- `TestPrint`: unclassifiable call
+- `TestDispatchSet`: unclassifiable call
+- `TestDispatchHubWideBoard`: unclassifiable call
+- `TestConfigReconcileInGitRepo`: unclassifiable call
 
 ## internal/configengine
 
-49 tests, wall 0.02s, serial 0.00s.
+12 tests, wall 0.01s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestLoad_HappyPath` | `TestLoad_NestedKeyTemplate` | yes |
-| `TestLoad_MissingKey` | `TestLoad_FillKeepsExtraAndEmptyValues` | yes |
-| `TestLoad_OpenMapAcceptsOwnKeys` | `TestLoad_OpenMapAcceptsList`, `TestLoad_NestedKeyTemplate` | yes |
-| `TestLoadOrTemplate_OpenMapAcceptsOwnKeys` | `TestLoad_OpenMapAcceptsList`, `TestLoad_NestedKeyTemplate`, `TestLoadOrTemplate_PresentEmpty` | yes |
-| `TestLoad_CompleteFileLogsNoFill` | `TestLoad_FillKeepsExtraAndEmptyValues`, `TestLoad_NestedKeyTemplate` | yes |
-| `TestLoad_ExtraKeyTolerated` | `TestLoad_NestedKeyTemplate` | yes |
-| `TestLoad_NotInitialized` | `TestLoadOrTemplate_EnvOverride`, `TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback`, `TestLoad_AbsentFile` | yes |
-| `TestFindBaseDir_Present` | `TestEdit_AbortOnEditorError` | yes |
-| `TestFindBaseDir_Absent` | `TestEdit_NotInitialized` | yes |
-| `TestFindBaseDir_Absent_SatisfiesErrNotInitialized` | `TestEdit_NotInitialized` | yes |
-| `TestErrNotInitialized_NotMatchedByUnrelatedError` | `TestConfigFileRel` | yes |
-| `TestLoadOrTemplate_AbsentLyxDir` | `TestLoadOrTemplate_EnvOverride`, `TestLoadOrTemplate_AbsentConfigFile` | yes |
-| `TestLoadOrTemplate_BothPresent_MatchesLoad` | `TestLoad_NestedKeyTemplate`, `TestLoadOrTemplate_PresentEmpty` | yes |
-| `TestLoadOrTemplate_PresentMissingKey` | `TestLoad_FillKeepsExtraAndEmptyValues`, `TestLoadOrTemplate_PresentEmpty` | yes |
-| `TestLoadOrTemplate_PresentEmpty` | `TestLoadOrTemplate_PresentCommentsOnly` | no |
-| `TestLoadOrTemplate_PresentCommentsOnly` | `TestLoadOrTemplate_PresentEmpty` | yes |
-| `TestLoadOrTemplate_AbsentBaseDirAndEnv` | `TestLoadOrTemplate_EnvOverride`, `TestLoadOrTemplate_AbsentConfigFile` | yes |
-| `TestConfigDir` | `TestConfigFileRel` | yes |
-| `TestConfigFile` | `TestConfigFileRel` | yes |
-| `TestLyxDirNameConstant` | `TestConfigFileRel` | yes |
-| `TestEdit_ScaffoldWhenMissing` | `TestEdit_ReEditLoop` | no |
-| `TestEdit_EditExistingFile` | `TestEdit_ScaffoldWhenMissing`, `TestSet_OpenMapAddsEntry` | yes |
-| `TestEdit_ReEditLoop` | `TestEdit_AbortOnUnchangedAfterFailure_Scaffolded`, `TestEdit_ScaffoldWhenMissing` | yes |
-| `TestEdit_AbortOnUnchangedAfterFailure_PreExisting` | `TestEdit_AbortOnUnchangedAfterFailure_Scaffolded`, `TestSet_OpenMapAddsEntry` | yes |
-| `TestSet_ScaffoldWhenMissingThenSet` | `TestSet_PreservesUnrecognizedExistingKeyEndToEnd`, `TestSet_OpenMapAddsEntry`, `TestSet_UnknownKeyRemovesScaffoldedFile` | yes |
-| `TestSet_UnknownKeyLeavesExistingFileUnchanged` | `TestSet_UnknownKeyRemovesScaffoldedFile`, `TestSet_OpenMapAddsEntry` | yes |
-| `TestSet_PreservesOtherKeysOnExistingFile` | `TestSet_PreservesUnrecognizedExistingKeyEndToEnd`, `TestSet_OpenMapAddsEntry` | yes |
-| `TestSet_OpenMapUndeclaredKeyStillRefused` | `TestSet_OpenMapAddsEntry`, `TestSet_OpenMapRefusesListShape`, `TestSet_UnknownKeyRemovesScaffoldedFile` | yes |
+| `TestFindBaseDir` | `TestEdit` | yes |
+| `TestErrNotInitialized_NotMatchedByUnrelatedError` | `TestConfigPaths` | yes |
+| `TestEditPath_ScaffoldsIntoMissingParentDir` | `TestEdit` | yes |
 
 No coverage:
 
@@ -767,59 +492,38 @@ No coverage:
 
 ## internal/configreg
 
-10 tests, wall 0.16s, serial 0.14s.
+6 tests, wall 0.09s, serial 0.08s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestModules_SeedOnly` | `TestFill_DroppedTopLevelKeyLoadsAtDefault` | yes |
+| `TestModules_SeedOnlyAndHubWideFlags` | `TestFill` | yes |
 
 No coverage:
 
 - `TestNames`: unclassifiable call
-- `TestTemplate_Found`: unclassifiable call
+- `TestTemplate`: unclassifiable call
 - `TestRegistration_MatchesDeclarers`: spawns
-- `TestFill_DroppedTopLevelKeyLoadsAtDefault`: unclassifiable call
-- `TestFill_ReedNestedAndWholeMapping`: unclassifiable call
-- `TestFill_EmptyFileLoadsAsTemplate`: unclassifiable call
+- `TestFill`: unclassifiable call
 
 ## internal/configsync
 
-9 tests, wall 0.03s, serial 0.01s.
+5 tests, wall 0.01s, serial 0.01s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestReconcileAll_DryRun` | `TestReconcileAll_SeedOnly` | yes |
-| `TestReconcileAll_ApplyCreatesFiles` | `TestReconcileAll_SeedOnly` | yes |
-| `TestReconcileAll_SeedsLoggerYAML` | `TestReconcileAll_Idempotent` | yes |
-| `TestReconcileAll_DropsStaleReedClaudeKey` | `TestReconcileAll_Idempotent`, `TestReconcileAll_SeedOnly` | yes |
-| `TestReconcileAll_DropsStaleReedHeaderBlock` | `TestReconcileAll_Idempotent`, `TestReconcileAll_SeedOnly` | yes |
-| `TestReconcileAll_Idempotent` | `TestReconcileAll_DropsStaleReedClaudeKey`, `TestReconcileAll_SeedOnly`, `TestReconcileAll_BoardOpenMapsCarriedWhole` | no |
-| `TestReconcileAll_SeedOnly` | `TestReconcileAll_ApplyCreatesFiles`, `TestReconcileAll_DropsStaleReedClaudeKey`, `TestReconcileAll_Idempotent` | no |
-| `TestReconcileAll_BoardOpenMapsCarriedWhole` | `TestReconcileAll_Idempotent` | yes |
+No candidates.
 
 No coverage:
 
-- `TestReconcileFabricAt_MigratesLegacyFabricConfig`: unclassifiable call
+- `TestReconcileAll_HubWideCopy`: unclassifiable call
 
 ## internal/discussionparser
 
-23 tests, wall 0.01s, serial 0.00s.
+12 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestAppendDecision_LandsAtEndOfDecisionsSection` | `TestAppendDecision_HeadingInsideFenceIsIgnored` | yes |
-| `TestAppendDecision_DecisionsIsLastSection` | `TestAppendDecision_HeadingInsideFenceIsIgnored` | yes |
-| `TestAppendDecision_SupportLogUntouched` | `TestAppendDecision_HeadingInsideFenceIsIgnored` | yes |
-| `TestValidate_AllSectionsPresent` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_EachHeadingMissingIndividually` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_SeveralHeadingsMissingAtOnce` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_HeadingWithTrailingWhitespaceStillCounts` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_HeadingInFenceOrMidSentenceDoesNotCount` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_NotesForThePlanWriterAbsentIsNotAFinding` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_HeadingsOutOfOrderIsNotAFinding` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_ExtraUnexpectedHeadingIsNotAFinding` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestValidate_SupportLogPathIsDirectory` | `TestAppendDecision_FindingRestoresRecord` | yes |
-| `TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt` | `TestAppendDecision_FindingRestoresRecord` | yes |
+| `TestValidate_CleanRecords` | `TestAppendDecision_AppendsAtEndOfDecisionsSection` | yes |
+| `TestValidate_MissingHeadings` | `TestAppendDecision_FindingRestoresRecord` | yes |
+| `TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt` | `TestAppendDecision_AppendsAtEndOfDecisionsSection` | yes |
 
 No coverage:
 
@@ -827,108 +531,38 @@ No coverage:
 
 ## internal/envsource
 
-6 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestDotEnv` | `TestBuild_MultipleScenarios` | yes |
-| `TestBuild_AbsentDotEnv` | `TestBuild_MultipleScenarios` | yes |
-| `TestBuild_OSOverlay` | `TestBuild_MultipleScenarios` | yes |
-| `TestBuild_MultipleScenarios` | `TestBuild_OSOverlay`, `TestBuild_AbsentDotEnv` | no |
-| `TestBuild_PrecisionValuePreservation` | `TestBuild_DotEnvParsing` | yes |
+| `TestDotEnv` | `TestBuild` | yes |
 
 No test lacks coverage.
 
 ## internal/fabriccli
 
-87 tests, wall 17.82s, serial 17.79s.
+19 tests, wall 3.38s, serial 4.38s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestOkWithRecord_SuccessShape` | `TestRunCLI_BypassPushAdvancesBothUpstreams` | yes |
-| `TestErrWithRecord_FailureShape` | `TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired` | yes |
-| `TestOkWithRecord_ReservedKeysOverrideCallerFields` | `TestRunCLI_MergeInConflictThenContinueConcludes` | yes |
-| `TestErrWithRecord_KeysAreAlwaysTheReservedValues` | `TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged` | yes |
-| `TestErrConflictsWithRecord_ConflictEnvelopeShape` | `TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths` | yes |
-| `TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues` | `TestMergeIn_ConflictWarnsWhileWebsterInFlight` | yes |
-| `TestSameRepoHeads_NoPullRequestsIsEmptyNonNil` | `TestSameRepoHeads_ExcludesForkHeads` | yes |
-| `TestRemoveFields_WarpBranchDeleted` | `TestRemoveFields_WarpBranchKept` | yes |
-| `TestRemoveFields_ExistingKeysUnchanged` | `TestRemoveFields_WarpBranchKept` | yes |
-| `TestRemoveFields_ConditionalKeysAbsentWhenEmpty` | `TestRemoveFields_WarpBranchKept` | yes |
-| `TestRunCLI_WeftPathPushOnly` | `TestRunCLI_WarpPathPushOnly` | no |
-| `TestRunCLI_MergeHelp` | `TestRunCLI_BypassPushAdvancesBothUpstreams` | yes |
-| `TestCommand_CommitDeclaresNoMessageFlag` | `TestCommand_EveryVerbRejectsExtraPositionalArgs` | yes |
-| `TestCommand_PullAndMergeInDeclareShort` | `TestCommand_EveryVerbRejectsExtraPositionalArgs` | yes |
-| `TestRunCLI_WarpPathPushOnly` | `TestRunCLI_WeftPathPushOnly` | yes |
+| `TestOkWithRecord_SuccessShape` | `TestRunCLI_CleanupRemoveScenario` | yes |
+| `TestErrWithRecord_FailureShape` | `TestRunCLI_CleanHubScenario` | yes |
+| `TestErrConflictsWithRecord_ConflictEnvelopeShape` | `TestRunCLI_MergeScenario` | yes |
+| `TestCommand_VerbDeclarations` | `TestCommand_EveryVerbRejectsExtraPositionalArgs` | yes |
 
 No coverage:
 
-- `TestRunCLI_AddLeftoverWeftIsBarePreflightError`: spawns
-- `TestRunCLI_CleanupRemoteSkipsTaskBranchesWhenGitHubUnreachable`: spawns
-- `TestRunCLI_CleanupRemoteReportsOpenPRBranchAndApplyDeletesOnlyTheCandidate`: spawns
-- `TestRunCLI_PairsReturnsPairsKey`: spawns
-- `TestRunCLI_PairsReportsPollutionEntryWithRemedy`: spawns
-- `TestRunCLI_EnvMapToOption`: spawns
-- `TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern`: spawns
+- `TestRunCLI_CleanHubScenario`: spawns
+- `TestRunCLI_AnchoredHubScenario`: spawns
+- `TestRunCLI_CleanupRemoveScenario`: spawns
 - `TestRunCLI_CloneEndToEnd`: spawns
-- `TestRunCLI_CloneDefaultSubpathAnchorsAtRoot`: spawns
+- `TestRunCLI_CloneDestination`: spawns
 - `TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged`: spawns
-- `TestRunCLI_MergeContinueAndAbortTogetherFail`: spawns
 - `TestRunCLI_ReconcileBacksFillsWarpBinding`: spawns
 - `TestRunCLI_ReconcileBackfillFailureIsNonFatal`: spawns
-- `TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal`: spawns
-- `TestRunCLI_Reconcile_HealsMissingRepoWideConfig`: spawns
-- `TestRunCLI_ReadOnlyVerbsOmitMutationsKey`: spawns
-- `TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject`: spawns
-- `TestRunCLI_FallbackCwdMatchesInjectedCwd`: spawns
-- `TestRunCLI_CloneIntoFlagCreatesHubAtDirectory`: spawns
-- `TestRunCLI_CloneWithoutIntoFlagUsesResolvedCwd`: spawns
-- `TestCloneConfigCommit_WeftPrimeCleanAfterClone`: spawns
-- `TestCloneConfigCommit_PairInheritsConfigs`: spawns
-- `TestCloneConfigCommit_AnchorScoped`: spawns
-- `TestCloneConfigCommit_OneCommitNotOnePerModule`: spawns
-- `TestCloneConfigCommit_MutationRecordShape`: spawns
-- `TestRunCLI_ReconcileReportsAFailedPairAsAFailure`: spawns
-- `TestRunCLI_PruneEmitsAnEmptyArrayNotNull`: spawns
-- `TestRunCLI_ReconcileDoesNotFailOnAPairThatVanishedMidWalk`: spawns
-- `TestRunCLI_MergeInConflictThenContinueConcludes`: spawns
-- `TestRunCLI_MergeInThenMergeAbortRestoresPair`: spawns
-- `TestRunCLI_MergeCleanSquashFromTargetPair`: spawns
-- `TestRunCLI_MergeConflictSelfAbortsWithErrMergeInRequired`: spawns
-- `TestRunCLI_MergeNonexistentBranchReportsSourceNotFound`: spawns
-- `TestRunCLI_MergeInAlreadyUpToDate`: spawns
-- `TestRunCLI_MergeRejectsFlagsItWouldOtherwiseIgnore`: spawns
-- `TestRunCLI_MergeContinueAcceptsMessage`: spawns
-- `TestRunCLI_MergeStageResolvesAWarpSideConflict`: spawns
-- `TestRunCLI_MergeStageRejectsAPathThatIsNotConflicted`: spawns
-- `TestRunCLI_MergeContinuePartialStagingListsTheRemainingPaths`: spawns
-- `TestRunCLI_MergeStageRequiresAtLeastOnePath`: spawns
-- `TestRunCLI_MergeStageEchoesEachPathOnce`: spawns
-- `TestMergeIn_WarnsWhileWebsterInFlight`: spawns
-- `TestMergeIn_ConflictWarnsWhileWebsterInFlight`: spawns
-- `TestMergeIn_NoWarningsWithoutWebsterState`: spawns
-- `TestMergeIn_NoWarningsWhenWebsterDone`: spawns
-- `TestMergeIn_NoWarningsWhenAlreadyUpToDate`: spawns
-- `TestMergeIn_MalformedOutcomeDegradesToNoWarning`: spawns
-- `TestRunCLI_BypassPushAdvancesBothUpstreams`: spawns
-- `TestRunCLI_CleanupRemoteAloneWithoutApplyDeletesNothing`: spawns
-- `TestRunCLI_RemoveRemoteSuccessEnvelopeCarriesRemoteBranchDeleted`: spawns
-- `TestRunCLI_CleanupRemoteFailureExitsNonZero`: spawns
-- `TestRunCLI_CleanupAllProtectedEntriesExitZero`: spawns
-- `TestRunCLI_CleanupLocalFailureExitsNonZero`: spawns
-- `TestRunCLI_PruneProtectedOrUnownedEntryStillExitsZero`: spawns
-- `TestRunCLI_CleanupNoOriginUnderApplyAndRemoteExitsZero`: spawns
-- `TestRunCLI_RemoveNoOriginUnderRemoteExitsZero`: spawns
-- `TestRunCLI_RemoveNothingLeftIsNotFound`: spawns
-- `TestRunCLI_RemoveFinishesHalfRemovedPair`: spawns
-- `TestRunCLI_RemoveTaskSideDirtRefusesWithoutTouchingThePair`: spawns
-- `TestShortnameVerb_PrintsRecordedShortname`: spawns
-- `TestShortnameVerb_RecordsOnAHubWithNoShortname`: spawns
-- `TestShortnameVerb_CommitsTheRecordAlone`: spawns
-- `TestShortnameVerb_SameShortnameIsANoOp`: spawns
-- `TestShortnameVerb_DifferentShortnameRefusesNamingTheRecordedOne`: spawns
-- `TestRunCLI_StatusReportsNoMergeInProgressOnACleanPair`: spawns
-- `TestRunCLI_StatusReportsMergeInProgressWhileAMergeIsParked`: spawns
+- `TestRunCLI_HubMutationScenario`: spawns
+- `TestRunCLI_MergeScenario`: spawns
+- `TestRunCLI_WeftSkipPushScenario`: spawns
 
 ## internal/fabricengine
 
@@ -1467,51 +1101,38 @@ No coverage:
 
 ## internal/friction
 
-13 tests, wall 0.01s, serial 0.00s.
+6 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestReportFileName_DerivationsAgree` | `TestNotePath_SanitizesID` | yes |
-| `TestNotePath_ValidIDAgainstEmptyDir` | `TestNotePath_SequentialReinvocationSkipsExisting` | yes |
-| `TestNotePath_SequentialReinvocationSkipsExisting` | `TestNotePath_GapResolvesToFirstFree`, `TestNotePath_ValidIDAgainstEmptyDir` | no |
-| `TestNotePath_GapResolvesToFirstFree` | `TestNotePath_SequentialReinvocationSkipsExisting` | yes |
+No candidates.
 
 No test lacks coverage.
 
 ## internal/frictionengine
 
-23 tests, wall 0.01s, serial 0.00s.
+15 tests, wall 0.03s, serial 0.07s.
 
 No candidates.
 
 No coverage:
 
-- `TestReflect_MissingDirectory_Skipped`: unclassifiable call
-- `TestReflect_EmptyDirectory_Skipped`: unclassifiable call
-- `TestReflect_OnlyNonMarkdownFiles_Skipped`: unclassifiable call
-- `TestReflect_OnlyStaleReport_Skipped`: unclassifiable call
+- `TestBuildReflectionSpec_SkillsAndParentDirective`: unclassifiable call
 - `TestReflect_OneNote_SpawnsAndArchives`: unclassifiable call
-- `TestReflect_ShuttleOutcomes_FailedNoArchive`: unclassifiable call
-- `TestReflect_ShuttleRunError_FailedNoArchive`: unclassifiable call
 - `TestReflect_StaleReportDeletedBeforeSpec`: unclassifiable call
 - `TestReflect_LiveAgentAttached_WaitsAndArchives`: unclassifiable call
-- `TestReflect_AttachedRunNotDone_FailedLeavesAll`: unclassifiable call
-- `TestReflect_AttachError_FailedNoSpawn`: unclassifiable call
 - `TestReflect_RecordAndReport_ArchivesWithoutSpawn`: unclassifiable call
 - `TestReflect_NoteAfterRecord_LeftForNextSpawn`: unclassifiable call
-- `TestReflect_RecordWithoutReport_DiscardedAndReflectedAgain`: unclassifiable call
-- `TestReflect_UnparsableRecord_DiscardedAndReflectedAgain`: unclassifiable call
 - `TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive`: unclassifiable call
-- `TestReflect_TwoArchivesSameSecond_DistinctDirectories`: unclassifiable call
-- `TestReflect_AttachSpendsWholeBudget_NewerNoteUnspawned`: unclassifiable call
-- `TestReflect_AttachSpendsPartOfBudget_SpawnGetsRemainder`: unclassifiable call
-- `TestReflect_ZeroTimeout_DefersToShuttle`: unclassifiable call
 - `TestReflect_UnwritableRecord_FailedNoSpawn`: unclassifiable call
+- `TestReflect_Skipped`: unclassifiable call
+- `TestReflect_ShuttleFailures_FailedNoArchive`: unclassifiable call
+- `TestReflect_AttachFailures_FailedNoSpawn`: unclassifiable call
+- `TestReflect_UnusableRecord_DiscardedAndReflectedAgain`: unclassifiable call
+- `TestReflect_AttachBudget`: unclassifiable call
 - `TestReflect_DepsValidation`: unclassifiable call
 
 ## internal/fslink
 
-5 tests, wall 0.01s, serial 0.00s.
+5 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
@@ -1519,7 +1140,7 @@ No test lacks coverage.
 
 ## internal/fsx
 
-3 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
@@ -1529,42 +1150,33 @@ No test lacks coverage.
 
 ## internal/gitexec
 
-12 tests, wall 0.07s, serial 0.06s.
+6 tests, wall 0.03s, serial 0.04s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestGitError_ErrorOmitsDir` | `TestGitError_Error` | yes |
-| `TestRunGit_Success` | `TestRunGit_Cwd` | no |
-| `TestRunGit_NonZeroExit` | `TestRunGit_Success`, `TestRun_NonZeroExit` | yes |
-| `TestRunGit_Cwd` | `TestRunGit_Success` | yes |
-| `TestRun_Success` | `TestIsTransportFailure_RealGit` | no |
-| `TestRun_NonZeroExit` | `TestIsTransportFailure_RealGit` | no |
-| `TestRun_StdoutOnError` | `TestRunGit_Success`, `TestRun_NonZeroExit` | yes |
-| `TestIsTransportFailure_RealGit` | `TestIsTransportFailure`, `TestRun_Success`, `TestRun_NonZeroExit` | yes |
+| `TestRun_StdoutOnError` | `TestRun`, `TestRunGit` | yes |
+| `TestIsTransportFailure_RealGit` | `TestIsTransportFailure`, `TestRun` | yes |
 
 No test lacks coverage.
 
 ## internal/githubclient
 
-14 tests, wall 0.04s, serial 0.03s.
+10 tests, wall 0.02s, serial 0.01s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestCacheDirRedirection_HonoursOverride` | `TestAuthRT_ReplayRewindsRequestBodyByteIdentical` | yes |
-| `TestCache_ConcurrentWriters` | `TestAuthRT_ReplayRewindsRequestBodyByteIdentical` | yes |
-| `TestAuthRT_401InvalidatesAndReplaysExactlyOnce` | `TestAuthRT_ReplayRewindsRequestBodyByteIdentical` | yes |
-| `TestAuthRT_SecondConsecutive401Propagates` | `TestAuthRT_ReplayRewindsRequestBodyByteIdentical` | yes |
+| `TestCacheDirRedirection_HonoursOverride` | `TestAuthRT_401Handling` | yes |
+| `TestCache_ConcurrentWriters` | `TestAuthRT_401Handling` | yes |
 
 No coverage:
 
 - `TestResolveToken_Chain`: unclassifiable call
 - `TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution`: unclassifiable call
 - `TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout`: unclassifiable call
-- `TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking`: unclassifiable call
 
 ## internal/gitkit
 
-15 tests, wall 0.67s, serial 1.13s.
+8 tests, wall 0.38s, serial 0.39s.
 
 No candidates.
 
@@ -1572,141 +1184,53 @@ No coverage:
 
 - `TestCopyRepoCallerSet_LyxcwdOnly`: spawns
 - `TestHermeticGitEnv_QuietAndPinned`: spawns
-- `TestTemplateQuietConfig`: spawns
-- `TestCopyRepo`: spawns
-- `TestCopyRepo_Isolation`: spawns
-- `TestMustRun`: spawns
+- `TestCopiedRepoScenario`: spawns
 - `TestMustRun_Failure`: spawns
 - `TestSeedConfig`: spawns
-- `TestGit_ReturnsTrimmedStdout`: spawns
-- `TestQueryHelpers_BranchesAndAncestry`: spawns
-- `TestQueryHelpers_CommitFile`: spawns
-- `TestExcludeLines_LinkedWorktree`: spawns
 
 ## internal/gitrepo
 
-113 tests, wall 3.92s, serial 3.93s.
+32 tests, wall 0.49s, serial 2.39s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestValidSHA` | `TestChangedFilesSince_EmptyWhenShaEqualsHEAD` | yes |
+| `TestValidSHA` | `TestCommitAndReadPrimitives` | yes |
 
 No coverage:
 
-- `TestGoGit_SucceedsOnStandaloneRepo`: spawns
-- `TestGoGit_SucceedsOnLinkedWorktree_ReadsCommonDirState`: spawns
 - `TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent`: spawns
 - `TestGoGit_FailedOpen_NotCached`: spawns
-- `TestGoGit_SuccessfulOpen_IsCached`: spawns
-- `TestGoGit_ConcurrentCallers`: spawns
-- `TestGoGit_OpenHandleDoesNotBlockWorktreeRemove`: spawns
+- `TestGoGit_StandaloneRepo`: spawns
 - `TestLinkedWorktree_Parity`: spawns
 - `TestNoForceAdd_GitrepoSourceHasNoForceAddBranch`: spawns
-- `TestIsAncestor_Reachability`: spawns
-- `TestFileAtRevision_ReturnsExactStoredBytesAtOlderCommit`: spawns
-- `TestFileAtRevision_AbsentPathReturnsErrPathNotAtRevision`: spawns
-- `TestFileAtRevision_InvalidSHAReturnsError`: spawns
-- `TestPathRevisions_NewestFirstAndLimit`: spawns
-- `TestPathRevisions_NoHistoryReturnsEmptySlice`: spawns
-- `TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree`: spawns
-- `TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs`: spawns
-- `TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit`: spawns
-- `TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty`: spawns
-- `TestCommitEmpty_BornHEAD_StagedFile_ReturnsErrIndexNotEmpty`: spawns
-- `TestDeleteRemoteBranch_ExistingBranch_DeletesAndReportsTrue`: spawns
-- `TestDeleteRemoteBranch_AbsentBranch_ReportsFalseWithNilError`: spawns
-- `TestDeleteRemoteBranch_UnreachableRemote_ReturnsError`: spawns
-- `TestDeleteRemoteBranchLeased_LeaseAtTip_Deletes`: spawns
-- `TestDeleteRemoteBranchLeased_StaleLease_ErrorsAndKeepsBranch`: spawns
-- `TestDeleteRemoteBranchLeased_AbsentBranch_ReturnsError`: spawns
-- `TestDeleteRemoteBranchLeased_MalformedSHA_ReturnsErrInvalidSHA`: spawns
+- `TestHistoryReads`: spawns
+- `TestCommitEmpty`: spawns
+- `TestDeleteRemoteBranch`: spawns
 - `TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD`: spawns
-- `TestFetch_NoRemoteConfigured_Succeeds`: spawns
-- `TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak`: spawns
-- `TestCurrentSHA_ReturnsHEAD`: spawns
-- `TestCurrentSHA_EmptyRepo_ReturnsErrNoCommits`: spawns
-- `TestStageAndCommit_CommitsOnlyListedFiles`: spawns
-- `TestStageAndCommit_LeavesUnlistedDirtyFileUncommitted`: spawns
-- `TestStageAndCommit_NothingToCommit_WhenFilesUnchanged`: spawns
-- `TestStageAndCommit_NeverStagesUnlistedFile`: spawns
-- `TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted`: spawns
-- `TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit`: spawns
-- `TestStageAndCommit_MidMerge_RefusesPartialCommit`: spawns
-- `TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles`: spawns
-- `TestStageAllAndCommit_NothingToCommit_WhenTreeClean`: spawns
-- `TestStageAllAndCommit_CapturesFileExplicitListWouldMiss`: spawns
-- `TestChangedFilesSince_ReturnsCorrectSet`: spawns
-- `TestChangedFilesSince_EmptyWhenShaEqualsHEAD`: spawns
-- `TestChangedFilesSince_ExcludesUncommittedEdit`: spawns
-- `TestChangedFilesSince_NonASCIIPathReturnedVerbatim`: spawns
-- `TestChangedFilesSince_RenameReportsBothPaths`: spawns
-- `TestChangedFilesSince_ErrorsOnFabricatedSHA`: spawns
-- `TestSHAExists`: spawns
-- `TestCurrentBranch_ErrorsOnDetachedHEAD`: spawns
-- `TestMergeConflictedFiles_ManufacturedConflict`: spawns
-- `TestMergeConflictedFiles_NonASCIIPathIsRawNeverQuoted`: spawns
-- `TestMergeConflictedFiles_CleanTreeReturnsEmptyNeverNil`: spawns
-- `TestMergeStart_CleanStaged_UncommittedWithHeadUnchanged`: spawns
-- `TestMergeStart_Conflicted_ReturnsNilErrorWithUnmergedEntries`: spawns
-- `TestMergeStart_FastForwarded_HeadMovedNothingStagedNoMergeHead`: spawns
-- `TestMergeStart_AlreadyUpToDate_HeadUnmovedNothingStaged`: spawns
-- `TestMergeStart_Squash_NoMergeHeadStagedUncommitted`: spawns
-- `TestMergeStart_SquashFastForwardable_StagesWithoutMovingHead`: spawns
-- `TestMergeStart_RejectsLeadingDashRef`: spawns
-- `TestMergeConclude_ExplicitMessage`: spawns
-- `TestMergeConclude_EmptyMessageUsesPreparedMessage`: spawns
-- `TestMergeResetHard_ClearsInProgressMergeState`: spawns
-- `TestMergeHeadPresent_TrueAfterConflict_FalseAfterResetAndConclude`: spawns
-- `TestMergeHeads_EnumeratesEveryHeadOfAnOctopus`: spawns
-- `TestMergeHeads_NoMergeLiveReturnsEmptyNeverNil`: spawns
-- `TestMergeFFOnly_AdvancesBehindCheckout`: spawns
-- `TestMergeFFOnly_FailsLoudlyOnDivergedPair`: spawns
-- `TestMergeResolveSHA_BranchOriginAndFullSHA`: spawns
-- `TestMergeResolveSHA_UnknownRefReturnsError`: spawns
-- `TestMergeStart_HostileMergeFFConfig`: spawns
-- `TestMergeStart_EmptyResultTree_ClassifiedStagedNotAlreadyUpToDate`: spawns
-- `TestCurrentSHA_Parity_CommittedRepo`: spawns
-- `TestCurrentSHA_Parity_UnbornHEAD`: spawns
-- `TestSHAExists_Parity_CommittedSHA`: spawns
-- `TestSHAExists_Parity_MissingAndNonHexSHA`: spawns
-- `TestSHAExists_Parity_TreeOrBlobSHA`: spawns
-- `TestChangedFilesSince_Parity_NonASCIIPath`: spawns
-- `TestChangedFilesSince_Parity_Rename`: spawns
-- `TestChangedFilesSince_Parity_NonHexSHA`: spawns
-- `TestCurrentBranch_Parity`: spawns
-- `TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit`: spawns
-- `TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit`: spawns
+- `TestRemoteFailurePaths`: spawns
+- `TestCurrentSHA`: spawns
+- `TestCommitAndReadPrimitives`: spawns
+- `TestMergePrimitives`: spawns
+- `TestMergeResolveSHA`: spawns
+- `TestParity`: spawns
+- `TestParity_UnbornHEAD`: spawns
+- `TestMixedBackend_PreWarmedHandleSeesCLICommit`: spawns
 - `TestSHAExists_MixedBackend_RepackBetweenCommitAndRead`: spawns
 - `TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo`: spawns
-- `TestPull_RemoteAdvanced_FastForwards`: spawns
-- `TestPull_LocalDiverged_ReturnsError`: spawns
-- `TestPull_NoRemoteConfigured_ErrorNamesRepoPath`: spawns
-- `TestPush_CrossCloneRebaseRetry`: spawns
-- `TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts`: spawns
-- `TestPush_RebaseConflict_AbortsToCleanState`: spawns
-- `TestPushRebaseFree_FirstPush_EstablishesUpstream`: spawns
-- `TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected`: spawns
+- `TestPull`: spawns
+- `TestPush`: spawns
 - `TestPush_NoRemoteConfigured_SurfacesGitError`: spawns
-- `TestPushCoalesced_NoRemoteConfigured_SurfacesGitError`: spawns
-- `TestPushCoalesced_LockBlocking_Serializes`: spawns
 - `TestPushCoalescedChildProcess`: skipped
-- `TestPushCoalesced_CrossProcess_Serializes`: spawns
 - `TestLockHolderChildProcess`: skipped
-- `TestPushCoalesced_LockHolderCrash_Recovers`: spawns
-- `TestRemoteURL_ConfiguredOrigin_ReturnsURLVerbatim`: spawns
-- `TestRemoteURL_NoSuchRemote_ReturnsError`: spawns
-- `TestRemoteURL_MisspelledRemoteName_ReturnsErrorNamingIt`: spawns
-- `TestResetHard_MovesToEarlierCommit`: spawns
-- `TestResetHard_WellFormedSHANotInHistory_ReturnsError`: spawns
-- `TestStageTrackedChanges_StagesModificationAndDeletionNotUntracked`: spawns
-- `TestUntrackedFiles_ListsNewFileAndOmitsExcluded`: spawns
-- `TestUntrackedFiles_EmptyIsNotNil`: spawns
-- `TestWorktreeChangedFiles_CleanRepo_ReturnsEmpty`: spawns
-- `TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged`: spawns
+- `TestPushCoalesced`: spawns
+- `TestRemoteURL`: spawns
+- `TestResetHard`: spawns
+- `TestStageTrackedAndUntracked`: spawns
+- `TestWorktreeChangedFiles`: spawns
 
 ## internal/gitrepo/internal/gitoracle
 
-1 tests, wall 0.01s, serial 0.00s.
+1 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
@@ -1714,7 +1238,7 @@ No test lacks coverage.
 
 ## internal/hubforge
 
-13 tests, wall 1.01s, serial 4.45s.
+5 tests, wall 0.60s, serial 0.46s.
 
 No candidates.
 
@@ -1722,206 +1246,105 @@ No coverage:
 
 - `TestBuildBareTemplate`: spawns
 - `TestNewHub`: spawns
-- `TestNewHub_IsARealHub`: spawns
-- `TestNewHub_BackendAnchor`: spawns
-- `TestNewHub_ConfigMaterializedWithoutSeeding`: spawns
-- `TestSeedConfig_VisibleFromWarpSide`: spawns
-- `TestSeedFabricConfig_CommitsAndLeavesBoardClean`: spawns
-- `TestAddPairWith_SkipPushKeepsWeftBranchOffTheBare`: spawns
-- `TestOpenFabric_OpensThePrimePair`: spawns
 - `TestNewHub_Concurrent`: spawns
 - `TestNewHub_TeardownRemovesJunctionsKeepsTargets`: spawns
 - `TestNewHub_TeardownSurvivesCorruptHub`: spawns
-- `TestSeedConfig_RedundantSeedDoesNotFatal`: spawns
 
 ## internal/hubgeom
 
-12 tests, wall 0.68s, serial 0.67s.
+8 tests, wall 0.58s, serial 0.57s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestReedGeometry` | `TestReedGeometry_PrimeAndTaskSlug` | yes |
-| `TestReedGeometry_PrimeAndTaskSlug` | `TestReedGeometry` | no |
-| `TestResolveParent_RemovedParentWorktreeStillResolves` | `TestReedGeometry_TaskWorktreeCarriesSlugAndOriginParent` | yes |
+| `TestReedGeometry` | `TestGeometryOverRealHub`, `TestWebsterGeometry` | yes |
+| `TestBurlerGeometry` | `TestWebsterGeometry`, `TestBurlerGeometry_ParentNameFromOriginRecord` | yes |
+| `TestBurlerGeometry_ParentNameFromOriginRecord` | `TestGeometryOverRealHub`, `TestBurlerGeometry` | no |
+| `TestWebsterGeometry` | `TestGeometryOverRealHub`, `TestBurlerGeometry` | no |
 
 No coverage:
 
-- `TestReedGeometry_PrimeCarriesShortnameOnly`: spawns
-- `TestReedGeometry_TaskWorktreeCarriesSlugAndOriginParent`: spawns
-- `TestReedGeometry_HubWithNoShortnameYieldsEmptyShortname`: spawns
+- `TestGeometryOverRealHub`: spawns
 
 ## internal/idecli
 
-3 tests, wall 0.37s, serial 0.36s.
+2 tests, wall 0.28s, serial 0.26s.
 
 No candidates.
 
 No coverage:
 
-- `TestRunCLISpawnDispatch`: spawns
-- `TestRunCLI_MissingSlug`: spawns
+- `TestRunCLI_SpawnScenario`: spawns
 
 ## internal/ideengine
 
-17 tests, wall 3.95s, serial 3.94s.
+4 tests, wall 3.65s, serial 3.63s.
 
 No candidates.
 
 No coverage:
 
-- `TestMenuHardErrorOnMissingBoard`: spawns
-- `TestMenuExcludesMain`: spawns
-- `TestMenuRequiresLyxDir`: spawns
-- `TestMenuNumericSelection`: spawns
-- `TestSpawnTaskPairStaysCleanThroughExclude`: spawns
-- `TestSpawnOverwritesTasksKeepsSettings`: spawns
-- `TestSpawnSkipsTrackedVSCode`: spawns
-- `TestSpawnPrimeNameFailureOpensBareFolder`: spawns
-- `TestSpawnDrivenWritesAttachOnlyAndExcludes`: spawns
-- `TestSpawnDrivenOverwritesTasksKeepsSettings`: spawns
-- `TestSpawnDrivenSkipsTrackedVSCode`: spawns
-- `TestSpawnPrimeWritesHubWorkspace`: spawns
-- `TestSpawnTaskSlugOpensBareFolder`: spawns
-- `TestSpawnPrimeSplicesSettingsAndRegenerates`: spawns
-- `TestSpawnPrimeSettingsReadFailure`: spawns
-- `TestSpawnPrimeWorkspaceSurvivesTopologyVerbs`: spawns
+- `TestMenuScenario`: spawns
+- `TestSpawnScenario`: spawns
+- `TestSpawnAnchoredScenario`: spawns
 
 ## internal/landingshed
 
-146 tests, wall 2.23s, serial 2.17s.
+60 tests, wall 2.66s, serial 2.69s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestApproval_RoundTrip` | `TestPRGate_CancelledBeforeDone_IsError` | yes |
-| `TestApproval_SecondWriteOverwrites` | `TestPRGate_CancelledBeforeDone_IsError` | yes |
-| `TestReadApproval_Absent` | `TestPRGate_MalformedRecords_Awaiting` | yes |
-| `TestFinalize_CommitStatus_RunsBeforeTheMergeIn` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage`, `TestFinalize_CommitStatus_FailureIsAnErrorAndNeverMerges` | yes |
-| `TestFinalize_CommitStatus_NilIsNotAnError` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | yes |
-| `TestPublish_CommitStatus_RunsBeforeTheMergeIn` | `TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause`, `TestPublishVerify_ResolverStuck`, `TestPublish_CommitStatus_FailureIsAnErrorAndNeverMerges` | yes |
-| `TestPublish_CommitStatus_NotCalledWhenNoPullRequestIsRequired` | `TestPublish_ClosedAndMergedPR_Done`, `TestFinalize_AlreadyLandedParentIsIdempotent`, `TestPublishVerify_NoPRRequiredRunsNoVerify` | yes |
-| `TestLoadConfig_WellFormed` | `TestLoadConfig_DescribeDefaults` | no |
-| `TestLoadConfig_DescribeDefaults` | `TestLoadConfig_WellFormed` | yes |
-| `TestFinalize_PushesParentAfterMerge` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | yes |
-| `TestFinalize_HappyPath_MergeInThenParentMerge` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | yes |
-| `TestFinalize_MergeOptionsCarriesComposedMessage` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | yes |
-| `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | `TestFinalize_MarkTaskDone_CalledAfterMergeInRetry`, `TestFinalize_CommitStatus_NilIsNotAnError` | no |
-| `TestFinalize_ParentOpenerError_StuckNamesParentBranch` | `TestFinalize_GuardErrorDirtyWorktree_StuckSurfacesReasonVerbatim`, `TestFinalize_StuckWritesNoReasonFile` | yes |
-| `TestFinalize_UnrecognizedMergeError_StuckWithErrorSurfaced` | `TestFinalize_MergeInRequired_RetriesExactlyOnce` | yes |
-| `TestFinalize_StuckCausesProduceDifferentReasons` | `TestFinalize_MergeInRequired_RetriesExactlyOnce`, `TestFinalize_StuckWritesNoReasonFile` | yes |
-| `TestFinalize_StuckWritesNoReasonFile` | `TestFinalize_ParentOpenerError_StuckNamesParentBranch` | no |
-| `TestFinalize_ClosesOpenPullRequestAfterLanding` | `TestFinalize_AlreadyUpToDateMergeProceedsAsLanded`, `TestFinalize_CloseFailureStillDone` | no |
-| `TestFinalize_AlreadyUpToDateMergeProceedsAsLanded` | `TestFinalize_ClosesOpenPullRequestAfterLanding`, `TestFinalize_MarkTaskDone_OrderAndVerdict` | yes |
-| `TestFinalize_NoGitHubCallWhenNotRequiredOrPushSkipped` | `TestFinalize_CloseFailureStillDone`, `TestFinalize_AlreadyLandedParentIsIdempotent` | yes |
-| `TestFinalize_MarkTaskDone_CalledAfterMergeInRetry` | `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage`, `TestFinalize_MarkTaskDone_OrderAndVerdict` | yes |
-| `TestFinalize_MarkTaskDone_NotCalledOnFailedMerge` | `TestFinalize_MergeInRequired_RetriesExactlyOnce` | yes |
-| `TestFinalize_MarkTaskDone_NilIsAbsent` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_MergeInRequired_RetryCarriesSameComposedMessage` | yes |
-| `TestFinalizeVerify_Pass` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_ClosesOpenPullRequestAfterLanding`, `TestFinalizeVerify_RetryMergeInRunsGateAgain` | yes |
-| `TestFinalizeVerify_Fail` | `TestFinalizeVerify_RetryMergeInRunsGateAgain`, `TestFinalizeVerify_DirtyTreeHalts` | yes |
-| `TestFinalizeVerify_VerifiedTreeSkipsAndLands` | `TestFinalize_MarkTaskDone_OrderAndVerdict`, `TestFinalize_ClosesOpenPullRequestAfterLanding`, `TestFinalizeVerify_RetryMergeInRunsGateAgain`, `TestPublishVerify_VerifiedTreeSkipsAndProceeds` | yes |
-| `TestFinalizeVerify_RetryMergeInRunsGateAgain` | `TestFinalizeVerify_RetryMergeInRunsCleanChecksAgain`, `TestFinalizeVerify_Fail` | no |
-| `TestFinalizeVerify_RetryMergeInRunsCleanChecksAgain` | `TestFinalizeVerify_RetryMergeInRunsGateAgain`, `TestFinalizeVerify_DirtyTreeHalts` | yes |
-| `TestPublish_ParentBranchNotInBaseList_Done` | `TestPublish_ClosedAndMergedPR_Done`, `TestFinalize_AlreadyLandedParentIsIdempotent`, `TestPublishVerify_NoPRRequiredRunsNoVerify` | yes |
-| `TestPublish_PushSkipped_NoPRRequired_Done` | `TestPublish_ClosedAndMergedPR_Done`, `TestFinalize_AlreadyLandedParentIsIdempotent`, `TestPublishVerify_NoPRRequiredRunsNoVerify` | yes |
-| `TestPublish_MergeInStuck` | `TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause`, `TestPublishVerify_ResolverStuck` | yes |
-| `TestPublish_PushFails_NoGitHubCall` | `TestPublish_PushRejected_DistinctReason` | yes |
-| `TestPublish_NoExistingPR_CreatesAndReportsDone` | `TestPublish_MergesInCleanlyBeforeCreatingPullRequest`, `TestPublish_CreatePRFails_WarnsWithActionOwnerRepoAndCause` | yes |
-| `TestPublish_ClosedAndUnmergedPR_StuckNamesClosure` | `TestPublish_PRStateReasons_EndWithURL`, `TestPRGate_ClosedOutranksMatchingApproval` | yes |
-| `TestPublish_PRStateReasons_EndWithURL` | `TestPublish_ClosedAndUnmergedPR_StuckNamesClosure`, `TestPRGate_MatchingRejection_Stuck` | no |
-| `TestPublish_PRStateReason_NoURL_IsBareText` | `TestPublish_PRStateReasons_EndWithURL`, `TestPRGate_ClosedOutranksMatchingApproval` | yes |
-| `TestPublish_StuckWritesNoReasonFile` | `TestPublish_PushRejected_DistinctReason` | yes |
-| `TestRejection_RoundTripAndOverwrite` | `TestPRGate_MatchingApprovalOutranksStaleRejection` | yes |
-| `TestReadRejection_Absent` | `TestPRGate_CancelledBeforeDone_IsError` | yes |
+| `TestApproval_RoundTripAndOverwrite` | `TestPRGate_ReturnedErrors` | yes |
+| `TestFinalize_MergeOptionsCarriesComposedMessage` | `TestFinalize_MergeMarkPushOrderAndVerdict`, `TestFinalize_CommitStatus` | yes |
+| `TestFinalizeVerify_Lands` | `TestFinalize_ClosingPullRequestAfterLanding`, `TestFinalize_MergeMarkPushOrderAndVerdict`, `TestFinalizeVerify_RetryMergeInIsBracketedAgain`, `TestPublishVerify_Proceeds` | yes |
+| `TestFinalizeVerify_Fail` | `TestFinalizeVerify_RetryMergeInIsBracketedAgain`, `TestFinalizeVerify_DirtyTreeHalts` | yes |
+| `TestPublish_NoPullRequestRequired_DoneWithoutMergeIn` | `TestPublish_ExistingClosedPullRequest`, `TestFinalize_ClosingPullRequestAfterLanding`, `TestPublishVerify_NoPRRequiredRunsNoVerify` | yes |
+| `TestRejection_RoundTripAndOverwrite` | `TestPRGate_Verdicts` | yes |
 
 No coverage:
 
-- `TestFinalize_CommitStatus_FailureIsAnErrorAndNeverMerges`: unclassifiable call
-- `TestPublish_CommitStatus_FailureIsAnErrorAndNeverMerges`: unclassifiable call
+- `TestFinalize_CommitStatus`: unclassifiable call
+- `TestPublish_CommitStatus`: unclassifiable call
 - `TestDescribeSpec_ComposesSpec`: unclassifiable call
+- `TestDescribeSpec_SkillsAndParentDirective`: unclassifiable call
 - `TestDescribeSpec_RunRecordsOldestFirstLiveLast`: unclassifiable call
 - `TestDescribeSpec_EmptyFieldIsError`: unclassifiable call
 - `TestDescribeSpec_UnparsableModelSpecIsError`: unclassifiable call
 - `TestNewDescriptionGate`: unclassifiable call
-- `TestNewFinalize_RejectsNilOpenFabric`: unclassifiable call
-- `TestNewFinalize_RejectsNilOpenParentFabric`: unclassifiable call
-- `TestNewFinalize_RejectsEmptyDescriptionPath`: unclassifiable call
-- `TestFinalize_MissingSummaryArtifact_ErrorBeforeMergeOrCommit`: unclassifiable call
-- `TestFinalize_MalformedSummaryArtifact_ErrorBeforeMergeOrCommit`: unclassifiable call
+- `TestNewFinalize_Refusals`: unclassifiable call
+- `TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit`: unclassifiable call
 - `TestFinalize_CancellationAtEntry_SurfacesAsError`: unclassifiable call
 - `TestFinalize_TransportPushFailure_ReturnsClassifiedError`: unclassifiable call
+- `TestFinalizeVerify_RetryMergeInIsBracketedAgain`: unclassifiable call
 - `TestNewPRGate_Refusals`: unclassifiable call
-- `TestPRGate_ParentNotRequired_DoneNoGitHubCall`: unclassifiable call
-- `TestPRGate_MergedOutranksAnyRecord`: unclassifiable call
-- `TestPRGate_NoPR_Awaiting`: unclassifiable call
-- `TestPRGate_ClosedOutranksMatchingApproval`: unclassifiable call
-- `TestPRGate_MalformedRecords_Awaiting`: unclassifiable call
-- `TestPRGate_MatchingApproval_Done`: unclassifiable call
-- `TestPRGate_MatchingRejection_Stuck`: unclassifiable call
-- `TestPRGate_MatchingApprovalOutranksStaleRejection`: unclassifiable call
-- `TestPRGate_StaleRecords_AwaitingNamesMismatch`: unclassifiable call
-- `TestPRGate_NoRecord_AwaitingEndsWithURL`: unclassifiable call
-- `TestPRGate_TransientQueryFailure_ReturnedAsError`: unclassifiable call
-- `TestPRGate_NonTransientQueryFailure_Awaiting`: unclassifiable call
-- `TestPRGate_GitHubClientUnavailable_Awaiting`: unclassifiable call
-- `TestPRGate_UnusableOrigin_Awaiting`: unclassifiable call
-- `TestPRGate_TaskHeadError_Returned`: unclassifiable call
-- `TestPRGate_CancelledContext_IsError`: unclassifiable call
-- `TestPRGate_CancelledBeforeDone_IsError`: unclassifiable call
-- `TestNewPublish_RejectsNilOpenFabric`: unclassifiable call
-- `TestNewPublish_RejectsNilPushBranch`: unclassifiable call
-- `TestNewPublish_RejectsEmptyDescriptionPath`: unclassifiable call
-- `TestNewPublish_RejectsNilShuttle`: unclassifiable call
-- `TestPublish_OpenPR_DifferingDescription_EditsAndDone`: unclassifiable call
-- `TestPublish_OpenPR_MatchingDescription_NoEditAndDone`: unclassifiable call
-- `TestPublish_OpenPR_EditFailure_TransientErrorOrStuck`: unclassifiable call
+- `TestPRGate_Verdicts`: unclassifiable call
+- `TestPRGate_ReturnedErrors`: unclassifiable call
+- `TestNewPublish_Refusals`: unclassifiable call
+- `TestPublish_GitHubFailures`: unclassifiable call
+- `TestPublish_OpenPullRequest`: unclassifiable call
 - `TestPublish_MissingSummary_FailsLoudlyNoCreate`: unclassifiable call
 - `TestPublish_CancellationAtEntry_SurfacesAsError`: unclassifiable call
 - `TestFindPullRequest_QueryParametersAndEmptyList`: unclassifiable call
-- `TestPublish_TransportPushFailure_ReturnsClassifiedErrorNoGitHubCall`: unclassifiable call
-- `TestPublish_TransportPushFailure_CancelledContextIsCancellationNotTransient`: unclassifiable call
-- `TestPublish_GitHubTransientFailures_ReturnClassifiedErrorAndWarn`: unclassifiable call
-- `TestPublishVerify_Pass`: unclassifiable call
-- `TestPublishVerify_VerifiedTreeSkipsAndProceeds`: unclassifiable call
-- `TestPublishVerify_VerifyRunsOnEveryMergeIn`: unclassifiable call
-- `TestPublishVerify_Fail`: unclassifiable call
+- `TestPublish_TransportPushFailure`: unclassifiable call
+- `TestPublishVerify_Proceeds`: unclassifiable call
+- `TestPublishVerify_HaltsOnVerifyResult`: unclassifiable call
 - `TestPublishVerify_DirtyTreeHalts`: unclassifiable call
-- `TestPublishVerify_DirtyResultFromVerifyHalts`: unclassifiable call
-- `TestPublishVerify_CleanCheckErrorIsNotStuck`: unclassifiable call
 - `TestPublishVerify_ResolverStuck`: unclassifiable call
 - `TestPublishVerify_EmptyCommand`: unclassifiable call
-- `TestPublishVerify_ClosureError`: unclassifiable call
-- `TestPublishVerify_CouldNotStart`: unclassifiable call
-- `TestPublishVerify_Cancelled`: unclassifiable call
+- `TestPublishVerify_HardErrorsAreReturned`: unclassifiable call
 - `TestPublishVerify_NoPRRequiredRunsNoVerify`: unclassifiable call
-- `TestReadRejection_MissingFields`: unclassifiable call
-- `TestVerifyGate_RealVerifytreeLog`: spawns
-- `TestVerifyGate_InterruptedVerifyRunsAgain`: spawns
-- `TestVerifyGate_NoOpMergeSkipsVerify`: spawns
-- `TestVerifyGate_NewCommitVerifiesAgain`: spawns
-- `TestVerifyGate_CleanSeesUntrackedFile`: spawns
-- `TestVerifyGate_CheckPass`: unclassifiable call
-- `TestVerifyGate_CheckSiteLabelFollowsProducer`: unclassifiable call
-- `TestVerifyGate_CheckSkippedIsProceed`: unclassifiable call
-- `TestVerifyGate_CheckFailed`: unclassifiable call
-- `TestVerifyGate_CheckCouldNotStart`: unclassifiable call
-- `TestVerifyGate_CheckDirtyResult`: unclassifiable call
-- `TestVerifyGate_CheckUnknownStatus`: unclassifiable call
-- `TestVerifyGate_EmptyCommand`: unclassifiable call
-- `TestVerifyGate_NilCommand`: unclassifiable call
+- `TestReadRejection_AbsentOrInvalid`: unclassifiable call
+- `TestVerifyGate_RealVerifytreeScenario`: spawns
+- `TestVerifyGate_CheckMapsVerifyResult`: unclassifiable call
+- `TestVerifyGate_CheckWithoutCommandSkipsVerify`: unclassifiable call
 - `TestVerifyGate_ClosureError`: unclassifiable call
 - `TestVerifyGate_Cancellation`: unclassifiable call
-- `TestVerifyGate_CleanTree`: unclassifiable call
-- `TestVerifyGate_CleanDirtyNamesPointAndPaths`: unclassifiable call
-- `TestVerifyGate_CleanCapsTheNamedPaths`: unclassifiable call
-- `TestVerifyGate_CleanStatusError`: unclassifiable call
-- `TestVerifyGate_CleanRunsWithoutCommand`: unclassifiable call
-- `TestVerifyGate_ZeroValueSkipsCleanCheck`: unclassifiable call
-- `TestFinalize_ResolvesConflictAndSquashMergesIntoParent`: spawns
-- `TestFinalize_AlreadyLandedParentIsIdempotent`: spawns
+- `TestVerifyGate_Clean`: unclassifiable call
+- `TestFinalize_OverRealHub`: spawns
 - `TestPublish_MergesInCleanlyBeforeCreatingPullRequest`: spawns
 
 ## internal/lock
 
-3 tests, wall 0.00s, serial 0.00s.
+3 tests, wall 0.01s, serial 0.00s.
 
 No candidates.
 
@@ -1929,57 +1352,23 @@ No test lacks coverage.
 
 ## internal/logger
 
-68 tests, wall 0.12s, serial 0.10s.
+34 tests, wall 0.07s, serial 0.05s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestDefaultLevel_WarnIsSilentForInfoAndDebug` | `TestConfigureFromEnv_LogLevelRaisesThreshold`, `TestSetVerbosity_TwoEnablesDebug` | yes |
-| `TestSetVerbosity_OneEnablesInfoNotDebug` | `TestConfigureFromEnv_LogFileRedirectsOutput`, `TestConfigureFromEnv_LogLevelRaisesThreshold`, `TestSetVerbosity_TwoEnablesDebug` | yes |
-| `TestSetVerbosity_TwoEnablesDebug` | `TestDualHandler_DebugReachesStderrOnlyNotDurableSink` | no |
-| `TestSetOutput_CapturesIntoCallerBuffer` | `TestConfigureFromEnv_LogFileRedirectsOutput` | yes |
-| `TestConfigureFromEnv_UnsetLogLevelLeavesDefaultUntouched` | `TestConfigureFromEnv_LogLevelRaisesThreshold` | yes |
-| `TestDualHandler_DebugReachesStderrOnlyNotDurableSink` | `TestSetVerbosity_TwoEnablesDebug`, `TestSpan_EndWithErrorRecordsErrorText`, `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
-| `TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestConfigureFromEnv_LogFileRedirectsOutput` | yes |
-| `TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestConfigureFromEnv_LogFileRedirectsOutput`, `TestSpan_EndWithErrorRecordsErrorText` | yes |
-| `TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic` | `TestConfigureFromEnv_LogFileRedirectsOutput`, `TestDurableSink_CwdFallbackNeverArmsInAPlainCheckout` | yes |
-| `TestDualHandler_EveryLevelStampsCurrentTraceID` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestConfigureFromEnv_LogFileRedirectsOutput`, `TestSpan_EndWithErrorRecordsErrorText`, `TestSetVerbosity_TwoEnablesDebug` | yes |
-| `TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestConfigureFromEnv_LogFileRedirectsOutput`, `TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker` | yes |
-| `TestEnsureDurableSink_DebugOnlyNeverOpensFile` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
-| `TestEnsureDurableSink_CreatesExactlyOneFileWithHeaderFirstLine` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestEnsureDurableSink_FilenameGrammarAndFields` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
+| `TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker` | `TestLogging_RoutesRecordsByLevelAndVerbosity`, `TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker` | yes |
+| `TestEnsureDurableSink_CreatesOneNamedFileWithHeader` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
 | `TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestEnsureDurableSink_NoWorktreeRootSuppliedLeavesHeaderEmpty` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestSetDurableSinkDirWithWorktreeRoot_RedirectsSinkFileLocation` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | `TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields`, `TestEnsureDurableSink_WorktreeRootSuppliedReachesHeaderAndFile` | no |
+| `TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree`, `TestSinkArmTriggers` | yes |
+| `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | `TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields`, `TestEnsureDurableSink_CreatesOneNamedFileWithHeader` | no |
 | `TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields` | `TestEnsureDurableSink_ConcurrentRedirectIsRaceFree` | yes |
-| `TestNotifyExit_NonZeroCodeOpensSinkWithHeaderOnly` | `TestCurrentSinkArmState_ArmedAfterNotifyExitNonZero` | no |
-| `TestCurrentSinkArmState_NotArmedBeforeAnyRecordAndCreatesNothing` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
-| `TestCurrentSinkArmState_ArmedAfterInfoRecord` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree`, `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
-| `TestCurrentSinkArmState_ArmedAfterNotifyExitNonZero` | `TestNotifyExit_NonZeroCodeOpensSinkWithHeaderOnly`, `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
-| `TestCurrentSinkArmState_RedirectAfterArmReportsNotArmed` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree`, `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
 | `TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker` | `TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker` | no |
-| `TestWriteDurable_SurvivesLogsDirRenameMidProcess` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
-| `TestIsLyxWorktree_GatesTheCwdAnchoredFallback` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
-| `TestTraceFile_ArmsAndReturnsPath` | `TestTraceFile_StableAcrossCalls` | yes |
-| `TestTraceFile_StableAcrossCalls` | `TestTraceFile_ArmsAndReturnsPath` | no |
-| `TestEnsureDurableSink_ArmingDoesNotSweep` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
-| `TestSpan_NestingProducesDottedPath` | `TestSpan_UnendedChildDoesNotCorruptSiblingPath` | yes |
-| `TestSpan_EndDoesNotCorruptSiblingSpan` | `TestSpan_UnendedChildDoesNotCorruptSiblingPath`, `TestSpan_EndWithErrorRecordsErrorText`, `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | yes |
-| `TestSpan_UnendedChildDoesNotCorruptSiblingPath` | `TestSpan_EndDoesNotCorruptSiblingSpan` | no |
-| `TestSpan_EndWithErrorRecordsErrorText` | `TestSpan_EndDoesNotCorruptSiblingSpan`, `TestSpan_EndWithErrorReachesDurableSink` | no |
-| `TestSpan_OpenCloseRecordsAbsentFromDurableSink` | `TestSpan_EndWithErrorReachesDurableSink`, `TestSpan_InfoCarriesSpanPathIntoDurableSink`, `TestDualHandler_EveryLevelStampsCurrentTraceID`, `TestSpan_EndDoesNotCorruptSiblingSpan` | no |
-| `TestSpan_EndWithErrorReachesDurableSink` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestSpan_EndWithErrorRecordsErrorText` | yes |
-| `TestSpan_InfoCarriesSpanPathIntoDurableSink` | `TestSpan_OpenCloseRecordsAbsentFromDurableSink`, `TestSpan_UnendedChildDoesNotCorruptSiblingPath` | yes |
-| `TestMintOrAdoptAndExport_AdoptsSetEnvVarVerbatim` | `TestTraceIDAdoption_RejectsValuesOutsideTheMintedAlphabet` | yes |
-| `TestMintOrAdoptAndExport_UnsetEnvVarMints` | `TestTraceIDAdoption_RejectsValuesOutsideTheMintedAlphabet` | yes |
-| `TestMintOrAdoptAndExport_EmptyAndWhitespaceOnlyTreatedAsUnset` | `TestTraceIDAdoption_RejectsValuesOutsideTheMintedAlphabet` | yes |
-| `TestTraceIDAdoption_RejectsValuesOutsideTheMintedAlphabet` | `TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields`, `TestMintOrAdoptAndExport_EmptyAndWhitespaceOnlyTreatedAsUnset`, `TestMintOrAdoptAndExport_AdoptsSetEnvVarVerbatim` | no |
-| `TestTraceID_LazyPathMintsWithNoPriorCall` | `TestConfigureFromEnv_LogFileRedirectsOutput` | yes |
-| `TestMintOrAdoptAndExport_PropagatesExportedValueToEnv` | `TestTraceIDAdoption_RejectsValuesOutsideTheMintedAlphabet` | yes |
-| `TestLogsDir_UnanchoredEqualsWorktreePathBased` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
-| `TestLogsDir_SubpathAnchoredDiffersFromWorktreePathBased` | `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree` | yes |
+| `TestWriteDurable_SurvivesLogsDirRenameMidProcess` | `TestLogging_RoutesRecordsByLevelAndVerbosity` | yes |
+| `TestIsLyxWorktree_GatesTheCwdAnchoredFallback` | `TestDurableSink_CwdFallbackFollowsLyxOwnership` | yes |
+| `TestEnsureDurableSink_ArmingDoesNotSweep` | `TestLogging_RoutesRecordsByLevelAndVerbosity` | yes |
+| `TestSpan_PathsAreExplicitAndIndependentOfSiblings` | `TestLogging_RoutesRecordsByLevelAndVerbosity`, `TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords` | no |
+| `TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords` | `TestSpan_EndWithErrorReachesBothSinksAtWarn`, `TestSpan_PathsAreExplicitAndIndependentOfSiblings` | yes |
+| `TestLogsDir_AnchorsAtAnchorPath` | `TestDurableSink_CwdFallbackFollowsLyxOwnership` | yes |
 
 No coverage:
 
@@ -1992,21 +1381,15 @@ No coverage:
 - `TestSweep_GrammarScope`: unclassifiable call
 - `TestSweep_DeleteFailureTolerance`: unclassifiable call
 - `TestSweep_EmptyOrAbsentDirectory`: unclassifiable call
-- `TestSweep_LivenessSkipsSelfProcess`: unclassifiable call
-- `TestSweep_LivenessDeletesDeadPID`: unclassifiable call
-- `TestDurableSink_CwdFallbackNeverArmsInAPlainCheckout`: spawns
-- `TestDurableSink_CwdFallbackArmsInALyxOwnedWorktree`: spawns
+- `TestDurableSink_CwdFallbackFollowsLyxOwnership`: spawns
 
 ## internal/loggerconfig
 
-8 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.01s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestLoad_ValidNonDefaultValues` | `TestLoad_DaysBeyondDurationRangeErrors`, `TestLoad_MissingKeyLoadsTemplateDefault` | yes |
-| `TestConfigTemplate_MatchesDefaultRetentionBounds` | `TestLoad_DaysBeyondDurationRangeErrors`, `TestLoad_MissingKeyLoadsTemplateDefault`, `TestLoad_AbsentConfigReturnsDefaults` | yes |
-| `TestLoad_LargestDurationDayCountLoads` | `TestLoad_DaysBeyondDurationRangeErrors`, `TestLoad_MissingKeyLoadsTemplateDefault` | yes |
-| `TestConfigPath` | `TestLoad_DaysBeyondDurationRangeErrors` | yes |
+| `TestConfigPath` | `TestLoad_InvalidValueErrorsNamingKey` | yes |
 
 No test lacks coverage.
 
@@ -2092,99 +1475,42 @@ No coverage:
 
 ## internal/loomengine
 
-107 tests, wall 0.14s, serial 0.03s.
+39 tests, wall 0.09s, serial 0.05s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestDetectCrashResume` | `TestDetectAnomalies` | yes |
-| `TestTitleStability_HaltKindSurvivesResumeAppend` | `TestDetectAnomalies` | yes |
-| `TestTitleDistinctness_HaltKind` | `TestDetectAnomalies` | yes |
-| `TestDetectAnomalies_Deterministic` | `TestDetectAnomalies` | yes |
-| `TestRenderAnomalyBody_HaltKindContainsStateProducerAndError` | `TestRenderAnomalyBody_ContainsSlugAndParent` | yes |
-| `TestRenderAnomalyBody_HistoryRows` | `TestRenderAnomalyBody_ContainsSlugAndParent` | yes |
-| `TestRenderAnomalyBody_Deterministic` | `TestRenderAnomalyBody_ContainsSlugAndParent` | yes |
-| `TestCheckCoherence_AwaitingStateAndHistoryPass` | `TestCheckCoherence` | yes |
-| `TestDetectHaltAnomaly_AwaitingFilesNone` | `TestDetectAnomalies` | yes |
-| `TestLoadConfig_WellFormed` | `TestLoadConfig_AcceptsZeroTimeouts` | no |
-| `TestLoadConfig_SelfreportFalse` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_DiscussionInteractiveTrue` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_EmptyFrictionLoadsCleanly` | `TestLoadConfig_MalformedFrictionSpec`, `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_MissingFrictionKeys` | `TestLoadConfig_MalformedFrictionSpec`, `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_ValidDriverSpec` | `TestLoadConfig_WellFormed`, `TestLoadConfig_MalformedFrictionSpec` | yes |
-| `TestLoadConfig_AbsentDriverLoadsCleanly` | `TestLoadConfig_MalformedFrictionSpec`, `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_EmptyDriverLoadsCleanly` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_ParentReviewWaitMinDefault` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_ParentReviewWaitMinExplicit` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_ReviewKeysDefaultWhenAbsent` | `TestLoadConfig_MalformedFrictionSpec`, `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_ReviewKeysExplicit` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoadConfig_CheckpointAboveBudgetLoads` | `TestLoadConfig_WellFormed` | yes |
-| `TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent` | `TestLoomDriverLogAndBootstrapLock`, `TestLandingAndApprovalAccessors` | yes |
-| `TestLoomScratchDir_DiffersFromShedrunScratchDir` | `TestLoomDriverLogAndBootstrapLock`, `TestLandingAndApprovalAccessors` | yes |
-| `TestConfigTemplate_ContainsEveryConfigYAMLTag` | `TestLoadConfig_MalformedDiscussionSpec` | yes |
-| `TestLoadConfig_AcceptsZeroTimeouts` | `TestLoadConfig_WellFormed` | yes |
-| `TestDiscussionSpec` | `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestPlanSpec_PatternDirectiveOptional`, `TestModeRules` | yes |
-| `TestDiscussionSpec_ReadsStencilAtCallTime` | `TestDiscussionSpec` | no |
-| `TestDiscussionSpec_PatternDirective` | `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestDiscussionDir` | `TestDiscussionSpec_MissingStencilsDirIsHardError` | yes |
-| `TestDiscussionDecisionRecord` | `TestDiscussionSpec_MissingStencilsDirIsHardError` | yes |
-| `TestDiscussionSupportLog` | `TestDiscussionSpec_MissingStencilsDirIsHardError` | yes |
-| `TestDiscussionDirRel` | `TestDiscussionSpec_MissingStencilsDirIsHardError` | yes |
-| `TestDiscussionDir_UnanchoredEqualsWorktreePath` | `TestDiscussionSpec_MissingStencilsDirIsHardError` | yes |
-| `TestLoomDurableDir` | `TestLoomFrictionArchivePrefix` | yes |
-| `TestLoomFrictionDir` | `TestLoomFrictionArchivePrefix` | yes |
-| `TestLoomSelfreportFiled` | `TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath` | yes |
-| `TestLoomSelfreportFiled_UnanchoredEqualsWorktreePath` | `TestLoomSelfreportFiled` | no |
-| `TestLoomSelfreportFiledLock` | `TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath` | yes |
-| `TestLoomSelfreportFiledLock_UnanchoredEqualsWorktreePath` | `TestLoomSelfreportFiledLock` | no |
-| `TestPlanSpec` | `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestPlanSpec_PromptFilled` | `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestPlanSpec_PatternDirectiveOptional` | `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` | no |
-| `TestPlanSpec_PromptNeverNamesSupportLog` | `TestPlanSpec_PatternDirectiveOptional`, `TestDiscussionSpec_ReadsStencilAtCallTime` | yes |
-| `TestPlanSpec_PromptStatesSpecsDir` | `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath` | `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` | `TestPlanSpec_PatternDirectiveOptional` | yes |
-| `TestComposePlanPrompt_FrictionDisabled` | `TestPlanSpec_PatternDirectiveOptional`, `TestReworkSpec_MissingStencil` | yes |
-| `TestComposePlanPrompt_FrictionMarkerFreeTemplate` | `TestComposePrompt_FrictionMarkerFreeTemplate`, `TestComposePlanPrompt_FrictionEnabled` | yes |
-| `TestComposePrompt_RendersMarkers` | `TestComposePrompt_FrictionEnabled`, `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestModeRules` | yes |
-| `TestComposePrompt_AutonomousOutputHasNoAutoFlag` | `TestComposePrompt_FrictionEnabled`, `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestModeRules` | yes |
-| `TestComposePrompt_ModeLanguageDiffers` | `TestComposePrompt_FrictionEnabled`, `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestModeRules` | yes |
-| `TestModeRules` | `TestComposePrompt_ModeLanguageDiffers` | no |
-| `TestComposePrompt_FrictionDisabled` | `TestComposePrompt_FrictionEnabled`, `TestDiscussionSpec_ReadsStencilAtCallTime`, `TestReworkSpec_MissingStencil` | yes |
-| `TestComposePrompt_FrictionMarkerFreeTemplate` | `TestComposePlanPrompt_FrictionMarkerFreeTemplate`, `TestComposePrompt_FrictionEnabled` | no |
-| `TestLoomReviewsDirRel` | `TestLoomParentReviewAccessors` | yes |
-| `TestCheckSeed_MalformedJSON` | `TestCheckSeed_UnknownTopLevelField` | yes |
-| `TestCheckSeed_UnknownTopLevelField` | `TestCheckSeed_MalformedJSON` | no |
-| `TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward` | `TestCheckSeed_ToldNamesAreGenuinelyTold`, `TestCheckCoherence` | yes |
-| `TestCheckSeed_CoherentPostRow1Seed` | `TestCheckSeed_ToldNamesAreGenuinelyTold` | yes |
-| `TestCheckSeed_MkdirAllGuardRegression` | `TestCheckSeed_ToldNamesAreGenuinelyTold` | yes |
-| `TestCheckSeed_ToldNamesAreGenuinelyTold` | `TestCheckSeed_OutOfVocabularyOutcomeNamesWayForward`, `TestCheckCoherence` | no |
+| `TestConfigTemplate_ContainsEveryConfigYAMLTag` | `TestLoadConfig_Loads` | yes |
+| `TestDiscussionSpec` | `TestProducerSpecs_SkillsAndParentDirective` | yes |
+| `TestDiscussionSpec_ReadsStencilAtCallTime` | `TestProducerSpecs_SkillsAndParentDirective` | yes |
+| `TestDiscussionSpec_PatternDirective` | `TestProducerSpecs_SkillsAndParentDirective`, `TestPlanSpec_PatternDirective` | yes |
+| `TestDiscussionPaths` | `TestDiscussionSpec_Refuses` | yes |
+| `TestPlanSpec` | `TestProducerSpecs_SkillsAndParentDirective` | yes |
+| `TestPlanSpec_PatternDirective` | `TestPlanSpec`, `TestDiscussionSpec_PatternDirective` | no |
+| `TestReworkSpec` | `TestProducerSpecs_SkillsAndParentDirective` | yes |
 
 No coverage:
 
 - `TestCheckCoherence`: unclassifiable call
+- `TestProducerSpecs_SkillsAndParentDirective`: unclassifiable call
+- `TestComposePrompt_RendersMarkers`: unclassifiable call
 
 ## internal/loomrecipe
 
-48 tests, wall 0.32s, serial 0.29s.
+44 tests, wall 0.27s, serial 0.25s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestNoGatedRowAuthorizesForkSubagents` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestWebsterRoundCarriesNoGateKey` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestInterruptPolicies_MatchEngineIdentity` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestShippedRecipe_OverlayBurlersCommitThroughSeam` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestOverlayBurlerCommitSeams_RejectsBadShapes` | `TestApproveSeam_NilEnvClosureFailsToBuild` | yes |
-| `TestRouting_ProgressAtEveryRowMapsToAStep` | `TestRouting_ProgressAtReviewSegmentsShareAStep` | yes |
-| `TestRouting_ProgressAtReviewSegmentsShareAStep` | `TestRouting_ProgressAtEveryRowMapsToAStep` | no |
-| `TestRouting_ProgressAtFrictionReflectIsLast` | `TestRouting_ProgressAtReviewSegmentsShareAStep` | yes |
+| `TestShippedRecipe_SeamsWiredOnPlanBouncerOnly` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestNoGatedRowAuthorizesForkSubagents` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestWebsterRoundCarriesNoGateKey` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestInterruptPolicies_MatchEngineIdentity` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestShippedRecipe_OverlayBurlersCommitThroughSeam` | `TestApproveSeam_FailsToBuild` | yes |
+| `TestOverlayBurlerCommitSeams_RejectsBadShapes` | `TestApproveSeam_FailsToBuild` | yes |
 
 No coverage:
 
-- `TestApproveSeam_NilEnvClosureFailsToBuild`: spawns
-- `TestApproveSeam_UnknownValueFailsToBuild`: spawns
+- `TestApproveSeam_FailsToBuild`: spawns
 - `TestClusterExcludesMismatches_Cases`: unclassifiable call
 - `TestCoverageGuard_EveryLoomRowHasAnEngine`: spawns
 - `TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger`: spawns
@@ -2221,21 +1547,18 @@ No coverage:
 
 ## internal/loomshed
 
-72 tests, wall 0.18s, serial 0.14s.
+66 tests, wall 0.10s, serial 0.05s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestDiscussionWrite_PassesStuckReasonThrough` | `TestDiscussionWrite_Call` | yes |
 | `TestLoomPreflight_StuckSurfacesItsFailures` | `TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck`, `TestLoomPreflight_Call_StuckReasonNamesTheFailures`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
-| `TestBatchifier_StuckSurfacesTheBatcherError` | `TestBatchifier_Call`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
-| `TestWebsterProducer_StuckSurfacesTheBatcherError` | `TestWebsterProducer_Call`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
+| `TestBatcherRows_StuckSurfacesTheBatcherError` | `TestGateRows_StopsNameAWayForward`, `TestBatchifier_Call`, `TestDiscussionGate_FailureSurfacesItsFindings` | yes |
 | `TestHasBlockingFinding_AgainstTheGate` | `TestNewPlanGate` | yes |
 | `TestInterruptPolicies_ClosedVocabulary` | `TestArchivedWebsterDirs` | yes |
-| `TestLoomPreflight_Call_IncoherentSeedReportsStuck` | `TestLoomPreflight_Call_ReentryWithOtherFailureStaysStuck`, `TestLoomPreflight_Call_StuckReasonNamesTheFailures` | yes |
 | `TestPlanWrite_PassesStuckReasonThrough` | `TestPlanWrite_Call` | yes |
 | `TestSeed_WritesExpectedStatus` | `TestCancellation_RealProducersReturnErrorNotStuck` | yes |
 | `TestSeed_RefusesExistingFile` | `TestCancellation_RealProducersReturnErrorNotStuck`, `TestLoomPreflight_Call_GotoReentryPassesAndLeavesStatusUnchanged`, `TestSeed_RefusesUndecodableFileAsExists` | yes |
-| `TestSeed_SucceedsWhenLockParentDirMissing` | `TestCancellation_RealProducersReturnErrorNotStuck` | yes |
 | `TestWebsterProducer_PassesStuckReasonThrough` | `TestWebsterProducer_CommitsTheRunRecordOnDoneOnly`, `TestWebsterProducer_Call` | yes |
 
 No coverage:
@@ -2285,16 +1608,13 @@ No coverage:
 - `TestNextReworkCardNumber`: unclassifiable call
 - `TestPRRework_NilSeamIsNamedError`: unclassifiable call
 - `TestStubProducer_Call`: unclassifiable call
-- `TestVerifyGate_PassesWithoutRunningOnVerifiedTree`: spawns
-- `TestVerifyGate_FailsWithFindingsOnFailingCommand`: spawns
-- `TestVerifyGate_FailsNamingPathsOnDirtyTree`: spawns
-- `TestVerifyGate_PassesOnPlanWithoutVerifySection`: spawns
+- `TestVerifyGate_Scenario`: spawns
 - `TestWebsterProducer_Call`: unclassifiable call
 - `TestWebsterProducer_CommitsTheRunRecordOnDoneOnly`: unclassifiable call
 
 ## internal/lyxcwd
 
-34 tests, wall 1.83s, serial 1.99s.
+23 tests, wall 1.39s, serial 1.37s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
@@ -2302,12 +1622,9 @@ No coverage:
 | `TestDocsLinkExtract` | `TestCwdFrom_FallsBackToGetwd` | yes |
 | `TestDocsLinkHeadingAnchors` | `TestCwdFrom_FallsBackToGetwd` | yes |
 | `TestStripGoComments` | `TestCwdFrom_FallsBackToGetwd` | yes |
-| `TestCheckCwdAnchorGate` | `TestResolve_AnchorAbsentFallsBackToDot`, `TestUngatedEntryPoints_AtGateRejectionTriples` | yes |
-| `TestSamePath` | `TestResolveWorktree_SubpathAnchorNoGate`, `TestUngatedEntryPoints_AtGateRejectionTriples` | yes |
-| `TestUngatedEntryPoints_AtGateRejectionTriples` | `TestResolve_AnchorAbsentFallsBackToDot`, `TestCheckCwdAnchorGate` | no |
-| `TestBuildLocation_RepoNameSuffixTrimming` | `TestResolveWorktree_SubpathAnchorNoGate` | yes |
-| `TestIsReservedHubName_PatternNoLongerReserved` | `TestIsReservedHubName_RaddleNoLongerReserved` | yes |
-| `TestIsReservedHubName_RaddleNoLongerReserved` | `TestIsReservedHubName_PatternNoLongerReserved` | no |
+| `TestCheckCwdAnchorGate` | `TestResolve_AnchorScenario`, `TestSamePath` | yes |
+| `TestSamePath` | `TestCheckCwdAnchorGate`, `TestResolve_AnchorScenario` | no |
+| `TestBuildLocation_RepoNameSuffixTrimming` | `TestResolve_AnchorScenario` | yes |
 
 No coverage:
 
@@ -2317,34 +1634,22 @@ No coverage:
 - `TestEnforcement_FabricVocabulary`: spawns
 - `TestRaddleGuard`: spawns
 - `TestFabricVocabularyFailures_Fixtures`: spawns
-- `TestResolve_RootAnchor`: spawns
-- `TestResolve_SubpathAnchor`: spawns
-- `TestResolve_CwdOutsideAnchor`: spawns
-- `TestResolve_AnchorAbsentFallsBackToDot`: spawns
-- `TestResolveWorktree_SubpathAnchorNoGate`: spawns
-- `TestResolve_StaleAnchorMarkerHardErrors`: spawns
-- `TestResolve_FromWorktreeRoot`: spawns
-- `TestResolve_FromSubdirectory`: spawns
-- `TestResolve_ForwardSlashNormalization`: spawns
+- `TestResolve_AnchorScenario`: spawns
 
 ## internal/mergeresolve
 
-21 tests, wall 0.01s, serial 0.00s.
+17 tests, wall 0.04s, serial 0.12s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestScanUnresolved_MidLineMarkerPasses` | `TestResolve_ConflictThenCleanScan_StagesThenConcludes` | yes |
+No candidates.
 
 No coverage:
 
-- `TestScanUnresolved_LineStartMarkers`: unclassifiable call
+- `TestScanUnresolved`: unclassifiable call
 - `TestResolve_CleanMergeNoSession`: unclassifiable call
 - `TestResolve_ConflictThenCleanScan_StagesThenConcludes`: unclassifiable call
 - `TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts`: unclassifiable call
 - `TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt`: unclassifiable call
-- `TestResolve_ForeignMergeStateError_StuckNoAbort`: unclassifiable call
-- `TestResolve_UnmergeableStateError_StuckWithErrorSurfacedNoAbort`: unclassifiable call
-- `TestResolve_UnrecognizedMergeInError_CatchAllStuck`: unclassifiable call
+- `TestResolve_MergeInError_StuckWithReasonNoAbort`: unclassifiable call
 - `TestResolve_ShuttleOutcomes_MapToStuckNoConclude`: unclassifiable call
 - `TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure`: unclassifiable call
 - `TestResolve_ContextCancellation_SurfacedAsError`: unclassifiable call
@@ -2354,22 +1659,19 @@ No coverage:
 - `TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude`: unclassifiable call
 - `TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging`: unclassifiable call
 - `TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry`: unclassifiable call
+- `TestBuildConflictSpec_SkillsAndParentDirective`: unclassifiable call
 
 ## internal/modelspec
 
-15 tests, wall 0.01s, serial 0.00s.
+11 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestBracketKeys_ContainedInKnownParams` | `TestConfigTemplate_LoadsWithLiveEntries` | yes |
-| `TestBuiltins` | `TestConfigTemplate_LoadsWithLiveEntries` | yes |
-| `TestRegistry_Resolve_ZeroValueRegistry` | `TestRegistry_Resolve_UnknownAlias` | yes |
-| `TestRegistry_Resolve_NeverMutatesInputs` | `TestRegistry_Resolve` | yes |
 
 No coverage:
 
-- `TestLoadRegistry_AbsentFileYieldsBuiltins`: unclassifiable call
-- `TestLoadRegistry_EmptyFileYieldsBuiltins`: unclassifiable call
+- `TestLoadRegistry_YieldsBuiltins`: unclassifiable call
 - `TestLoadRegistry_FileExtends`: unclassifiable call
 - `TestLoadRegistry_FileOverridesWholeEntry`: unclassifiable call
 - `TestLoadRegistry_RejectsInvalidEntries`: unclassifiable call
@@ -2379,85 +1681,66 @@ No coverage:
 
 ## internal/orchcli
 
-30 tests, wall 1.26s, serial 1.21s.
+17 tests, wall 0.82s, serial 0.22s.
 
 No candidates.
 
 No coverage:
 
-- `TestStatus_ReportsPopulatedState`: failed
-- `TestStatus_ReportsTooShortPaneUnderStuck`: failed
-- `TestStatus_UnknownTokensAreNull`: failed
-- `TestCycle_WritesRequest`: failed
-- `TestStop_RemovesTrackedStrand`: failed
-- `TestStop_UntrackedStrandReportsNotRemoved`: failed
-- `TestOrchIntegration_PermissionModeRefusal`: spawns
-- `TestOrchIntegration_PrimeOnlyRefusal`: spawns
+- `TestStatus_Envelope`: unclassifiable call
+- `TestStop`: unclassifiable call
+- `TestOrchIntegration_Refusals`: spawns
 - `TestStart_NoStrandLaunchesAndSpawnsWatcher`: spawns
-- `TestStart_LiveStrandAndWatcherDoesNothing`: spawns
-- `TestStart_LiveStrandNoWatcherSpawnsWatcherOnly`: spawns
+- `TestStart_LiveStrand`: spawns
 - `TestStart_DeadStrandRemovedBeforeStart`: spawns
-- `TestStart_DeadStrandWithLastHandoffResumes`: spawns
-- `TestStart_HandoffFlagResumesFromFlagFile`: spawns
-- `TestStart_HandoffWithLiveStrandRefuses`: spawns
-- `TestStart_TwoOrchStrandsRefuse`: spawns
+- `TestStart_ResumesFromHandoffFile`: spawns
 - `TestStart_FreshLaunchResetsAbandonedPhase`: spawns
-- `TestStart_SpecShape`: spawns
-- `TestStart_StartSessionFailureReportsAndSavesNothing`: spawns
-- `TestStart_AdoptWithHandoffRefuses`: spawns
-- `TestStart_AdoptWithLiveStrandRefuses`: spawns
+- `TestStart_Refusals`: spawns
+- `TestStart_StarterErrorFailsAndSavesNoState`: spawns
 - `TestStart_AdoptLaunchesResumeSpec`: spawns
-- `TestStart_StarterWarningReachesEnvelope`: spawns
-- `TestStart_AdoptStarterErrorFailsAndSavesNoState`: spawns
 - `TestRunnerSession_StrandAlive`: unclassifiable call
-- `TestWatch_RefusesWithoutRecordedStrand`: unclassifiable call
-- `TestWatch_ReportsAlreadyRunningWhenLockHeld`: failed
+- `TestWatch`: unclassifiable call
 
 ## internal/orchengine
 
-114 tests, wall 0.31s, serial 0.11s.
+118 tests, wall 0.24s, serial 0.02s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestQueueNotice_FilesSortByArrivalAndListOldestFirst` | `TestQueueNotice_CapDropsTheOldest` | yes |
-| `TestQueueNotice_SameInstantNeverShareAFile` | `TestQueueNotice_CapDropsTheOldest` | yes |
-| `TestRemoveAndDropNotices` | `TestWatcher_NoticeWaitsOnANonIdleProbe`, `TestWatcher_NoticeWaitsOutANonIdlePhase`, `TestRun_DropsNoticeQueueWhenNoStrandRecorded` | yes |
-| `TestRenderStartPrompt` | `TestChooseStartPrompt_LastHandoffGoneFallsToFresh` | yes |
-| `TestRenderHandoffInstruction` | `TestWatcher_AbortedHandoffNoRetryUntilLaterTurnEnd` | yes |
-| `TestRenderResumePrompt` | `TestChooseStartPrompt_FlagWinsOverLastHandoff` | yes |
-| `TestRenderAdoptPrompt` | `TestChooseStartPrompt_FlagWinsOverLastHandoff`, `TestRenderAdoptAndSoft_MultiLineOverrideFails` | no |
-| `TestRenderSoftHandoffInstruction` | `TestWatcher_HardTriggerRereadBelowCapDoesNotFire` | yes |
-| `TestRenderCompactFocus` | `TestCompact_BoundaryAtEntryCompletes` | yes |
-| `TestRenderAdoptAndSoft_MultiLineOverrideFails` | `TestCompact_RenderFailureChangesNothing`, `TestRenderAdoptPrompt`, `TestWatcher_HardTriggerRereadBelowCapDoesNotFire` | yes |
-| `TestRenderResumePrompt_MultiLineOverrideFails` | `TestWatcher_EveryAbortReturnPersistsCursor` | yes |
-| `TestLoadState_AbsentIsIdle` | `TestQueueNotice_NoStrandLogsOnly` | yes |
-| `TestSaveLoadState_RoundTrip` | `TestCompact_BoundaryAtEntryCompletes` | yes |
-| `TestCycleRequest_WriteProbeClear` | `TestCompact_RequestedCycleClearsRequestAndCompacts` | yes |
-| `TestNewHandoffPath_DistinctUnderHandoffsDir` | `TestWatcher_AbortedHandoffNoRetryUntilLaterTurnEnd` | yes |
+| `TestRemoveAndDropNotices` | `TestRun_NoticeQueueAtExit`, `TestWatcher_NoticeWaitsOnANonIdleProbe` | yes |
+| `TestRenderPointers_OneLineNamingTheirPaths` | `TestCompact_BoundaryAtEntryCompletes`, `TestChooseStartPrompt`, `TestCompact_TimeoutHoldsSoftTrigger`, `TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer`, `TestRenderPointers_MultiLineOverrideFails` | no |
+| `TestRenderPointers_MultiLineOverrideFails` | `TestWatcher_FailingRenderAbortsWithoutClear`, `TestRenderPointers_OneLineNamingTheirPaths` | yes |
+| `TestSaveLoadState_RoundTrip` | `TestCompact_BoundaryAtEntryCompletes`, `TestQueueNotice_NoStrandLogsOnly` | yes |
+| `TestCycleRequest_WriteProbeClear` | `TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote` | yes |
+| `TestNewHandoffPath_DistinctUnderHandoffsDir` | `TestCompact_BoundaryAtEntryCompletes` | yes |
 
 No coverage:
 
-- `TestChooseStartPrompt_FlagWinsOverLastHandoff`: unclassifiable call
-- `TestChooseStartPrompt_MissingFlagFileErrors`: unclassifiable call
-- `TestChooseStartPrompt_LastHandoffWhenPresent`: unclassifiable call
-- `TestChooseStartPrompt_LastHandoffGoneFallsToFresh`: unclassifiable call
-- `TestChooseStartPrompt_PendingHandoffIgnored`: unclassifiable call
+- `TestChooseStartPrompt`: unclassifiable call
+- `TestQueueNotice_ListingOrderAndUniqueness`: unclassifiable call
+- `TestRenderFiles_WriteWithoutLeadingComment`: unclassifiable call
 - `TestSeamInvariants_AllowlistOnly`: spawns
+- `TestCycleRequested_UnparseableMarkerIsPendingWithZeroRequest`: unclassifiable call
 - `TestResetForFreshLaunch`: unclassifiable call
 - `TestCompact_TriggerTypesCompactOnlyOnIdlePass`: unclassifiable call
 - `TestCompact_PersistsCompactingBeforeTyping`: unclassifiable call
-- `TestCompact_RequestedCycleClearsRequestAndCompacts`: unclassifiable call
-- `TestCompact_RenderFailureChangesNothing`: unclassifiable call
+- `TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote`: unclassifiable call
+- `TestCompact_RenderFailureAfterNoteChangesNothing`: unclassifiable call
 - `TestCompact_CompletesOnBoundaryAfterEntryAndIdle`: unclassifiable call
+- `TestCompact_CycleReloadsSkillsThenPointerNamingTheNote`: unclassifiable call
 - `TestCompact_BoundaryAtEntryCompletes`: unclassifiable call
 - `TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers`: unclassifiable call
 - `TestCompact_TimeoutHoldsSoftTrigger`: unclassifiable call
 - `TestCompact_TimeoutDoesNotHoldRequestedCycle`: unclassifiable call
 - `TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary`: unclassifiable call
-- `TestCompact_RestartCompletesWithoutRetypingWhenBoundaryRead`: unclassifiable call
-- `TestCompact_RestartWithBoundaryButBusyPaneTypesNothing`: unclassifiable call
+- `TestCompact_RestartWithBoundaryReadTypesNothing`: unclassifiable call
 - `TestCompact_DeferTurnEndChangesNothing`: unclassifiable call
 - `TestCompact_DeferTurnEndWhileCompactingChangesNothing`: unclassifiable call
+- `TestCycleRequest_ModeFollowsRequestNotConfig`: unclassifiable call
+- `TestCompact_SoftCycleHonoursDefer`: unclassifiable call
+- `TestCycleRequest_AbandonedWithinTimeoutOfRequest`: unclassifiable call
+- `TestCycleRequest_StaleMarkerRemovedAtFirstTick`: unclassifiable call
+- `TestCycleRequest_RestartedWatcherMeasuresFromRequestTime`: unclassifiable call
 - `TestWatcher_BelowThresholdNoInjection`: unclassifiable call
 - `TestWatcher_AboveThresholdInjectsHandoffPersistedFirst`: unclassifiable call
 - `TestWatcher_AskEventBlocksInjection`: unclassifiable call
@@ -2487,7 +1770,17 @@ No coverage:
 - `TestWatcher_RestartUnlandedInjectionResendsOnce`: unclassifiable call
 - `TestWatcher_RestartInClearingClearsOnceAndCountsOnce`: unclassifiable call
 - `TestWatcher_FailingHandoffRenderChangesNothing`: unclassifiable call
-- `TestWatcher_FailingResumeRenderAbortsWithoutClear`: unclassifiable call
+- `TestWatcher_NoteRequestRendersTemplateFileBeforeTyping`: unclassifiable call
+- `TestWatcher_ClearCycleReloadsSkillsThenPointer`: unclassifiable call
+- `TestWatcher_SkillSkipCauses`: unclassifiable call
+- `TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep`: unclassifiable call
+- `TestWatcher_ReloadRestartKeepsSkippedSkillSkipped`: unclassifiable call
+- `TestWatcher_ReloadTypesNothingWhenIdleProbeFails`: unclassifiable call
+- `TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer`: unclassifiable call
+- `TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing`: unclassifiable call
+- `TestWatcher_AutoCompactionWaitsForIdleProbe`: unclassifiable call
+- `TestWatcher_ClearRendersRoleFileBeforeResume`: unclassifiable call
+- `TestWatcher_FailingRenderAbortsWithoutClear`: unclassifiable call
 - `TestWatcher_HandoffSendErrorResendsSamePathOnce`: unclassifiable call
 - `TestWatcher_ResumeSendErrorResendsOnce`: unclassifiable call
 - `TestWatcher_ResumeSendErrorButLandedNoResend`: unclassifiable call
@@ -2520,8 +1813,7 @@ No coverage:
 - `TestRun_ErrWatcherRunningWhileLockHeld`: unclassifiable call
 - `TestRun_TakesLockReleasedBetweenRetries`: unclassifiable call
 - `TestRun_ReturnsWhenStrandGone`: unclassifiable call
-- `TestRun_DropsNoticeQueueWhenNoStrandRecorded`: unclassifiable call
-- `TestRun_KeepsNoticeQueueWhenStrandRecorded`: unclassifiable call
+- `TestRun_NoticeQueueAtExit`: unclassifiable call
 - `TestRun_CancelledContextRecordsSignal`: unclassifiable call
 - `TestRun_StopsAtErrorCap`: unclassifiable call
 - `TestRun_SuccessfulTickResetsErrorCount`: unclassifiable call
@@ -2529,54 +1821,36 @@ No coverage:
 
 ## internal/output
 
-10 tests, wall 0.00s, serial 0.00s.
+4 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestOk_EmitsValidJSON` | `TestOk_ReturnsZeroExitCode` | yes |
-| `TestOk_ReturnsZeroExitCode` | `TestOk_EmitsValidJSON` | no |
-| `TestErr_EmitsValidJSON` | `TestErr_TrimsTrailingNewline` | yes |
-| `TestErr_ReturnsOneExitCode` | `TestErr_TrimsTrailingNewline` | yes |
-| `TestErr_TrimsTrailingNewline` | `TestErrFields_NilFieldsMatchesErr` | no |
-| `TestOk_MutatesFieldsMap` | `TestOk_ReturnsZeroExitCode` | yes |
-| `TestErrFields_EmitsOkFalseMessageAndFields` | `TestErr_TrimsTrailingNewline` | yes |
-| `TestErrFields_NilFieldsMatchesErr` | `TestErr_TrimsTrailingNewline` | yes |
-| `TestErrFields_ReservedKeysOverrideCallerSupplied` | `TestErr_TrimsTrailingNewline` | yes |
-| `TestErrFields_ReturnsOneExitCode` | `TestErr_TrimsTrailingNewline` | yes |
+| `TestErr_EmitsErrorEnvelope` | `TestErrFields_NilFieldsMatchesErr` | no |
+| `TestErrFields_EmitsEnvelopeWithFields` | `TestErr_EmitsErrorEnvelope` | yes |
+| `TestErrFields_NilFieldsMatchesErr` | `TestErr_EmitsErrorEnvelope` | yes |
 
 No test lacks coverage.
 
 ## internal/pairteardown
 
-14 tests, wall 5.13s, serial 5.12s.
+4 tests, wall 3.11s, serial 3.10s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestEnforcement_PairTeardownScanIsNotVacuous` | `TestEndSession_BusyDriverAtBoundRefusesWithoutTouchingAnything` | yes |
+| `TestEnforcement_PairTeardownScanIsNotVacuous` | `TestEnforcement_PairTeardownChokepoint` | yes |
 
 No coverage:
 
 - `TestEnforcement_PairTeardownChokepoint`: spawns
-- `TestEndSession_BusyDriverAtBoundRefusesWithoutTouchingAnything`: unclassifiable call
-- `TestEndSession_DriverTurningRetiringProceedsAfterCountedSleeps`: unclassifiable call
-- `TestEndSession_ZeroWaitWithoutRefuseProceedsAndReportsDriverWasLive`: unclassifiable call
-- `TestEndSession_RefusalProbeErrorNeverEndsTheSession`: unclassifiable call
-- `TestRun_SessionEndErrorNeverRemoves`: unclassifiable call
-- `TestRun_CallsQuietProbeEndAndRemoveInOrder`: unclassifiable call
-- `TestEndSession_GonePairSkipsQuietWaitAndEndsByName`: unclassifiable call
-- `TestRun_TaskSideDirtinessRefusalLeavesSessionAndStrandsLive`: spawns
-- `TestRun_SiblingChangesOutsidePathspecLeaveEverythingUntouched`: spawns
-- `TestRun_EndsTheSessionAndRemovesThePair`: spawns
-- `TestRun_TaskWorktreeRemovedByHandEndsTheSessionByName`: spawns
-- `TestRun_WaitsForRetiringDriverThenArchivesTheCommittedReport`: spawns
+- `TestTeardown_CallSequence`: unclassifiable call
+- `TestRun_TeardownScenario`: spawns
 
 ## internal/parentreview
 
-58 tests, wall 0.06s, serial 0.00s.
+53 tests, wall 0.06s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestLatest_NoRounds` | `TestAddNotify` | yes |
 | `TestRejectedRounds_CountsOnlyRejects` | `TestFinal_ConsumedRejectFailsTerminalWithNextRoundReason` | yes |
 
 No coverage:
@@ -2586,17 +1860,13 @@ No coverage:
 - `TestGate_ThrottleAndCap`: unclassifiable call
 - `TestGate_NotifyPastCap`: unclassifiable call
 - `TestGate_NotifyBetweenClosuresCarriedByFirstCallOfSecond`: unclassifiable call
-- `TestGate_FailedDeliveryDoesNotStopResends`: unclassifiable call
-- `TestGate_DeliveredStopsResends`: unclassifiable call
 - `TestGate_ExpiryFromOriginalOpenedAtAfterRestart`: unclassifiable call
 - `TestGate_VerdictLandingBeforeExpiryIsRead`: unclassifiable call
 - `TestGate_CapAndThrottleAcrossRestart`: unclassifiable call
-- `TestGate_Approve`: unclassifiable call
 - `TestGate_RejectConsumedThenNextRoundOpens`: unclassifiable call
 - `TestGate_ApproveOnRoundTwoPasses`: unclassifiable call
 - `TestGate_CapFailsTerminalNamingWayOut`: unclassifiable call
 - `TestGate_CountSurvivesFreshGates`: unclassifiable call
-- `TestGate_SupersedingApprovePasses`: unclassifiable call
 - `TestGate_ResumeAtCapRejectFailsWithoutOpening`: unclassifiable call
 - `TestGate_ConsumedRejectOnAttachOpensNextRound`: unclassifiable call
 - `TestGate_SupersededPasses`: unclassifiable call
@@ -2605,9 +1875,6 @@ No coverage:
 - `TestFinal_UnconsumedRejectFailsTerminalWithoutConsuming`: unclassifiable call
 - `TestFinal_ConsumedRejectFailsTerminalWithNextRoundReason`: unclassifiable call
 - `TestFinal_RejectAtCapNamesWayOut`: unclassifiable call
-- `TestFinal_SupersedingApprovePasses`: unclassifiable call
-- `TestFinal_ApprovePasses`: unclassifiable call
-- `TestGate_PassAtCap_ApprovePasses`: unclassifiable call
 - `TestGate_PassAtCap_CapRejectGoesToWriterThenRewritePasses`: unclassifiable call
 - `TestGate_PassAtCap_BelowCapStillOpensNextRound`: unclassifiable call
 - `TestGate_PassAtCap_FreshGateAfterCapRejectPasses`: unclassifiable call
@@ -2618,6 +1885,9 @@ No coverage:
 - `TestGate_LivenessErrorHoldsAndWarnsOncePerError`: unclassifiable call
 - `TestGate_HeldRequestStillExpiresAtWaitBound`: unclassifiable call
 - `TestGate_HeldGateKeepsWaitingNotifyUntilLive`: unclassifiable call
+- `TestGate_ResendAfterDelivery`: unclassifiable call
+- `TestApprovePasses`: unclassifiable call
+- `TestSupersedingApprovePasses`: unclassifiable call
 - `TestOpenRequest_WritesRequestAndBrief`: unclassifiable call
 - `TestBeginRound_SupersedesOpenAndNumbers`: unclassifiable call
 - `TestBeginRound_CompletedRoundNotSuperseded`: unclassifiable call
@@ -2639,92 +1909,43 @@ No coverage:
 
 ## internal/pattern
 
-21 tests, wall 0.04s, serial 0.01s.
+7 tests, wall 0.02s, serial 0.01s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestFile_Free` | `TestDirective_ActiveWithFile` | yes |
+No candidates.
 
 No coverage:
 
 - `TestCheck`: unclassifiable call
-- `TestCheck_ReportsLineNumber`: unclassifiable call
 - `TestOverview_RealFilePassesCheck`: unclassifiable call
-- `TestDirective_ActiveWithFile`: unclassifiable call
-- `TestDirective_InactiveWithoutFile`: unclassifiable call
-- `TestDirective_WhitespaceOnlyPatternFileIsInactive`: unclassifiable call
-- `TestDirective_OverviewInlinedVerbatim`: unclassifiable call
-- `TestDirective_UnreadablePatternFileIsError`: unclassifiable call
-- `TestDirective_PatternFileAsDirectoryIsInactive`: unclassifiable call
+- `TestDirective_PerRole`: unclassifiable call
+- `TestDirective_RendersNothing`: unclassifiable call
+- `TestDirective_FilesystemFailuresAreErrors`: unclassifiable call
 - `TestDirective_EmptyRoot`: unclassifiable call
-- `TestDirective_UnknownRole`: unclassifiable call
-- `TestDirective_VariantsArePairwiseDistinct`: unclassifiable call
-- `TestDirective_VariantsBeginWithOwnHeading`: unclassifiable call
-- `TestDirective_ReadsOnlyTheGivenRoot`: unclassifiable call
-- `TestDirective_NonNotExistStatErrorIsError`: unclassifiable call
-- `TestDirective_LazyRead`: unclassifiable call
-- `TestDirective_MissingStencilErrors`: unclassifiable call
-- `TestDirective_StripsBanner`: unclassifiable call
-- `TestDirective_StrippedBodyMatchesEmbeddedDefault`: unclassifiable call
 
 ## internal/planglyph
 
-109 tests, wall 0.13s, serial 0.10s.
+74 tests, wall 0.10s, serial 0.06s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestChokepointCallSitesIn_SeededSelfTest` | `TestBindHandles_LanguageNoneNoOp` | yes |
-| `TestResolveContainment_MemberAndOwnFileSelfOnTwoCardsOverlap` | `TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered` | yes |
-| `TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered` | `TestResolveContainment_MemberAndOwnFileSelfOnTwoCardsOverlap` | no |
-| `TestResolveContainment_MultipartSecondPartOverlaps` | `TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered` | yes |
-| `TestResolveContainment_ReadOnlyRefsAreNotAContainmentHazard` | `TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered` | yes |
-| `TestCreateFindings_AlreadyExistsFound` | `TestCreateFindings_AmbiguousIsAlreadyExists`, `TestCreateFindings_HandleTargetIsInverted` | yes |
-| `TestCreateFindings_AlreadyExistsMultipart` | `TestCreateFindings_AmbiguousIsAlreadyExists`, `TestCreateFindings_HandleTargetIsInverted` | yes |
-| `TestCreateFindings_NotFoundUnitFoundPasses` | `TestCreateFindings_AmbiguousIsAlreadyExists`, `TestCreateFindings_HandleTargetIsInverted` | yes |
-| `TestCreateFindings_NotFoundUnitNotFoundIsInformational` | `TestCreateFindings_AmbiguousIsAlreadyExists`, `TestCreateFindings_HandleTargetIsInverted` | yes |
-| `TestCreateFindings_HandleTargetIsInverted` | `TestCreateFindings_NotFoundUnitNotFoundIsInformational`, `TestCreateFindings_AlreadyExistsFound` | no |
-| `TestDoneCheckVerdicts_Rules` | `TestDoneChecks_RenameSkipped`, `TestDoneChecks_CreateSymbolMissing`, `TestDoneChecks_DeleteSymbolSurvives` | yes |
-| `TestDoneCheckVerdicts_UnreadableStatusFailsClosed` | `TestDoneChecks_RootFilenameCreateLanded`, `TestCreateFindings_UnreadableStatusFailsClosed` | yes |
-| `TestEnsurePostRepairCoverage_FullCoveragePasses` | `TestDetectDrift_ExactTierRenameAutoRepairsAndAmends` | yes |
-| `TestCanonicalizeHandles_BatchedCallCoversBothSources` | `TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing`, `TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration` | yes |
-| `TestCanonicalizeHandles_PositionalMatchingOutOfOrder` | `TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten` | yes |
-| `TestCanonicalizeHandles_RenameDraftSpellingWrongStillRewrites` | `TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration`, `TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten`, `TestBindHandles_RenameNewSideHandleBinds` | yes |
-| `TestCanonicalizeHandles_RewriteLandsOnEveryReferencingCard` | `TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard`, `TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten` | yes |
-| `TestCanonicalizeHandles_ReportsWhetherItRewrote` | `TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard`, `TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten`, `TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing`, `TestResolvePass_ForthcomingCreateTargetExcludedFromStatus`, `TestCanonicalizeHandles_RenameMethodDerivesAMethodDeclaration`, `TestDetectDrift_GateOneSeesEveryDeclaredDestinationForOneOldSide` | yes |
-| `TestOpenRepo_Success` | `TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing` | yes |
-| `TestOpenRepo_NonRepository` | `TestDoneChecks_QuarryUnavailable` | yes |
-| `TestResolveTargets_Success` | `TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing` | yes |
+| `TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered` | `TestResolveContainment_Overlaps` | yes |
+| `TestDoneCheckVerdicts_Rules` | `TestDoneChecks_Verdicts` | yes |
+| `TestCanonicalizeHandles_ReportsWhetherItRewrote` | `TestCanonicalizeHandles_Rewrites`, `TestDetectDrift_HandBuiltDelta`, `TestResolvePass_ForthcomingCreateTargetExcludedFromStatus` | yes |
 | `TestStatusCompleteness_TableCoversQuarryStatuses` | `TestBindHandles_LanguageNoneNoOp` | yes |
-| `TestStatusCompleteness_MatchesDoneCheckVerdicts` | `TestDoneChecks_RenameSkipped`, `TestDoneChecks_CreateSymbolMissing`, `TestDoneChecks_DeleteSymbolSurvives` | yes |
+| `TestStatusCompleteness_MatchesDoneCheckVerdicts` | `TestDoneChecks_Verdicts` | yes |
 | `TestStatusCompleteness_UnreadableStatusesFailClosed` | `TestDoneChecks_RootFilenameCreateLanded`, `TestCreateFindings_UnreadableStatusFailsClosed` | yes |
 
 No coverage:
 
 - `TestChokepointCallSites_PinnedToTheirGuardedFunctions`: spawns
-- `TestDelta_TwoCommitFixture`: spawns
-- `TestDelta_BadRevision`: spawns
-- `TestDoneChecks_CreateSymbolLanded`: unclassifiable call
-- `TestDoneChecks_CreateSymbolMissing`: unclassifiable call
-- `TestDoneChecks_CreateHandleStripped`: unclassifiable call
-- `TestDoneChecks_DeleteSymbolGone`: unclassifiable call
-- `TestDoneChecks_DeleteSymbolSurvives`: unclassifiable call
+- `TestRealGitDelta`: spawns
+- `TestDoneChecks_Verdicts`: unclassifiable call
 - `TestDoneChecks_QuarryUnavailable`: unclassifiable call
-- `TestDoneChecks_RenameLanded`: unclassifiable call
-- `TestDoneChecks_RenameSkipped`: unclassifiable call
-- `TestDoneChecks_FileRenameLanded`: unclassifiable call
 - `TestDoneChecks_RootFilenameCreateLanded`: unclassifiable call
 - `TestDetectDrift_ExactTierRenameAutoRepairsAndAmends`: unclassifiable call
-- `TestDetectDrift_RenameMatchingCardPairProducesNoFindingNoAmendment`: unclassifiable call
-- `TestDetectDrift_RenamedSymbolNothingReferencesLogsOnlyNoRewrite`: unclassifiable call
-- `TestDetectDrift_DeletedAndStillReferencedProducesBlockingFinding`: unclassifiable call
-- `TestDetectDrift_EvidenceTierCandidatesInformationalWithSignals`: unclassifiable call
-- `TestDetectDrift_EvidenceTierCandidateSuppressesTheDeletedSymbolFinding`: unclassifiable call
-- `TestDetectDrift_EvidenceTierCandidateUnreferencedProducesNoFinding`: unclassifiable call
+- `TestDetectDrift_HandBuiltDelta`: unclassifiable call
 - `TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported`: unclassifiable call
-- `TestDetectDrift_RealDeltaGateOneRecognizesDeclaredRename`: spawns
-- `TestDetectDrift_RealDeltaExactTierRepairsUndeclaredRename`: spawns
-- `TestDetectDrift_GateOneSeesTheRecordingBatchOwnPair`: unclassifiable call
-- `TestDetectDrift_GateOneSeesEveryDeclaredDestinationForOneOldSide`: unclassifiable call
 - `TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard`: unclassifiable call
 - `TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither`: unclassifiable call
 - `TestBindHandles_ZeroHandleCardNoFindingNoWrite`: unclassifiable call
@@ -2763,81 +1984,44 @@ No coverage:
 
 ## internal/planparser
 
-118 tests, wall 0.04s, serial 0.10s.
+78 tests, wall 0.02s, serial 0.04s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestClassifyRef` | `TestValidate_CardNumbering`, `TestValidate_ProsaSymbolTarget`, `TestCanonicalizeCard_ExtensionGate` | yes |
-| `TestClassifyRef_PathGlyphHandleShapes` | `TestCanonicalizeCard_PlainPathAndFileSelfGlyphAgree`, `TestRewriteRefs_SubstitutesTargetsUsesAndPairs` | yes |
+| `TestClassifyRef` | `TestParsePlan_CardFields`, `TestCanonicalizeCard_Target`, `TestRewriteRefs_SubstitutesTargetsUsesAndPairs` | yes |
 | `TestParseGlyph` | `TestCardTargetDirs` | yes |
-| `TestPlanLanguage` | `TestPlanGlyphLanguage` | yes |
-| `TestHandleUnit` | `TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations`, `TestValidate_HandleMalformed` | yes |
-| `TestDeclaredHandles` | `TestValidate_HandleConsistency` | yes |
-| `TestReferencedHandles` | `TestValidate_CardNumbering` | yes |
-| `TestCheckHandleMalformed_FileUnitHandle` | `TestCheckHandleMalformed_FileUnitRuleScopedToDeclarations`, `TestValidate_HandleConsistency` | yes |
-| `TestIsHandleRef` | `TestCardTargetDirs` | yes |
+| `TestHandleUnit` | `TestCheckHandleMalformed_FileUnitRule`, `TestValidate_HandleMalformed` | yes |
+| `TestHandleIndexes` | `TestValidate_HandleConsistency` | yes |
 | `TestHandleBody` | `TestCardTargetDirs` | yes |
-| `TestHandleMember` | `TestHandleIdentifier` | yes |
-| `TestNormalizeCard_PairsBothEndpoints` | `TestValidate_CardNumbering` | yes |
-| `TestNormalizeCard_NilSliceStaysNil` | `TestParsePlan_CardHeading` | yes |
-| `TestNormalizeCard_TargetGroupsPostCondition` | `TestValidate_CardNumbering`, `TestParsePlan_Card_RenameGrammar` | yes |
-| `TestNormalizeCard_RenameGroupPairsRootJoined` | `TestValidate_CardNumbering` | yes |
-| `TestNormalizeCard_ClassifierGate` | `TestCanonicalizeCard_PlainPathAndFileSelfGlyphAgree`, `TestParsePlan_Card_RenameGrammar` | yes |
-| `TestNormalizeCard_PairsAndTargetsAgree` | `TestValidate_CardNumbering` | yes |
-| `TestNormalizeRefIfPath_GateAcrossAllKinds` | `TestValidate_CardNumbering`, `TestValidate_ProsaSymbolTarget` | yes |
-| `TestPlanDir` | `TestPlanOverview` | yes |
-| `TestAppendAmendment_FirstAppendCreatesFileWithHeading` | `TestAppendAmendment_SecondAppendLeavesFirstEntryByteIdentical` | yes |
-| `TestAppendAmendment_SecondAppendLeavesFirstEntryByteIdentical` | `TestAppendAmendment_FirstAppendCreatesFileWithHeading` | no |
-| `TestSetApproved_PreservesFirstCard` | `TestSetApproved` | yes |
-| `TestParsePlan_Overview` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlan_Overview_ASCIIDashSeparators` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlan_Overview_MissingFormatOrApprovedIsNotFailLoud` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlan_CardFile_NotFound` | `TestParsePlanFrom_CardFileNotFound`, `TestParsePlan_CardHeading` | no |
-| `TestParsePlanFrom_MatchesParsePlan` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlanFrom_CardFileNotFound` | `TestParsePlan_CardFile_NotFound` | yes |
-| `TestParsePlan_Card_TypeLabelCount` | `TestValidate_CardNumbering`, `TestParsePlan_Card_RenameGrammar` | yes |
-| `TestParsePlan_Card_UsesPresentNoBullets` | `TestValidate_CardNumbering` | yes |
-| `TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped` | `TestParsePlan_Card_CreateHandleGrammar` | yes |
-| `TestParsePlan_Card_HandleSurvivesNormalizeCard` | `TestParsePlan_Card_CreateHandleGrammar`, `TestValidate_CardNumbering` | yes |
-| `TestParsePlan_Card_SourcePath` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlan_CardCommitAndVerify` | `TestValidate_CardNumbering` | yes |
-| `TestParsePlan_GoldenFixture` | `TestValidate_CardNumbering` | yes |
-| `TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently` | `TestRewriteRefs_SubstitutesTargetsUsesAndPairs`, `TestRewriteRefs_NoOpMapLeavesFileUntouched` | yes |
-| `TestRewriteRefs_Idempotent` | `TestRewriteRefs_SubstitutesTargetsUsesAndPairs`, `TestRewriteRefs_NoOpMapLeavesFileUntouched` | yes |
-| `TestRewriteRefs_NoOpMapLeavesFileUntouched` | `TestRewriteRefs_Idempotent` | no |
-| `TestRewriteRefs_ProseContainingKeyStringLeftUnmodified` | `TestRewriteRefs_SubstitutesTargetsUsesAndPairs`, `TestRewriteRefs_NoOpMapLeavesFileUntouched` | yes |
-| `TestParsePlan_GoldenFixture_PlanLevelSections` | `TestValidate_CardNumbering` | yes |
-| `TestParsePlan_PlanLevelSections_AbsentAreEmpty` | `TestParsePlan_CardHeading` | yes |
-| `TestParsePlan_VerifySection_ChainsEveryLine` | `TestValidate_CardNumbering` | yes |
-| `TestCardTargetDirs_UsesAreExcluded` | `TestCardTargetDirs` | yes |
-| `TestValidate_GoldenFixture_ZeroFindings` | `TestValidate_CardNumbering` | yes |
-| `TestValidate_FormatAndApproval` | `TestValidate_CardFieldEmpty`, `TestValidateFormat_NeverReportsApproval`, `TestValidate_FormatAndApprovalOrder` | yes |
-| `TestValidate_FormatAndApprovalOrder` | `TestValidate_FormatAndApproval`, `TestValidate_CardMissingField`, `TestValidate_CardTypeMissing`, `TestValidate_CardNumbering` | no |
-| `TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck` | `TestValidate_BareSymbolTarget`, `TestValidate_LanguageRecognized`, `TestValidate_CardMissingField`, `TestValidate_CardNumbering`, `TestValidate_CardTypeMissing` | no |
+| `TestNormalizeCard` | `TestValidate_GoldenFixture_ZeroFindings`, `TestParsePlan_CardFields` | yes |
+| `TestParsePlan_Overview` | `TestParsePlan_CardFields` | yes |
+| `TestParsePlanFrom` | `TestParsePlan_CardHeading`, `TestParsePlan_Overview_Errors` | yes |
+| `TestParsePlan_Card_SourcePath` | `TestParsePlan_CardFields` | yes |
+| `TestParsePlan_GoldenFixture` | `TestValidate_GoldenFixture_ZeroFindings` | yes |
+| `TestParsePlan_Language` | `TestParsePlan_CardFields`, `TestValidate_GoldenFixture_ZeroFindings` | yes |
+| `TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently` | `TestRewriteRefs_SubstitutesTargetsUsesAndPairs`, `TestRewriteRefs_NothingToSubstituteLeavesFileUntouched` | yes |
+| `TestParsePlan_PlanLevelSections` | `TestValidate_GoldenFixture_ZeroFindings`, `TestParsePlan_CardFields` | yes |
+| `TestParsePlan_VerifySection_ChainsEveryLine` | `TestValidate_GoldenFixture_ZeroFindings`, `TestSetApproved`, `TestParsePlan_CardFields` | yes |
+| `TestValidate_FormatAndApprovalOrder` | `TestValidate_FormatAndApproval`, `TestValidate_CustomCardBoundByGenericChecks`, `TestValidate_CardNumbering`, `TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck` | yes |
+| `TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck` | `TestValidate_BareSymbolTarget`, `TestValidate_LanguageRecognized`, `TestValidate_CardMissingField`, `TestValidate_CardTypeMissing`, `TestValidate_GoldenFixture_ZeroFindings` | no |
 | `TestValidate_CardTypeMissing` | `TestValidate_CardFieldEmpty`, `TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck` | yes |
 | `TestValidate_CardPathMalformed` | `TestValidate_ProsaSymbolTarget`, `TestValidate_RenamePairShape`, `TestValidate_HandleConsistency`, `TestValidate_CustomCardBoundByGenericChecks` | yes |
-| `TestValidate_RenameMechanicMissing` | `TestValidate_PathMissing`, `TestValidate_CardMissingField`, `TestValidate_RenameFormat` | no |
-| `TestValidate_CardMissingField` | `TestValidate_CardNumbering`, `TestValidate_RenameMechanicMissing`, `TestValidate_ProsaSymbolTarget` | yes |
+| `TestValidate_RenameMechanicMissing` | `TestValidate_PathMissing`, `TestValidate_CardMissingField`, `TestValidate_CardFieldEmpty` | no |
+| `TestValidate_CardMissingField` | `TestValidate_RenameMechanicMissing`, `TestValidate_ProsaSymbolTarget`, `TestValidate_CustomNotAlone`, `TestValidate_CustomCardBoundByGenericChecks` | yes |
 | `TestValidate_CardFieldOverlap` | `TestValidate_CardFieldEmpty`, `TestValidate_CustomCardBoundByGenericChecks` | yes |
-| `TestValidate_PathMissing` | `TestValidate_RenameMechanicMissing`, `TestValidate_CardNumbering`, `TestValidate_ProsaSymbolTarget` | yes |
+| `TestValidate_PathMissing` | `TestValidate_RenamePairShape`, `TestValidate_GoldenFixture_ZeroFindings`, `TestValidate_ProsaSymbolTarget`, `TestValidate_HandleConsistency` | yes |
 | `TestValidate_CommitSubjectMismatch` | `TestValidate_CardFieldEmpty`, `TestValidate_CustomCardBoundByGenericChecks` | yes |
 | `TestValidate_CustomCardBoundByGenericChecks` | `TestValidate_PathMissing`, `TestValidate_CardMissingField`, `TestValidate_CardPathMalformed`, `TestValidate_CardFieldOverlap`, `TestValidate_CommitSubjectMismatch` | no |
 | `TestValidate_LanguageRecognized` | `TestValidate_GlyphMalformed`, `TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck` | yes |
 | `TestValidate_BareSymbolTarget` | `TestValidate_ProsaSymbolTarget`, `TestValidate_HandleConsistency` | yes |
-| `TestValidate_DirectoryTarget` | `TestValidate_GlyphMalformed`, `TestValidate_ProsaSymbolTarget`, `TestValidate_RenamePairShape`, `TestCanonicalizeCard_ExtensionGate` | yes |
-| `TestValidate_PathMissing_Glyphs` | `TestValidate_HandleConsistency`, `TestValidate_ProsaSymbolTarget`, `TestValidate_GlyphMalformed`, `TestValidate_CardNumbering` | yes |
-| `TestValidate_CardPathMalformed_Glyphs` | `TestValidate_ProsaSymbolTarget` | yes |
-| `TestValidate_RootFilenameCanonicalizesEndToEnd` | `TestValidate_CardNumbering`, `TestValidate_ProsaSymbolTarget`, `TestCanonicalizeCard_ExtensionGate` | yes |
+| `TestValidate_DirectoryTarget` | `TestValidate_GlyphMalformed`, `TestValidate_ProsaSymbolTarget`, `TestValidate_RenamePairShape`, `TestCanonicalizeCard_SurfaceRefs` | yes |
+| `TestValidate_RootFilenameCanonicalizesEndToEnd` | `TestValidate_GoldenFixture_ZeroFindings`, `TestValidate_CardNumbering`, `TestValidate_ProsaSymbolTarget`, `TestCanonicalizeCard_Target` | yes |
 
 No coverage:
 
 - `TestValidate_ContainmentUnitOverlap_LanguageNone`: unclassifiable call
-- `TestCanonicalizeCard_ExtensionGate`: unclassifiable call
-- `TestCanonicalizeCard_RootFilenameSurfaceRefRecorded`: unclassifiable call
-- `TestCanonicalizeCard_GlyphNeverRootJoined`: unclassifiable call
-- `TestCanonicalizeCard_PlainPathAndFileSelfGlyphAgree`: unclassifiable call
+- `TestCanonicalizeCard_Target`: unclassifiable call
 - `TestCanonicalizeCard_SurfaceRefs`: unclassifiable call
-- `TestCanonicalizeCard_SurfaceRefsKeepsEveryLexemeOnOneCard`: unclassifiable call
 - `TestRefKindScan_CatchesSeededViolation`: spawns
 - `TestPlanOpScan_CatchesSeededViolation`: no blocks
 - `TestRefKindScan_RealTreeClean`: spawns
@@ -2845,63 +2029,45 @@ No coverage:
 - `TestRefKindEnumMatchesAllRefKinds`: spawns
 - `TestRefGateConstantsMatchLedger`: spawns
 - `TestLedgerCompleteness`: no blocks
-- `TestParsePlan_Language`: unclassifiable call
 
 ## internal/preflight
 
-18 tests, wall 1.20s, serial 5.08s.
+7 tests, wall 0.41s, serial 0.49s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestReport_AddFailure` | `TestCheckResolved_BranchMismatch` | yes |
-| `TestReport_AddFailure_Multiple` | `TestCheckResolved_BranchMismatch` | yes |
-| `TestReport_OKFailuresInvariant` | `TestCheckResolved_BranchMismatch` | yes |
+| `TestReport_AddFailure` | `TestCheckResolved_Failures` | yes |
 
 No coverage:
 
-- `TestCheckResolved_HealthyPair`: spawns
-- `TestCheckResolved_PrimeNameFailure`: spawns
-- `TestCheckResolved_Dirty`: spawns
-- `TestCheckResolved_FabricNotReady`: spawns
-- `TestCheckResolved_BranchMismatch`: spawns
-- `TestCheckResolved_BrokenJunction`: spawns
-- `TestCheckResolved_ConfigLoadFailed`: spawns
+- `TestHealthyHub`: spawns
+- `TestCheckResolved_Failures`: spawns
 - `TestCheckResolved_MissingOptionalJunctionIsAJunctionFault`: spawns
-- `TestCheck_SubpathAnchoredHubIsNotRejected`: spawns
-- `TestCheckResolved_MultipleSimultaneousFailures`: spawns
-- `TestPredicates_HealthyPair`: spawns
-- `TestPredicates_AtBoard`: spawns
 - `TestResolveMode`: spawns
 
 ## internal/preflightshed
 
-8 tests, wall 0.36s, serial 0.92s.
+5 tests, wall 0.20s, serial 0.19s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestFormatFailures` | `TestPreflight_BrokenPreconditionMapsToStuck` | yes |
-| `TestFormatFailures_NamesEveryCheckID` | `TestPreflight_BrokenPreconditionMapsToStuck` | yes |
+| `TestFormatFailures` | `TestPreflight_Scenario` | yes |
 | `TestNewPreflight_CarriesToldName` | `TestCall_CancelledAtEntryReturnsErrorNotStuck` | yes |
 
 No coverage:
 
-- `TestPreflight_AllPreconditionsPass`: spawns
-- `TestPreflight_BrokenPreconditionMapsToStuck`: spawns
-- `TestPreflight_CancelledDuringRunReturnsError`: spawns
+- `TestPreflight_Scenario`: spawns
 - `TestCall_CancelledAtEntryReturnsErrorNotStuck`: unclassifiable call
 - `TestWayForward`: unclassifiable call
 
 ## internal/proc
 
-8 tests, wall 0.01s, serial 0.00s.
+6 tests, wall 0.01s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestIsAlive_CurrentProcessIsAlive` | `TestIsAlive_ExitedProcessIsNotAlive` | yes |
+No candidates.
 
 No coverage:
 
-- `TestIsAlive_ExitedProcessIsNotAlive`: spawns
 - `TestKillPID_KillsLiveProcess`: spawns
 - `TestKillPID_DeadPIDReturnsError`: spawns
 - `TestHideWindowIsNoop`: spawns
@@ -2909,127 +2075,56 @@ No coverage:
 
 ## internal/quarrycli
 
-10 tests, wall 0.06s, serial 0.04s.
+7 tests, wall 0.02s, serial 0.01s.
 
 No candidates.
 
 No coverage:
 
 - `TestCommand_ExactChildSet`: unclassifiable call
-- `TestRunCLIIn_EachVerb_Success`: unclassifiable call
-- `TestRunCLIIn_Expand_Success`: unclassifiable call
+- `TestRunCLIIn_EachVerb_Answers`: unclassifiable call
 - `TestRunCLIIn_Resolve_PerGlyphAnswers`: unclassifiable call
 - `TestRunCLIIn_Glyphs_GoldenAgainstFacade`: unclassifiable call
-- `TestRunCLIIn_GlyphsText_GoldenAgainstFacade`: unclassifiable call
 - `TestRunCLIIn_GlyphsText_EmptyAnswer`: unclassifiable call
 - `TestRunCLIIn_GlyphsText_TestFileFilter`: unclassifiable call
-- `TestRunCLIIn_GlyphsText_MissingDir`: unclassifiable call
-- `TestRunCLIIn_TOC_RejectsTextFlag`: unclassifiable call
+- `TestRunCLIIn_TextFlagRefusals`: unclassifiable call
 
 ## internal/reedcli
 
-101 tests, wall 228.16s, serial 228.59s.
+33 tests, wall 43.12s, serial 75.06s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestWaitParentExit_ZeroPIDIsNoWait` | `TestNaming_TaskWorktreeRolesParentResumeAndRemove` | yes |
-| `TestWaitParentExit_ReturnsOnceGone` | `TestRemoveWaitPID_UnknownGUIDIsACleanNoOp`, `TestWaitPIDGone_GivesUpAtCap` | yes |
-| `TestEnsureWatchdogSpawned_SuppressedReturnsWithoutSpawning` | `TestNaming_TaskWorktreeRolesParentResumeAndRemove` | yes |
-| `TestStatuslineCmd_UseAndShort` | `TestList_HubWideDirectoryAndDrift` | yes |
-| `TestSessionsAreIdle` | `TestWatchdogIntegration_DownThenUpDoesNotKillDaemon` | yes |
-| `TestWorktreeRootGone` | `TestWatchdogReap_DescendantClosureConfirmedExited` | yes |
-| `TestHubIsLiveDir` | `TestWatchdogIntegration_DownThenUpDoesNotKillDaemon`, `TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth` | yes |
-| `TestWorktreeRootGoneAndHubIsLiveDir_StatErrorIsConservativeForBoth` | `TestWatchdogReap_DescendantClosureConfirmedExited`, `TestHubIsLiveDir` | no |
-| `TestWatchdogDefaultTiming` | `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock` | yes |
+| `TestWaitParentExit` | `TestRemove_UnknownGUID`, `TestWaitPIDGone_GivesUpAtCap` | yes |
+| `TestPlanSessionDiff` | `TestWatchdogDaemon` | yes |
+| `TestSessionsAreIdle` | `TestWatchdogDaemon` | yes |
+| `TestWatchdogDefaultTiming` | `TestWatchdogDaemon` | yes |
 
 No coverage:
 
-- `TestRunCLI_ResolvesLayoutAndConfig`: spawns
-- `TestRunCLI_AddNotUp_SelfHealsAndSucceeds`: spawns
-- `TestRunCLI_AddIfAbsentNoName_RejectsBeforeSessionCheck`: spawns
-- `TestRunCLI_AddIfAbsentNoCmd_StillRequiresCmd`: spawns
-- `TestRunCLI_RemoveNotUp_FriendlyError`: spawns
-- `TestRunCLI_StatusNotUp_EnrichedResumeHint`: spawns
-- `TestRunCLI_Watchdog_SkipsLocationResolution`: spawns
-- `TestRunCLI_Watchdog_RefusesAbsentAndRelativeHubPath`: spawns
+- `TestRunCLI_ColdHub`: spawns
+- `TestRunCLI_Watchdog_RefusesBadHubPath`: spawns
 - `TestRunCLI_NotAGitRepo`: spawns
-- `TestList_HubWideDirectoryAndDrift`: spawns
-- `TestNaming_TaskWorktreeRolesParentResumeAndRemove`: spawns
-- `TestNaming_PrimeStrandHasShortnameAndRoleAndNoParent`: spawns
-- `TestRemoveDetach_MarksRetiringBeforeSpawning`: unclassifiable call
-- `TestRemoveDetach_FailedSpawnClearsTheMark`: unclassifiable call
-- `TestRemoveDetach_FailedClearIsNamedInTheError`: unclassifiable call
-- `TestRemoveWaitPID_UnknownGUIDIsACleanNoOp`: unclassifiable call
-- `TestRemovePositional_UnknownGUIDStillErrors`: unclassifiable call
+- `TestStrandNamingAndList`: spawns
+- `TestRemoveDetach`: unclassifiable call
+- `TestRemove_UnknownGUID`: unclassifiable call
 - `TestStatus_ReportsRetiringPerStrand`: unclassifiable call
 - `TestRemoveCmd_FlagsDescribedAndPIDHidden`: unclassifiable call
-- `TestSmokeAttachRendersInsideHarnessPane`: spawns
-- `TestSmokeColdAddBootsAndAddsInOneCall`: spawns
-- `TestSmokeColdAddYieldsTheSameSubstrateAsAnExplicitBoot`: spawns
-- `TestSmokeColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession`: spawns
-- `TestSmokeColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand`: spawns
-- `TestSmokeColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted`: spawns
+- `TestSmokeColdStart`: spawns
 - `TestSmokeDebugLog`: spawns
-- `TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs`: spawns
 - `TestSmokeRepaintCandidateMeasurement`: spawns
-- `TestSmokeDotFillFloorIsCleanOnASettledAttach`: spawns
-- `TestSmokeDotFillResizeControl`: spawns
-- `TestSmokeDotFillResizeTreatment`: spawns
-- `TestSmokeDotFillCrossClientControl`: failed
-- `TestSmokeIfAbsentReopenIsIdempotent`: spawns
-- `TestSmokeUpAddStatusDown`: spawns
-- `TestSmokeStackedAddsKeepEverySessionPane`: spawns
+- `TestSmokeDotFill`: spawns
+- `TestSmokeLifecycle`: spawns
 - `TestSmokeRemoveLastStrandThenAddRunsTheNewCommand`: skipped
-- `TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable`: spawns
-- `TestSmokeStatusLineDisplaysRenderedText`: spawns
-- `TestSmokeSelvageSurvivesUpAddRemoveAndReconcile`: spawns
-- `TestSmokeForeignPaneIsReapedNotAdoptedByAdd`: spawns
-- `TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp`: spawns
-- `TestSmokeUpAfterScrubbedStateLeavesOnlyTheRebuiltSelvage`: spawns
 - `TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite`: spawns
-- `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd`: spawns
-- `TestSmokeRemoveByNameDetachedFromInsideStrand`: spawns
-- `TestSmokeSelvageSurvivesKillingEveryStrandPane`: spawns
-- `TestSmokeSelvageStaysPhysicallyBottomMostAcrossAddsAndRemoves`: spawns
-- `TestSmokeSelvageSurvivesCtrlCAtIdlePrompt`: spawns
-- `TestSmokeSelvageSurvivesCtrlCKillingAForegroundJob`: spawns
-- `TestSmokeStatusLinePinsIdentityAndPosition`: spawns
-- `TestSmokeStaleStateFileIsNotMistakenForLiveStrands`: spawns
-- `TestSmokeRenamedWorktreeRefusesRatherThanDoubleLaunching`: spawns
-- `TestSmokeNoSessionMessageDistinguishesAnUnreadableStateFromAnEmptyOne`: spawns
-- `TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume`: spawns
-- `TestSmokeDownReportsTheSessionItAbandons`: spawns
-- `TestSmokeRemoveNeverKillsASiblingWorktreesPane`: spawns
-- `TestSmokeUpgradeFromAPreRenameStateFileHealsInOneOp`: spawns
+- `TestSmokeSelvage`: spawns
+- `TestSmokeStateRecovery`: spawns
 - `TestSmokeStatuslineDeclinesStencilSeedPass`: spawns
-- `TestSmokeDownReleasesServerBeforeReturning`: spawns
-- `TestSmokeDownReapsPaneChildProcesses`: spawns
-- `TestSmokeDownForceKillsSighupImmunePaneChildren`: spawns
-- `TestSmokeDownLeavesNoTmuxOnSocket`: spawns
-- `TestSmokeRemoveReapsRemovedPaneChildProcesses`: spawns
-- `TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive`: spawns
-- `TestSmokeWarmAttachDoesNotReapAnOperatorsPane`: spawns
-- `TestSmokeWarmAttachSurvivesAConfigErrorButColdStillRefuses`: spawns
-- `TestSmokeWarmAttachWritesNoState`: spawns
-- `TestSmokeWarmAttachStillRefusesOnAnUnreadableStateFile`: spawns
-- `TestSmokeWarmAddIsUnchanged`: spawns
-- `TestUnlessName_LiveOrchSkipsAndDisturbsNothing`: spawns
-- `TestUnlessName_NoOrchAddsAsToday`: spawns
-- `TestUnlessName_DeadOrchPaneAdds`: spawns
-- `TestWatchdogIntegration_SingleInstanceLockContentionAndUnusableLockPath`: spawns
-- `TestWatchdogIntegration_DiscoversAndDropsDepartedSessions`: spawns
-- `TestWatchdogIntegration_ExitsAfterIdleCyclesAndReleasesLock`: spawns
-- `TestWatchdogIntegration_OffWorktreeEntersKnownButStartsNoWatcher`: spawns
-- `TestWatchdogIntegration_ResizeAppliesOnlyToThatWorktree`: spawns
-- `TestWatchdogIntegration_WritesDiagnosticsIntoHubLogsDir`: spawns
-- `TestWatchdogIntegration_DownThenUpDoesNotKillDaemon`: spawns
-- `TestWatchdogIntegration_ReEntryReReadsFlippedConfig`: spawns
-- `TestWatchdogIntegration_AttachAndResumeAttemptTheSpawn`: spawns
-- `TestWatchdogReap_EndToEndAndSiblingSurvives`: spawns
-- `TestWatchdogReap_NeverEnteredOrphanIsStillReaped`: spawns
-- `TestWatchdogReap_EmptyShellStillReaps`: spawns
-- `TestWatchdogReap_DescendantClosureConfirmedExited`: spawns
-- `TestWatchdogReap_LoopStaysLiveDuringReap`: spawns
+- `TestSmokeTeardown`: spawns
+- `TestSmokeWarmPath`: spawns
+- `TestUnlessName`: spawns
+- `TestWatchdogDaemon`: spawns
+- `TestWatchdogReap`: spawns
 
 ## internal/reedengine
 
@@ -3168,31 +2263,11 @@ No coverage:
 
 ## internal/reedengine/render
 
-34 tests, wall 0.01s, serial 0.00s.
+12 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestLayoutChecksum` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestFocusTarget_ColdBootstrapFallsThroughToBottomMost` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestFocusTarget_ReentrantBootstrapFocusesTheDeepestStrand` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestFocusTarget_PersistedFocusFlagWinsRegardlessOfDepth` | `TestRulesFocusPrefersDeclaredFocusStrandOverDefault` | yes |
-| `TestStackHeightsFillBoxAndCollapsedEqualsParam` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestStackHeightsOneStrandGetsTheWholeBox` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestStackHeightsTwoStrandsGetCollapsedPlusRest` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestStackHeightsAddingAThirdKeepsTheFirstPaneHeight` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestStackHeightsRemovingTheBottomMostExpandsTheOneAbove` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestStackHeightsAndBuildStackBodyIntegration` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestFixedHeightPinsOrdersTheSelvagePinFirstThenEveryCollapsedPin` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestSelvageBandCellOffsetsSumToTheBoxWithDivider` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestOrderStackSiblingInsertionOrder` | `TestBreakCyclesTerminatesAndKeepsEveryStrand` | yes |
-| `TestRulesClampedRowNeverEmitsANonPositiveCellHeight` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestRulesOwnWindowReturnsError` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestRulesFocusPrefersDeclaredFocusStrandOverDefault` | `TestFixedHeightPinsMatchesRulesPlacedHeights`, `TestFocusTarget_PersistedFocusFlagWinsRegardlessOfDepth` | no |
-| `TestRulesIsPureRepeatedCallsMatch` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestRulesSelvageBandEnumeratesEveryStrandCellPlusSelvage` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestRulesSelvageWithNoPlacedStrandClaimsWholeBoxAsSoleCell` | `TestFixedHeightPinsMatchesRulesPlacedHeights`, `TestRulesGolden` | yes |
-| `TestRulesNoSelvagePreservesPreSelvageBehavior` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
-| `TestRulesOrdersTheStackByInsertionNotParentChain` | `TestFixedHeightPinsMatchesRulesPlacedHeights` | yes |
 | `TestRules_NeverEmitsOnePaneNumberTwice` | `TestFixedHeightPinsMatchesRulesPlacedHeights`, `TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide` | no |
 | `TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide` | `TestRules_NeverEmitsOnePaneNumberTwice` | yes |
 
@@ -3203,29 +2278,17 @@ No coverage:
 
 ## internal/selfreportcli
 
-13 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.01s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestRunCreate_HappyPath` | `TestRunCreate_NumberParsing` | yes |
-| `TestRunCreate_CustomLabels` | `TestRunCreate_NumberParsing` | yes |
-| `TestRunCreate_BodyOmitted` | `TestRunCreate_NumberParsing` | yes |
-| `TestRunCreate_WrongArgCount` | `TestGroup_UnknownSubcommandRefuses` | yes |
-| `TestRunCreate_NumberOmittedWhenZero` | `TestRunCreate_NumberParsing` | yes |
-| `TestRunCreate_NumberParsing` | `TestRunCreate_BodyOmitted` | no |
+No candidates.
 
-No coverage:
-
-- `TestGroup_BareListsCreate`: failed
+No test lacks coverage.
 
 ## internal/selfreportengine
 
-13 tests, wall 0.03s, serial 0.00s.
+11 tests, wall 0.01s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestDefaultLabels_ReturnsBug` | `TestDefaultLabels_ReturnsFreshSlice` | yes |
-| `TestDefaultLabels_ReturnsFreshSlice` | `TestDefaultLabels_ReturnsBug` | no |
+No candidates.
 
 No coverage:
 
@@ -3236,7 +2299,6 @@ No coverage:
 - `TestCommentAndClose_FailedCloseNamesPostedComment`: unclassifiable call
 - `TestInboxCalls_TokenNotResolvable`: unclassifiable call
 - `TestCreateIssue_Success`: unclassifiable call
-- `TestCreateIssue_NoBodyOmitsField`: unclassifiable call
 - `TestCreateIssue_TokenNotResolvable`: unclassifiable call
 - `TestCreateIssue_NetworkFailure`: unclassifiable call
 - `TestCreateIssue_NonSuccessResponse`: unclassifiable call
@@ -3316,35 +2378,24 @@ No test lacks coverage.
 
 ## internal/shedbuild
 
-23 tests, wall 0.02s, serial 0.00s.
+13 tests, wall 0.01s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestLoad_AbsolutePathNamingNoFileErrors` | `TestLoad_DirectoryPathErrors` | yes |
-| `TestLoad_DirectoryPathErrors` | `TestLoad_AbsolutePathNamingNoFileErrors` | no |
-| `TestParse_UnknownKeyDeterminism` | `TestParse_ValueAndErrorCases` | yes |
+No candidates.
 
 No coverage:
 
 - `TestBuild_EveryRegisteredEngineBuilds`: spawns
-- `TestBuild_SingleStubRow`: unclassifiable call
-- `TestBuild_UnknownEngine`: unclassifiable call
-- `TestBuild_ConstructorErrorWrapsRowIndexAndName`: spawns
-- `TestBuild_NonEmptyConfigOnNoConfigEngineErrors`: spawns
-- `TestBuild_MultiRowBuildOrderMatchesRecipeOrder`: unclassifiable call
-- `TestBuild_EmptyProducers`: unclassifiable call
-- `TestCheck_CleanGraphReturnsNoFindings`: unclassifiable call
-- `TestCheck_DanglingTargetForwardsEntryAndTerminals`: unclassifiable call
+- `TestBuild_RowsCarryRoutingInRecipeOrder`: unclassifiable call
+- `TestBuild_Errors`: spawns
+- `TestCheck_ForwardsEntryAndTerminals`: unclassifiable call
 - `TestNewShed_FieldCompleteAssembly`: spawns
 - `TestNewShed_EmptyProducersErrorsWithoutDoublePrefix`: spawns
-- `TestNewShed_TransientClassifier`: spawns
-- `TestNewShed_CopiesRunIDAndMissingStatusWayForward`: spawns
 - `TestRoutingOf_MatchesNewShedRowForRow`: spawns
 - `TestToldGeometryInvariant_AllowlistOnly`: spawns
 
 ## internal/shedcheck
 
-3 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
@@ -3354,78 +2405,44 @@ No coverage:
 
 ## internal/shedcli
 
-35 tests, wall 3.27s, serial 3.25s.
+17 tests, wall 0.98s, serial 0.96s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto` | `TestArmFromSeed_AbsentSeedRefusesWithListing` | yes |
-| `TestResolveSeedDriver` | `TestWriteSeed_BattenSeedIsRefusedOutsidePrime`, `TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability` | yes |
-| `TestRecipes_KeySetIsExactlyLoomAndBatten` | `TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames` | yes |
-| `TestRecipes_VerbsIsSubsetOfGenericVerbs` | `TestArmFromSeed_RefusalPrecedence` | yes |
-| `TestRecipes_KeySetMatchesShedrunVocabulary` | `TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames`, `TestArmFromSeed_AbsentSeedRefusesWithListing` | yes |
-| `TestRecipes_BootstrapVerbMatchesOwningModuleConstant` | `TestArmFromSeed_RefusalPrecedence` | yes |
-| `TestRecipes_SeedLocationRuleMatchesTheRecipesOwnVerbs` | `TestArmFromSeed_AbsentSeedRefusesWithListing` | yes |
-| `TestRecipes_BootstrapVerbHasBothAnEmptyAndANonEmptyEntry` | `TestArmFromSeed_AbsentSeedRefusesWithListing` | yes |
-| `TestLookup_UnknownNameNamesTheAvailableRecipes` | `TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames` | yes |
+| `TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto` | `TestArmFromSeed_MissingRunRefusalCarriesNoKindField` | yes |
+| `TestResolveSeedDriver` | `TestParity_Scenario`, `TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability` | yes |
+| `TestRecipes_KeySet` | `TestArmFromSeed_RefusalPrecedence` | yes |
+| `TestRecipes_Entries` | `TestArmFromSeed_RefusalPrecedence` | yes |
 
 No coverage:
 
 - `TestArmFromSeed_RunIDDefaultsToSelf`: unclassifiable call
-- `TestArmFromSeed_AbsentSeedRefusesWithListing`: unclassifiable call
-- `TestArmFromSeed_SeedNamingUnknownRecipeRefusesWithAvailableNames`: unclassifiable call
-- `TestArmFromSeed_VerbGateFiresForAnExcludedVerb`: unclassifiable call
 - `TestArmFromSeed_MissingRunRefusalCarriesNoKindField`: unclassifiable call
 - `TestArmFromSeed_RefusalPrecedence`: unclassifiable call
-- `TestParity_LoomRun_NoStatusFile`: spawns
-- `TestParity_LoomStep_RunLockBusy`: spawns
-- `TestParity_BattenStep_RunLockBusy`: spawns
-- `TestParity_LoomStatus_Seeded`: spawns
-- `TestParity_LoomPause_Seeded`: spawns
-- `TestParity_BattenRun_StateDone`: spawns
 - `TestParity_PositionalArgs`: unclassifiable call
-- `TestParity_LightweightWiring_StatusSucceedsWhenRunRefuses`: spawns
-- `TestWriteSeed_BattenSeedIsRefusedOutsidePrime`: spawns
+- `TestParity_Scenario`: spawns
 - `TestWriteSeed_SucceedsWithNoSeedPresent`: unclassifiable call
 - `TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames`: unclassifiable call
 - `TestWriteSeed_RecipeLocationRuleGatesTheWrite`: unclassifiable call
 - `TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability`: unclassifiable call
-- `TestWriteSeed_LLMDriverOnTheRealTableRoundTrips`: unclassifiable call
-- `TestWriteSeed_IdempotentAgainstAnIdenticalSeed`: unclassifiable call
-- `TestWriteSeed_RefusesADisagreeingSeed`: unclassifiable call
+- `TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne`: unclassifiable call
 - `TestWriteSeed_RefusesFabricsOwnCheckouts`: unclassifiable call
 - `TestTable_NoInitNoRegisterSeam`: spawns
 
 ## internal/shedengine
 
-152 tests, wall 0.08s, serial 0.02s.
+130 tests, wall 0.04s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestHistoryEntry_MissingBudgetExemptDecodesAndCounts` | `TestEpisodeStuckCount_GotoAbsentTargetResetsNothing` | yes |
-| `TestEpisodeStuckCount_SegmentDoneEndsEpisode` | `TestEpisodeStuckCount_GotoAbsentTargetResetsNothing`, `TestRun_EpisodeResetsOnProducersOwnDone` | yes |
-| `TestGoto_MovesBlockedRunToTarget` | `TestGoto_RunningRunRefusedUntilPaused` | yes |
-| `TestGoto_UnknownTargetListsValidNames` | `TestGoto_RunningRunRefusedUntilPaused`, `TestStep_UnknownCurrentProducerNamesGoto`, `TestGoto_RunLockHeldRefusesAndLeavesFile` | yes |
-| `TestGoto_MissingStatusFileNamesSeeding` | `TestGoto_RunningRunRefusedUntilPaused`, `TestStep_MissingStatusFileNamesSeeding`, `TestGoto_MissingStatusFileUsesToldWayForward` | yes |
-| `TestGoto_BlockedAtBouncerRefusesForwardRows` | `TestGoto_RemovedCurrentRowUsesLatestHistoryEntry`, `TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow` | yes |
-| `TestGoto_BlockedAtOffshootAdmitsPartnerNotSuccessor` | `TestGoto_RemovedCurrentRowUsesLatestHistoryEntry`, `TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow` | yes |
-| `TestGoto_MissingStatusFileUsesToldWayForward` | `TestGoto_MissingStatusFileNamesSeeding`, `TestStep_ToldMissingStatusWayForward` | no |
-| `TestEpisodeStuckCount_GotoResetsSegment` | `TestEpisodeStuckCount_StuckAfterGotoCountsFromOne` | yes |
-| `TestEpisodeStuckCount_GotoOtherSegmentResetsNeither` | `TestEpisodeStuckCount_GotoAbsentTargetResetsNothing`, `TestEpisodeStuckCount_StuckAfterGotoCountsFromOne` | yes |
-| `TestEpisodeStuckCount_GotoUnsegmentedResetsOnlyThatRow` | `TestEpisodeStuckCount_GotoAbsentTargetResetsNothing`, `TestEpisodeStuckCount_StuckAfterGotoCountsFromOne` | yes |
-| `TestEpisodeStuckCount_StuckAfterGotoCountsFromOne` | `TestEpisodeStuckCount_GotoUnsegmentedResetsOnlyThatRow` | no |
-| `TestAppendOrFold_Fold` | `TestStep_AwaitingEndsAFold` | yes |
-| `TestAppendOrFold_FoldsEqualGateAttempts` | `TestStep_AwaitingEndsAFold` | yes |
+| `TestHistoryEntry_MissingBudgetExemptDecodesAndCounts` | `TestEpisodeStuckCount_GotoResets` | yes |
+| `TestEpisodeStuckCount_SegmentDoneEndsEpisode` | `TestEpisodeStuckCount_GotoResets`, `TestRun_EpisodeResetsOnProducersOwnDone` | yes |
+| `TestGoto_MovesBlockedRunToTarget` | `TestGoto_BlockedRunAdmitsOnlyEarlierRows` | yes |
 | `TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh` | `TestStep_AwaitingEndsAFold` | yes |
 | `TestAppendOrFold_InputUnchanged` | `TestStep_AwaitingEndsAFold` | yes |
 | `TestEpisodeStuckCount_FoldedEqualsUnfolded` | `TestStep_ExemptStuckInterleavedWithinBudget`, `TestRun_EpisodeResetsOnProducersOwnDone` | yes |
 | `TestHistoryEntry_FoldFieldsOmittedWhenZero` | `TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow` | yes |
-| `TestProgressAt_StraightLine` | `TestProgressAt_TerminalHasEmptyRemaining` | yes |
-| `TestProgressAt_SegmentCountedOnce` | `TestProgressAt_TerminalHasEmptyRemaining` | yes |
-| `TestProgressAt_BurlerMapsToSegment` | `TestBounces_BurlerReportsMainLineRow`, `TestProgressAt_UnknownProducer`, `TestProgressAt_TerminalHasEmptyRemaining` | yes |
-| `TestProgressAt_TerminalHasEmptyRemaining` | `TestProgressAt_BurlerMapsToSegment` | no |
-| `TestProgressAt_CyclicOnDone` | `TestProgressAt_TerminalHasEmptyRemaining` | yes |
-| `TestStatus_WriteReadCycleThroughState` | `TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow` | yes |
-| `TestMarkTransient_LeavesUnmarked` | `TestStep_EmptyClassPersistsEmpty` | yes |
+| `TestProgressAt_CyclicOnDone` | `TestProgressAt` | yes |
 
 No coverage:
 
@@ -3445,15 +2462,18 @@ No coverage:
 - `TestStep_ExemptStuckAfterBudgetFullySpent`: unclassifiable call
 - `TestStep_ExemptStuckWithoutOnStuckStillBlocks`: unclassifiable call
 - `TestStep_NonStuckOutcomeIgnoresBudgetExempt`: unclassifiable call
-- `TestStep_GateAttempts_StuckExhaustion_PersistsCount`: unclassifiable call
-- `TestStep_GateAttempts_PassAfterRetry_PersistsCount`: unclassifiable call
-- `TestStep_GateAttempts_PassedFirstTry_ZeroIsShownNotOmitted`: unclassifiable call
-- `TestStep_GateAttempts_UngatedProducer_OmitsField`: unclassifiable call
+- `TestStep_GateAttempts`: unclassifiable call
+- `TestGoto_RefusalNamesWayForward`: unclassifiable call
+- `TestGoto_MissingStatusFileWayForward`: unclassifiable call
 - `TestGoto_StepResumesAtTarget`: unclassifiable call
 - `TestStep_UnknownCurrentProducerNamesGoto`: unclassifiable call
 - `TestStep_BudgetExhaustionNamesGotoAndGotoRestoresBudget`: unclassifiable call
 - `TestGoto_RunningRunRefusedUntilPaused`: unclassifiable call
+- `TestGoto_BlockedRunAdmitsOnlyEarlierRows`: unclassifiable call
+- `TestEpisodeStuckCount_GotoResets`: unclassifiable call
+- `TestAppendOrFold_Folds`: unclassifiable call
 - `TestAppendOrFold_Appends`: unclassifiable call
+- `TestProgressAt`: unclassifiable call
 - `TestRun_CommitStatusCalledOnEveryWritePath`: unclassifiable call
 - `TestRun_CommitStatusNilIsSilentNoOp`: unclassifiable call
 - `TestRun_CommitStatusErrorHaltsRunWithWriteAlreadyDurable`: unclassifiable call
@@ -3509,9 +2529,7 @@ No coverage:
 - `TestRun_StuckReasonReachesResult`: unclassifiable call
 - `TestStatus_JSONRoundTrip`: no blocks
 - `TestState_Valid`: unclassifiable call
-- `TestStepRunEquivalence_ReachesDone`: unclassifiable call
-- `TestStepRunEquivalence_ReachesBlocked`: unclassifiable call
-- `TestStepRunEquivalence_BouncesBeforeDone`: unclassifiable call
+- `TestStepRunEquivalence`: unclassifiable call
 - `TestStep_ExemptStuckFoldsIntoOneEntry`: unclassifiable call
 - `TestStep_FoldRecomposesActivityLast`: unclassifiable call
 - `TestStep_FoldingStepCommitsOnce`: unclassifiable call
@@ -3540,27 +2558,21 @@ No coverage:
 - `TestStep_BudgetArmIgnoresProducerReason`: unclassifiable call
 - `TestStep_ToldRunIDNamesGotoWithRunID`: unclassifiable call
 - `TestStep_ToldMissingStatusWayForward`: unclassifiable call
-- `TestStep_TransientClassPersisted`: unclassifiable call
-- `TestStep_EmptyClassPersistsEmpty`: unclassifiable call
-- `TestStep_NilClassifierLeavesUnmarked`: unclassifiable call
+- `TestMarkTransient`: unclassifiable call
+- `TestStep_TransientClassification`: unclassifiable call
 - `TestStep_ResumeClearsTransient`: unclassifiable call
 - `TestStep_VerdictsNeverClassify`: unclassifiable call
 - `TestShed_Validate`: unclassifiable call
 
 ## internal/shedrecipe
 
-97 tests, wall 0.14s, serial 0.06s.
+94 tests, wall 0.05s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestConfigRejectUnknown` | `TestBurlerRoundEntry_FileSetErrorsNameTheirOwnMap` | yes |
-| `TestRequireAbsRoot` | `TestResolveGateSpec_ParentReviewMissingEnv` | yes |
-| `TestRequireNonEmpty` | `TestResolveGateSpec_ParentReviewMissingEnv` | yes |
-| `TestRequireSeam` | `TestDescribeEntry_ConstructionFailures` | yes |
-| `TestNames` | `TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted` | yes |
-| `TestRegistry_ShipsExpectedEntries` | `TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted` | yes |
-| `TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted` | `TestCoverageGuard_AllowlistDoesNotDrift` | no |
-| `TestCoverageGuard_AllowlistDoesNotDrift` | `TestCoverageGuard_EveryRegisteredEngineIsReachedOrAllowlisted` | yes |
+| `TestRequireHelpers` | `TestResolveGateSpec_ParentReviewMissingEnv`, `TestDescribeEntry_ConstructionFailures` | yes |
+| `TestNames` | `TestCoverageGuard` | yes |
 
 No coverage:
 
@@ -3585,6 +2597,7 @@ No coverage:
 - `TestBouncerEntry_SkipSeam`: unclassifiable call
 - `TestBouncerEntry_ApproveSeam`: unclassifiable call
 - `TestBouncerEntry_ClusterExcludes`: unclassifiable call
+- `TestBouncerEntry_ParentNamePassesToJudgePrompt`: unclassifiable call
 - `TestBouncerEntry_CirclingReasonSlugAndBudget`: unclassifiable call
 - `TestBurlerRoundEntry_HappyPath`: unclassifiable call
 - `TestBurlerRoundEntry_ProfileMapping`: unclassifiable call
@@ -3647,61 +2660,36 @@ No coverage:
 
 ## internal/shedrun
 
-44 tests, wall 0.02s, serial 0.00s.
+22 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestRunDir` | `TestDriveReportsRel` | yes |
-| `TestSeedFile` | `TestReadSeed_Absent` | yes |
-| `TestScratchDir` | `TestLastCommitMarker` | yes |
-| `TestRunLock` | `TestPrimeRunLock_NeverEqualsRunOrStatusLock` | yes |
-| `TestStatusLock` | `TestPrimeRunLock_NeverEqualsRunOrStatusLock` | yes |
-| `TestSeedRel` | `TestDriveReportsRel`, `TestRunsRootRel` | yes |
-| `TestStatusRel` | `TestDriveReportsRel`, `TestRunsRootRel` | yes |
-| `TestDriveReportsDir` | `TestDriveReportsRel` | yes |
-| `TestPrimeRunLock` | `TestPrimeRunLock_NeverEqualsRunOrStatusLock` | yes |
-| `TestRunLock_NeverEqualsStatusLock` | `TestPrimeRunLock_NeverEqualsRunOrStatusLock` | yes |
-| `TestPrimeRunLock_NeverEqualsRunOrStatusLock` | `TestRunLock_NeverEqualsStatusLock`, `TestPrimeRunLock` | no |
+| `TestLocksAreDistinct` | `TestPathConstructors`, `TestRunDirResolution` | yes |
 | `TestResolveRunID` | `TestParkMarker` | yes |
-| `TestResolveRunID_LegacyDirStillAnswersSlug` | `TestDriveReportsRel` | yes |
-| `TestRunDir_SelfAndSlugAddressSlugDirForNewRun` | `TestWriteSeed_RefusesDisagreeingSeed` | yes |
-| `TestRunDir_SlugDirWinsOverLegacy` | `TestReadSeed_AbsentDriverDefaultsToGo` | yes |
-| `TestRunDir_OtherRunIDUnaffectedByLegacy` | `TestList` | yes |
-| `TestSelfResolvesAgainstTheToldLocation` | `TestWriteSeed_RefusesDisagreeingSeed`, `TestRunsRootRel` | yes |
-| `TestWriteSeed_ReadSeed_RoundTrip_LLMDriver` | `TestWriteSeed_ReadSeed_RoundTrip` | yes |
-| `TestValidateDriver` | `TestList`, `TestValidateDriver_UnknownNamesBothLegalValues` | yes |
-| `TestValidateDriver_UnknownNamesBothLegalValues` | `TestValidateDriver` | no |
+| `TestSelfResolvesAgainstTheToldLocation` | `TestWriteSeed_RefusesDisagreeingSeed`, `TestPathConstructors` | yes |
 | `TestRecipeNames` | `TestList` | yes |
-| `TestWriteSeed_IdempotentAgainstIdenticalSeed` | `TestWriteSeed_RefusesDisagreeingSeed` | yes |
-| `TestReadSeed_LegacyParentKeyDecodesAndIsDropped` | `TestWriteSeed_ReadSeed_RoundTrip` | yes |
-| `TestWriteSeed_AgreesWithExistingSeedCarryingLegacyParent` | `TestWriteSeed_RefusesDisagreeingSeed` | yes |
 
 No test lacks coverage.
 
 ## internal/shedtransient
 
-3 tests, wall 0.00s, serial 0.00s.
+2 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestMark_NeverDoubleWraps` | `TestClassAndMark` | yes |
+No candidates.
 
 No test lacks coverage.
 
 ## internal/shedverbs
 
-71 tests, wall 0.04s, serial 0.00s.
+65 tests, wall 0.02s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestBinaryChanged` | `TestLastStepOf_BuildIdentity` | yes |
-| `TestRenderStatusHuman_NoRoutingOmitsProgress` | `TestRenderStatusHuman` | yes |
-| `TestPauseCmd_AbsentFile` | `TestPauseCmd_EnsureStatusLockDir` | yes |
 | `TestRenderStatusLine_LabelAndOptionalTails` | `TestRenderStatusLine_ProducerReasonReachesWait` | yes |
 | `TestUnavailableLine_DedupesAcrossPolls` | `TestPrintStatusLinesOnChange_LineSequences` | yes |
 | `TestStepEnvelope_KeySetIsClosed` | `TestStepCmd_AfterStep` | yes |
-| `TestStepEnvelope_ContinueDerivedFromState` | `TestStepCmd_AfterStep` | yes |
-| `TestStepEnvelope_FieldMapping` | `TestStepCmd_AfterStep` | yes |
+| `TestStepEnvelope_FieldMapping` | `TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord` | yes |
 | `TestStepKinds_IsExactlyFive` | `TestEnsureStatusLockDir_ErrorReusesToldPrefix` | yes |
 | `TestLastStepOf_BuildIdentity` | `TestStatusCmd_LastStepCarriesBuildIdentity`, `TestBinaryChanged` | no |
 
@@ -3734,7 +2722,6 @@ No coverage:
 - `TestStatusCmd_DecodeErrorPrefixIsTold`: unclassifiable call
 - `TestStatusCmd_EnsureStatusLockDir_True`: unclassifiable call
 - `TestStatusCmd_EnsureStatusLockDir_False`: unclassifiable call
-- `TestPrintStatusLinesOnChange_ChangeOnlyPrinting`: unclassifiable call
 - `TestPrintStatusLinesOnChange_LineSequences`: unclassifiable call
 - `TestStatusCmd_WatchAgainstAbsentFile_ReturnsDispositionImmediately`: unclassifiable call
 - `TestStatusCmd_FoundEnvelope_GenericCore`: unclassifiable call
@@ -3756,7 +2743,7 @@ No coverage:
 - `TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress`: unclassifiable call
 - `TestStepCmd_TraceFileHoldsBoundaryRecords`: unclassifiable call
 - `TestStepCmd_InflightRecordExistsWhileProducerRuns`: unclassifiable call
-- `TestStepCmd_EnvelopeRecordEqualsPrintedLine`: unclassifiable call
+- `TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord`: unclassifiable call
 - `TestStepCmd_NoStepsDirKeepsNoRecords`: unclassifiable call
 - `TestStepCmd_RecordWriteFailureLeavesEnvelopeUnchanged`: unclassifiable call
 - `TestStatusCmd_LastStep`: unclassifiable call
@@ -3764,44 +2751,32 @@ No coverage:
 
 ## internal/shell
 
-20 tests, wall 0.01s, serial 0.00s.
+11 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
 No coverage:
 
-- `TestPwshShell_Quote`: unclassifiable call
-- `TestPosixShell_Quote`: unclassifiable call
-- `TestPwshShell_Invoke`: unclassifiable call
-- `TestPosixShell_Invoke`: unclassifiable call
-- `TestPwshShell_WithEnv`: unclassifiable call
-- `TestPosixShell_WithEnv`: unclassifiable call
-- `TestPwshShell_Touch`: unclassifiable call
-- `TestPosixShell_Touch`: unclassifiable call
-- `TestPosixShell_ExportEnv`: unclassifiable call
-- `TestPwshShell_ExportEnv`: unclassifiable call
-- `TestPosixShell_PrependPathEntry`: unclassifiable call
-- `TestPwshShell_PrependPathEntry`: unclassifiable call
-- `TestShellChain`: unclassifiable call
+- `TestShell_Quote`: unclassifiable call
+- `TestShell_Invoke`: unclassifiable call
+- `TestShell_WithEnv`: unclassifiable call
+- `TestShell_Touch`: unclassifiable call
+- `TestShell_ExportEnv`: unclassifiable call
+- `TestShell_PrependPathEntry`: unclassifiable call
+- `TestShell_Chain`: unclassifiable call
+- `TestShell_Source`: unclassifiable call
+- `TestShell_EnvRef`: unclassifiable call
+- `TestShell_ScriptExt`: unclassifiable call
 - `TestForGOOS`: unclassifiable call
-- `TestPosixShell_Source`: unclassifiable call
-- `TestPwshShell_Source`: unclassifiable call
-- `TestPosixShell_EnvRef`: unclassifiable call
-- `TestPwshShell_EnvRef`: unclassifiable call
-- `TestPosixShell_ScriptExt`: unclassifiable call
-- `TestPwshShell_ScriptExt`: unclassifiable call
 
 ## internal/shuttlecli
 
-9 tests, wall 0.04s, serial 0.03s.
+7 tests, wall 0.01s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestRunCLI_Interrupt_ArgValidation` | `TestRunCLI_Send_ArgValidation` | yes |
-| `TestRunCLI_Send_ArgValidation` | `TestRunCLI_Interrupt_ArgValidation` | no |
-| `TestIdentityFields_NilBeforeAnyStrandExists` | `TestRunCmd_EffortFlag` | yes |
-| `TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel` | `TestRunCLI_Run_FlagValidation` | yes |
-| `TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty` | `TestRunCLI_Run_FlagValidation` | yes |
+| `TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel` | `TestRunCLI_PositionalArgValidation` | yes |
+| `TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty` | `TestRunCLI_PositionalArgValidation` | yes |
 
 No test lacks coverage.
 
@@ -3870,45 +2845,25 @@ No test lacks coverage.
 
 ## internal/shuttleengine/claudeengine
 
-99 tests, wall 0.41s, serial 0.38s.
+85 tests, wall 0.08s, serial 0.06s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestClaudeProjectDirFor_EncodesNonAlnumBytes` | `TestAuditForksIncremental_NilMapEquivalentToAuditForks` | yes |
-| `TestBuildLaunchCmd` | `TestPrepare_AppendSystemPromptMatchesDenyNotice`, `TestPrepare_ResumeSessionID`, `TestBuildResumeCmd` | yes |
-| `TestValidateEffort` | `TestPrepare_BadEffortRejectedBeforeArtifacts`, `TestPrepare_ResumeSessionID`, `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestBuildResumeCmd` | `TestBuildResumeCmd_NoticePosix`, `TestPrepare_ResumeSessionID`, `TestBuildLaunchCmd` | no |
+| `TestBuildLaunchCmd` | `TestPrepare_ThreadsSpecIntoLaunchCmds`, `TestBuildResumeCmd` | yes |
+| `TestValidateEffort` | `TestPrepare_RejectedBeforeArtifacts`, `TestPrepare_ThreadsSpecIntoLaunchCmds` | yes |
+| `TestBuildResumeCmd` | `TestPrepare_ThreadsSpecIntoLaunchCmds`, `TestBuildLaunchCmd` | no |
 | `TestBuildResumeCmd_NoticePosix` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestValidatePermissionMode` | `TestPrepare_PermissionModeThreadsIntoBothLines`, `TestPrepare_BadPermissionModeRejectedBeforeArtifacts` | no |
-| `TestModelSwitchSequence_ShapeAndVerbatimModel` | `TestModelSwitchSequence_NoKeyPresses` | no |
-| `TestModelSwitchSequence_NoKeyPresses` | `TestModelSwitchSequence_ShapeAndVerbatimModel` | yes |
-| `TestPrepare_ValidEffortLandsInLaunchCmd` | `TestPrepare_AppendSystemPromptMatchesDenyNotice`, `TestPrepare_ResumeSessionID` | yes |
-| `TestPrepare_EmptyEffortEmitsNoFlag` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestPrepare_ModelAndVersionComposePinnedID` | `TestPrepare_AppendSystemPromptMatchesDenyNotice`, `TestPrepare_ResumeSessionID`, `TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts`, `TestResolveModelID` | yes |
-| `TestPrepare_ForkSubagentsThreadsIntoLaunchCmd` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestPrepare_AppendSystemPromptMatchesDenyNotice` | `TestBuildSettings_AllowAgentTool`, `TestPrepare_WritesArtifactsAndReturnsConsistentLaunch`, `TestPrepare_PermissionModeThreadsIntoBothLines`, `TestBuildDenyNotice_MatchesInstalledDenies` | no |
-| `TestPrepare_PermissionModeThreadsIntoBothLines` | `TestPrepare_AppendSystemPromptMatchesDenyNotice`, `TestPrepare_ResumeSessionID`, `TestPrepare_BadPermissionModeRejectedBeforeArtifacts`, `TestValidatePermissionMode` | yes |
-| `TestPrepare_EmptyResumeSessionIDKeepsSessionIDLine` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
+| `TestValidatePermissionMode` | `TestPrepare_RejectedBeforeArtifacts`, `TestPrepare_ThreadsSpecIntoLaunchCmds` | yes |
+| `TestPrepare_AppendSystemPromptMatchesDenyNotice` | `TestPrepare_ThreadsSpecIntoLaunchCmds`, `TestPrepare_WritesArtifactsAndReturnsConsistentLaunch`, `TestBuildDenyNotice_MatchesInstalledDenies` | no |
+| `TestPrepare_ResumeSessionID` | `TestPrepare_ThreadsSpecIntoLaunchCmds`, `TestPrepare_SkillsDeferPromptPointer` | yes |
 | `TestBuildSettings_PromptSuggestionOff` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestBuildSettings_StopHookAlwaysPresent` | `TestBuildSettings_DenyToggleMatrix` | yes |
-| `TestBuildSettings_EventsPathSingleQuoteEscaped` | `TestBuildSettings_DenyToggleMatrix` | yes |
+| `TestBuildSettings_StopHook` | `TestBuildSettings_DenyToggleMatrix` | yes |
 | `TestBuildSettings_NoForbiddenCharsInSteerText` | `TestAuditForkTranscript_MissingMetaFallsBackToCountingEverything` | yes |
-| `TestBuildSettings_ForkContextWebsterGuard` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestBuildSettings_BashStdinRewrite` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestBuildSettings_ForkMode` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestBuildSettings_AllowAgentTool` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
+| `TestBuildSettings_AgentAndBashHooks` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
 | `TestPrepare_WritesArtifactsAndReturnsConsistentLaunch` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
 | `TestBuildDenyNotice_MatchesInstalledDenies` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
 | `TestBuildDenyNotice_SentenceContent` | `TestPrepare_AppendSystemPromptMatchesDenyNotice` | yes |
-| `TestReadyFooterFixture_ClassifiesReady` | `TestStartup_Classification` | yes |
-| `TestTrustDismissSequence_NeverConfirmsWithoutSelectingAccept` | `TestTrustDismissSequence` | yes |
-| `TestTrustDismissSequence_PressesNothingIntoALiveAgentsPane` | `TestStartup_Classification`, `TestTrustDismissSequence` | yes |
-| `TestContextTokens_LastMainChainAssistantEntry` | `TestContextTokens_IgnoresSidechainAndZeroUsage` | yes |
-| `TestContextTokens_FollowsTranscriptNamedByEachStop` | `TestContextTokens_IgnoresSidechainAndZeroUsage` | yes |
-| `TestContextTokens_BoundaryAfterLastAssistantIsTheReading` | `TestContextTokens_IgnoresSidechainAndZeroUsage`, `TestReadContext_EntrySpanningChunkEdgeIsReadWhole` | yes |
-| `TestContextTokens_AssistantAfterBoundaryWins` | `TestContextTokens_IgnoresSidechainAndZeroUsage` | yes |
-| `TestReadContext_EntrySpanningChunkEdgeIsReadWhole` | `TestReadContext_NoQualifyingEntryIsUnknown`, `TestContextTokens_AssistantAfterBoundaryWins`, `TestContextTokens_BoundaryAfterLastAssistantIsTheReading` | no |
-| `TestReadContext_NoQualifyingEntryIsUnknown` | `TestReadContext_EntrySpanningChunkEdgeIsReadWhole`, `TestContextTokens_Unknown` | yes |
 
 No coverage:
 
@@ -3938,37 +2893,41 @@ No coverage:
 - `TestParseEvents_PayloadEntryAndLaunchSharingIDYieldOneTask`: unclassifiable call
 - `TestParseEvents_RunningShellAndUnmatchedForkLaunchBothListed`: unclassifiable call
 - `TestParseEvents_StopWithNothingOutstandingCarriesNoList`: unclassifiable call
-- `TestBashStdinHook_PlainCommandGainsPrefix`: spawns
-- `TestBashStdinHook_AwkwardCommandRoundTripsByteExact`: spawns
-- `TestBashStdinHook_PrefixedCommandIsLeftAlone`: spawns
-- `TestBashStdinHook_PayloadWithoutCommandProducesNothing`: spawns
-- `TestBashStdinHook_RewrittenCatEndsAtOnce`: spawns
-- `TestBashStdinHook_RewrittenHeredocStillFeedsStdin`: spawns
+- `TestEnvFile_DefaultStdinIsDevNull`: spawns
 - `TestParseEvents_LenientFixture`: unclassifiable call
 - `TestParseEvents_LiveAsk`: unclassifiable call
 - `TestParseEvents_LiveAsk_UnexpectedShape`: unclassifiable call
 - `TestParseEvents_PreToolUse_OtherToolSkipped`: unclassifiable call
 - `TestParseEvents_RawPreservesSurroundingWhitespace`: unclassifiable call
 - `TestParseEvents_EmptyInput`: unclassifiable call
+- `TestPrepare_ThreadsSpecIntoLaunchCmds`: unclassifiable call
 - `TestCheckResumable`: unclassifiable call
 - `TestCheckResumable_UnstattableTranscriptRefusesNamingTheStatFailure`: unclassifiable call
 - `TestSessionNameDrift`: unclassifiable call
 - `TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs`: unclassifiable call
 - `TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs`: unclassifiable call
 - `TestBuildSettings_DenyToggleMatrix`: unclassifiable call
+- `TestContextTokens_LastMainChainAssistantEntry`: unclassifiable call
+- `TestContextTokens_IgnoresSidechainAndZeroUsage`: unclassifiable call
+- `TestContextTokens_FollowsTranscriptNamedByEachStop`: unclassifiable call
+- `TestContextTokens_BoundaryAfterLastAssistantIsTheReading`: unclassifiable call
+- `TestContextTokens_AssistantAfterBoundaryWins`: unclassifiable call
+- `TestReadContext_EntrySpanningChunkEdgeIsReadWhole`: unclassifiable call
+- `TestReadContext_NoQualifyingEntryIsUnknown`: unclassifiable call
+- `TestContextTokens_Unknown`: unclassifiable call
+- `TestCompactedSince_FindsNewestMainChainBoundaryAfterSince`: unclassifiable call
+- `TestCompactedSince_NoBoundaryInTranscript`: unclassifiable call
+- `TestCompactedSince_ReadsTheTranscriptNamedByTheTurnEnd`: unclassifiable call
+- `TestCompactedSince_DegradesToNotFound`: unclassifiable call
 
 ## internal/standalonegeom
 
-11 tests, wall 0.59s, serial 0.57s.
+7 tests, wall 0.36s, serial 0.35s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestReedGeometry_SessionNameAgreesAcrossSymlinkedSpellings` | `TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent` | yes |
-| `TestReedGeometry_NameShortnameIsDerivedFromHash8` | `TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent`, `TestLogsDir` | yes |
-| `TestStencilsDir` | `TestWebsterGeometry` | yes |
-| `TestSpecsDir` | `TestWebsterGeometry` | yes |
-| `TestReedGeometry` | `TestLogsDir` | yes |
-| `TestReedGeometry_WorktreeNameMatchesRepoNameForSymlinkedTarget` | `TestLogsDir` | yes |
+| `TestReedGeometry` | `TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent`, `TestReedGeometry_SessionNameSanitizesTheReadableHalf` | yes |
 
 No coverage:
 
@@ -3976,50 +2935,31 @@ No coverage:
 
 ## internal/standalonestate
 
-17 tests, wall 0.01s, serial 0.00s.
+6 tests, wall 0.01s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestDerive_WindowsRow` | `TestDerive_CaseFold` | no |
-| `TestDerive_NonWindowsRow_XDGStateHomeSet` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_NonWindowsRow_XDGStateHomeUnset` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_NonWindowsRow_MissingStateHome` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_CaseFold` | `TestDerive_RelativeEnvironmentBase`, `TestDerive_WindowsRow` | yes |
-| `TestDerive_RelativeEnvironmentBaseIsCwdIndependent` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestNormalize_AbsentTargetFallsBackToClean` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_UsesNormalizeForItsHashInput` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_Hash8Shape` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_Stability` | `TestDerive_RelativeEnvironmentBase` | yes |
-| `TestDerive_CreatesNothingOnDisk` | `TestDerive_SymlinkNormalization` | yes |
-| `TestDerive_SymlinkNormalization` | `TestDerive_CreatesNothingOnDisk` | no |
+| `TestDerive_Hash8` | `TestDerive_StateDir` | yes |
+| `TestNormalize_AbsentTargetFallsBackToClean` | `TestDerive_StateDir` | yes |
 
 No test lacks coverage.
 
 ## internal/state
 
-17 tests, wall 0.01s, serial 0.01s.
+8 tests, wall 0.01s, serial 0.01s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestReadJSONStrict_UnknownField` | `TestReadJSONStrict_MalformedJSON` | no |
-| `TestReadJSONStrict_MalformedJSON` | `TestReadJSONStrict_UnknownField` | yes |
-| `TestRoundTrip` | `TestUpdateJSON_MissingFile`, `TestUpdateJSON_MutateError` | yes |
-| `TestMissingFile` | `TestUpdateJSON_MissingFile` | yes |
-| `TestCorruptFile` | `TestUpdateJSON_MissingFile`, `TestUpdateJSON_CorruptFile` | yes |
-| `TestNoTempLeak` | `TestUpdateJSON_MutateError` | yes |
-| `TestOverwrite` | `TestUpdateJSON_MissingFile`, `TestUpdateJSON_MutateError` | yes |
-| `TestLockFileLocation` | `TestUpdateJSON_MissingFile`, `TestUpdateJSON_MutateError` | yes |
-| `TestJSONFormatting` | `TestUpdateJSON_MutateError` | yes |
-| `TestUpdateJSON_MissingFile` | `TestUpdateJSON_Concurrency` | no |
-| `TestUpdateJSON_ExistingFile` | `TestUpdateJSON_MissingFile`, `TestUpdateJSON_MutateError` | yes |
-| `TestUpdateJSON_CorruptFile` | `TestCorruptFile` | no |
-| `TestUpdateJSON_Concurrency` | `TestUpdateJSON_MissingFile` | yes |
+| `TestWriteJSON_RoundTripOverwriteAndLayout` | `TestUpdateJSON_MutateSeesCurrentValue` | yes |
+| `TestMissingFile` | `TestUpdateJSON_MutateSeesCurrentValue` | yes |
+| `TestUpdateJSON_MutateSeesCurrentValue` | `TestUpdateJSON_Concurrency`, `TestUpdateJSON_MutateError` | no |
+| `TestUpdateJSON_Concurrency` | `TestUpdateJSON_MutateSeesCurrentValue` | yes |
 
 No test lacks coverage.
 
 ## internal/statuscommit
 
-8 tests, wall 0.01s, serial 0.00s.
+6 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
@@ -4027,114 +2967,59 @@ No test lacks coverage.
 
 No coverage:
 
-- `TestNew_OrdinaryPathRunsCommitAfterCommitThenPush`: unclassifiable call
-- `TestNew_CommitMessageCarriesThePrefix`: unclassifiable call
+- `TestNew_OrdinaryPath`: unclassifiable call
 - `TestNew_CommitErrorPropagates`: unclassifiable call
-- `TestNew_CommitFailsAfterMergeWentLive_TakesTheSkip`: unclassifiable call
-- `TestNew_CommitFailsAndReProbeFails_TakesTheSkip`: unclassifiable call
+- `TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip`: unclassifiable call
 - `TestNew_PushErrorReturnsNil`: unclassifiable call
 - `TestNew_MergeActiveSkips`: unclassifiable call
 
 ## internal/stencil
 
-33 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestTopLevelMarkers` | `TestFill_MultipleOffendersSortedAndDeduped`, `TestTopLevelMarkers_IgnoresLeadingBannerComment` | no |
-| `TestTopLevelMarkers_IgnoresLeadingBannerComment` | `TestTopLevelMarkers`, `TestStripLeadingComment` | yes |
-| `TestFill_HappyPath` | `TestFill_UnusedValuesIgnored` | yes |
-| `TestFill_MissingTopLevelMarker` | `TestFill_EmptyValue`, `TestFill_RegressionUnfilledMarker` | yes |
-| `TestFill_EmptyValue` | `TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired`, `TestFillOptional_ByteIdenticalToFillOnSameInput` | no |
-| `TestFill_MultipleOffendersSortedAndDeduped` | `TestFill_EmptyValue`, `TestFill_RegressionUnfilledMarker`, `TestFill_UnusedValuesIgnored`, `TestTopLevelMarkers` | yes |
-| `TestFill_BranchInternalMissCaughtIncrementally` | `TestFill_ConditionalTaken`, `TestFill_EmptyValue`, `TestFill_ForgottenDiscriminator` | yes |
-| `TestFill_BranchInternalPresentButEmptyErrors` | `TestFill_ConditionalTaken`, `TestFill_EmptyValue`, `TestFill_BranchInternalPresentButEmptyNotTakenNoError` | yes |
-| `TestFill_BranchInternalPresentButEmptyNotTakenNoError` | `TestFillOptional_BranchInternalPresentButEmptyOptionalNoError`, `TestFill_ConditionalNotTaken` | no |
-| `TestFillOptional_BranchInternalPresentButEmptyOptionalNoError` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty`, `TestFill_ConditionalTaken`, `TestFill_BranchInternalPresentButEmptyNotTakenNoError` | yes |
-| `TestFill_BranchInternalPresentButEmptyUnresolvableConditionLeftToExecution` | `TestFill_ForgottenDiscriminator` | yes |
-| `TestFill_ConditionalTaken` | `TestFill_BranchInternalMissCaughtIncrementally`, `TestFillOptional_BranchInternalPresentButEmptyOptionalNoError` | no |
-| `TestFill_ConditionalNotTaken` | `TestFill_ConditionalTaken` | yes |
-| `TestFill_ForgottenDiscriminator` | `TestFill_BranchInternalMissCaughtIncrementally` | no |
-| `TestFill_UnusedValuesIgnored` | `TestFillOptional_ByteIdenticalToFillOnSameInput` | no |
-| `TestFill_LeadingCommentStrip` | `TestFill_UnusedValuesIgnored`, `TestStripLeadingComment` | yes |
-| `TestFill_EmptyOrWhitespaceOnlyTemplate` | `TestFill_BranchInternalPresentButEmptyNotTakenNoError` | yes |
-| `TestFill_IdempotenceAndDeterminism` | `TestFill_EmptyValue`, `TestFill_RegressionUnfilledMarker`, `TestFill_UnusedValuesIgnored` | yes |
-| `TestFill_NoHTMLEscaping` | `TestFill_UnusedValuesIgnored` | yes |
-| `TestFillOptional_AbsentRendersNothing` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty`, `TestFill_UnusedValuesIgnored` | yes |
-| `TestFillOptional_PresentButEmptyRendersNothing` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty` | yes |
-| `TestFillOptional_WhitespaceOnlyNormalisesToEmpty` | `TestFillOptional_AbsentRendersNothing` | no |
-| `TestFillOptional_PresentAndNonEmptyRendersValue` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty` | yes |
-| `TestFillOptional_NonOptionalEmptyMarkerStillErrors` | `TestFill_EmptyValue`, `TestFillOptional_WhitespaceOnlyNormalisesToEmpty` | yes |
-| `TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired` | `TestFill_EmptyValue`, `TestFillOptional_WhitespaceOnlyNormalisesToEmpty` | yes |
-| `TestFillOptional_ByteIdenticalToFillOnSameInput` | `TestFill_EmptyValue`, `TestFill_RegressionUnfilledMarker`, `TestFill_UnusedValuesIgnored` | yes |
-| `TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty`, `TestFill_UnusedValuesIgnored` | yes |
-| `TestFillOptional_CallerValuesMapNotMutated` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty`, `TestFill_UnusedValuesIgnored` | yes |
-| `TestFillOptional_RepeatedCallsProduceIdenticalOutput` | `TestFillOptional_WhitespaceOnlyNormalisesToEmpty`, `TestFill_EmptyValue`, `TestFill_RegressionUnfilledMarker`, `TestFill_UnusedValuesIgnored` | yes |
+No candidates.
 
-No coverage:
-
-- `TestFill_RegressionUnfilledMarker`: unclassifiable call
+No test lacks coverage.
 
 ## internal/stencilcli
 
-7 tests, wall 2.02s, serial 2.03s.
+1 tests, wall 0.17s, serial 0.16s.
 
 No candidates.
 
 No coverage:
 
-- `TestStencilCLI_ListAndValidate`: spawns
-- `TestStencilCLI_SyncIsIdempotent`: spawns
-- `TestStencilCLI_DiffOne`: spawns
-- `TestStencilCLI_PromoteRoundTripAndDiffAll`: spawns
-- `TestStencilCLI_PromoteAndDiffAllRequireSourceTree`: spawns
-- `TestStencilCLI_PromoteRequiresMatchingSourceFile`: spawns
-- `TestStencilCLI_DriftWarningNeverBlocksExitCode`: spawns
+- `TestStencilCLI_Scenario`: spawns
 
 ## internal/stencilstore
 
-25 tests, wall 0.01s, serial 0.00s.
+16 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestNormalizeLF_CRLFHashesLikeLF` | `TestClassifyPortBackDrift` | yes |
-| `TestBodyHash_IgnoresBannerChangesOnly` | `TestClassifyPortBackDrift` | yes |
-| `TestApplyStamp_ReplacesExistingBannerInPlace` | `TestReconcile_ModeDevStillRestampsReconciledRow` | yes |
-| `TestApplyStamp_PrependsNewBannerWhenAbsent` | `TestClassifyPortBackDrift` | yes |
-| `TestClassify` | `TestReconcile_RevertedFileRestampsAndReturnsToUntouched`, `TestClassifyPortBackDrift`, `TestReconcile_MissingOrMalformedStampTreatedAsEdited` | yes |
+| `TestBodyHash` | `TestClassifyPortBackDrift` | yes |
+| `TestApplyStamp` | `TestReconcile_RestampsRowWhoseBodyMatchesDefault` | yes |
+| `TestClassify` | `TestClassifyPortBackDrift`, `TestReconcile_EditedBoardCopyIsNeverModified`, `TestReconcile_RestampsRowWhoseBodyMatchesDefault`, `TestForceRefresh_PerformsRefreshRowFromDevSkippedFile` | yes |
 
 No coverage:
 
 - `TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil`: unclassifiable call
-- `TestReconcile_SeedsAbsentFile`: unclassifiable call
-- `TestReconcile_UntouchedUnchangedDefaultLeftAlone`: unclassifiable call
-- `TestReconcile_UntouchedChangedDefault`: unclassifiable call
-- `TestReconcile_ModeDevDoesNotRefreshUntouched`: unclassifiable call
-- `TestReconcile_ModeDevStillRestampsReconciledRow`: unclassifiable call
+- `TestReconcile_SeedsAbsentFileAndGitattributesOnce`: unclassifiable call
+- `TestReconcile_UntouchedBoardCopy`: unclassifiable call
+- `TestReconcile_RestampsRowWhoseBodyMatchesDefault`: unclassifiable call
 - `TestForceRefresh_PerformsRefreshRowFromDevSkippedFile`: unclassifiable call
-- `TestReconcile_EditedFileNeverModified`: unclassifiable call
-- `TestReconcile_MissingOrMalformedStampTreatedAsEdited`: unclassifiable call
-- `TestReconcile_RevertedFileRestampsAndReturnsToUntouched`: unclassifiable call
-- `TestReconcile_NoChangesWritesNothing`: unclassifiable call
-- `TestReconcile_SeedsGitattributesOnce`: unclassifiable call
-- `TestReconcile_EmptySourceDirSkipsDriftComparison`: unclassifiable call
-- `TestReconcile_DriftingSourceDirStillSucceeds`: unclassifiable call
+- `TestReconcile_EditedBoardCopyIsNeverModified`: unclassifiable call
+- `TestReconcile_SourceDirNeverFailsReconcile`: unclassifiable call
 - `TestReconcile_ModeDevRefusalNamesItsRemedy`: unclassifiable call
 - `TestValidate`: unclassifiable call
 
 ## internal/summaryparser
 
-14 tests, wall 0.01s, serial 0.00s.
+8 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestParse_ValidParsesTitleAndBody` | `TestParse_LeadingBlankLinesSkipped` | yes |
-| `TestParse_MissingFile` | `TestValidateDescription_ReadErrorIsError` | yes |
-| `TestParse_EmptyFile` | `TestValidateDescription_Table` | yes |
-| `TestParse_NoHeadingFirstLine` | `TestValidateDescription_Table` | yes |
-| `TestParse_EmptyTitle` | `TestValidateDescription_Table` | yes |
 | `TestCommitMessage` | `TestLandingMessage` | yes |
-| `TestParse_FailuresMatchSentinels` | `TestValidateDescription_Table` | yes |
 
 No test lacks coverage.
 
@@ -4308,30 +3193,22 @@ No coverage:
 
 ## internal/tokenvocab
 
-7 tests, wall 0.01s, serial 0.00s.
+5 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
 No coverage:
 
 - `TestTokenResolve`: unclassifiable call
-- `TestTokenResolve_RepoReadsFieldVerbatim`: unclassifiable call
 - `TestBuild_ReturnsAllThreeKeys`: unclassifiable call
-- `TestRender_FillsTemplateVerbatim`: unclassifiable call
-- `TestRender_PropagatesUnknownTokenError`: unclassifiable call
+- `TestRender`: unclassifiable call
 - `TestRegistry_AddingATokenIsOneEntry`: unclassifiable call
 
 ## internal/treadleengine
 
-44 tests, wall 0.26s, serial 0.20s.
+33 tests, wall 0.08s, serial 0.05s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestSaveState_ReadJSONRoundTrip` | `TestEngine_HandoffLifecycle_InvalidHandoffFallback` | yes |
-| `TestJudgeCirclingTemplate_StatesLoadBearingRules` | `TestArtifactPaths` | yes |
-| `TestJudgeMilestoneTemplate_StatesLoadBearingRules` | `TestArtifactPaths` | yes |
-| `TestTriageTemplate_StatesLoadBearingRules` | `TestArtifactPaths` | yes |
-| `TestTargetingTemplate_StatesLoadBearingRules` | `TestArtifactPaths` | yes |
+No candidates.
 
 No coverage:
 
@@ -4343,7 +3220,6 @@ No coverage:
 - `TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced`: unclassifiable call
 - `TestEngine_HandoffLifecycle_ReadSetCoverage`: unclassifiable call
 - `TestEngine_HandoffLifecycle_InvalidHandoffFallback`: unclassifiable call
-- `TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews`: unclassifiable call
 - `TestEngine_JudgeSkippedRoundReadsNoHandoffFiles`: unclassifiable call
 - `TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName`: unclassifiable call
 - `TestEngine_PreRoundTargeting`: unclassifiable call
@@ -4351,12 +3227,10 @@ No coverage:
 - `TestEngine_ScratchDirSeam`: unclassifiable call
 - `TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay`: skipped
 - `TestConverged`: unclassifiable call
-- `TestExecGateCommand_Pass`: spawns
-- `TestExecGateCommand_Fail`: spawns
-- `TestExecGateCommand_NotFound`: spawns
-- `TestExecGateCommand_Timeout`: spawns
+- `TestExecGateCommand`: spawns
 - `TestWriteGateOutput`: unclassifiable call
 - `TestParseHandoff`: unclassifiable call
+- `TestSpawnedRoles_SkillAndParentDirective`: unclassifiable call
 - `TestRunCircling`: unclassifiable call
 - `TestRunMilestone`: unclassifiable call
 - `TestRunTriage`: unclassifiable call
@@ -4367,155 +3241,95 @@ No coverage:
 - `TestLoadOrInitState`: unclassifiable call
 - `TestTerminalOutcome`: unclassifiable call
 - `TestMoveStaleArtifacts`: unclassifiable call
-- `TestJudgeCirclingTemplate_FillsWithAllMarkers`: unclassifiable call
-- `TestJudgeMilestoneTemplate_FillsWithAllMarkers`: unclassifiable call
-- `TestTriageTemplate_FillsWithAllMarkers`: unclassifiable call
-- `TestTargetingTemplate_FillsWithAllMarkers`: unclassifiable call
+- `TestShippedTemplates`: unclassifiable call
 - `TestRunTriage_ReadsFromDiskAtCallTime`: unclassifiable call
 
 ## internal/verifyrun
 
-5 tests, wall 0.83s, serial 0.81s.
+3 tests, wall 0.81s, serial 0.80s.
 
 No candidates.
 
 No coverage:
 
-- `TestRun_PassingCommandCapturesBothStreams`: spawns
-- `TestRun_NonZeroExit`: spawns
-- `TestRun_WorkingDirectory`: spawns
+- `TestRun`: spawns
 - `TestRun_SpawnFailure`: spawns
 - `TestRun_Cancellation`: spawns
 
 ## internal/verifytree
 
-13 tests, wall 0.42s, serial 0.41s.
+4 tests, wall 0.05s, serial 0.05s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestParsePorcelainZ` | `TestDirtyPaths_NamesSpecialAndRenamedPathsVerbatim` | yes |
+| `TestParsePorcelainZ` | `TestVerify_Scenario` | yes |
 
 No coverage:
 
 - `TestReadMarker`: unclassifiable call
-- `TestVerify_SkipsWhenRecordNamesTreeAndCommand`: spawns
-- `TestVerify_RunsWhenCommandDiffers`: spawns
-- `TestVerify_RunsWhenTreeDiffers`: spawns
-- `TestVerify_DirtyTreeRefusedWithPathsAndNoRun`: spawns
-- `TestDirtyPaths_NamesSpecialAndRenamedPathsVerbatim`: spawns
-- `TestVerify_RecordWrittenOnlyOnPass`: spawns
-- `TestVerify_CommitDuringRunLeavesNoRecord`: spawns
-- `TestVerify_CancelledRunLeavesNoRecord`: spawns
-- `TestVerify_MarkerGoneAfterPassAndFailure`: spawns
-- `TestVerify_MarkerPresentWhileRunning`: spawns
+- `TestVerify_Scenario`: spawns
 
 ## internal/vscode
 
-14 tests, wall 0.01s, serial 0.00s.
+9 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestWriteVSCodeConfigCreatesFilesWhenAbsent` | `TestWriteVSCodeConfigFallsBackToBareLyxName` | yes |
-| `TestWriteVSCodeConfigFallsBackToBareLyxName` | `TestWriteConfigAttachOnlyOverwritesTasksButKeepsSettings`, `TestWriteConfigAttachOnlyEmptyLyxPathFallsBack` | no |
-| `TestWriteVSCodeConfigFallsBackToBareClaudeName` | `TestWriteVSCodeConfigFallsBackToBareLyxName`, `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask` | yes |
-| `TestWriteVSCodeConfigDoesNotClobber` | `TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone` | yes |
-| `TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone` | `TestWriteConfigAttachOnlyOverwritesTasksButKeepsSettings` | no |
-| `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask` | `TestWriteConfigAttachOnlyEmptyLyxPathFallsBack` | no |
-| `TestWriteConfigAttachOnlyEmptyLyxPathFallsBack` | `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask`, `TestWriteVSCodeConfigFallsBackToBareLyxName` | yes |
-| `TestWriteConfigAttachOnlyOverwritesTasksButKeepsSettings` | `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask`, `TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone` | yes |
-| `TestWriteConfigAttachOnlyLeavesGitignoreAlone` | `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask`, `TestWriteVSCodeConfigInteractiveLeavesGitignoreAlone` | yes |
-| `TestBuildWorkspaceEscapesFolders` | `TestBuildWorkspace` | yes |
+| `TestWriteVSCodeConfigCreatesFilesWhenAbsent` | `TestWriteConfigFallsBackToBareNames` | yes |
+| `TestWriteConfigKeepsSettingsAndOverwritesTasks` | `TestWriteConfigLeavesGitignoreAlone` | yes |
+| `TestWriteConfigLeavesGitignoreAlone` | `TestWriteConfigFallsBackToBareNames`, `TestWriteConfigKeepsSettingsAndOverwritesTasks` | no |
+| `TestWriteConfigAttachOnlyWritesSingleFolderOpenTask` | `TestWriteConfigFallsBackToBareNames` | yes |
 
 No test lacks coverage.
 
 ## internal/webstercli
 
-104 tests, wall 5.86s, serial 5.66s.
+68 tests, wall 2.42s, serial 2.40s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestValidateCmd_ValidPlan` | `TestPersistentPreRunE_PlanDirAnchoredAtSubpath`, `TestValidateCmd_RefusesOverviewEditWithoutRestamp` | yes |
-| `TestValidateCmd_MissingPlan` | `TestAddVerbs_ValidateRefusal_WritesNoNote` | yes |
-| `TestValidateCmd_FindingsUseCardKey` | `TestPersistentPreRunE_PlanDirAnchoredAtSubpath`, `TestValidateCmd_RefusesOverviewEditWithoutRestamp`, `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate`, `TestValidateCmd_ScopeFollowsRunProgress` | yes |
-| `TestValidateCmd_InformationalFindingsSurfaceOnSuccess` | `TestValidateCmd_ScopeFollowsRunProgress` | yes |
 | `TestValidateCmd_RebaselinesStalePlanFingerprint` | `TestValidateCmd_RefusesOverviewEditWithoutRestamp`, `TestBeginBatchCmd_FabricSyncFailureWayForward`, `TestValidateCmd_ScopeFollowsRunProgress` | yes |
-| `TestMasterStencilCoversEverySingleFlagRefusal` | `TestAddVerbs_ValidateRefusal_WritesNoNote` | yes |
-| `TestStatusCmd_NotInitialized` | `TestPersistentPreRunE_DefaultBatcherResolves`, `TestStatusCmd_WithBatches` | yes |
+| `TestMasterStencilCoversEverySingleFlagRefusal` | `TestAcceptAuditCmd_AbsentContractFilesCarryNext` | yes |
 | `TestPauseCmd_RequestsPauseIdempotent` | `TestPauseCmd_ResolvesSameFileAsBeginBatchGate` | yes |
-| `TestWire_ModeStandaloneSelectsStandaloneMode` | `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError` | yes |
-| `TestWire_PlanDirResolution` | `TestWire_RelativeFlagDirsResolveAgainstCwd`, `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone`, `TestWireStandalone_PlanDirOverrideMarksRunRefusal`, `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` | no |
-| `TestWire_StandaloneRootsResolveToTarget` | `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError` | yes |
-| `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone` | `TestWire_PlanDirResolution` | yes |
 | `TestWireHub_LeavesDurableSinkDirUntouched` | `TestWire_PlanDirResolution` | yes |
-| `TestWire_ReedUpSeamPerMode` | `TestWire_PlanDirResolution` | yes |
-| `TestWireStandalone_PlanDirOverrideMarksRunRefusal` | `TestWire_PlanDirResolution` | yes |
-| `TestWireStandalone_FrictionDirAlwaysEmpty` | `TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError` | yes |
-| `TestProductionFiles_NeverReferenceHubWatchdogMechanism` | `TestAddVerbs_ValidateRefusal_WritesNoNote` | yes |
+| `TestProductionFiles_NeverReferenceHubWatchdogMechanism` | `TestAcceptAuditCmd_AbsentContractFilesCarryNext` | yes |
 
 No coverage:
 
-- `TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent`: failed
-- `TestAcceptAuditCmd_RefusesDifferingPath`: failed
-- `TestAcceptAuditCmd_RefusesCommitPastHead`: failed
-- `TestAcceptAuditCmd_NoRunRefuses`: failed
-- `TestAcceptAuditCmd_FabricSyncFailureNamesWayForward`: failed
-- `TestAcceptAuditCmd_AbsentContractFilesCarryNext`: failed
-- `TestAcceptAuditCmd_NoNextWithoutAbsentContractFile`: failed
+- `TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent`: spawns
+- `TestAcceptAuditCmd_Refusals`: spawns
+- `TestAcceptAuditCmd_FabricSyncFailureNamesWayForward`: spawns
+- `TestAcceptAuditCmd_AbsentContractFilesCarryNext`: spawns
 - `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged`: unclassifiable call
 - `TestRunCLIIn_WronglyEnteredHub_Refuses`: spawns
-- `TestRunCLI_GroupGuard_OutsideGitRepo`: failed
+- `TestRunCLI_GroupGuard_OutsideGitRepo`: unclassifiable call
 - `TestCommand_LongStringsHaveNoStaleBatchLanguage`: unclassifiable call
-- `TestFabricSync_SkipGitBypassNeedsNoFabricWorktree`: unclassifiable call
-- `TestFabricSync_NonBypassValidatesPairPaths`: unclassifiable call
-- `TestRecoverBatchCmd_BootsStandaloneReedSessionFirst`: unclassifiable call
-- `TestRunCmd_PassesWatchTrueToReedUp`: unclassifiable call
+- `TestFabricSync_GuardOrdering`: unclassifiable call
+- `TestPersistPlanFingerprintRebaseline`: unclassifiable call
+- `TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords`: unclassifiable call
+- `TestRebaselineCmd_Refusals`: unclassifiable call
+- `TestRebaselineCmd_FabricSyncFailureWayForward`: unclassifiable call
+- `TestRestorePlanCmd_RestoresEditedCard`: unclassifiable call
 - `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate`: unclassifiable call
 - `TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach`: unclassifiable call
-- `TestNoteRefusals_ErrFieldsRefusal_NoteCarriesField`: unclassifiable call
-- `TestNoteRefusals_OkEnvelope_WritesNothing`: unclassifiable call
+- `TestNoteRefusals_VerbEnvelopes`: unclassifiable call
 - `TestAddVerbs_ValidateRefusal_WritesNoNote`: unclassifiable call
-- `TestNoteRefusals_EmptyFrictionDir_WritesNothingAndKeepsEnvelope`: unclassifiable call
-- `TestNoteRefusals_UnwritableFrictionDir_KeepsExitAndEnvelope`: unclassifiable call
-- `TestResetCmd_StartResetsHeadAndOwnDirtKeepsUntracked`: spawns
-- `TestResetCmd_PreFixResetsAndClearsPreFixHead`: spawns
-- `TestResetCmd_StartResolvesOctopusMergeBaseOfDivergingStarts`: spawns
-- `TestResetCmd_UnknownToRefusesNamingBothTargets`: failed
-- `TestResetCmd_RunBusyRefusesNamingStatus`: spawns
-- `TestResetCmd_NoRunRefuses`: spawns
-- `TestResetCmd_MergeInProgressRefuses`: spawns
-- `TestResetCmd_DetachedHeadRefuses`: spawns
-- `TestResetCmd_ParentBranchRefuses`: spawns
-- `TestResetCmd_NonPairBranchRefusedByFabric`: spawns
-- `TestResetCmd_NoRecordedTargetRefuses`: spawns
-- `TestResetCmd_MissingTargetCommitRefuses`: spawns
-- `TestResetCmd_TargetNotAncestorRefuses`: spawns
-- `TestResetCmd_DirtyPathTheRunDidNotWriteRefuses`: spawns
-- `TestResetCmd_StandaloneRefusesNamingGitResetKeep`: spawns
-- `TestRestorePlanCmd_RestoresEditedCard`: failed
-- `TestRestorePlanCmd_NoRunNamesRun`: failed
+- `TestNoteRefusals_UnusableFrictionDir_KeepsExitAndEnvelope`: unclassifiable call
+- `TestResetCmd`: spawns
 - `TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails`: spawns
 - `TestFabricSync_CommitsAtEveryRelPathDepth`: spawns
 - `TestPersistentPreRun_OpenFabricWiredButUninvoked`: spawns
 - `TestBeginBatchCmd_HappyPath`: spawns
-- `TestValidateCmd_RefusesOverviewEditWithoutRestamp`: spawns
 - `TestBeginBatchCmd_PausedEnvelope`: spawns
 - `TestPauseCmd_ResolvesSameFileAsBeginBatchGate`: spawns
-- `TestAwaitBatchCmd_ReportPresenceEnvelope`: spawns
 - `TestRecordBatchCmd_Envelope`: spawns
 - `TestRecordBatchCmd_FailedBatchEnvelope`: spawns
 - `TestRecordBatchCmd_ReportArchivedEnvelope`: spawns
 - `TestRecoverBatchCmd_NeedsFreshEnvelope`: spawns
 - `TestRecoverBatchCmd_RunningThenTerminal`: spawns
 - `TestRunCmd_ErrRunBusySkipsRecordsBackstop`: spawns
-- `TestPersistentPreRunE_UnknownBatcherFailsFast`: spawns
-- `TestPersistentPreRunE_DefaultBatcherResolves`: spawns
+- `TestPersistentPreRunE_BatcherSelection`: spawns
 - `TestPersistentPreRunE_PlanDirAnchoredAtSubpath`: spawns
-- `TestPersistPlanFingerprintRebaseline`: unclassifiable call
-- `TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords`: spawns
-- `TestRebaselineCmd_RefusesUnnamedCard`: failed
-- `TestRebaselineCmd_RefusesNonNumericCard`: spawns
-- `TestRebaselineCmd_RefusesRemovedCard`: failed
-- `TestRebaselineCmd_FabricSyncFailureWayForward`: spawns
 - `TestFabricSyncWayForward_NextSyncCommitsSavedState`: spawns
 - `TestBeginBatchCmd_FabricSyncFailureWayForward`: spawns
 - `TestRecordBatchCmd_FabricSyncFailureWayForward`: spawns
@@ -4616,75 +3430,25 @@ No coverage:
 
 ## internal/weftname
 
-3 tests, wall 0.01s, serial 0.00s.
+1 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestSiblingPath` | `TestBareSiblingPath_AgreesWithSiblingPath` | yes |
-| `TestBareSiblingPath` | `TestBareSiblingPath_AgreesWithSiblingPath` | yes |
-| `TestBareSiblingPath_AgreesWithSiblingPath` | `TestBareSiblingPath`, `TestSiblingPath` | no |
+No candidates.
 
 No test lacks coverage.
 
 ## internal/yamlengine
 
-61 tests, wall 0.03s, serial 0.01s.
+12 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestFillMissing_TopLevelKey` | `TestFillMissing_WholeMapping` | yes |
-| `TestFillMissing_NestedKey` | `TestFillMissing_WholeMapping` | yes |
-| `TestFillMissing_WholeMapping` | `TestFillMissing_NestedKey`, `TestFillMissing_OpenMapMissingIsAppendedWhole` | no |
-| `TestFillMissing_EmptyAndNullKept` | `TestFillMissing_WholeMapping` | yes |
-| `TestFillMissing_EmptiedListKept` | `TestFillMissing_WholeMapping` | yes |
-| `TestFillMissing_ExtraFileKeyAndOrder` | `TestFillMissing_WholeMapping` | yes |
-| `TestFillMissing_NoOpByteIdentity` | `TestFillMissing_WholeMapping`, `TestFillMissing_OpenMapSkipsPresentKeyWhateverItsShape` | yes |
-| `TestFillMissing_ShapeMismatchNamesBothShapes` | `TestFillMissing_ShapeMismatch` | yes |
-| `TestFillMissing_ListElementKeyLeftForMissingKeys` | `TestFillMissing_OpenMapSkipsPresentKeyWhateverItsShape` | yes |
-| `TestFillMissing_OpenMapMissingIsAppendedWhole` | `TestFillMissing_WholeMapping` | yes |
-| `TestReconcile_AddMissingKey` | `TestReconcile_EmptyExisting` | yes |
-| `TestReconcile_RemoveStaleKey` | `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestReconcile_PreserveUserValue` | `TestReconcile_CarriesListsWhole` | yes |
-| `TestReconcile_NestedAddRemovePreserve` | `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestReconcile_EmptyExisting` | `TestReconcile_AddMissingKey` | no |
-| `TestReconcile_CommentsOnlyExisting` | `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestReconcile_Idempotence` | `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestReconcile_TemplateCommentsAndOrder` | `TestReconcile_CarriesListsWhole` | yes |
-| `TestMissingKeys_TemplateOnly` | `TestMissingKeys_Integration` | no |
-| `TestMissingKeys_AllPresent` | `TestMissingKeys_OpenMapPresentSatisfiesLeavesUnderIt` | yes |
-| `TestMissingKeys_EmptyValueCountsAsPresent` | `TestMissingKeys_OpenMapPresentSatisfiesLeavesUnderIt` | yes |
-| `TestMissingKeys_Nested` | `TestMissingKeys_SequenceLengthIsNotARequirement` | yes |
-| `TestReconcile_YAMLNodePreservation` | `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestMissingKeys_Integration` | `TestMissingKeys_SequenceLengthIsNotARequirement`, `TestMissingKeys_TemplateOnly` | yes |
-| `TestReconcile_OpenMapKeepsExistingKeysAndAddsNone` | `TestReconcile_OpenMapMissingIsFilledWholeAndReportedAsPath`, `TestSetValues_OpenMapAddsEntry` | yes |
-| `TestReconcile_OpenMapCarriesListWhole` | `TestReconcile_OpenMapMissingIsFilledWholeAndReportedAsPath`, `TestSetValues_OpenMapRefusesList`, `TestReconcile_UndeclaredMappingStillReportsKeys` | yes |
-| `TestReconcile_UndeclaredMappingStillReportsKeys` | `TestReconcile_NestedAddRemovePreserve` | no |
-| `TestExpandScalar_NoRecursiveExpansion` | `TestExpandScalar_RequiredEnvVar`, `TestExpandScalar_NoMarker` | no |
-| `TestExpandScalar_NoMarker` | `TestExpandScalar_NoRecursiveExpansion` | yes |
-| `TestResolve_NestedMapping` | `TestResolve_Sequence` | yes |
-| `TestSetValues_UnknownKeyRejectsWholeCall` | `TestSetValues_OpenMapKnownAndUndeclaredStillRefused` | no |
-| `TestSetValues_ValueWithEqualsRoundTrips` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_ValueWithSpacesRoundTrips` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_MultiplePairsAllApplied` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_CommentsAndOrderPreserved` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_EmptyExistingBehavesLikeTemplate` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_PartialExistingDoesNotSuppressSet` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_PreservesUnknownExistingKey` | `TestSetValues_ListKeys`, `TestSetValues_PreservesMultipleUnknownKeysSorted` | yes |
-| `TestSetValues_NoPreservedWhenAllKeysKnown` | `TestSetValues_ListKeys` | yes |
-| `TestSetValues_PreservedKeyIdempotent` | `TestSetValues_ListKeys`, `TestSetValues_PreservesMultipleUnknownKeysSorted` | yes |
-| `TestSetValues_PreservesNonFlatOrphanWhole` | `TestSetValues_PreservesMultipleUnknownKeysSorted`, `TestSetValues_OpenMapAddsEntry` | yes |
-| `TestSetValues_OpenMapEmptyTemplateWritesBlock` | `TestSetValues_OpenMapAddsEntry` | yes |
-| `TestSetValues_OpenMapKnownAndUndeclaredStillRefused` | `TestSetValues_UnknownKeyRejectsWholeCall`, `TestSetValues_OpenMapAddsEntry` | yes |
+No candidates.
 
 No test lacks coverage.
 
 ## tools/codestats
 
-10 tests, wall 0.01s, serial 0.00s.
+9 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestPct_ZeroWholeIsDash` | `TestRender_ReportsEverySection` | yes |
+No candidates.
 
 No coverage:
 
@@ -4692,7 +3456,7 @@ No coverage:
 
 ## tools/deploy
 
-7 tests, wall 0.01s, serial 0.00s.
+7 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
@@ -4705,52 +3469,33 @@ No coverage:
 
 ## tools/godocreflow
 
-21 tests, wall 0.01s, serial 0.00s.
+6 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestWrapLongLine` | `TestWidthFallbackAppliesToOverwideAtomicLine`, `TestFileHeaderAndPackageDocBothReflowed` | yes |
-| `TestReflowText` | `TestIdempotent` | yes |
+| `TestWrapLongLine` | `TestWidthFallbackAppliesToOverwideAtomicLine`, `TestReflowSource_LeavesUntouched` | yes |
 
 No coverage:
 
-- `TestReflowExportedFuncDoc`: unclassifiable call
-- `TestUnexportedFuncLeftAlone`: unclassifiable call
-- `TestSingleLineCommentLeftAlone`: unclassifiable call
-- `TestGoGenerateDirectiveLeftAlone`: unclassifiable call
-- `TestIndentedCodeExampleLeftAlone`: unclassifiable call
-- `TestGeneratedFileLeftAlone`: unclassifiable call
-- `TestSingleLineGroupLeftAlone`: unclassifiable call
-- `TestPackageDocComment`: unclassifiable call
-- `TestFileHeaderAndPackageDocBothReflowed`: unclassifiable call
-- `TestGroupedConstDocOnExportedSpec`: unclassifiable call
-- `TestStructFieldDocLeftAlone`: unclassifiable call
-- `TestDocCommentHeadingLeftAlone`: unclassifiable call
-- `TestDocCommentListLeftAlone`: unclassifiable call
+- `TestReflowSource_ReflowsDocComments`: unclassifiable call
+- `TestReflowSource_LeavesUntouched`: unclassifiable call
 - `TestWidthFallbackAppliesToOverwideAtomicLine`: unclassifiable call
-- `TestWidthFallbackDisabledAtZero`: unclassifiable call
-- `TestWidthFallbackLeavesShortLinesAlone`: unclassifiable call
-- `TestIdempotent`: unclassifiable call
 
 ## tools/internal/devbin
 
-3 tests, wall 0.01s, serial 0.00s.
+1 tests, wall 0.00s, serial 0.00s.
 
-| Test | Covering tests | Removable |
-|---|---|---|
-| `TestRepoRoot_LocatesModuleRoot` | `TestBinPath_PlatformBinaryName` | yes |
-| `TestDir_JoinsRepoRootWithDevBin` | `TestBinPath_PlatformBinaryName` | yes |
+No candidates.
 
 No test lacks coverage.
 
 ## tools/mdreflow
 
-4 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
 | `TestCollapsed` | `TestReflowText_CollapsedInvariant` | yes |
-| `TestMaskCodeSpans` | `TestReflowText` | yes |
 
 No coverage:
 
@@ -4759,48 +3504,22 @@ No coverage:
 
 ## tools/sandbox
 
-71 tests, wall 0.02s, serial 0.00s.
+28 tests, wall 0.01s, serial 0.00s.
 
 | Test | Covering tests | Removable |
 |---|---|---|
-| `TestFetchReport_HappyPath` | `TestRunFetch_DevBinary` | yes |
-| `TestFetchReport_EmptyItemsPresent` | `TestRunFetch_DevBinary` | yes |
-| `TestFetchReport_MissingReport` | `TestRunFetch_MissingReport` | yes |
-| `TestFetchReport_ScratchDirCreated` | `TestRunFetch_DevBinary` | yes |
-| `TestPrependPath_PrependsToExistingPath` | `TestPrependPath_WindowsPathKeyEditedInPlace` | yes |
-| `TestPrependPath_PreservesNonPathEntries` | `TestPrependPath_WindowsPathKeyEditedInPlace` | yes |
-| `TestPrependPath_WindowsPathKeyEditedInPlace` | `TestPrependPath_PrependsToExistingPath` | no |
-| `TestBinaryFingerprint_TempFile` | `TestRunFetch_DevBinary` | yes |
-| `TestRenderScheme_ContainsHeaderAndBody` | `TestRunSuite_BurlerSpec_ReedTeardownAfterAgent` | yes |
-| `TestBinaryInfoHeader_ContainsSourceLine` | `TestRunSuite_BurlerSpec_ReedTeardownAfterAgent` | yes |
+| `TestFetchReport_AcceptsValidReport` | `TestRunFetch_StampsTheResolvedBinary` | yes |
+| `TestRenderScheme_ContainsHeaderAndBody` | `TestRunSuite_ClaudeNotFound` | yes |
 
 No coverage:
 
-- `TestDecideClone_HubPathComputation`: no blocks
-- `TestDecideClone_HubAbsent`: unclassifiable call
-- `TestDecideClone_HubPresent_NoReset`: unclassifiable call
-- `TestDecideClone_HubPresent_Reset`: unclassifiable call
-- `TestDecideClone_CloneRunError`: spawns
-- `TestRun_MissingParent`: unclassifiable call
-- `TestRun_DefaultBuildRoutesToClone`: unclassifiable call
-- `TestRun_BuildSubcommandRoutesToClone`: unclassifiable call
-- `TestRun_BuildResetRoutesToBuildWithReset`: unclassifiable call
-- `TestRun_BuildNoResetDoesNotRemove`: unclassifiable call
-- `TestRun_SuiteRoutesSuiteToLaunch`: unclassifiable call
-- `TestRun_ReedSuiteRoutesToLaunch`: unclassifiable call
-- `TestRun_ReedSuiteFlagsRoutedAfterToken`: unclassifiable call
-- `TestRun_ReedSuiteErrorPropagation`: unclassifiable call
-- `TestRun_ShuttleSuiteRoutesToLaunch`: unclassifiable call
-- `TestRun_ShuttleSuiteFlagsRoutedAfterToken`: unclassifiable call
-- `TestRun_ShuttleSuiteErrorPropagation`: unclassifiable call
-- `TestRun_BurlerSuiteRoutesToLaunch`: unclassifiable call
-- `TestRun_FabricSuiteRoutesToLaunch`: unclassifiable call
+- `TestDecideClone`: spawns
+- `TestRun_BuildRouting`: unclassifiable call
+- `TestRun_SuiteSubcommands`: unclassifiable call
 - `TestRun_FetchReportRoutesToFetch`: unclassifiable call
-- `TestRun_FetchReportRequiresLoomyard`: unclassifiable call
-- `TestRun_UnknownSubcommandReturnsNonZero`: unclassifiable call
+- `TestRun_RejectsBadInvocation`: unclassifiable call
 - `TestPathResolveGuard_NoBarePathLyxOutsideResolve`: spawns
-- `TestRunFetch_HappyPath`: unclassifiable call
-- `TestRunFetch_DevBinary`: unclassifiable call
+- `TestRunFetch_StampsTheResolvedBinary`: unclassifiable call
 - `TestRunFetch_HubAbsent`: unclassifiable call
 - `TestRunFetch_MissingReport`: unclassifiable call
 - `TestResolveLyx_DevBinaryExists`: unclassifiable call
@@ -4808,46 +3527,23 @@ No coverage:
 - `TestResolveLyx_DevBinaryMissingAndLookPathFails`: unclassifiable call
 - `TestEnsureGitExclude`: unclassifiable call
 - `TestRunSuite_HubAbsent`: unclassifiable call
-- `TestRunSuite_LaunchInvocation`: unclassifiable call
+- `TestRunSuite_PerSuiteSpec`: unclassifiable call
 - `TestRunSuite_DevBinaryPrependsBinDir`: unclassifiable call
 - `TestRunSuite_Overrides`: unclassifiable call
 - `TestRunSuite_NonZeroLaunchTolerated`: unclassifiable call
 - `TestRunSuite_ClaudeNotFound`: unclassifiable call
-- `TestRunSuite_StaleReportRemoved`: unclassifiable call
-- `TestRunSuite_ExcludesReport`: unclassifiable call
-- `TestRunSuite_ReedSpec_WritesReedFile`: unclassifiable call
-- `TestRunSuite_ReedSpec_ExcludesFiles`: unclassifiable call
-- `TestRunSuite_ReedSpec_DeletesStaleReport`: unclassifiable call
-- `TestRunSuite_ReedSpec_DefaultInstruction`: unclassifiable call
-- `TestRunSuite_ReedSpec_PromptOverride`: unclassifiable call
-- `TestRunSuite_ShuttleSpec_WritesShuttleFile`: unclassifiable call
-- `TestRunSuite_ShuttleSpec_ExcludesFiles`: unclassifiable call
-- `TestRunSuite_ShuttleSpec_DeletesStaleReport`: unclassifiable call
-- `TestRunSuite_ShuttleSpec_DefaultInstruction`: unclassifiable call
-- `TestRunSuite_ShuttleSpec_PromptOverride`: unclassifiable call
 - `TestSuiteSpecs_ReedTeardownFlag`: no blocks
-- `TestRunSuite_BurlerSpec_ReedTeardownAfterAgent`: unclassifiable call
-- `TestRunSuite_MainSpec_NoReedTeardown`: unclassifiable call
-- `TestRunSuite_ReedTeardownFailureTolerated`: unclassifiable call
-- `TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit`: unclassifiable call
+- `TestRunSuite_ReedTeardown`: unclassifiable call
 - `TestLaunchAgent_NonInteractiveWarning`: unclassifiable call
 
 ## tools/wordswap
 
-11 tests, wall 0.01s, serial 0.00s.
+3 tests, wall 0.00s, serial 0.00s.
 
 No candidates.
 
 No coverage:
 
-- `TestSwapText_CasePreservingSubstitution`: unclassifiable call
-- `TestSwapText_TokenBoundaryRejection`: unclassifiable call
-- `TestSwapText_CamelStartAcceptance`: unclassifiable call
-- `TestSwapText_MixedCaseRejection`: unclassifiable call
-- `TestSwapText_AmbiguityClassification`: unclassifiable call
-- `TestSwapText_MultipleAndMixedOccurrencesOnOneLine`: unclassifiable call
-- `TestSwapText_SkipBehavior`: unclassifiable call
-- `TestSwapText_ReversibilityInvariant`: unclassifiable call
-- `TestSwapText_LanguageAgnosticism`: unclassifiable call
+- `TestSwapText`: unclassifiable call
 - `TestProcessFile_DryRunWritesNothing`: unclassifiable call
 - `TestProcessFile_MismatchLeavesFileUntouched`: unclassifiable call

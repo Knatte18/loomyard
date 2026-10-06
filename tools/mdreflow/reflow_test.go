@@ -41,6 +41,11 @@ func TestReflowText(t *testing.T) {
 			want:  "Run `go test ./...` to check.\nIt should pass.\n",
 		},
 		{
+			name:  "multiple_code_spans_preserved",
+			input: "One `a. b` two `c. d` three. Four.\n",
+			want:  "One `a. b` two `c. d` three.\nFour.\n",
+		},
+		{
 			name:  "code_span_with_embedded_backtick",
 			input: "The value `` `quoted` `` is a code span. It has one backtick inside.\n",
 			want:  "The value `` `quoted` `` is a code span.\nIt has one backtick inside.\n",
@@ -194,6 +199,7 @@ func TestReflowText_CollapsedInvariant(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins collapsed's own output, the oracle TestReflowText_CollapsedInvariant compares against, which that test cannot check itself
 func TestCollapsed(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -210,28 +216,6 @@ func TestCollapsed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := collapsed(tt.input); got != tt.want {
 				t.Errorf("collapsed(%q) = %q; want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMaskCodeSpans(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{"simple", "before `code` after"},
-		{"double_backtick_with_single_inside", "before ``foo ` bar`` after"},
-		{"unmatched", "before `unmatched text"},
-		{"multiple_spans", "one `a` two `b` three"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var spans []string
-			masked := maskCodeSpans(tt.input, &spans)
-			got := unmaskText(masked, spans)
-			if got != tt.input {
-				t.Errorf("mask/unmask round trip: got %q; want %q (masked=%q)", got, tt.input, masked)
 			}
 		})
 	}

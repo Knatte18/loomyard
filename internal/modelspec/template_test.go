@@ -12,6 +12,7 @@ import (
 )
 
 func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)

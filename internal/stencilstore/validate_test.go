@@ -10,6 +10,8 @@ import (
 )
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	baseDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{
 		"family-one": []byte("{{.kept}}\n{{.dropped}}\n"),

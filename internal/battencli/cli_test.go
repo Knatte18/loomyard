@@ -42,32 +42,15 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 	return nil
 }
 
-// TestCommand_EveryVerbRejectsTwoArgs asserts that all four verbs reject two positional arguments
-// via cobra's own arity error, regardless of cwd -- unlike a zero-argument or absent-slug case,
-// which now reaches arm's own refusal logic (see TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity
-// below), a two-argument invocation is rejected by cobra itself before PersistentPreRunE ever runs.
-func TestCommand_EveryVerbRejectsTwoArgs(t *testing.T) {
-	for _, verb := range []string{"run", "step", "status", "pause"} {
-		t.Run(verb, func(t *testing.T) {
-			args := []string{verb, "a", "b"}
-			var out bytes.Buffer
-			exitCode := clihelp.Execute(Command(), &out, args)
-			if exitCode != 1 {
-				t.Errorf("Execute(%v) = %d; want 1", args, exitCode)
-			}
-		})
-	}
-}
+// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lyx shed", "lyx batten", "lyx loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
+// Accepting zero is what lets "lyx batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
+func TestCommand_EveryVerbArity(t *testing.T) {
+	t.Parallel()
 
-// TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity asserts each of the four verbs' own Args
-// validator, checked independently per verb rather than by reading one shared value, accepts both
-// zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all
-// three surfaces ("lyx shed", "lyx batten", "lyx loom") now share. Accepting zero here is what lets
-// "lyx batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a
-// named message, rather than stopping at cobra's own generic count error.
-func TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity(t *testing.T) {
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
+			t.Parallel()
+
 			cmd := battenCommandNamed(Command(), verb)
 			if cmd == nil {
 				t.Fatalf("verb %q not found under the batten parent command", verb)
@@ -85,6 +68,12 @@ func TestCommand_ZeroOrOneArgArePermittedByCobrasOwnArity(t *testing.T) {
 			if err := cmd.Args(cmd, []string{"one", "two"}); err == nil {
 				t.Errorf("%s: Args(two) = nil; want a rejection -- MaximumNArgs(1)", verb)
 			}
+
+			args := []string{verb, "a", "b"}
+			var out bytes.Buffer
+			if exitCode := clihelp.Execute(Command(), &out, args); exitCode != 1 {
+				t.Errorf("Execute(%v) = %d; want 1", args, exitCode)
+			}
 		})
 	}
 }
@@ -101,13 +90,15 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 		driverFlag      string
 		childDriverFlag string
 		wantErr         bool
+		wantSubstr      string
 	}{
-		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false},
-		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false},
-		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, true},
-		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, true},
-		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, true},
-		{"ChildDriverUnknownRefused", shedrun.DriverGo, "rust", true},
+		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false, ""},
+		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false, ""},
+		// Batten has no bootstrap verb, so the driver it seeds itself with IS the process the operator typed and there is no spawn seam to branch on a seed's driver: the refusal names the missing bootstrap verb.
+		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, true, "no bootstrap verb"},
+		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, true, "no bootstrap verb"},
+		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, true, ""},
+		{"ChildDriverUnknownRefused", shedrun.DriverGo, "rust", true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -119,6 +110,12 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 				t.Fatalf("armSeed(driver=%q, childDriver=%q) error = %v; want error = %v", tt.driverFlag, tt.childDriverFlag, err, tt.wantErr)
 			}
 			if tt.wantErr {
+				if !strings.Contains(err.Error(), tt.wantSubstr) {
+					t.Errorf("armSeed(driver=%q, childDriver=%q) error = %q; want it to contain %q", tt.driverFlag, tt.childDriverFlag, err.Error(), tt.wantSubstr)
+				}
+				if strings.Contains(err.Error(), "roadmap") {
+					t.Errorf("armSeed(driver=%q, childDriver=%q) error = %q; want it to no longer name a roadmap item", tt.driverFlag, tt.childDriverFlag, err.Error())
+				}
 				return
 			}
 
@@ -141,10 +138,11 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 
 	dir := t.TempDir()
 	var out bytes.Buffer
-	exitCode := RunCLIIn(dir, &out, nil)
+	// An empty, non-nil slice: a nil one makes cobra read os.Args, which carries the test binary's own flags.
+	exitCode := RunCLIIn(dir, &out, []string{})
 
 	if exitCode != 0 {
-		t.Errorf("RunCLIIn(%q, nil) = %d; want 0", dir, exitCode)
+		t.Errorf("RunCLIIn(%q, no args) = %d; want 0", dir, exitCode)
 	}
 }
 
