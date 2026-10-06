@@ -13,6 +13,7 @@ import (
 
 //testtiming:keep pins the exact seeded status and product payload, which TestCancellation_RealProducersReturnErrorNotStuck never asserts
 func TestSeed_WritesExpectedStatus(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		// lockRel is the lock file's path under the test directory; a nested one has a parent directory that does not exist yet.
