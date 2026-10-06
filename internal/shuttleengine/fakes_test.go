@@ -394,11 +394,31 @@ func readyStart(reed *fakeReed, engine *fakeEngine) {
 }
 
 // skillFakeEngine is fakeEngine plus the opt-in SkillLoader capability.
+// SkillLoadMessage types "LOAD:<a,b>" for a list, and ClassifySkillLoad answers each load turn's report from Reports in order, the last sticking once drained.
 // SkillLoadSequence types "LOAD:<skill>" and SkillUnknown matches a capture containing "NOSKILL <skill>", so a test scripts both through the reed double's pane.
 type skillFakeEngine struct {
 	*fakeEngine
 
 	Timeout time.Duration
+	Reports []SkillLoadReport
+
+	mu         sync.Mutex
+	classified int
+}
+
+func (e *skillFakeEngine) SkillLoadMessage(skills []string) string {
+	return "LOAD:" + strings.Join(skills, ",")
+}
+
+func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.Reports) == 0 {
+		return SkillLoadReport{}
+	}
+	report := e.Reports[min(e.classified, len(e.Reports)-1)]
+	e.classified++
+	return report
 }
 
 func (e *skillFakeEngine) SkillLoadSequence(skill string) []PaneInput {
@@ -413,30 +433,56 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
-// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text, and which plays a scripted reaction to each "LOAD:<skill>" typed:
-// a skill in EndsTurn appends a turn end to the run's events file, and one in Unknown makes the next capture report it unknown.
+// skillReed is a fakeReed whose pane capture echoes every text typed into it, so a verified send finds its text, and which plays a scripted reaction to each "LOAD:<list>" typed, counting load turns from zero:
+// a turn in Hangs never ends, one in Dies kills the strand's pane, and any other appends a turn end to the run's events file.
 type skillReed struct {
 	*fakeReed
 
 	EventsPath func() string
-	EndsTurn   map[string]bool
-	Unknown    map[string]bool
+	Hangs      map[int]bool
+	Dies       map[int]bool
+
+	loads int
+	dead  bool
 }
 
 func (r *skillReed) SendText(guid, text string, submit bool) error {
 	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
 		return err
 	}
-	if skill, ok := strings.CutPrefix(text, "LOAD:"); ok && r.EndsTurn[skill] {
-		f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		_, err = f.WriteString("STOP:loaded " + skill + "\n")
+	list, ok := strings.CutPrefix(text, "LOAD:")
+	if !ok {
+		return nil
+	}
+	turn := r.loads
+	r.loads++
+	if r.Dies[turn] {
+		r.dead = true
+		return nil
+	}
+	if r.Hangs[turn] {
+		return nil
+	}
+	f, err := os.OpenFile(r.EventsPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
 		return err
 	}
-	return nil
+	defer f.Close()
+	_, err = f.WriteString("STOP:loaded " + list + "\n")
+	return err
+}
+
+func (r *skillReed) Status() (reedengine.StatusResult, error) {
+	status, err := r.fakeReed.Status()
+	if err != nil || !r.dead {
+		return status, err
+	}
+	strands := append([]reedengine.StrandStatus(nil), status.Strands...)
+	for i := range strands {
+		strands[i].Live = false
+	}
+	status.Strands = strands
+	return status, nil
 }
 
 func (r *skillReed) CapturePane(guid string) (string, error) {
@@ -445,9 +491,6 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 	var b strings.Builder
 	for _, call := range r.fakeReed.SendTextCalls {
 		b.WriteString(call.Text + "\n")
-	}
-	for skill := range r.Unknown {
-		b.WriteString("NOSKILL " + skill + "\n")
 	}
 	return b.String(), nil
 }

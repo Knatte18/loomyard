@@ -136,11 +136,11 @@ type Spec struct {
 	// a shell whose label starts with one of them is bounded only by Timeout, never by background_shell_wait_min.
 	// It is caller data, not provider knowledge, and validate does not inspect it.
 	AwaitedShellPrefixes []string
-	// Skills names the provider-neutral skills shuttle loads, in order, into the fresh session before it delivers the prompt.
-	// The engine realizes each name through its SkillLoader capability, and a non-empty list on an engine without one is refused at start.
+	// Skills names the provider-neutral skills shuttle loads into the fresh session, all in one turn, before it delivers the prompt.
+	// The engine realizes the list through its SkillLoader capability, and a non-empty list on an engine without one is refused at start.
 	// validate does not inspect it.
 	Skills []string
-	// SkillLoadTimeout bounds how long shuttle waits for one skill's load to end a turn before skipping that skill.
+	// SkillLoadTimeout bounds how long shuttle waits for one load turn to end, the first and the retry each, before skipping its skills.
 	// Zero defers to the engine's DefaultSkillLoadTimeout; validate does not inspect it.
 	SkillLoadTimeout time.Duration
 }

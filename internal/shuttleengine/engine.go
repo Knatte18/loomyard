@@ -178,15 +178,19 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
-// SkillLoader is an optional capability beside Engine: the provider's way of loading a named skill into a live session as a submitted turn.
+// SkillLoader is an optional capability beside Engine: the provider's way of loading a list of named skills into a live session in one submitted turn, and of checking that turn afterwards.
 // Runner.start requires it of an Engine whenever a spec names skills, and the orch watcher's per-tick reload uses it through Runner.LoadSkill and Runner.SkillUnknown.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never load a skill.
 type SkillLoader interface {
+	// SkillLoadMessage returns the one line that asks the model to load every skill of skills in a single turn.
+	SkillLoadMessage(skills []string) string
+	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended.
+	ClassifySkillLoad(turnEnd Event, skills []string) SkillLoadReport
 	// SkillLoadSequence returns the key choreography that loads skill as a submitted turn.
 	SkillLoadSequence(skill string) []PaneInput
 	// SkillUnknown reports whether capture shows the provider reporting skill unknown.
 	SkillUnknown(capture, skill string) bool
-	// DefaultSkillLoadTimeout is the engine-owned bound on one skill's load.
+	// DefaultSkillLoadTimeout is the engine-owned bound on one load turn.
 	DefaultSkillLoadTimeout() time.Duration
 }
 

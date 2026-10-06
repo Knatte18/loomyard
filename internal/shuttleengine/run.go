@@ -452,8 +452,9 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 }
 
 // loadSkillsThenPrompt is start's skill-loading step, run once the provider is ready and only for a launch that deferred its prompt:
-// it loads each of spec.Skills in order, then delivers promptLine through the verified send path.
-// The run's events offset ends past every skill-load turn end, so Wait never reads one as the run asking.
+// it loads spec.Skills in one turn, retries the skills the model did not load once, then delivers promptLine through the verified send path.
+// A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning, and an unreadable turn is confirmed unverified; none fails or hangs the launch.
+// The run's events offset ends past every load turn end, the retry's included, so Wait never reads one as the run asking.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	guid := run.state.StrandGUID
@@ -466,14 +467,15 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 		if timeout <= 0 {
 			timeout = loader.DefaultSkillLoadTimeout()
 		}
-		for _, skill := range run.spec.Skills {
-			died, err := run.loadSkill(loader, skill, timeout)
-			if err != nil {
-				return run.identity(), err
-			}
-			if died {
-				return run.abandonStartup(OutcomeDied)
-			}
+		missing, died, err := run.settleLoadTurn(loader, run.spec.Skills, timeout, false)
+		if err == nil && !died && len(missing) > 0 {
+			_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
+		}
+		if err != nil {
+			return run.identity(), err
+		}
+		if died {
+			return run.abandonStartup(OutcomeDied)
 		}
 	}
 	if err := sendVerified(run.runner.reed, run.runner.engine, guid, promptLine); err != nil {
@@ -482,14 +484,46 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	return Result{}, nil
 }
 
-// loadSkill plays one skill's load sequence and polls until it ends a turn, the pane reports the skill unknown, or timeout passes.
-// The last two skip the skill, logged with the cause, and report no error.
+// settleLoadTurn runs one load turn for skills and logs a skipped warning for every skill it leaves unloaded.
+// It returns the skills a first turn found missing, which the caller retries once; after the retry (final), still-missing skills are skipped with cause "not loaded" and none is returned.
 // died is true when the strand's pane is no longer live.
-func (run *Run) loadSkill(loader SkillLoader, skill string, timeout time.Duration) (died bool, err error) {
+func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time.Duration, final bool) (missing []string, died bool, err error) {
+	guid := run.state.StrandGUID
+	turnEnd, ended, died, err := run.loadSkillTurn(loader, skills, timeout)
+	if err != nil || died {
+		return nil, died, err
+	}
+	if !ended {
+		for _, skill := range skills {
+			logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "timeout", "strandGUID", guid)
+		}
+		return nil, false, nil
+	}
+	report := loader.ClassifySkillLoad(turnEnd, skills)
+	if !report.Verified {
+		logger.Warn("shuttle: skill load unverified", "skills", skills, "strandGUID", guid)
+		return nil, false, nil
+	}
+	for _, skill := range report.Unknown {
+		logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "unknown", "strandGUID", guid)
+	}
+	if !final {
+		return report.Missing, false, nil
+	}
+	for _, skill := range report.Missing {
+		logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "not loaded", "strandGUID", guid)
+	}
+	return nil, false, nil
+}
+
+// loadSkillTurn is one load turn: it sends the engine's load message for skills through the verified send path, then polls the events file until the first turn end past the run's offset, which it returns, the pane dies, or timeout passes.
+// ended is false on a timeout, and died is true when the strand's pane is no longer live.
+// The run's offset moves past every event read.
+func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
-	if err := playInputs(reed, guid, loader.SkillLoadSequence(skill)); err != nil {
-		return false, fmt.Errorf("shuttle: load skill %q: %w", skill, err)
+	if err := sendVerified(reed, run.runner.engine, guid, loader.SkillLoadMessage(skills)); err != nil {
+		return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
 	}
 	deadline := run.clock.Now().Add(timeout)
 	interval := pollInterval(run.runner.cfg)
@@ -501,7 +535,7 @@ func (run *Run) loadSkill(loader SkillLoader, skill string, timeout time.Duratio
 				run.offset = newOffset
 				for _, ev := range events {
 					if ev.Kind == EventStop || ev.Kind == EventWaiting {
-						return false, nil
+						return ev, true, false, nil
 					}
 				}
 			}
@@ -509,16 +543,11 @@ func (run *Run) loadSkill(loader SkillLoader, skill string, timeout time.Duratio
 
 		if status, serr := reed.Status(); serr == nil {
 			if strand, tracked := strandStatusByGUID(status.Strands, guid); !tracked || !strand.Live {
-				return true, nil
+				return Event{}, false, true, nil
 			}
 		}
-		if capture, cerr := reed.CapturePane(guid); cerr == nil && loader.SkillUnknown(capture, skill) {
-			logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "unknown", "strandGUID", guid)
-			return false, nil
-		}
 		if !run.clock.Now().Before(deadline) {
-			logger.Warn("shuttle: skill skipped", "skill", skill, "cause", "timeout", "strandGUID", guid)
-			return false, nil
+			return Event{}, false, false, nil
 		}
 		run.clock.Sleep(interval)
 	}

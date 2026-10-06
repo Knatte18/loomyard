@@ -44,11 +44,12 @@ import (
 
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this
 // file's one spawn launches. The driver spec names a skill, so the claude engine's launch line carries no
-// prompt pointer: shuttle types `/<skill>` first and the pointer to the run's prompt.md afterwards.
+// prompt pointer: shuttle types one skill-load message first and the pointer to the run's prompt.md afterwards.
 // The script prints claudeengine's own ready-marker fixture -- shuttle's own startup step blocks Start until this
 // (or the window closes), so a script that skipped it would make every call here time out at
-// startup_timeout_s instead of returning fast -- then reads typed lines: a `/<skill>` line is answered with the
-// unknown-skill notice, which shuttle skips at once, and the first other line is the pointer, from which the script takes the
+// startup_timeout_s instead of returning fast -- then reads typed lines: the first is the load message, answered by
+// appending a Stop event with no transcript to the events.jsonl beside the `--settings` file, so shuttle confirms the load unverified at once,
+// and the second is the pointer, from which the script takes the
 // prompt.md path and extracts the drive report path driverPrompt quoted into that file.
 // It then sleeps settleDelay, giving the caller a window
 // to observe the run in flight, past readiness, before the report exists -- writes a one-line report
@@ -57,13 +58,15 @@ func integrationWriteStubDriverScript(t *testing.T, settleDelay time.Duration) s
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
 	script := fmt.Sprintf(`#!/bin/sh
-echo '%s'
-while IFS= read -r line; do
-  case "$line" in
-    /*) echo "Unknown skill: ${line#/}" ;;
-    *) break ;;
-  esac
+settings=
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--settings" ]; then settings=$2; fi
+  shift
 done
+echo '%s'
+IFS= read -r line
+printf '%%s\n' '{"hook_event_name":"Stop","last_assistant_message":"ok"}' >> "$(dirname "$settings")/events.jsonl"
+IFS= read -r line
 prompt_file=$(printf '%%s' "$line" | grep -o '[^ "]*prompt\.md' | head -1)
 report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 sleep %s

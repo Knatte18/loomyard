@@ -196,6 +196,9 @@ func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
 		if err := runner.LoadSkill(tc.guid, "a"); err == nil {
 			t.Errorf("%s: LoadSkill = nil error", tc.name)
 		}
+		if err := runner.LoadSkills(tc.guid, []string{"a", "b"}); err == nil {
+			t.Errorf("%s: LoadSkills = nil error", tc.name)
+		}
 		if _, err := runner.SkillUnknown(tc.guid, "ghost"); err == nil {
 			t.Errorf("%s: SkillUnknown = nil error", tc.name)
 		}
@@ -220,8 +223,32 @@ func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
 	}
 }
 
+func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
+	t.Parallel()
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ LOAD:a,b"}}
+	want := SkillLoadReport{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}
+	engine := &skillFakeEngine{fakeEngine: &fakeEngine{}, Reports: []SkillLoadReport{want}}
+	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+	if err := runner.LoadSkills("strand-1", []string{"a", "b"}); err != nil {
+		t.Fatalf("LoadSkills: %v", err)
+	}
+	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a,b" || !reed.SendTextCalls[0].Submit {
+		t.Errorf("SendTextCalls = %+v; want the engine's one-turn load message", reed.SendTextCalls)
+	}
+	got, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a", "b"})
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("ClassifySkillLoad = %+v, %v; want %+v, nil", got, err, want)
+	}
+}
+
 func TestRunner_LoadSkillAndSkillUnknown_ErrorOnPlainEngine(t *testing.T) {
 	runner := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &fakeEngine{}, withStrand("strand-1")).Runner
+	if err := runner.LoadSkills("strand-1", []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("LoadSkills error = %v; want one naming SkillLoader", err)
+	}
+	if _, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("ClassifySkillLoad error = %v; want one naming SkillLoader", err)
+	}
 	if err := runner.LoadSkill("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
 		t.Errorf("LoadSkill error = %v; want one naming SkillLoader", err)
 	}

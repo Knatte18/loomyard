@@ -9,6 +9,7 @@ package shuttlefake
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +47,8 @@ type Engine struct {
 	TrustDismissSequenceFn  func(capture string) []shuttleengine.PaneInput
 	ComposeSendFn           func(text string) []shuttleengine.PaneInput
 	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
+	SkillLoadMessageFn      func(skills []string) string
+	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
 	SkillLoadSequenceFn     func(skill string) []shuttleengine.PaneInput
 	SkillUnknownFn          func(capture, skill string) bool
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
@@ -117,6 +120,22 @@ func (e *Engine) ComposeSend(text string) []shuttleengine.PaneInput {
 		return e.ComposeSendFn(text)
 	}
 	return nil
+}
+
+// SkillLoadMessage answers SkillLoadMessageFn, else the skills joined by commas.
+func (e *Engine) SkillLoadMessage(skills []string) string {
+	if e.SkillLoadMessageFn != nil {
+		return e.SkillLoadMessageFn(skills)
+	}
+	return strings.Join(skills, ",")
+}
+
+// ClassifySkillLoad answers ClassifySkillLoadFn, else a verified report with every skill loaded.
+func (e *Engine) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
+	if e.ClassifySkillLoadFn != nil {
+		return e.ClassifySkillLoadFn(turnEnd, skills)
+	}
+	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}
 }
 
 // SkillLoadSequence answers SkillLoadSequenceFn, else no inputs.
