@@ -1,7 +1,7 @@
 // isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file needs
 // no //go:build tag.
 // It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control
-// is the package's subject — its tests must spawn"): sub-test (2) below spawns a short-lived
+// is the package's subject — its tests must spawn"): the "exited child" row spawns a short-lived
 // exec.Command child to obtain a confirmed-dead PID fixture.
 
 package proc
@@ -13,17 +13,10 @@ import (
 	"testing"
 )
 
-// TestIsAlive_CurrentProcessIsAlive asserts IsAlive reports true for the test process's own PID,
-// which is always alive for the duration of the test.
-func TestIsAlive_CurrentProcessIsAlive(t *testing.T) {
-	if !IsAlive(os.Getpid()) {
-		t.Errorf("IsAlive(%d) = false; want true (own process)", os.Getpid())
-	}
-}
+// exitedChildPID spawns a short-lived child, waits for it to exit and returns its now-dead PID.
+func exitedChildPID(t *testing.T) int {
+	t.Helper()
 
-// TestIsAlive_ExitedProcessIsNotAlive spawns a short-lived child, waits for it to exit, and asserts
-// IsAlive reports false for its now-dead PID.
-func TestIsAlive_ExitedProcessIsNotAlive(t *testing.T) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd", "/c", "exit", "0")
@@ -37,8 +30,30 @@ func TestIsAlive_ExitedProcessIsNotAlive(t *testing.T) {
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("cmd.Wait() failed: %v", err)
 	}
+	return pid
+}
 
-	if IsAlive(pid) {
-		t.Errorf("IsAlive(%d) = true; want false (process has exited)", pid)
+// TestIsAlive asserts IsAlive reports true for the test process's own PID, which is alive for the
+// duration of the test, and false for the PID of a child that has exited.
+func TestIsAlive(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pid  func(t *testing.T) int
+		want bool
+	}{
+		{"own process", func(*testing.T) int { return os.Getpid() }, true},
+		{"exited child", exitedChildPID, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pid := tt.pid(t)
+			if got := IsAlive(pid); got != tt.want {
+				t.Errorf("IsAlive(%d) = %v; want %v", pid, got, tt.want)
+			}
+		})
 	}
 }

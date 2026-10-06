@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,92 +51,122 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	}
 }
 
-// TestTemplateQuietConfig verifies Layer A: Copy* fixtures carry quiet git settings in their own
-// .git/config, independent of the hermetic env.
-func TestTemplateQuietConfig(t *testing.T) {
+// TestCopiedRepoScenario drives one CopyRepo fixture through the fixture and query helpers.
+// The steps run serially in one order and share the fixture's repository state: the query steps
+// start on the fixture's main branch, and the branches-and-ancestry step switches the checkout to
+// the side branch last.
+// The top-level test calls t.Parallel; no step does, because the steps share the fixture.
+func TestCopiedRepoScenario(t *testing.T) {
 	t.Parallel()
 
 	fixture := CopyRepo(t)
+	repo := fixture.Repo
 
-	cmd := exec.Command("git", "config", "--local", "core.fsmonitor")
-	cmd.Dir = fixture.Repo
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git config --local core.fsmonitor: %v; output: %s", err, output)
-	}
-	if got := strings.TrimSpace(string(output)); got != "false" {
-		t.Errorf("--local core.fsmonitor = %q; want %q", got, "false")
-	}
-}
+	if !t.Run("repo and origin are the copy's own", func(t *testing.T) {
+		MustRun(t, repo, "git", "rev-parse", "HEAD")
 
-// TestCopyRepo verifies that CopyRepo returns valid independent git repos.
-func TestCopyRepo(t *testing.T) {
-	t.Parallel()
-
-	fixture := CopyRepo(t)
-
-	// Verify the copied repo is a valid git repo
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = fixture.Repo
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse HEAD in repo: %v; output: %s", err, output)
+		// Origin points at the copied bare, not the template.
+		// Normalize to forward slashes: git returns forward-slash paths on Windows
+		// while filepath.Join uses backslashes; both are equivalent local paths.
+		gotURL := filepath.ToSlash(Git(t, repo, "remote", "get-url", "origin"))
+		if gotURL != filepath.ToSlash(fixture.Bare) {
+			t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
+		}
+	}) {
+		return
 	}
 
-	// Verify origin URL points at the copied bare, not the template.
-	// Normalize to forward slashes: git returns forward-slash paths on Windows
-	// while filepath.Join uses backslashes; both are equivalent local paths.
-	cmd = exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = fixture.Repo
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git remote get-url: %v", err)
-	}
-	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
-	if gotURL != filepath.ToSlash(fixture.Bare) {
-		t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
-	}
-}
-
-// TestCopyRepo_Isolation verifies that fixture copies are isolated.
-func TestCopyRepo_Isolation(t *testing.T) {
-	t.Parallel()
-
-	fixture1 := CopyRepo(t)
-	fixture2 := CopyRepo(t)
-
-	// Mutate fixture1: add and commit a file
-	testFile := filepath.Join(fixture1.Repo, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	// Layer A: Copy* fixtures carry quiet git settings in their own .git/config, independent of
+	// the hermetic env.
+	if !t.Run("template quiet config", func(t *testing.T) {
+		if got := Git(t, repo, "config", "--local", "core.fsmonitor"); got != "false" {
+			t.Errorf("--local core.fsmonitor = %q; want %q", got, "false")
+		}
+	}) {
+		return
 	}
 
-	cmd := exec.Command("git", "add", "test.txt")
-	cmd.Dir = fixture1.Repo
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v; output: %s", err, output)
+	if !t.Run("git returns trimmed stdout", func(t *testing.T) {
+		if got := Git(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); got != "main" {
+			t.Errorf("Git rev-parse --abbrev-ref HEAD = %q; want main", got)
+		}
+	}) {
+		return
 	}
 
-	cmd = exec.Command("git", "commit", "-m", "add test.txt")
-	cmd.Dir = fixture1.Repo
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git commit: %v; output: %s", err, output)
+	if !t.Run("commit file", func(t *testing.T) {
+		base := RevParse(t, repo, "HEAD")
+
+		sha := CommitFile(t, repo, "dir/file.txt", "content", "add file")
+		if got := RevParse(t, repo, "HEAD"); got != sha {
+			t.Errorf("RevParse(HEAD) = %q; CommitFile returned %q", got, sha)
+		}
+		if got := RevListCount(t, repo, base+"..HEAD"); got != 1 {
+			t.Errorf("RevListCount(base..HEAD) = %d; want 1", got)
+		}
+		if got := LsFiles(t, repo, "dir"); !slices.Equal(got, []string{"dir/file.txt"}) {
+			t.Errorf("LsFiles(dir) = %v; want [dir/file.txt]", got)
+		}
+	}) {
+		return
 	}
 
-	// Verify fixture2 is unaffected
-	testFile2 := filepath.Join(fixture2.Repo, "test.txt")
-	if _, err := os.Stat(testFile2); err == nil {
-		t.Errorf("fixture2 should not have test.txt, but it does")
+	if !t.Run("exclude lines of a linked worktree", func(t *testing.T) {
+		wt := filepath.Join(t.TempDir(), "wt")
+		Git(t, repo, "worktree", "add", "-b", "linked", wt)
+
+		infoDir := filepath.Join(repo, ".git", "info")
+		if err := os.MkdirAll(infoDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", infoDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(infoDir, "exclude"), []byte("one\n\ntwo\n"), 0o644); err != nil {
+			t.Fatalf("write exclude: %v", err)
+		}
+
+		if got := ExcludeLines(t, wt); !slices.Equal(got, []string{"one", "two"}) {
+			t.Errorf("ExcludeLines(linked worktree) = %v; want [one two]", got)
+		}
+	}) {
+		return
 	}
-}
 
-// TestMustRun verifies that MustRun executes commands successfully.
-func TestMustRun(t *testing.T) {
-	t.Parallel()
+	// Relies on the earlier steps leaving the checkout on main with the commit from "commit file".
+	if !t.Run("branches and ancestry", func(t *testing.T) {
+		base := RevParse(t, repo, "HEAD")
 
-	fixture := CopyRepo(t)
+		if got := CurrentBranch(t, repo); got != "main" {
+			t.Errorf("CurrentBranch = %q; want main", got)
+		}
+		if !BranchExists(t, repo, "main") {
+			t.Error("BranchExists(main) = false; want true")
+		}
+		if BranchExists(t, repo, "missing") {
+			t.Error("BranchExists(missing) = true; want false")
+		}
 
-	// MustRun should succeed when the command succeeds
-	MustRun(t, fixture.Repo, "git", "rev-parse", "HEAD")
+		Git(t, repo, "branch", "side")
+		tip := CommitFileOnBranch(t, repo, "side", "a/b.txt", "x", "side commit")
+
+		if got := CurrentBranch(t, repo); got != "side" {
+			t.Errorf("CurrentBranch after CommitFileOnBranch = %q; want side", got)
+		}
+		if !IsAncestor(t, repo, base, tip) {
+			t.Error("IsAncestor(base, tip) = false; want true")
+		}
+		if IsAncestor(t, repo, tip, base) {
+			t.Error("IsAncestor(tip, base) = true; want false")
+		}
+	}) {
+		return
+	}
+
+	// A second copy never sees a file committed to the first.
+	t.Run("copies are isolated", func(t *testing.T) {
+		other := CopyRepo(t)
+		if _, err := os.Stat(filepath.Join(other.Repo, "dir", "file.txt")); err == nil {
+			t.Errorf("second copy has dir/file.txt committed to the first")
+		}
+	})
 }
 
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern

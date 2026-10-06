@@ -14,133 +14,132 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// TestRunGit_Success tests basic git command execution
-func TestRunGit_Success(t *testing.T) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"--version"}, ".")
-	if err != nil {
-		t.Fatalf("RunGit failed with error: %v", err)
+// TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a
+// non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level
+// failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
+// The non-zero row also shows the cwd parameter is respected: run in the package directory
+// instead, `git status` would succeed.
+func TestRunGit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		args       []string
+		dir        string
+		wantErr    bool
+		wantExit   func(int) bool
+		wantStdout bool
+		wantStderr bool
+	}{
+		{
+			name:       "success",
+			args:       []string{"--version"},
+			dir:        ".",
+			wantExit:   func(code int) bool { return code == 0 },
+			wantStdout: true,
+		},
+		{
+			name:       "non-zero exit",
+			args:       []string{"status"},
+			dir:        t.TempDir(),
+			wantExit:   func(code int) bool { return code > 0 },
+			wantStderr: true,
+		},
+		{
+			name:     "exec failure",
+			args:     []string{"status"},
+			dir:      filepath.Join(t.TempDir(), "does-not-exist"),
+			wantErr:  true,
+			wantExit: func(code int) bool { return code == -1 },
+		},
 	}
-	if exitCode != 0 {
-		t.Fatalf("expected exit code 0, got %d", exitCode)
-	}
-	if stdout == "" {
-		t.Fatal("expected non-empty stdout")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr, exitCode, err := gitexec.RunGit(tt.args, tt.dir)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("RunGit error = %v; wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantExit(exitCode) {
+				t.Errorf("unexpected exit code %d", exitCode)
+			}
+			if (stdout != "") != tt.wantStdout {
+				t.Errorf("stdout = %q; non-empty want %v", stdout, tt.wantStdout)
+			}
+			if (stderr != "") != tt.wantStderr {
+				t.Errorf("stderr = %q; non-empty want %v", stderr, tt.wantStderr)
+			}
+		})
 	}
 }
 
-// TestRunGit_NonZeroExit tests handling of non-zero exit codes
-func TestRunGit_NonZeroExit(t *testing.T) {
-	tempDir := t.TempDir()
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status"}, tempDir)
-	if err != nil {
-		t.Fatalf("RunGit should not return error for non-zero exit: %v", err)
-	}
-	if exitCode == 0 {
-		t.Fatalf("expected non-zero exit code, got %d", exitCode)
-	}
-	if stderr == "" {
-		t.Fatal("expected non-empty stderr for non-git directory")
-	}
-	_ = stdout // unused but captured
-}
+// TestRun pins Run's contract: a successful command returns its stdout with a nil error; a
+// non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args
+// and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not
+// exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the
+// distinction every errors.As recovery site depends on.
+func TestRun(t *testing.T) {
+	t.Parallel()
 
-// TestRunGit_Cwd tests that the cwd parameter is respected
-func TestRunGit_Cwd(t *testing.T) {
-	tempDir := t.TempDir()
+	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
+	nonZeroDir := t.TempDir()
+	tests := []struct {
+		name        string
+		args        []string
+		dir         string
+		wantGitErr  bool
+		wantAnyErr  bool
+		wantStdout  bool
+		wantDetails bool
+	}{
+		{name: "success", args: []string{"--version"}, dir: ".", wantStdout: true},
+		{name: "non-zero exit", args: nonZeroArgs, dir: nonZeroDir, wantGitErr: true, wantAnyErr: true, wantDetails: true},
+		{name: "exec failure", args: []string{"status"}, dir: filepath.Join(t.TempDir(), "does-not-exist"), wantAnyErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Initialize a git repo in the temp directory
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"init"}, tempDir)
-	if err != nil {
-		t.Fatalf("git init failed: %v", err)
+			stdout, err := gitexec.Run(tt.args, tt.dir)
+			if (err != nil) != tt.wantAnyErr {
+				t.Fatalf("Run error = %v; wantErr %v", err, tt.wantAnyErr)
+			}
+			if (stdout != "") != tt.wantStdout {
+				t.Errorf("stdout = %q; non-empty want %v", stdout, tt.wantStdout)
+			}
+			var gitErr *gitexec.GitError
+			if errors.As(err, &gitErr) != tt.wantGitErr {
+				t.Fatalf("errors.As(*GitError) on %T: %v; want %v", err, err, tt.wantGitErr)
+			}
+			if !tt.wantDetails {
+				return
+			}
+			if gitErr.ExitCode == 0 {
+				t.Errorf("expected a non-zero exit code, got %d", gitErr.ExitCode)
+			}
+			if !reflect.DeepEqual(gitErr.Args, tt.args) {
+				t.Errorf("GitError.Args = %v; want %v", gitErr.Args, tt.args)
+			}
+			if gitErr.Dir != tt.dir {
+				t.Errorf("GitError.Dir = %q; want %q", gitErr.Dir, tt.dir)
+			}
+			if gitErr.Stderr == "" {
+				t.Error("expected non-empty GitError.Stderr")
+			}
+		})
 	}
-	if exitCode != 0 {
-		t.Fatalf("git init exited with code %d: %s", exitCode, stderr)
-	}
-	_ = stdout
-
-	// Run rev-parse in the same temp directory to verify it's a git repo
-	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--absolute-git-dir"}, tempDir)
-	if err != nil {
-		t.Fatalf("git rev-parse failed: %v", err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("git rev-parse exited with code %d: %s", exitCode, stderr)
-	}
-	if stdout == "" {
-		t.Fatal("expected non-empty stdout from git rev-parse")
-	}
-}
-
-// TestRunGit_ExecFailure pins RunGit's unchanged shape on an exec-level
-// failure: exit code -1 and blanked stdout and stderr, even though runCore
-// now backs both RunGit and Run.
-func TestRunGit_ExecFailure(t *testing.T) {
-	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
-
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status"}, missingDir)
-	if err == nil {
-		t.Fatal("expected a non-nil error for a nonexistent cwd")
-	}
-	if exitCode != -1 {
-		t.Fatalf("expected exit code -1, got %d", exitCode)
-	}
-	if stdout != "" {
-		t.Fatalf("expected blanked stdout, got %q", stdout)
-	}
-	if stderr != "" {
-		t.Fatalf("expected blanked stderr, got %q", stderr)
-	}
-}
-
-// TestRun_Success tests that a successful command returns its stdout with a
-// nil error.
-func TestRun_Success(t *testing.T) {
-	stdout, err := gitexec.Run([]string{"--version"}, ".")
-	if err != nil {
-		t.Fatalf("Run failed with error: %v", err)
-	}
-	if stdout == "" {
-		t.Fatal("expected non-empty stdout")
-	}
-}
-
-// TestRun_NonZeroExit tests that a non-zero exit is recoverable via
-// errors.As as *gitexec.GitError, carrying the exit code, the args and dir
-// it was given, and non-empty stderr — and that stdout is still returned
-// alongside that error.
-func TestRun_NonZeroExit(t *testing.T) {
-	tempDir := t.TempDir()
-	args := []string{"log", "--format=stdout-marker", "-1"}
-
-	stdout, err := gitexec.Run(args, tempDir)
-	if err == nil {
-		t.Fatal("expected a non-nil error for a command run outside a git repo")
-	}
-
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
-		t.Fatalf("expected errors.As to recover *gitexec.GitError, got %T: %v", err, err)
-	}
-	if gitErr.ExitCode == 0 {
-		t.Fatalf("expected a non-zero exit code, got %d", gitErr.ExitCode)
-	}
-	if !reflect.DeepEqual(gitErr.Args, args) {
-		t.Errorf("GitError.Args = %v; want %v", gitErr.Args, args)
-	}
-	if gitErr.Dir != tempDir {
-		t.Errorf("GitError.Dir = %q; want %q", gitErr.Dir, tempDir)
-	}
-	if gitErr.Stderr == "" {
-		t.Error("expected non-empty GitError.Stderr")
-	}
-	_ = stdout // git may emit nothing to stdout on this failure; presence isn't asserted here
 }
 
 // TestRun_StdoutOnError tests that stdout is still returned alongside a
 // *GitError, using a command that writes to stdout and then exits non-zero:
 // `git diff --exit-code` prints the diff to stdout and exits 1 when the
 // working tree differs from the last commit.
+//
+//testtiming:keep pins that stdout is returned alongside a *GitError, which the covering tests discard
 func TestRun_StdoutOnError(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "a.txt")
 
@@ -171,23 +170,5 @@ func TestRun_StdoutOnError(t *testing.T) {
 	}
 	if stdout == "" {
 		t.Fatal("expected non-empty stdout containing the diff output")
-	}
-}
-
-// TestRun_ExecFailure tests that an exec-level failure — a cwd that does
-// not exist — returns a non-nil error that errors.As does NOT match as
-// *gitexec.GitError. This is the load-bearing distinction every
-// errors.As recovery site across batches 2 through 7 depends on.
-func TestRun_ExecFailure(t *testing.T) {
-	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
-
-	_, err := gitexec.Run([]string{"status"}, missingDir)
-	if err == nil {
-		t.Fatal("expected a non-nil error for a nonexistent cwd")
-	}
-
-	var gitErr *gitexec.GitError
-	if errors.As(err, &gitErr) {
-		t.Fatal("expected errors.As NOT to recover *gitexec.GitError for an exec-level failure")
 	}
 }

@@ -6,21 +6,33 @@ import (
 	"testing"
 )
 
-func TestStartTimeOfOwnProcess(t *testing.T) {
-	got, ok := StartTime(os.Getpid())
-	if !ok || got == "" {
-		t.Fatalf("StartTime(own pid) = %q, %v; want a non-empty value", got, ok)
-	}
-}
+func TestStartTime(t *testing.T) {
+	t.Parallel()
 
-func TestStartTimeOfMissingProcess(t *testing.T) {
-	// Pids above the kernel's pid_max (at most 2^22) never exist.
-	if got, ok := StartTime(1 << 30); ok {
-		t.Fatalf("StartTime(missing pid) = %q, true; want false", got)
+	tests := []struct {
+		name string
+		pid  int
+		want bool
+	}{
+		{"own process has a start time", os.Getpid(), true},
+		// Pids above the kernel's pid_max (at most 2^22) never exist.
+		{"missing process has none", 1 << 30, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := StartTime(tt.pid)
+			if ok != tt.want || (ok && got == "") {
+				t.Errorf("StartTime(%d) = %q, %v; want ok=%v with a non-empty value when ok", tt.pid, got, ok, tt.want)
+			}
+		})
 	}
 }
 
 func TestHideWindowIsNoop(t *testing.T) {
+	t.Parallel()
+
 	cmd := exec.Command("true")
 	HideWindow(cmd)
 
@@ -30,6 +42,8 @@ func TestHideWindowIsNoop(t *testing.T) {
 }
 
 func TestDetachSetsSetsid(t *testing.T) {
+	t.Parallel()
+
 	cmd := exec.Command("true")
 	Detach(cmd)
 

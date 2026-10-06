@@ -60,100 +60,10 @@ func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 	return dir, New(dir)
 }
 
-// gogitLinkedFixture is a minimal linked-worktree fixture with different
-// branches and HEAD commits on main and linked.
-type gogitLinkedFixture struct {
-	mainDir    string
-	linkedDir  string
-	linkedRepo *Repo
-	// commonRefSHA is the value a ref set from the main worktree resolves
-	// to, read back through the linked worktree — the shared-common-dir
-	// case a wrong open (PlainOpen, without EnableDotGitCommonDir) reports
-	// as absent, per .scratch/gogit-worktree-probe-report.md.
-	commonRefSHA string
-}
-
-// commonDirProbeRef is the ref name gogitLinkedFixture writes from the main
-// worktree and gogit_test.go's linked-worktree coverage reads back — any
-// ref living in the common dir demonstrates the shared-common-dir read, so
-// the name itself carries no significance.
+// commonDirProbeRef is the ref name the linked-worktree fixture writes from the main worktree and
+// the common-dir step reads back through the linked worktree — any ref living in the common dir
+// demonstrates the shared-common-dir read, so the name itself carries no significance.
 const commonDirProbeRef = "refs/gitrepo-test/common-dir-probe"
-
-func newGogitLinkedFixture(t *testing.T) *gogitLinkedFixture {
-	t.Helper()
-
-	container := t.TempDir()
-	mainDir := filepath.Join(container, "main")
-	if err := os.Mkdir(mainDir, 0o755); err != nil {
-		t.Fatalf("mkdir main: %v", err)
-	}
-	gitkit.MustRun(t, mainDir, "git", "init", "-b", "main")
-	gitkit.CommitFile(t, mainDir, "base.txt", "base", "base commit")
-
-	mainRepo := New(mainDir)
-	mainSHA, err := mainRepo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() (main) error = %v", err)
-	}
-	gitkit.MustRun(t, mainDir, "git", "update-ref", commonDirProbeRef, mainSHA)
-
-	linkedDir := filepath.Join(container, "linked")
-	gitkit.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
-	gitkit.CommitFile(t, linkedDir, "feature.txt", "feature", "feature commit")
-
-	return &gogitLinkedFixture{
-		mainDir:      mainDir,
-		linkedDir:    linkedDir,
-		linkedRepo:   New(linkedDir),
-		commonRefSHA: mainSHA,
-	}
-}
-
-// TestGoGit_SucceedsOnStandaloneRepo asserts goGit opens cleanly on an ordinary, non-worktree
-// checkout and the handle can read HEAD.
-func TestGoGit_SucceedsOnStandaloneRepo(t *testing.T) {
-	_, repo := newStandaloneRepo(t)
-
-	handle, err := repo.goGit()
-	if err != nil {
-		t.Fatalf("goGit() error = %v; want nil", err)
-	}
-	if _, err := handle.Head(); err != nil {
-		t.Fatalf("Head() on standalone repo error = %v; want nil", err)
-	}
-}
-
-// TestGoGit_SucceedsOnLinkedWorktree_ReadsCommonDirState is the sharpest smoke test the probe
-// report calls for: it resolves an object made in the OTHER worktree and reads a ref set from the
-// OTHER worktree, both via the linked worktree's own goGit handle.
-// Under a wrong open (plain PlainOpen) both fail silently — the commit resolves as "object not
-// found" and the ref reads as absent — which is exactly why CurrentBranch (an unresolved,
-// per-worktree HEAD read that passes on a broken handle too) must never be used as this test.
-func TestGoGit_SucceedsOnLinkedWorktree_ReadsCommonDirState(t *testing.T) {
-	fx := newGogitLinkedFixture(t)
-	forceGoGitFinalizersOnCleanup(t)
-
-	handle, err := fx.linkedRepo.goGit()
-	if err != nil {
-		t.Fatalf("goGit() on linked worktree error = %v; want nil", err)
-	}
-
-	commit, err := handle.CommitObject(plumbing.NewHash(fx.commonRefSHA))
-	if err != nil {
-		t.Fatalf("CommitObject(%s) (a commit made in the OTHER worktree) via linked handle error = %v; want nil", fx.commonRefSHA, err)
-	}
-	if got := commit.Hash.String(); got != fx.commonRefSHA {
-		t.Errorf("CommitObject().Hash = %s; want %s", got, fx.commonRefSHA)
-	}
-
-	ref, err := handle.Reference(plumbing.ReferenceName(commonDirProbeRef), true)
-	if err != nil {
-		t.Fatalf("Reference(%s) (set from the OTHER worktree) via linked handle error = %v; want nil", commonDirProbeRef, err)
-	}
-	if got := ref.Hash().String(); got != fx.commonRefSHA {
-		t.Errorf("Reference().Hash() = %s; want %s", got, fx.commonRefSHA)
-	}
-}
 
 // TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent asserts goGit fails on a path that is not
 // itself a repository, rather than silently opening an ancestor repository — the DetectDotGit
@@ -208,128 +118,92 @@ func TestGoGit_FailedOpen_NotCached(t *testing.T) {
 	}
 }
 
-// TestGoGit_SuccessfulOpen_IsCached asserts a successful open is cached: two calls on the same Repo
-// return the identical *git.Repository pointer.
-func TestGoGit_SuccessfulOpen_IsCached(t *testing.T) {
-	_, repo := newStandaloneRepo(t)
+// TestGoGit_StandaloneRepo drives goGit through one ordinary, non-worktree checkout.
+// Several goroutines first drive goGit and lookupObjectRetrying at once against the shared Repo —
+// meaningful only under -race — exercising both the found path (a real commit) and the
+// not-found-then-gated-reindex path (a fabricated SHA, which must never actually be found and must
+// never panic or deadlock the shared lock).
+// A single caller then opens the handle and reads HEAD, and a second call returns the identical
+// cached *git.Repository pointer.
+// The steps run serially in that order and share the Repo's open cache: the concurrent step runs
+// first so it races the first open.
+// The top-level test calls t.Parallel; no step does, because the steps share the Repo.
+func TestGoGit_StandaloneRepo(t *testing.T) {
+	t.Parallel()
 
-	first, err := repo.goGit()
-	if err != nil {
-		t.Fatalf("goGit() (first call) error = %v; want nil", err)
-	}
-	second, err := repo.goGit()
-	if err != nil {
-		t.Fatalf("goGit() (second call) error = %v; want nil", err)
-	}
-	if first != second {
-		t.Errorf("goGit() returned different handles across two calls (%p vs %p); want the same cached pointer", first, second)
-	}
-}
+	dir, repo := newStandaloneRepo(t)
 
-// TestGoGit_ConcurrentCallers drives several goroutines through goGit and lookupObjectRetrying at
-// once against one shared Repo — meaningful only under -race, which this batch's verify: always
-// enables.
-// It exercises both the found path (a real commit) and the not-found-then-gated-reindex path (a
-// fabricated SHA, which must never actually be found and must never panic or deadlock the shared
-// lock).
-func TestGoGit_ConcurrentCallers(t *testing.T) {
-	_, repo := newStandaloneRepo(t)
+	if !t.Run("concurrent callers", func(t *testing.T) {
+		head := gitkit.RevParse(t, dir, "HEAD")
+		const fabricatedSHA = "0123456789abcdef0123456789abcdef01234567"
 
-	head, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	const fabricatedSHA = "0123456789abcdef0123456789abcdef01234567"
+		const goroutines = 8
+		var wg sync.WaitGroup
+		errs := make([]error, goroutines)
+		founds := make([]bool, goroutines)
+		for i := 0; i < goroutines; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
 
-	const goroutines = 8
-	var wg sync.WaitGroup
-	errs := make([]error, goroutines)
-	founds := make([]bool, goroutines)
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+				handle, err := repo.goGit()
+				if err != nil {
+					errs[i] = err
+					return
+				}
 
-			handle, err := repo.goGit()
+				sha := head
+				if i%2 == 0 {
+					sha = fabricatedSHA
+				}
+				commit, lookupErr := lookupObjectRetrying(repo, handle, func() (*object.Commit, error) {
+					return handle.CommitObject(plumbing.NewHash(sha))
+				})
+				founds[i] = lookupErr == nil && commit != nil
+			}(i)
+		}
+		wg.Wait()
+
+		for i, err := range errs {
 			if err != nil {
-				errs[i] = err
-				return
+				t.Errorf("goroutine %d goGit() error = %v; want nil", i, err)
 			}
-
-			sha := head
-			if i%2 == 0 {
-				sha = fabricatedSHA
+		}
+		for i := 0; i < goroutines; i++ {
+			want := i%2 != 0
+			if founds[i] != want {
+				t.Errorf("goroutine %d found = %v; want %v", i, founds[i], want)
 			}
-			commit, lookupErr := lookupObjectRetrying(repo, handle, func() (*object.Commit, error) {
-				return handle.CommitObject(plumbing.NewHash(sha))
-			})
-			founds[i] = lookupErr == nil && commit != nil
-		}(i)
+		}
+	}) {
+		return
 	}
-	wg.Wait()
 
-	for i, err := range errs {
+	if !t.Run("opens cleanly and reads HEAD", func(t *testing.T) {
+		handle, err := repo.goGit()
 		if err != nil {
-			t.Errorf("goroutine %d goGit() error = %v; want nil", i, err)
+			t.Fatalf("goGit() error = %v; want nil", err)
 		}
-	}
-	for i := 0; i < goroutines; i++ {
-		want := i%2 != 0
-		if founds[i] != want {
-			t.Errorf("goroutine %d found = %v; want %v", i, founds[i], want)
+		if _, err := handle.Head(); err != nil {
+			t.Fatalf("Head() on standalone repo error = %v; want nil", err)
 		}
-	}
-}
-
-// TestGoGit_OpenHandleDoesNotBlockWorktreeRemove asserts holding a warmed go-git handle open does
-// not permanently block `git worktree remove` — measured, per the probe report, to return exit 0
-// with KeepDescriptors at its default (false);
-// a regression here would break fabricengine's topology verbs for reasons unrelated to their own
-// code.
-//
-// go-git's own commondir resolution (repository.go's dotGitCommonDirectory) opens the linked
-// worktree's "commondir" file to read the common-dir path and never explicitly closes it — a real,
-// narrow go-git resource leak, distinct from and much smaller than the KeepDescriptors:true
-// packfile hazard the probe report separately measures.
-// That file object is unreachable the instant goGit's open call returns (nothing retains it), so on
-// Windows — where an unclosed *os.File blocks deletion of the same path — it is released as soon as
-// Go's garbage collector finalizes it, exactly like any other abandoned *os.File.
-// This test forces that collection (runtime.GC, with the finalizer goroutine given a moment to run)
-// before removing the worktree, which is what an ordinarily-busy long-lived process (fabricengine)
-// gets "for free" from its own memory churn;
-// it then asserts removal succeeds outright, with no `--force` fallback, matching the probe's own
-// measurement.
-func TestGoGit_OpenHandleDoesNotBlockWorktreeRemove(t *testing.T) {
-	fx := newGogitLinkedFixture(t)
-
-	handle, err := fx.linkedRepo.goGit()
-	if err != nil {
-		t.Fatalf("goGit() error = %v; want nil", err)
-	}
-	// Warm the handle with a real read before removal, matching the probe's
-	// methodology.
-	if _, err := handle.Head(); err != nil {
-		t.Fatalf("Head() error = %v; want nil", err)
+	}) {
+		return
 	}
 
-	// Give the finalizer goroutine a chance to close goGit's now-unreachable
-	// commondir file object before attempting removal — see the doc above.
-	runtime.GC()
-	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
-
-	_, stderr, code, err := gitexec.RunGit([]string{"worktree", "remove", fx.linkedDir}, fx.mainDir)
-	if err != nil {
-		t.Fatalf("git worktree remove spawn error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git worktree remove exited %d: %s; want 0 (an open go-git handle must not block removal)", code, stderr)
-	}
-
-	// Keep the handle alive across everything above so the assertion proves
-	// something about a live, still-cached handle, not one goGit's cache
-	// had already dropped.
-	runtime.KeepAlive(handle)
+	t.Run("successful open is cached", func(t *testing.T) {
+		first, err := repo.goGit()
+		if err != nil {
+			t.Fatalf("goGit() (first call) error = %v; want nil", err)
+		}
+		second, err := repo.goGit()
+		if err != nil {
+			t.Fatalf("goGit() (second call) error = %v; want nil", err)
+		}
+		if first != second {
+			t.Errorf("goGit() returned different handles across two calls (%p vs %p); want the same cached pointer", first, second)
+		}
+	})
 }
 
 // containsString reports whether haystack contains needle, used to assert a
@@ -345,7 +219,7 @@ func containsString(haystack []string, needle string) bool {
 }
 
 // linkedParityFixture holds the paths and fixed SHAs newLinkedParityFixture
-// builds: a bare remote, a main worktree, and a linked worktree on branch
+// builds: a bare remote, a main worktree whose common dir carries commonDirProbeRef at sharedSHA, and a linked worktree on branch
 // "feature" whose upstream another clone advances past its own tip — the
 // shared-common-dir topology needed to exercise every read this file's
 // oracle covers against a linked worktree rather than a standalone
@@ -388,6 +262,7 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 	if err != nil {
 		t.Fatalf("CurrentSHA() (shared) error = %v", err)
 	}
+	gitkit.MustRun(t, mainDir, "git", "update-ref", commonDirProbeRef, sharedSHA)
 	gitkit.MustRun(t, mainDir, "git", "remote", "add", "origin", bare)
 	gitkit.MustRun(t, mainDir, "git", "push", "-u", "origin", "main")
 
@@ -501,30 +376,70 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 
 }
 
-// TestLinkedWorktree_Parity runs every read-side parity case this batch covers a second time
-// against the linked-worktree fixture — directly,
-// and again reached only through a junction (internal/fslink.CreateDirLink), since that indirection
-// is how lyx addresses these directories in production — plus the CurrentBranch detached-HEAD case,
-// which must run last since it mutates the worktree's checked-out ref state.
+// TestLinkedWorktree_Parity drives the linked-worktree fixture through every read-side parity case
+// this package covers: goGit's reads of state living in the common dir, then the parity checks
+// directly, and again reached only through a junction (internal/fslink.CreateDirLink), since that
+// indirection is how lyx addresses these directories in production.
+// The CurrentBranch detached-HEAD case runs after them because it mutates the worktree's
+// checked-out ref state, and the worktree-remove case runs last because it deletes the worktree.
 // The standalone `git init` fixtures used elsewhere in this package cannot substitute for any of
 // this: the linked worktree is the only topology production runs in.
+// The steps run serially in that order and share the fixture's worktree.
+// The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestLinkedWorktree_Parity(t *testing.T) {
+	t.Parallel()
+
 	fx := newLinkedParityFixture(t)
 	forceGoGitFinalizersOnCleanup(t)
 
-	t.Run("Direct", func(t *testing.T) {
-		runLinkedWorktreeParityChecks(t, fx.linkedDir, fx)
-	})
+	// The sharpest smoke test the probe report calls for: it resolves an object made in the OTHER
+	// worktree and reads a ref set from the OTHER worktree, both via the linked worktree's own
+	// goGit handle.
+	// Under a wrong open (plain PlainOpen) both fail silently — the commit resolves as "object not
+	// found" and the ref reads as absent — which is exactly why CurrentBranch (an unresolved,
+	// per-worktree HEAD read that passes on a broken handle too) must never be used as this test.
+	if !t.Run("ReadsCommonDirState", func(t *testing.T) {
+		handle, err := New(fx.linkedDir).goGit()
+		if err != nil {
+			t.Fatalf("goGit() on linked worktree error = %v; want nil", err)
+		}
 
-	t.Run("ViaJunction", func(t *testing.T) {
+		commit, err := handle.CommitObject(plumbing.NewHash(fx.sharedSHA))
+		if err != nil {
+			t.Fatalf("CommitObject(%s) (a commit made in the OTHER worktree) via linked handle error = %v; want nil", fx.sharedSHA, err)
+		}
+		if got := commit.Hash.String(); got != fx.sharedSHA {
+			t.Errorf("CommitObject().Hash = %s; want %s", got, fx.sharedSHA)
+		}
+
+		ref, err := handle.Reference(plumbing.ReferenceName(commonDirProbeRef), true)
+		if err != nil {
+			t.Fatalf("Reference(%s) (set from the OTHER worktree) via linked handle error = %v; want nil", commonDirProbeRef, err)
+		}
+		if got := ref.Hash().String(); got != fx.sharedSHA {
+			t.Errorf("Reference().Hash() = %s; want %s", got, fx.sharedSHA)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("Direct", func(t *testing.T) {
+		runLinkedWorktreeParityChecks(t, fx.linkedDir, fx)
+	}) {
+		return
+	}
+
+	if !t.Run("ViaJunction", func(t *testing.T) {
 		junctionPath := filepath.Join(t.TempDir(), "via-junction")
 		if err := fslink.CreateDirLink(junctionPath, fx.linkedDir); err != nil {
 			t.Skipf("directory link creation unavailable on this platform: %v", err)
 		}
 		runLinkedWorktreeParityChecks(t, junctionPath, fx)
-	})
+	}) {
+		return
+	}
 
-	t.Run("CurrentBranch_Detached", func(t *testing.T) {
+	if !t.Run("CurrentBranch_Detached", func(t *testing.T) {
 		repo := New(fx.linkedDir)
 		gitkit.MustRun(t, fx.linkedDir, "git", "checkout", "--detach", fx.linkedSHA)
 
@@ -536,5 +451,51 @@ func TestLinkedWorktree_Parity(t *testing.T) {
 		if implErr == nil {
 			t.Error("CurrentBranch() on detached linked-worktree HEAD error = nil, want non-nil")
 		}
+	}) {
+		return
+	}
+
+	// Holding a warmed go-git handle open must not permanently block `git worktree remove` —
+	// measured, per the probe report, to return exit 0 with KeepDescriptors at its default (false);
+	// a regression here would break fabricengine's topology verbs for reasons unrelated to their own
+	// code.
+	//
+	// go-git's own commondir resolution (repository.go's dotGitCommonDirectory) opens the linked
+	// worktree's "commondir" file to read the common-dir path and never explicitly closes it — a
+	// real, narrow go-git resource leak, distinct from and much smaller than the KeepDescriptors:true
+	// packfile hazard the probe report separately measures.
+	// That file object is unreachable the instant goGit's open call returns (nothing retains it), so
+	// on Windows — where an unclosed *os.File blocks deletion of the same path — it is released as
+	// soon as Go's garbage collector finalizes it, exactly like any other abandoned *os.File.
+	// This step forces that collection (runtime.GC, with the finalizer goroutine given a moment to
+	// run) before removing the worktree, which is what an ordinarily-busy long-lived process
+	// (fabricengine) gets "for free" from its own memory churn;
+	// it then asserts removal succeeds outright, with no `--force` fallback, matching the probe's
+	// own measurement.
+	t.Run("OpenHandleDoesNotBlockWorktreeRemove", func(t *testing.T) {
+		handle, err := New(fx.linkedDir).goGit()
+		if err != nil {
+			t.Fatalf("goGit() error = %v; want nil", err)
+		}
+		// Warm the handle with a real read before removal, matching the probe's methodology.
+		if _, err := handle.Head(); err != nil {
+			t.Fatalf("Head() error = %v; want nil", err)
+		}
+
+		runtime.GC()
+		runtime.GC()
+		time.Sleep(50 * time.Millisecond)
+
+		_, stderr, code, err := gitexec.RunGit([]string{"worktree", "remove", fx.linkedDir}, fx.mainDir)
+		if err != nil {
+			t.Fatalf("git worktree remove spawn error = %v", err)
+		}
+		if code != 0 {
+			t.Fatalf("git worktree remove exited %d: %s; want 0 (an open go-git handle must not block removal)", code, stderr)
+		}
+
+		// Keep the handle alive across everything above so the assertion proves something about a
+		// live, still-cached handle, not one goGit's cache had already dropped.
+		runtime.KeepAlive(handle)
 	})
 }

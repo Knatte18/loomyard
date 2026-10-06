@@ -35,6 +35,8 @@ const noForceAddMinScannedFiles = 5
 // `git add -f` (or the hasPathspecMagic helper that used to gate it) ever reappearing.
 // See PATTERN-never-force-add.
 func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
+	t.Parallel()
+
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/gitrepo"}, Shallow: true}, func(f *scankit.File) {

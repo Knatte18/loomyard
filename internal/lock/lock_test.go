@@ -13,6 +13,8 @@ import (
 )
 
 func TestAcquireWriteLock(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	t.Run("acquires lock and creates lock file", func(t *testing.T) {
@@ -67,6 +69,8 @@ func TestAcquireWriteLock(t *testing.T) {
 
 // TestTryAcquireWriteLock verifies non-blocking acquisition and contention reporting.
 func TestTryAcquireWriteLock(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	t.Run("succeeds and creates the lock file", func(t *testing.T) {
@@ -127,6 +131,8 @@ func TestTryAcquireWriteLock(t *testing.T) {
 }
 
 func TestAcquireReadLock(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	t.Run("acquires read lock and creates lock file", func(t *testing.T) {

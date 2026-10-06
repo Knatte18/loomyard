@@ -1,8 +1,8 @@
 //go:build integration
 
 // gitrepo_test.go covers the read/commit primitives (CurrentSHA,
-// StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists) against
-// real git repositories built fresh under t.TempDir() for each test. Every
+// StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists,
+// CurrentBranch) against real git repositories built under t.TempDir(). Every
 // test spawns real git, so this file requires the hermetic TestMain in
 // testmain_test.go.
 
@@ -62,593 +62,367 @@ func runGitStatus(t *testing.T, dir string) (stdout, stderr string, code int, er
 	return runGit(t, dir, "status", "--porcelain")
 }
 
-func TestCurrentSHA_ReturnsHEAD(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "hello")
-	commitAll(t, dir, "init")
+// statusOf returns the porcelain status output for dir, failing the test on a git error.
+func statusOf(t *testing.T, dir string) string {
+	t.Helper()
 
-	got, err := repo.CurrentSHA()
+	stdout, stderr, code, err := runGitStatus(t, dir)
 	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v; want nil", err)
+		t.Fatalf("git status error = %v", err)
 	}
-	if got == "" {
-		t.Fatal("CurrentSHA() = \"\"; want a non-empty SHA")
+	if code != 0 {
+		t.Fatalf("git status exited %d: %s", code, stderr)
 	}
+	return stdout
 }
 
-func TestCurrentSHA_EmptyRepo_ReturnsErrNoCommits(t *testing.T) {
-	_, repo := newRepo(t)
+// headFilesOf returns the file names the HEAD commit touches, one per line, failing the test on a
+// git error.
+func headFilesOf(t *testing.T, dir string) string {
+	t.Helper()
 
-	_, err := repo.CurrentSHA()
-	if !errors.Is(err, gitrepo.ErrNoCommits) {
-		t.Fatalf("CurrentSHA() error = %v; want errors.Is(err, ErrNoCommits)", err)
+	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if err != nil {
+		t.Fatalf("git show error = %v", err)
 	}
+	if code != 0 {
+		t.Fatalf("git show exited %d: %s", code, stderr)
+	}
+	return strings.TrimSpace(shown)
 }
 
-func TestStageAndCommit_CommitsOnlyListedFiles(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
+// mergeHeadPresent reports whether a merge is pending in dir.
+func mergeHeadPresent(t *testing.T, dir string) bool {
+	t.Helper()
 
-	// Dirty two files; only a.txt is passed to StageAndCommit.
-	writeFile(t, dir, "a.txt", "changed")
-	writeFile(t, dir, "b.txt", "untracked")
+	_, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
+	return code == 0
+}
 
-	sha, committed, err := repo.StageAndCommit("commit a only", []string{"a.txt"})
-	if err != nil {
-		t.Fatalf("StageAndCommit() error = %v; want nil", err)
-	}
-	if !committed {
-		t.Fatal("StageAndCommit() committed = false; want true")
-	}
-	if sha == "" {
-		t.Fatal("StageAndCommit() sha = \"\"; want non-empty")
-	}
+// requireCurrentSHA returns repo's HEAD, failing the test on an error.
+func requireCurrentSHA(t *testing.T, repo *gitrepo.Repo) string {
+	t.Helper()
 
-	got, err := repo.CurrentSHA()
+	sha, err := repo.CurrentSHA()
 	if err != nil {
 		t.Fatalf("CurrentSHA() error = %v", err)
 	}
-	if got != sha {
-		t.Errorf("CurrentSHA() = %q; want %q (StageAndCommit's returned sha)", got, sha)
+	return sha
+}
+
+// requireSameFiles fails the test unless got lists exactly the files in want, in any order.
+func requireSameFiles(t *testing.T, call string, got []string, want ...string) {
+	t.Helper()
+
+	wantSet := map[string]bool{}
+	for _, f := range want {
+		wantSet[f] = true
+	}
+	if len(got) != len(wantSet) {
+		t.Fatalf("%s = %v; want exactly %v", call, got, want)
+	}
+	for _, f := range got {
+		if !wantSet[f] {
+			t.Errorf("%s contains unexpected file %q", call, f)
+		}
 	}
 }
 
-func TestStageAndCommit_LeavesUnlistedDirtyFileUncommitted(t *testing.T) {
+// TestCurrentSHA covers an unborn HEAD and a committed one in a single repository.
+// The steps run serially against shared repository state: the second step relies on the commit it
+// makes itself, after the first has seen the repository empty.
+// The top-level test calls t.Parallel; no step does, because the steps share the repository.
+func TestCurrentSHA(t *testing.T) {
+	t.Parallel()
+
+	dir, repo := newRepo(t)
+
+	if !t.Run("empty repository returns ErrNoCommits", func(t *testing.T) {
+		if _, err := repo.CurrentSHA(); !errors.Is(err, gitrepo.ErrNoCommits) {
+			t.Fatalf("CurrentSHA() error = %v; want errors.Is(err, ErrNoCommits)", err)
+		}
+	}) {
+		return
+	}
+
+	t.Run("returns HEAD", func(t *testing.T) {
+		writeFile(t, dir, "a.txt", "hello")
+		commitAll(t, dir, "init")
+
+		if got := requireCurrentSHA(t, repo); got == "" {
+			t.Fatal("CurrentSHA() = \"\"; want a non-empty SHA")
+		}
+	})
+}
+
+// TestCommitAndReadPrimitives drives StageAndCommit, StageAllAndCommit, ChangedFilesSince,
+// SHAExists, CurrentBranch and the mid-merge refusal through one repository.
+// The steps run serially in one order and share the repository's state: every step starts from a
+// clean tree on main with the files a.txt and b.txt tracked, except where a comment names the dirt
+// an earlier step leaves for the next, and the mid-merge step runs last because it leaves a merge
+// pending.
+// The top-level test calls t.Parallel; no step does, because the steps share the repository.
+func TestCommitAndReadPrimitives(t *testing.T) {
+	t.Parallel()
+
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
 	writeFile(t, dir, "b.txt", "initial")
 	commitAll(t, dir, "init")
 
-	writeFile(t, dir, "a.txt", "changed")
-	writeFile(t, dir, "b.txt", "also changed")
-
-	if _, _, err := repo.StageAndCommit("commit a only", []string{"a.txt"}); err != nil {
-		t.Fatalf("StageAndCommit() error = %v", err)
-	}
-
-	// b.txt must still show as a modified, uncommitted file.
-	stdout, stderr, code, err := runGitStatus(t, dir)
-	if err != nil {
-		t.Fatalf("git status error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git status exited %d: %s", code, stderr)
-	}
-	if !strings.Contains(stdout, "b.txt") {
-		t.Errorf("git status --porcelain = %q; want it to still list b.txt as dirty", stdout)
-	}
-}
-
-func TestStageAndCommit_NothingToCommit_WhenFilesUnchanged(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	// a.txt is unchanged since the last commit; nothing to stage.
-	sha, committed, err := repo.StageAndCommit("no-op", []string{"a.txt"})
-	if err != nil {
-		t.Fatalf("StageAndCommit() error = %v; want nil", err)
-	}
-	if committed {
-		t.Fatal("StageAndCommit() committed = true; want false (nothing-to-commit signal)")
-	}
-	if sha != "" {
-		t.Errorf("StageAndCommit() sha = %q; want \"\"", sha)
-	}
-}
-
-func TestStageAndCommit_NeverStagesUnlistedFile(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	writeFile(t, dir, "a.txt", "changed")
-	writeFile(t, dir, "b.txt", "new and untracked")
-
-	if _, _, err := repo.StageAndCommit("commit a only", []string{"a.txt"}); err != nil {
-		t.Fatalf("StageAndCommit() error = %v", err)
-	}
-
-	changed, err := repo.ChangedFilesSince(firstCommitSHA(t, dir))
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v", err)
-	}
-	for _, f := range changed {
-		if f == "b.txt" {
-			t.Fatalf("ChangedFilesSince() = %v; b.txt must never have been committed", changed)
-		}
-	}
-}
-
-// TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted asserts that an index entry staged outside
-// the call (a human's half-staged WIP in the shared worktree) is not swept into the automated
-// commit: only the listed file is committed,
-// and the pre-staged entry stays staged and uncommitted.
-func TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	// Someone else stages wip.txt but never commits it; the caller then
-	// commits an unrelated change to a.txt.
-	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
-	writeFile(t, dir, "a.txt", "changed")
-
-	sha, committed, err := repo.StageAndCommit("commit a only", []string{"a.txt"})
-	if err != nil {
-		t.Fatalf("StageAndCommit() error = %v; want nil", err)
-	}
-	if !committed || sha == "" {
-		t.Fatalf("StageAndCommit() = (%q, %v); want a real commit of a.txt", sha, committed)
-	}
-
-	// The new commit must contain a.txt only — never the pre-staged wip.txt.
-	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
-	if err != nil {
-		t.Fatalf("git show error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git show exited %d: %s", code, stderr)
-	}
-	if strings.Contains(shown, "wip.txt") {
-		t.Errorf("git show --name-only HEAD = %q; pre-staged wip.txt must not be committed", shown)
-	}
-
-	// wip.txt must still be staged (status "A ") awaiting its own commit.
-	stdout, stderr, code, err := runGitStatus(t, dir)
-	if err != nil {
-		t.Fatalf("git status error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git status exited %d: %s", code, stderr)
-	}
-	if !strings.Contains(stdout, "wip.txt") {
-		t.Errorf("git status --porcelain = %q; want wip.txt still staged and uncommitted", stdout)
-	}
-}
-
-// TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit asserts the documented empty-list
-// contract holds even when the index already has a staged entry: ("", false, nil) with HEAD unmoved
-// — an empty list must not become a commit of someone else's staged change.
-func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	headBefore, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
-
-	for _, files := range [][]string{nil, {}} {
-		sha, committed, err := repo.StageAndCommit("must not happen", files)
-		if err != nil {
-			t.Fatalf("StageAndCommit(%v) error = %v; want nil", files, err)
-		}
-		if committed || sha != "" {
-			t.Errorf("StageAndCommit(%v) = (%q, %v); want (\"\", false)", files, sha, committed)
-		}
-	}
-
-	headAfter, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	if headAfter != headBefore {
-		t.Errorf("HEAD after empty-list StageAndCommit = %q; want unchanged %q", headAfter, headBefore)
-	}
-}
-
-// TestStageAndCommit_MidMerge_RefusesPartialCommit asserts the documented mid-merge safety
-// property: while a merge is in progress (MERGE_HEAD present), a pathspec-scoped StageAndCommit of
-// an unrelated file is refused by git ("cannot do a partial commit during a merge") rather than
-// silently finalizing the human's half-done merge under the automated message.
-// The merge is left clean and resolved (git merge --no-commit of a non-conflicting branch) on
-// purpose: an unresolved conflict would block any commit and mask the distinction, so this test is
-// load-bearing only against a clean merge-in- progress.
-// It guards the mid-merge consequence of the commit's pathspec scoping — `commit -- <files>`
-// refuses a partial commit mid-merge, whereas an unscoped `git commit` would complete the merge —
-// so the merge must still be pending afterward.
-func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "base.txt", "base\n")
-	commitAll(t, dir, "base")
-
-	// A feature branch adds feat.txt while main edits a different file, so the
-	// merge is non-conflicting and leaves a clean, fully-resolved index.
-	gitkit.MustRun(t, dir, "git", "checkout", "-b", "feature")
-	writeFile(t, dir, "feat.txt", "feature\n")
-	commitAll(t, dir, "feature edit")
-	gitkit.MustRun(t, dir, "git", "checkout", "main")
-	writeFile(t, dir, "base.txt", "base\nmain edit\n")
-	commitAll(t, dir, "main edit")
-
-	// --no-commit stops after merging into the index/worktree, so MERGE_HEAD is
-	// set with a clean index — the mid-merge state a commit could finalize.
-	gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
-	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
-		t.Fatalf("MERGE_HEAD not present after --no-commit merge (exit %d); test needs a mid-merge state", code)
-	}
-
-	// The caller stages and commits only an unrelated file. The pathspec-scoped
-	// commit must be refused mid-merge, not silently complete the merge.
-	writeFile(t, dir, "other.txt", "written by caller\n")
-	sha, committed, err := repo.StageAndCommit("automated commit during merge", []string{"other.txt"})
-	if err == nil {
-		t.Fatal("StageAndCommit() mid-merge error = nil; want git's partial-commit refusal")
-	}
-	if committed || sha != "" {
-		t.Errorf("StageAndCommit() mid-merge = (%q, %v); want (\"\", false) — no commit", sha, committed)
-	}
-
-	// The merge must still be pending: a refused partial commit must not have
-	// finalized it under the automated message.
-	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
-		t.Errorf("MERGE_HEAD absent after refused StageAndCommit (exit %d); the merge must not have been completed", code)
-	}
-}
-
-// TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles asserts the wildcard-stage contract:
-// dirtying the working tree with both a brand-new untracked file and a modification to an
-// already-tracked file, neither named explicitly, must all land in one commit and leave the tree
-// clean — the behavior StageAndCommit's explicit-file-list contract deliberately does not offer.
-func TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	// Dirty the tree two ways at once: modify a tracked file and add a new,
-	// untracked one. Neither is named explicitly to StageAllAndCommit.
-	writeFile(t, dir, "a.txt", "changed")
-	writeFile(t, dir, "b.txt", "untracked")
-
-	sha, committed, err := repo.StageAllAndCommit("stage everything")
-	if err != nil {
-		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
-	}
-	if !committed {
-		t.Fatal("StageAllAndCommit() committed = false; want true")
-	}
-	if sha == "" {
-		t.Fatal("StageAllAndCommit() sha = \"\"; want non-empty")
-	}
-
-	got, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	if got != sha {
-		t.Errorf("CurrentSHA() = %q; want %q (StageAllAndCommit's returned sha)", got, sha)
-	}
-
-	// Both changes must be captured in the commit, leaving nothing dirty.
-	stdout, stderr, code, err := runGitStatus(t, dir)
-	if err != nil {
-		t.Fatalf("git status error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git status exited %d: %s", code, stderr)
-	}
-	if stdout != "" {
-		t.Errorf("git status --porcelain = %q; want empty (working tree clean)", stdout)
-	}
-
-	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
-	if err != nil {
-		t.Fatalf("git show error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git show exited %d: %s", code, stderr)
-	}
-	if !strings.Contains(shown, "a.txt") || !strings.Contains(shown, "b.txt") {
-		t.Errorf("git show --name-only HEAD = %q; want both a.txt and b.txt", shown)
-	}
-}
-
-// TestStageAllAndCommit_NothingToCommit_WhenTreeClean asserts the documented no-op signal: a clean
-// working tree returns ("", false, nil) and creates no new commit, mirroring StageAndCommit's
-// nothing-to-commit contract.
-func TestStageAllAndCommit_NothingToCommit_WhenTreeClean(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	headBefore, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	sha, committed, err := repo.StageAllAndCommit("must not happen")
-	if err != nil {
-		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
-	}
-	if committed || sha != "" {
-		t.Errorf("StageAllAndCommit() = (%q, %v); want (\"\", false)", sha, committed)
-	}
-
-	headAfter, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	if headAfter != headBefore {
-		t.Errorf("HEAD after clean-tree StageAllAndCommit = %q; want unchanged %q", headAfter, headBefore)
-	}
-}
-
-// TestStageAllAndCommit_CapturesFileExplicitListWouldMiss asserts the reason StageAllAndCommit
-// exists: a new file not named in any explicit list — the kind of file an explicit-list
-// StageAndCommit call would silently leave uncommitted — is still captured by the wildcard `add -A`
-// path.
-func TestStageAllAndCommit_CapturesFileExplicitListWouldMiss(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	// unlisted.txt is never passed to any StageAndCommit call in this test;
-	// only StageAllAndCommit's wildcard add sees it.
-	writeFile(t, dir, "unlisted.txt", "not named anywhere")
-
-	if _, _, err := repo.StageAndCommit("commit a only", []string{"a.txt"}); err != nil {
-		t.Fatalf("StageAndCommit() error = %v", err)
-	}
-
-	// unlisted.txt must still be untracked at this point — StageAndCommit's
-	// explicit list never touched it.
-	stdout, stderr, code, err := runGitStatus(t, dir)
-	if err != nil {
-		t.Fatalf("git status error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git status exited %d: %s", code, stderr)
-	}
-	if !strings.Contains(stdout, "unlisted.txt") {
-		t.Fatalf("git status --porcelain = %q; want unlisted.txt still dirty before StageAllAndCommit", stdout)
-	}
-
-	sha, committed, err := repo.StageAllAndCommit("sweep up the rest")
-	if err != nil {
-		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
-	}
-	if !committed || sha == "" {
-		t.Fatalf("StageAllAndCommit() = (%q, %v); want a real commit", sha, committed)
-	}
-
-	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
-	if err != nil {
-		t.Fatalf("git show error = %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("git show exited %d: %s", code, stderr)
-	}
-	if !strings.Contains(shown, "unlisted.txt") {
-		t.Errorf("git show --name-only HEAD = %q; want unlisted.txt captured by StageAllAndCommit", shown)
-	}
-}
-
-func TestChangedFilesSince_ReturnsCorrectSet(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	base, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	writeFile(t, dir, "a.txt", "changed")
-	writeFile(t, dir, "b.txt", "new")
-	commitAll(t, dir, "second commit")
-
-	got, err := repo.ChangedFilesSince(base)
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
-	}
-
-	want := map[string]bool{"a.txt": true, "b.txt": true}
-	if len(got) != len(want) {
-		t.Fatalf("ChangedFilesSince() = %v; want exactly %v", got, want)
-	}
-	for _, f := range got {
-		if !want[f] {
-			t.Errorf("ChangedFilesSince() contains unexpected file %q", f)
-		}
-	}
-}
-
-func TestChangedFilesSince_EmptyWhenShaEqualsHEAD(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	head, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	got, err := repo.ChangedFilesSince(head)
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("ChangedFilesSince(HEAD) = %v; want empty", got)
-	}
-}
-
-func TestChangedFilesSince_ExcludesUncommittedEdit(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	base, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	// Dirty the working tree without committing.
-	writeFile(t, dir, "a.txt", "uncommitted edit")
-
-	got, err := repo.ChangedFilesSince(base)
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("ChangedFilesSince() = %v; want empty (uncommitted edits are excluded)", got)
-	}
-}
-
-// TestChangedFilesSince_NonASCIIPathReturnedVerbatim asserts that a filename outside ASCII comes
-// back as the literal on-disk path, not core.quotePath's C-quoted escape form
-// ("\"bl\\303\\245b\\303\\246r.txt\"") that matches nothing on disk.
-func TestChangedFilesSince_NonASCIIPathReturnedVerbatim(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	base, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	const name = "blåbær.txt"
-	writeFile(t, dir, name, "berries")
-	commitAll(t, dir, "add non-ascii filename")
-
-	got, err := repo.ChangedFilesSince(base)
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
-	}
-	if len(got) != 1 || got[0] != name {
-		t.Errorf("ChangedFilesSince() = %q; want [%q] verbatim", got, name)
-	}
-}
-
-// TestChangedFilesSince_RenameReportsBothPaths asserts that a rename lists both the old path (which
-// no longer exists at HEAD) and the new one;
-// git's default rename detection would report only the destination, leaving a consumer's per-file
-// state for the old path stale forever.
-func TestChangedFilesSince_RenameReportsBothPaths(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "old.txt", "content that stays identical")
-	commitAll(t, dir, "init")
-
-	base, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	// A pure rename (identical content) is the case rename detection folds.
-	gitkit.MustRun(t, dir, "git", "mv", "old.txt", "new.txt")
-	gitkit.MustRun(t, dir, "git", "commit", "-m", "rename")
-
-	got, err := repo.ChangedFilesSince(base)
-	if err != nil {
-		t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
-	}
-	want := map[string]bool{"old.txt": true, "new.txt": true}
-	if len(got) != len(want) {
-		t.Fatalf("ChangedFilesSince() = %v; want exactly both sides of the rename %v", got, want)
-	}
-	for _, f := range got {
-		if !want[f] {
-			t.Errorf("ChangedFilesSince() contains unexpected file %q", f)
-		}
-	}
-}
-
-func TestChangedFilesSince_ErrorsOnFabricatedSHA(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	_, err := repo.ChangedFilesSince("0123456789abcdef0123456789abcdef01234567")
-	if err == nil {
-		t.Fatal("ChangedFilesSince(fabricated sha) error = nil; want an error")
-	}
-}
-
-func TestSHAExists(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-
-	real, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	tests := []struct {
+	steps := []struct {
 		name string
-		sha  string
-		want bool
+		run  func(t *testing.T)
 	}{
-		{"RealSHA", real, true},
-		{"FabricatedSHA", "0123456789abcdef0123456789abcdef01234567", false},
-		{"GarbageInput", "not-a-sha at all!!", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := repo.SHAExists(tt.sha); got != tt.want {
-				t.Errorf("SHAExists(%q) = %v; want %v", tt.sha, got, tt.want)
+		{"StageAndCommit with unchanged files reports nothing to commit", func(t *testing.T) {
+			sha, committed, err := repo.StageAndCommit("no-op", []string{"a.txt"})
+			if err != nil {
+				t.Fatalf("StageAndCommit() error = %v; want nil", err)
 			}
-		})
-	}
-}
+			if committed || sha != "" {
+				t.Errorf("StageAndCommit() = (%q, %v); want (\"\", false) (nothing-to-commit signal)", sha, committed)
+			}
+		}},
+		// Leaves wip.txt staged for the next step: an index entry staged outside the call is a
+		// human's half-staged WIP in the shared worktree.
+		{"StageAndCommit with an empty list never commits a pre-staged entry", func(t *testing.T) {
+			writeFile(t, dir, "wip.txt", "half-staged WIP")
+			gitkit.MustRun(t, dir, "git", "add", "wip.txt")
+			headBefore := requireCurrentSHA(t, repo)
 
-// TestCurrentBranch_ErrorsOnDetachedHEAD asserts CurrentBranch surfaces an error rather than an
-// empty string when HEAD is detached, so a caller can never mistake "no branch captured" for a
-// legitimate empty branch name.
-func TestCurrentBranch_ErrorsOnDetachedHEAD(t *testing.T) {
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-	sha, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
+			for _, files := range [][]string{nil, {}} {
+				sha, committed, err := repo.StageAndCommit("must not happen", files)
+				if err != nil {
+					t.Fatalf("StageAndCommit(%v) error = %v; want nil", files, err)
+				}
+				if committed || sha != "" {
+					t.Errorf("StageAndCommit(%v) = (%q, %v); want (\"\", false)", files, sha, committed)
+				}
+			}
 
-	gitkit.MustRun(t, dir, "git", "checkout", "--detach", sha)
+			if headAfter := requireCurrentSHA(t, repo); headAfter != headBefore {
+				t.Errorf("HEAD after empty-list StageAndCommit = %q; want unchanged %q", headAfter, headBefore)
+			}
+		}},
+		// Relies on wip.txt staged by the previous step; leaves wip.txt, b.txt and c.txt dirty for
+		// the StageAllAndCommit step.
+		{"StageAndCommit commits only the listed files", func(t *testing.T) {
+			base := requireCurrentSHA(t, repo)
+			writeFile(t, dir, "a.txt", "changed")
+			writeFile(t, dir, "b.txt", "also changed")
+			writeFile(t, dir, "c.txt", "untracked")
 
-	if _, err := repo.CurrentBranch(); err == nil {
-		t.Fatal("CurrentBranch() on detached HEAD error = nil; want non-nil")
-	}
-}
+			sha, committed, err := repo.StageAndCommit("commit a only", []string{"a.txt"})
+			if err != nil {
+				t.Fatalf("StageAndCommit() error = %v; want nil", err)
+			}
+			if !committed || sha == "" {
+				t.Fatalf("StageAndCommit() = (%q, %v); want a real commit of a.txt", sha, committed)
+			}
+			if got := requireCurrentSHA(t, repo); got != sha {
+				t.Errorf("CurrentSHA() = %q; want %q (StageAndCommit's returned sha)", got, sha)
+			}
 
-// firstCommitSHA returns the SHA of the repository's first (root) commit,
-// used as a fixed base point for ChangedFilesSince assertions.
-func firstCommitSHA(t *testing.T, dir string) string {
-	t.Helper()
+			// The new commit holds a.txt only: never the modified b.txt, the untracked c.txt or the
+			// pre-staged wip.txt.
+			if got := headFilesOf(t, dir); got != "a.txt" {
+				t.Errorf("git show --name-only HEAD = %q; want only a.txt", got)
+			}
+			changed, err := repo.ChangedFilesSince(base)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v", err)
+			}
+			requireSameFiles(t, "ChangedFilesSince()", changed, "a.txt")
 
-	stdout, stderr, code, err := runGit(t, dir, "rev-list", "--max-parents=0", "HEAD")
-	if err != nil {
-		t.Fatalf("git rev-list error = %v", err)
+			status := statusOf(t, dir)
+			for _, dirty := range []string{"b.txt", "c.txt", "wip.txt"} {
+				if !strings.Contains(status, dirty) {
+					t.Errorf("git status --porcelain = %q; want it to still list %s as dirty", status, dirty)
+				}
+			}
+		}},
+		// Relies on the dirt the previous step left; a.txt is modified again so the sweep also
+		// covers a tracked modification. Leaves a clean tree.
+		{"StageAllAndCommit commits every dirty file, including what an explicit list left", func(t *testing.T) {
+			writeFile(t, dir, "a.txt", "changed again")
+
+			sha, committed, err := repo.StageAllAndCommit("stage everything")
+			if err != nil {
+				t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+			}
+			if !committed || sha == "" {
+				t.Fatalf("StageAllAndCommit() = (%q, %v); want a real commit", sha, committed)
+			}
+			if got := requireCurrentSHA(t, repo); got != sha {
+				t.Errorf("CurrentSHA() = %q; want %q (StageAllAndCommit's returned sha)", got, sha)
+			}
+			if status := statusOf(t, dir); status != "" {
+				t.Errorf("git status --porcelain = %q; want empty (working tree clean)", status)
+			}
+			shown := headFilesOf(t, dir)
+			for _, captured := range []string{"a.txt", "b.txt", "c.txt", "wip.txt"} {
+				if !strings.Contains(shown, captured) {
+					t.Errorf("git show --name-only HEAD = %q; want %s captured by StageAllAndCommit", shown, captured)
+				}
+			}
+		}},
+		{"StageAllAndCommit with a clean tree reports nothing to commit", func(t *testing.T) {
+			headBefore := requireCurrentSHA(t, repo)
+
+			sha, committed, err := repo.StageAllAndCommit("must not happen")
+			if err != nil {
+				t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+			}
+			if committed || sha != "" {
+				t.Errorf("StageAllAndCommit() = (%q, %v); want (\"\", false)", sha, committed)
+			}
+			if headAfter := requireCurrentSHA(t, repo); headAfter != headBefore {
+				t.Errorf("HEAD after clean-tree StageAllAndCommit = %q; want unchanged %q", headAfter, headBefore)
+			}
+		}},
+		{"ChangedFilesSince returns the files changed since a commit", func(t *testing.T) {
+			base := requireCurrentSHA(t, repo)
+			writeFile(t, dir, "a.txt", "changed")
+			writeFile(t, dir, "new.txt", "new")
+			commitAll(t, dir, "second commit")
+
+			got, err := repo.ChangedFilesSince(base)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			requireSameFiles(t, "ChangedFilesSince()", got, "a.txt", "new.txt")
+		}},
+		{"ChangedFilesSince is empty when the sha equals HEAD", func(t *testing.T) {
+			got, err := repo.ChangedFilesSince(requireCurrentSHA(t, repo))
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("ChangedFilesSince(HEAD) = %v; want empty", got)
+			}
+		}},
+		{"ChangedFilesSince excludes an uncommitted edit", func(t *testing.T) {
+			base := requireCurrentSHA(t, repo)
+			writeFile(t, dir, "a.txt", "uncommitted edit")
+
+			got, err := repo.ChangedFilesSince(base)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("ChangedFilesSince() = %v; want empty (uncommitted edits are excluded)", got)
+			}
+			gitkit.MustRun(t, dir, "git", "checkout", "--", "a.txt")
+		}},
+		// A filename outside ASCII must come back as the literal on-disk path, not
+		// core.quotePath's C-quoted escape form ("\"bl\\303\\245b\\303\\246r.txt\"") that matches
+		// nothing on disk.
+		{"ChangedFilesSince returns a non-ASCII path verbatim", func(t *testing.T) {
+			base := requireCurrentSHA(t, repo)
+			const name = "blåbær.txt"
+			writeFile(t, dir, name, "berries")
+			commitAll(t, dir, "add non-ascii filename")
+
+			got, err := repo.ChangedFilesSince(base)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			if len(got) != 1 || got[0] != name {
+				t.Errorf("ChangedFilesSince() = %q; want [%q] verbatim", got, name)
+			}
+		}},
+		// A rename must list both the old path (which no longer exists at HEAD) and the new one;
+		// git's default rename detection would report only the destination, leaving a consumer's
+		// per-file state for the old path stale forever.
+		{"ChangedFilesSince reports both paths of a rename", func(t *testing.T) {
+			writeFile(t, dir, "old.txt", "content that stays identical")
+			commitAll(t, dir, "add old.txt")
+			base := requireCurrentSHA(t, repo)
+
+			// A pure rename (identical content) is the case rename detection folds.
+			gitkit.MustRun(t, dir, "git", "mv", "old.txt", "renamed.txt")
+			gitkit.MustRun(t, dir, "git", "commit", "-m", "rename")
+
+			got, err := repo.ChangedFilesSince(base)
+			if err != nil {
+				t.Fatalf("ChangedFilesSince() error = %v; want nil", err)
+			}
+			requireSameFiles(t, "ChangedFilesSince()", got, "old.txt", "renamed.txt")
+		}},
+		{"ChangedFilesSince errors on a fabricated sha", func(t *testing.T) {
+			if _, err := repo.ChangedFilesSince("0123456789abcdef0123456789abcdef01234567"); err == nil {
+				t.Fatal("ChangedFilesSince(fabricated sha) error = nil; want an error")
+			}
+		}},
+		{"SHAExists", func(t *testing.T) {
+			tests := []struct {
+				name string
+				sha  string
+				want bool
+			}{
+				{"RealSHA", requireCurrentSHA(t, repo), true},
+				{"FabricatedSHA", "0123456789abcdef0123456789abcdef01234567", false},
+				{"GarbageInput", "not-a-sha at all!!", false},
+			}
+			for _, tt := range tests {
+				if got := repo.SHAExists(tt.sha); got != tt.want {
+					t.Errorf("SHAExists(%s %q) = %v; want %v", tt.name, tt.sha, got, tt.want)
+				}
+			}
+		}},
+		// CurrentBranch must surface an error rather than an empty string on a detached HEAD, so a
+		// caller can never mistake "no branch captured" for a legitimate empty branch name.
+		// Reattaches main afterwards.
+		{"CurrentBranch errors on a detached HEAD", func(t *testing.T) {
+			gitkit.MustRun(t, dir, "git", "checkout", "--detach", requireCurrentSHA(t, repo))
+			defer gitkit.MustRun(t, dir, "git", "checkout", "main")
+
+			if _, err := repo.CurrentBranch(); err == nil {
+				t.Fatal("CurrentBranch() on detached HEAD error = nil; want non-nil")
+			}
+		}},
+		// While a merge is in progress (MERGE_HEAD present), a pathspec-scoped StageAndCommit of an
+		// unrelated file is refused by git ("cannot do a partial commit during a merge") rather than
+		// silently finalizing the human's half-done merge under the automated message.
+		// The merge is clean and resolved (git merge --no-commit of a non-conflicting branch) on
+		// purpose: an unresolved conflict would block any commit and mask the distinction.
+		// It guards the pathspec scoping of the commit: `commit -- <files>` refuses a partial
+		// commit mid-merge, whereas an unscoped `git commit` would complete the merge, so the merge
+		// must still be pending afterward.
+		// Runs last: it leaves the merge pending.
+		{"StageAndCommit mid-merge refuses a partial commit", func(t *testing.T) {
+			// A feature branch adds feat.txt while main edits a different file, so the merge is
+			// non-conflicting and leaves a clean, fully-resolved index.
+			gitkit.MustRun(t, dir, "git", "checkout", "-b", "feature")
+			writeFile(t, dir, "feat.txt", "feature\n")
+			commitAll(t, dir, "feature edit")
+			gitkit.MustRun(t, dir, "git", "checkout", "main")
+			writeFile(t, dir, "b.txt", "main edit\n")
+			commitAll(t, dir, "main edit")
+
+			// --no-commit stops after merging into the index/worktree, so MERGE_HEAD is set with a
+			// clean index: the mid-merge state a commit could finalize.
+			gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
+			if !mergeHeadPresent(t, dir) {
+				t.Fatal("MERGE_HEAD not present after --no-commit merge; test needs a mid-merge state")
+			}
+
+			writeFile(t, dir, "other.txt", "written by caller\n")
+			sha, committed, err := repo.StageAndCommit("automated commit during merge", []string{"other.txt"})
+			if err == nil {
+				t.Fatal("StageAndCommit() mid-merge error = nil; want git's partial-commit refusal")
+			}
+			if committed || sha != "" {
+				t.Errorf("StageAndCommit() mid-merge = (%q, %v); want (\"\", false) -- no commit", sha, committed)
+			}
+			if !mergeHeadPresent(t, dir) {
+				t.Error("MERGE_HEAD absent after refused StageAndCommit; the merge must not have been completed")
+			}
+		}},
 	}
-	if code != 0 {
-		t.Fatalf("git rev-list exited %d: %s", code, stderr)
+	for _, step := range steps {
+		if !t.Run(step.name, step.run) {
+			return
+		}
 	}
-	return strings.TrimSpace(stdout)
 }

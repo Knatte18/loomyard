@@ -11,6 +11,8 @@ import "testing"
 // the three distinct-message error cases (non-GitHub host, no owner/repo pair, unparseable garbage)
 // each surface a message distinct from the other two.
 func TestParseOwnerRepo(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		remoteURL string
@@ -72,6 +74,7 @@ func TestParseOwnerRepo(t *testing.T) {
 
 	// errorsByCase collects the error messages for the three cases whose messages must be mutually
 	// distinct, keyed by test name.
+	// The subtests run serially because they share this map.
 	errorsByCase := map[string]string{}
 
 	for _, tt := range tests {

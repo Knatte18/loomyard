@@ -8,7 +8,10 @@ package gitrepo
 
 import "testing"
 
+//testtiming:keep pins validSHA's accepted and rejected forms, which its covering test reaches only for a full SHA
 func TestValidSHA(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		sha  string
@@ -30,6 +33,8 @@ func TestValidSHA(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := validSHA(tt.sha); got != tt.want {
 				t.Errorf("validSHA(%q) = %v; want %v", tt.sha, got, tt.want)
 			}

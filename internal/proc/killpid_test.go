@@ -18,6 +18,8 @@ import (
 // PID, and asserts both that KillPID reports no error and that the child actually terminated
 // (cmd.Wait returns a non-nil error, reflecting the forced termination rather than a normal exit).
 func TestKillPID_KillsLiveProcess(t *testing.T) {
+	t.Parallel()
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd", "/c", "ping", "-n", "6", "127.0.0.1")
@@ -41,26 +43,15 @@ func TestKillPID_KillsLiveProcess(t *testing.T) {
 	}
 }
 
-// TestKillPID_DeadPIDReturnsError spawns a short-lived child, waits for it to exit to obtain a
-// confirmed-dead PID, and asserts KillPID returns a non-nil error without panicking.
+// TestKillPID_DeadPIDReturnsError takes the PID of a child that has exited and asserts KillPID
+// returns a non-nil error without panicking.
 // This matches the PID-reuse trust KillPID documents: a dead PID has no live process to terminate,
 // so the platform call underneath (FindProcess/Kill) must surface that as an error rather than
 // succeeding silently.
 func TestKillPID_DeadPIDReturnsError(t *testing.T) {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", "exit", "0")
-	} else {
-		cmd = exec.Command("true")
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("cmd.Start() failed: %v", err)
-	}
-	pid := cmd.Process.Pid
-	if err := cmd.Wait(); err != nil {
-		t.Fatalf("cmd.Wait() failed: %v", err)
-	}
+	t.Parallel()
 
+	pid := exitedChildPID(t)
 	if err := KillPID(pid); err == nil {
 		t.Errorf("KillPID(%d) = nil; want non-nil error (process has exited)", pid)
 	}

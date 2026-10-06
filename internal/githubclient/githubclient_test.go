@@ -12,6 +12,8 @@
 // which import golang.org/x/sys/windows to assert the cache file's security descriptor directly --
 // lives in githubclient_windows_test.go behind `//go:build windows`, mirroring this package's
 // cache.go/cache_windows.go/cache_other.go split.
+// No test here calls t.Parallel: each redirects the cache through t.Setenv, which edits the
+// process-global environment.
 // Both files share the helpers declared below (setCacheDir, seedCacheFile, withFakeGHAuthToken,
 // capturedRequest, newScriptedServer).
 
@@ -122,7 +124,8 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 
 // TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the
 // cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a
-// stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable.
+// stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable alongside an empty
+// token, without blocking or prompting.
 func TestResolveToken_Chain(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -195,11 +198,19 @@ func TestResolveToken_Chain(t *testing.T) {
 				return tt.ghCLIToken, tt.ghCLIErr
 			})
 
+			start := time.Now()
 			gotToken, gotSource, err := resolveToken()
+			elapsed := time.Since(start)
 
+			if elapsed > time.Second {
+				t.Errorf("resolveToken() took %v; want a fast result, never a wait or prompt", elapsed)
+			}
 			if tt.wantErr {
 				if !errors.Is(err, ErrTokenUnresolvable) {
 					t.Fatalf("resolveToken() error = %v; want ErrTokenUnresolvable", err)
+				}
+				if gotToken != "" || gotSource != sourceUnknown {
+					t.Errorf("resolveToken() = (%q, %v); want (\"\", sourceUnknown) alongside the error", gotToken, gotSource)
 				}
 				return
 			}
@@ -219,6 +230,8 @@ func TestResolveToken_Chain(t *testing.T) {
 // TestCacheDirRedirection_HonoursOverride asserts the redirection itself works, rather than
 // assuming it: pointing the environment at an empty temp dir must resolve cacheDir under that temp
 // dir and report a cache miss there, never silently fall back to a real user path.
+//
+//testtiming:keep pins that the cache redirection resolves under the temp dir rather than a real user path, which no other test asserts directly
 func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -323,6 +336,8 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 // at once.
 // The requirement is not that any particular write wins -- it is that the file is always either
 // absent or fully parseable, never left half-written by a torn concurrent write.
+//
+//testtiming:keep pins that concurrent writers never leave a torn cache file, which the sequential cache tests do not exercise
 func TestCache_ConcurrentWriters(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -366,146 +381,108 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestAuthRT_401InvalidatesAndReplaysExactlyOnce covers the transport's core contract: a 401
-// invalidates the rejected (cache-sourced) token, resolves a fresh one exactly once, and replays
-// with it -- never in a loop.
-func TestAuthRT_401InvalidatesAndReplaysExactlyOnce(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-	seedCacheFile(t, "cached-token", time.Now())
-
-	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
-		return "fresh-token", nil
-	})
-
-	var captured []capturedRequest
-	server := newScriptedServer(t, []int{http.StatusUnauthorized, http.StatusOK}, &captured)
-
-	client := &http.Client{Transport: &authRT{}}
-	resp, err := client.Get(server.URL)
-	if err != nil {
-		t.Fatalf("client.Get() error = %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("final status = %d; want %d", resp.StatusCode, http.StatusOK)
-	}
-	if len(captured) != 2 {
-		t.Fatalf("server saw %d requests; want exactly 2 (original + one replay)", len(captured))
-	}
-	if captured[0].authHeader != "Bearer cached-token" {
-		t.Errorf("first request Authorization = %q; want %q", captured[0].authHeader, "Bearer cached-token")
-	}
-	if captured[1].authHeader != "Bearer fresh-token" {
-		t.Errorf("replay Authorization = %q; want %q", captured[1].authHeader, "Bearer fresh-token")
-	}
-
-	if tok, ok := readCachedToken(); !ok || tok != "fresh-token" {
-		t.Errorf("readCachedToken() = (%q, %v); want the freshly resolved token to have been cached", tok, ok)
-	}
-}
-
-// TestAuthRT_SecondConsecutive401Propagates asserts the replay never loops: once the replay itself
-// is rejected, the second 401 goes back to the caller unchanged.
-func TestAuthRT_SecondConsecutive401Propagates(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-	seedCacheFile(t, "cached-token", time.Now())
-
-	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
-		return "fresh-token", nil
-	})
-
-	var captured []capturedRequest
-	server := newScriptedServer(t, []int{http.StatusUnauthorized, http.StatusUnauthorized}, &captured)
-
-	client := &http.Client{Transport: &authRT{}}
-	resp, err := client.Get(server.URL)
-	if err != nil {
-		t.Fatalf("client.Get() error = %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("final status = %d; want %d (a second consecutive 401 must propagate, never loop)", resp.StatusCode, http.StatusUnauthorized)
-	}
-	if len(captured) != 2 {
-		t.Fatalf("server saw %d requests; want exactly 2 -- no further retries after the replay's own 401", len(captured))
-	}
-}
-
-// TestAuthRT_EnvSourcedTokenSkipsReplayOn401 asserts that an environment-sourced token is never
-// invalidated and replayed: replaying it is guaranteed to reproduce the identical value, so the 401
-// is surfaced as an error naming the rejected variable, with no second request at all.
-func TestAuthRT_EnvSourcedTokenSkipsReplayOn401(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-	t.Setenv("GH_TOKEN", "env-token")
-
-	var captured []capturedRequest
-	server := newScriptedServer(t, []int{http.StatusUnauthorized}, &captured)
-
-	client := &http.Client{Transport: &authRT{}}
-	resp, err := client.Get(server.URL)
-	if resp != nil {
-		resp.Body.Close()
-	}
-	if err == nil {
-		t.Fatal("client.Get() error = nil; want an error naming the rejected GH_TOKEN source")
-	}
-	if got := err.Error(); !strings.Contains(got, "GH_TOKEN") {
-		t.Errorf("error = %q; want it to name GH_TOKEN as the rejected source", got)
-	}
-	if len(captured) != 1 {
-		t.Fatalf("server saw %d requests; want exactly 1 -- an env-sourced token must never be replayed", len(captured))
-	}
-}
-
-// TestAuthRT_ReplayRewindsRequestBodyByteIdentical is the case the design flags as silently
-// misbehaving without it: a 401 then success, asserting the replayed request's body is
-// byte-identical to the first.
-// This is what proves the req.GetBody rewind actually happened, rather than the replay sending an
-// already-drained (empty) body.
-func TestAuthRT_ReplayRewindsRequestBodyByteIdentical(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-	seedCacheFile(t, "cached-token", time.Now())
-
-	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
-		return "fresh-token", nil
-	})
-
-	var captured []capturedRequest
-	server := newScriptedServer(t, []int{http.StatusUnauthorized, http.StatusCreated}, &captured)
-
-	wantBody := []byte(`{"title":"a test issue"}`)
-	req, err := http.NewRequest(http.MethodPost, server.URL, bytes.NewReader(wantBody))
-	if err != nil {
-		t.Fatalf("http.NewRequest() error = %v", err)
+// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token
+// invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with
+// the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently
+// skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced
+// token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces
+// as an error naming the rejected variable.
+func TestAuthRT_401Handling(t *testing.T) {
+	tests := []struct {
+		name       string
+		ghTokenEnv string
+		statuses   []int
+		body       []byte
+		wantStatus int
+		wantErr    string
+		wantAuth   []string
+		wantCached string
+	}{
+		{
+			name:       "401 then success replays once with a fresh token and an identical body",
+			statuses:   []int{http.StatusUnauthorized, http.StatusCreated},
+			body:       []byte(`{"title":"a test issue"}`),
+			wantStatus: http.StatusCreated,
+			wantAuth:   []string{"Bearer cached-token", "Bearer fresh-token"},
+			wantCached: "fresh-token",
+		},
+		{
+			name:       "second consecutive 401 propagates without a further retry",
+			statuses:   []int{http.StatusUnauthorized, http.StatusUnauthorized},
+			wantStatus: http.StatusUnauthorized,
+			wantAuth:   []string{"Bearer cached-token", "Bearer fresh-token"},
+		},
+		{
+			name:       "env-sourced token is never replayed",
+			ghTokenEnv: "env-token",
+			statuses:   []int{http.StatusUnauthorized},
+			wantErr:    "GH_TOKEN",
+			wantAuth:   []string{"Bearer env-token"},
+		},
 	}
 
-	client := &http.Client{Transport: &authRT{}}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("client.Do() error = %v", err)
-	}
-	resp.Body.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setCacheDir(t, t.TempDir())
+			t.Setenv("GH_TOKEN", tt.ghTokenEnv)
+			t.Setenv("GITHUB_TOKEN", "")
+			seedCacheFile(t, "cached-token", time.Now())
 
-	if len(captured) != 2 {
-		t.Fatalf("server saw %d requests; want exactly 2", len(captured))
-	}
-	if !bytes.Equal(captured[0].body, wantBody) {
-		t.Errorf("first request body = %q; want %q", captured[0].body, wantBody)
-	}
-	if !bytes.Equal(captured[1].body, wantBody) {
-		t.Errorf("replayed request body = %q; want byte-identical to the first (%q) -- proves the GetBody rewind happened", captured[1].body, wantBody)
+			withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
+				return "fresh-token", nil
+			})
+
+			var captured []capturedRequest
+			server := newScriptedServer(t, tt.statuses, &captured)
+
+			method := http.MethodGet
+			var body io.Reader
+			if tt.body != nil {
+				method = http.MethodPost
+				body = bytes.NewReader(tt.body)
+			}
+			req, err := http.NewRequest(method, server.URL, body)
+			if err != nil {
+				t.Fatalf("http.NewRequest() error = %v", err)
+			}
+
+			client := &http.Client{Transport: &authRT{}}
+			resp, err := client.Do(req)
+			if resp != nil {
+				resp.Body.Close()
+			}
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("client.Do() error = %v; want it to name %q as the rejected source", err, tt.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("client.Do() error = %v", err)
+				}
+				if resp.StatusCode != tt.wantStatus {
+					t.Errorf("final status = %d; want %d", resp.StatusCode, tt.wantStatus)
+				}
+			}
+
+			if len(captured) != len(tt.wantAuth) {
+				t.Fatalf("server saw %d requests; want exactly %d", len(captured), len(tt.wantAuth))
+			}
+			for i, c := range captured {
+				if c.authHeader != tt.wantAuth[i] {
+					t.Errorf("request %d Authorization = %q; want %q", i, c.authHeader, tt.wantAuth[i])
+				}
+				if tt.body != nil && !bytes.Equal(c.body, tt.body) {
+					t.Errorf("request %d body = %q; want byte-identical to the first (%q) -- proves the GetBody rewind happened", i, c.body, tt.body)
+				}
+			}
+
+			if tt.wantCached != "" {
+				if tok, ok := readCachedToken(); !ok || tok != tt.wantCached {
+					t.Errorf("readCachedToken() = (%q, %v); want the freshly resolved token %q to have been cached", tok, ok, tt.wantCached)
+				}
+			}
+		})
 	}
 }
 
@@ -550,33 +527,5 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	const slack = 200 * time.Millisecond
 	if elapsed > ghAuthTokenTimeout+slack {
 		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
-	}
-}
-
-// TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking encodes the second operator
-// requirement: when the gh CLI itself fails fast (no session), resolution must return
-// ErrTokenUnresolvable immediately, never wait or prompt.
-func TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
-
-	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
-		return "", errors.New("gh: not logged in to any GitHub hosts")
-	})
-
-	start := time.Now()
-	tok, source, err := resolveToken()
-	elapsed := time.Since(start)
-
-	if !errors.Is(err, ErrTokenUnresolvable) {
-		t.Fatalf("resolveToken() error = %v; want ErrTokenUnresolvable", err)
-	}
-	if tok != "" || source != sourceUnknown {
-		t.Errorf("resolveToken() = (%q, %v); want (\"\", sourceUnknown) alongside the error", tok, source)
-	}
-	if elapsed > time.Second {
-		t.Errorf("resolveToken() took %v to report an unresolvable token; want a fast typed error, never a wait", elapsed)
 	}
 }
