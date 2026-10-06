@@ -46,6 +46,8 @@ var expectedOutcomeByStatus = map[quarry.Status]statusOutcome{
 // glyph-rejected in TestStatusCompleteness_MatchesDoneCheckVerdicts below: that would hold for a
 // hypothetical fifth status too, since Known() would admit it, so it cannot detect the drift this
 // file exists to catch. Do not add it.
+//
+//testtiming:keep a guard that fires when quarry.Statuses and the expectation table diverge, which no covering test asserts
 func TestStatusCompleteness_TableCoversQuarryStatuses(t *testing.T) {
 	t.Parallel()
 
@@ -92,6 +94,8 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 // one checkID at a time so the two rename arms — which both emit a Finding whose Check field is
 // rename-not-done — are told apart by which arm produced the finding rather than by Check alone,
 // and compares the result against expectedOutcomeByStatus's row for status.
+//
+//testtiming:keep pins every quarry status against all four check arms from the guard table, where TestDoneChecks_Verdicts reaches found and not_found only
 func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 	t.Parallel()
 
@@ -133,6 +137,8 @@ func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 // out-of-vocabulary status string — to exactly one blocking glyph-rejected finding for every one of
 // the four checkID arms, with no create, delete or rename verdict, and confirms the two shapes
 // render the two different Detail strings unreadableStatusDetail produces for them.
+//
+//testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestDoneChecks_RootFilenameCreateLanded and TestCreateFindings_UnreadableStatusFailsClosed do not assert
 func TestStatusCompleteness_UnreadableStatusesFailClosed(t *testing.T) {
 	t.Parallel()
 

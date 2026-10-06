@@ -100,6 +100,8 @@ func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
 // overview's Decision: ast-enforcement-idiom: a synthetic source string carrying an out-of-place
 // call for each pinned selector must be caught by chokepointCallSitesIn before the real-tree
 // assertion above is trusted at all.
+//
+//testtiming:keep a guard self-check: pins that the matcher catches a seeded out-of-place call for each pinned selector, which no covering test asserts
 func TestChokepointCallSitesIn_SeededSelfTest(t *testing.T) {
 	const src = `package fakeplanglyph
 

@@ -122,6 +122,8 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 // the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on
 // disk and report a clean verdict over them. Both halves depend on this second return being
 // truthful.
+//
+//testtiming:keep pins the rewrote return value, which TestCanonicalizeHandles_Rewrites ignores
 func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 	t.Run("a plan carrying no handle rewrites nothing", func(t *testing.T) {
 		dir, plan := writePlanFixture(t, map[int]string{
